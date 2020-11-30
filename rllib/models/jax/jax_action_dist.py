@@ -1,9 +1,12 @@
+import time
+
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tfp
+from ray.rllib.utils.framework import try_import_jax, try_import_tfp
 from ray.rllib.utils.typing import TensorType, List
 
+jax, flax = try_import_jax()
 tfp = try_import_tfp()
 
 
@@ -15,6 +18,8 @@ class JAXDistribution(ActionDistribution):
         super().__init__(inputs, model)
         # Store the last sample here.
         self.last_sample = None
+        # Use current time as pseudo-random number generator's seed.
+        self.prng_key = jax.random.PRNGKey(seed=time.time_ns())
 
     @override(ActionDistribution)
     def logp(self, actions: TensorType) -> TensorType:
@@ -30,7 +35,9 @@ class JAXDistribution(ActionDistribution):
 
     @override(ActionDistribution)
     def sample(self) -> TensorType:
-        self.last_sample = self.dist.sample()
+        # Update the state of our PRNG.
+        _, self.prng_key = jax.random.split(self.prng_key)
+        self.last_sample = jax.random.categorical(self.prng_key, self.inputs)
         return self.last_sample
 
     @override(ActionDistribution)
@@ -54,7 +61,7 @@ class JAXCategorical(JAXDistribution):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        self.last_sample = self.dist.probs.argmax(dim=1)
+        self.last_sample = self.inputs.argmax(axis=1)
         return self.last_sample
 
     @staticmethod

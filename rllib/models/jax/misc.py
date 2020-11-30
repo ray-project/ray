@@ -1,48 +1,70 @@
-import numpy as np
+import time
+from typing import Callable, Optional, Union
 
 from ray.rllib.utils.framework import get_activation_fn, try_import_jax
 
-jax = try_import_jax()
-
-
-def normc_initializer(std=1.0):
-    def initializer(tensor):
-        tensor.data.normal_(0, 1)
-        tensor.data *= std / torch.sqrt(
-            tensor.data.pow(2).sum(1, keepdim=True))
-
-    return initializer
+jax, flax = try_import_jax()
+nn = np = None
+if flax:
+    import flax.linen as nn
+    import jax.numpy as np
 
 
 class SlimFC:
-    """Simple JAX version of `linear` function"""
+    """Simple JAX version of a fully connected layer."""
 
     def __init__(self,
                  in_size,
                  out_size,
-                 initializer=None,
-                 activation_fn=None,
-                 use_bias=True,
-                 bias_init=0.0,
-                 key=None):
-        weights, biases = jax.random.normal(), jax.random.normal
-        # Actual Conv2D layer (including correct initialization logic).
-        linear = nn.Linear(in_size, out_size, bias=use_bias)
-        if initializer:
-            initializer(linear.weight)
-        if use_bias is True:
-            nn.init.constant_(linear.bias, bias_init)
-        layers.append(linear)
-        # Activation function (if any; default=None (linear)).
-        if isinstance(activation_fn, str):
-            activation_fn = get_activation_fn(activation_fn, "torch")
-        if activation_fn is not None:
-            layers.append(activation_fn())
-        # Put everything in sequence.
-        self._model = nn.Sequential(*layers)
+                 initializer: Optional[Callable] = None,
+                 activation_fn: Optional[str] = None,
+                 use_bias: bool = True,
+                 #bias_init: float = 0.0,
+                 prng_key: Optional[jax.random.PRNGKey] = None,
+                 name: Optional[str] = None):
+        """Initializes a SlimFC instance.
 
-    def forward(self, x):
-        return self._model(x)
+        Args:
+            in_size (int): The input size of the input data that will be passed
+                into this layer.
+            out_size (int): The number of nodes in this FC layer.
+            initializer (flax.:
+            activation_fn (str): An activation string specifier, e.g. "relu".
+            use_bias (bool): Whether to add biases to the dot product or not.
+            #bias_init (float):
+            prng_key (Optional[jax.random.PRNGKey]): An optional PRNG key to
+                use for initialization. If None, create a new random one.
+            name (Optional[str]): An optional name for this layer.
+        """
+
+        # By default, use Glorot unform initializer.
+        if initializer is None:
+            initializer = flax.nn.initializers.xavier_uniform()
+
+        self.prng_key = prng_key or jax.random.PRNGKey(time.time_ns())
+        _, self.prng_key = jax.random.split(self.prng_key)
+        # Create the flax dense layer.
+        self._dense = nn.Dense(
+            out_size,
+            use_bias=use_bias,
+            kernel_init=initializer,
+            name=name,
+        )
+        # Initialize it.
+        dummy_in = jax.random.normal(
+            self.prng_key, (in_size, ), dtype=np.float32)
+        _, self.prng_key = jax.random.split(self.prng_key)
+        self._params = self._dense.init(self.prng_key, dummy_in)
+
+        # Activation function (if any; default=None (linear)).
+        self.activation_fn = get_activation_fn(activation_fn, "jax")
+
+    def __call__(self, x):
+        out = self._dense.apply(self._params, x)
+        if self.activation_fn:
+            out = self.activation_fn(out)
+        return out
+
 
 
 class AppendBiasLayer(nn.Module):

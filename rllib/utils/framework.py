@@ -33,10 +33,13 @@ def try_import_jax(error=False):
 
     try:
         import jax
+        import flax
     except ImportError as e:
         if error:
             raise e
-        return None
+        return None, None
+
+    return jax, flax
 
 
 def try_import_tf(error=False):
@@ -275,6 +278,16 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
+    elif framework == "jax":
+        if name in ["linear", None]:
+            return None
+        jax = try_import_jax()
+        if name == "swish":
+            return jax.nn.swish
+        if name == "relu":
+            return jax.nn.relu
+        elif name == "tanh":
+            return jax.nn.hard_tanh
     else:
         if name in ["linear", None]:
             return None

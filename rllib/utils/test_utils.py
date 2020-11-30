@@ -2,8 +2,10 @@ import gym
 import logging
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
+    try_import_torch
 
+jax = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 if tf1:
     eager_mode = None
@@ -64,6 +66,10 @@ def framework_iterator(config=None,
         elif fw == "tf2" and tfv != 2:
             logger.warning(
                 "framework_iterator skipping tf2.x (tf version is < 2.0)!")
+            continue
+        elif fw == "jax" and not jax:
+            logger.warning(
+                "framework_iterator skipping JAX (not installed)!")
             continue
         assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
 

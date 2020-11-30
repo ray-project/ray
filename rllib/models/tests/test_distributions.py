@@ -56,7 +56,9 @@ class TestDistributions(unittest.TestCase):
         dist = distribution_cls(inputs, {}, **(extra_kwargs or {}))
         for _ in range(100):
             sample = dist.sample()
-            if fw != "tf":
+            if fw == "jax":
+                sample_check = sample
+            elif fw != "tf":
                 sample_check = sample.numpy()
             else:
                 sample_check = sess.run(sample)
@@ -72,7 +74,9 @@ class TestDistributions(unittest.TestCase):
                     assert bounds[0] in sample_check
                     assert bounds[1] in sample_check
             logp = dist.logp(sample)
-            if fw != "tf":
+            if fw == "jax":
+                logp_check = logp
+            elif fw != "tf":
                 logp_check = logp.numpy()
             else:
                 logp_check = sess.run(logp)
@@ -89,7 +93,8 @@ class TestDistributions(unittest.TestCase):
 
         inputs = inputs_space.sample()
 
-        for fw, sess in framework_iterator(session=True, frameworks=("jax", "tf", "tf2", "torch")):
+        for fw, sess in framework_iterator(
+            session=True, frameworks=("jax", "tf", "tf2", "torch")):
             # Create the correct distribution object.
             cls = JAXCategorical if fw == "jax" else Categorical if \
                 fw != "torch" else TorchCategorical
@@ -114,7 +119,7 @@ class TestDistributions(unittest.TestCase):
             # Batch of size=3 and non-deterministic -> expect roughly the mean.
             out = categorical.sample()
             check(
-                tf.reduce_mean(out)
+                np.mean(out) if fw == "jax" else tf.reduce_mean(out)
                 if fw != "torch" else torch.mean(out.float()),
                 1.0,
                 decimals=0)
