@@ -319,6 +319,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
 
+    def delete_spilled_objects(self, urls: List[str]):
+        pass
+
 
 _external_storage = NullStorage()
 
