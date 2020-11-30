@@ -58,6 +58,8 @@ def setup_component_logger(*, logging_level, logging_format, log_dir, filename,
 """
 All components underneath here is used specifically for the default_worker.py.
 """
+
+
 class StandardStreamInterceptor:
     """Used to intercept stdout and stderr.
 
