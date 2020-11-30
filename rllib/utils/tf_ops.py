@@ -1,4 +1,5 @@
 import gym
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
@@ -36,14 +37,14 @@ def explained_variance(y, pred):
     return tf.maximum(-1.0, 1 - (diff_var / y_var))
 
 
-def get_placeholder(*, space=None, value=None, name=None):
+def get_placeholder(*, space=None, value=None, name=None, time_axis=False):
     from ray.rllib.models.catalog import ModelCatalog
 
     if space is not None:
         if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
             return ModelCatalog.get_action_placeholder(space, None)
         return tf1.placeholder(
-            shape=(None, ) + space.shape,
+            shape=(None, ) + ((None, ) if time_axis else ()) + space.shape,
             dtype=tf.float32 if space.dtype == np.float64 else space.dtype,
             name=name,
         )
@@ -51,8 +52,9 @@ def get_placeholder(*, space=None, value=None, name=None):
         assert value is not None
         shape = value.shape[1:]
         return tf1.placeholder(
-            shape=(None, ) + (shape if isinstance(shape, tuple) else tuple(
-                shape.as_list())),
+            shape=(None, ) + ((None, )
+                              if time_axis else ()) + (shape if isinstance(
+                                  shape, tuple) else tuple(shape.as_list())),
             dtype=tf.float32 if value.dtype == np.float64 else value.dtype,
             name=name,
         )
@@ -63,6 +65,17 @@ def huber_loss(x, delta=1.0):
     return tf.where(
         tf.abs(x) < delta,
         tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
+
+
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return tf.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        return tf.concat(
+            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            axis=-1)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
 
 
 def reduce_mean_ignore_inf(x, axis):
@@ -119,11 +132,15 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
         assert session_or_none is not None
 
     def make_wrapper(fn):
-        if session_or_none:
-            placeholders = []
+        # Static-graph mode: Create placeholders and make a session call each
+        # time the wrapped function is called. Return this session call's
+        # outputs.
+        if session_or_none is not None:
+            args_placeholders = []
+            kwargs_placeholders = {}
             symbolic_out = [None]
 
-            def call(*args):
+            def call(*args, **kwargs):
                 args_flat = []
                 for a in args:
                     if type(a) is list:
@@ -141,17 +158,35 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                                     shape = ()
                             else:
                                 shape = v.shape
-                            placeholders.append(
+                            args_placeholders.append(
                                 tf1.placeholder(
                                     dtype=v.dtype,
                                     shape=shape,
                                     name="arg_{}".format(i)))
-                        symbolic_out[0] = fn(*placeholders)
-                feed_dict = dict(zip(placeholders, args))
+                        for k, v in kwargs.items():
+                            if dynamic_shape:
+                                if len(v.shape) > 0:
+                                    shape = (None, ) + v.shape[1:]
+                                else:
+                                    shape = ()
+                            else:
+                                shape = v.shape
+                            kwargs_placeholders[k] = \
+                                tf1.placeholder(
+                                    dtype=v.dtype,
+                                    shape=shape,
+                                    name="kwarg_{}".format(k))
+                        symbolic_out[0] = fn(*args_placeholders,
+                                             **kwargs_placeholders)
+                feed_dict = dict(zip(args_placeholders, args))
+                feed_dict.update(
+                    {kwargs_placeholders[k]: kwargs[k]
+                     for k in kwargs.keys()})
                 ret = session_or_none.run(symbolic_out[0], feed_dict)
                 return ret
 
             return call
+        # Eager mode (call function as is).
         else:
             return fn
 

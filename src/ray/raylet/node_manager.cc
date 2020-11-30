@@ -426,18 +426,19 @@ void NodeManager::Heartbeat() {
     // TODO(atumanov): implement a ResourceSet const_iterator.
     // If light heartbeat enabled, we only set filed that represent resources changed.
     if (light_heartbeat_enabled_) {
-      if (!last_heartbeat_resources_.GetTotalResources().IsEqual(
+      auto last_heartbeat_resources = gcs_client_->Nodes().GetLastHeartbeatResources();
+      if (!last_heartbeat_resources->GetTotalResources().IsEqual(
               local_resources.GetTotalResources())) {
         for (const auto &resource_pair :
              local_resources.GetTotalResources().GetResourceMap()) {
           (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetTotalResources(
+        last_heartbeat_resources->SetTotalResources(
             ResourceSet(local_resources.GetTotalResources()));
       }
 
-      if (!last_heartbeat_resources_.GetAvailableResources().IsEqual(
+      if (!last_heartbeat_resources->GetAvailableResources().IsEqual(
               local_resources.GetAvailableResources())) {
         heartbeat_data->set_resources_available_changed(true);
         for (const auto &resource_pair :
@@ -445,12 +446,12 @@ void NodeManager::Heartbeat() {
           (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetAvailableResources(
+        last_heartbeat_resources->SetAvailableResources(
             ResourceSet(local_resources.GetAvailableResources()));
       }
 
       local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-      if (!last_heartbeat_resources_.GetLoadResources().IsEqual(
+      if (!last_heartbeat_resources->GetLoadResources().IsEqual(
               local_resources.GetLoadResources())) {
         heartbeat_data->set_resource_load_changed(true);
         for (const auto &resource_pair :
@@ -458,7 +459,7 @@ void NodeManager::Heartbeat() {
           (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
               resource_pair.second;
         }
-        last_heartbeat_resources_.SetLoadResources(
+        last_heartbeat_resources->SetLoadResources(
             ResourceSet(local_resources.GetLoadResources()));
       }
     } else {
@@ -577,18 +578,26 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Kill all workers that are currently associated with the unused bundles.
+  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
+  // delete the element of `leased_workers_`. So we need to filter out
+  // `workers_associated_with_unused_bundles` separately.
+  std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
     if (0 == in_use_bundles.count(worker->GetBundleId())) {
-      RAY_LOG(DEBUG)
-          << "Destroying worker since its bundle was unused. Placement group id: "
-          << worker->GetBundleId().first
-          << ", bundle index: " << worker->GetBundleId().second
-          << ", task id: " << worker->GetAssignedTaskId()
-          << ", actor id: " << worker->GetActorId()
-          << ", worker id: " << worker->WorkerId();
-      DestroyWorker(worker);
+      workers_associated_with_unused_bundles.emplace_back(worker);
     }
+  }
+
+  for (const auto &worker : workers_associated_with_unused_bundles) {
+    RAY_LOG(DEBUG)
+        << "Destroying worker since its bundle was unused. Placement group id: "
+        << worker->GetBundleId().first
+        << ", bundle index: " << worker->GetBundleId().second
+        << ", task id: " << worker->GetAssignedTaskId()
+        << ", actor id: " << worker->GetActorId()
+        << ", worker id: " << worker->WorkerId();
+    DestroyWorker(worker);
   }
 
   // Return unused bundle resources.
@@ -1708,6 +1717,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
+  // Prestart optimization is only needed when multi-tenancy is on.
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      RayConfig::instance().enable_worker_prestart()) {
+    auto task_spec = task.GetTaskSpecification();
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+  }
+
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
     cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {
@@ -1819,11 +1835,14 @@ void NodeManager::HandleCancelResourceReserve(
                 << bundle_spec.DebugString();
 
   // Kill all workers that are currently associated with the placement group.
+  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
+  // delete the element of `leased_workers_`. So we need to filter out
+  // `workers_associated_with_pg` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
     if (worker->GetBundleId().first == bundle_spec.PlacementGroupId()) {
-      workers_associated_with_pg.push_back(worker);
+      workers_associated_with_pg.emplace_back(worker);
     }
   }
   for (const auto &worker : workers_associated_with_pg) {

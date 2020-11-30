@@ -24,7 +24,7 @@ class MyCallBack(DefaultCallbacks):
                                   policy_id, policies, postprocessed_batch,
                                   original_batches, **kwargs):
         pos = np.argmax(postprocessed_batch["obs"], -1)
-        x, y = pos % 10, pos // 10
+        x, y = pos % 8, pos // 8
         self.deltas.extend((x**2 + y**2)**0.5)
 
     def on_sample_end(self, *, worker, samples, **kwargs):
@@ -125,23 +125,21 @@ class TestCuriosity(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_curiosity_on_large_frozen_lake(self):
+    def test_curiosity_on_frozen_lake(self):
         config = ppo.DEFAULT_CONFIG.copy()
-        # A very large frozen-lake that's hard for a random policy to solve
+        # A very large frozen-lake that's hard for a random policy to solve
         # due to 0.0 feedback.
         config["env"] = "FrozenLake-v0"
         config["env_config"] = {
             "desc": [
-                "SFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFF",
-                "FFFFFFFFFG",
+                "SFFFFFFF",
+                "FFFFFFFF",
+                "FFFFFFFF",
+                "FFFFFFFF",
+                "FFFFFFFF",
+                "FFFFFFFF",
+                "FFFFFFFF",
+                "FFFFFFFG",
             ],
             "is_slippery": False
         }
@@ -149,13 +147,13 @@ class TestCuriosity(unittest.TestCase):
         config["callbacks"] = MyCallBack
         # Limit horizon to make it really hard for non-curious agent to reach
         # the goal state.
-        config["horizon"] = 23
+        config["horizon"] = 16
         # Local only.
         config["num_workers"] = 0
         config["lr"] = 0.001
 
         num_iterations = 10
-        for _ in framework_iterator(config, frameworks="torch"):
+        for fw in framework_iterator(config):
             # W/ Curiosity. Expect to learn something.
             config["exploration_config"] = {
                 "type": "Curiosity",
@@ -182,18 +180,21 @@ class TestCuriosity(unittest.TestCase):
             trainer.stop()
             self.assertTrue(learnt)
 
-            # W/o Curiosity. Expect to learn nothing.
-            config["exploration_config"] = {
-                "type": "StochasticSampling",
-            }
-            trainer = ppo.PPOTrainer(config=config)
-            rewards_wo = 0.0
-            for _ in range(num_iterations):
-                result = trainer.train()
-                rewards_wo += result["episode_reward_mean"]
-                print(result)
-            trainer.stop()
-            self.assertTrue(rewards_wo == 0.0)
+            if fw == "tf":
+                # W/o Curiosity. Expect to learn nothing.
+                print("Trying w/o curiosity (not expected to learn).")
+                config["exploration_config"] = {
+                    "type": "StochasticSampling",
+                }
+                trainer = ppo.PPOTrainer(config=config)
+                rewards_wo = 0.0
+                for _ in range(num_iterations):
+                    result = trainer.train()
+                    rewards_wo += result["episode_reward_mean"]
+                    print(result)
+                trainer.stop()
+                self.assertTrue(rewards_wo == 0.0)
+                print("Did not reach goal w/o curiosity!")
 
     def test_curiosity_on_partially_observable_domain(self):
         config = ppo.DEFAULT_CONFIG.copy()

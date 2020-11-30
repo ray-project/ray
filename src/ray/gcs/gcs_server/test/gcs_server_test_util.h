@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/util/asio_util.h"
 
 namespace ray {
@@ -305,7 +306,8 @@ struct GcsServerMocker {
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
-    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) override {
+    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+                        const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
 

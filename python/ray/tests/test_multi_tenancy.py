@@ -251,7 +251,6 @@ ray.shutdown()
     assert worker2.pid == get_workers()[0].pid
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="raylet hang 100% cpu")
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
     info = ray.init(num_cpus=1)
 

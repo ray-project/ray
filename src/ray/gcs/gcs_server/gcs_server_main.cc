@@ -74,7 +74,8 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
   gcs_server_config.grpc_server_port = gcs_server_port;
-  gcs_server_config.grpc_server_thread_num = 1;
+  gcs_server_config.grpc_server_thread_num =
+      RayConfig::instance().gcs_server_rpc_server_thread_num();
   gcs_server_config.redis_address = redis_address;
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;
