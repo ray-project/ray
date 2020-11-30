@@ -523,8 +523,8 @@ class _SimpleListCollector(_SampleCollector):
             policy = self.policy_map[pid]
             model_view_reqs = policy.model.inference_view_requirements if \
                 getattr(policy, "model", None) else policy.view_requirements
-            pre_batch = collector.build(
-                policy.view_requirements, model_view_reqs)
+            pre_batch = collector.build(policy.view_requirements,
+                                        model_view_reqs)
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.
