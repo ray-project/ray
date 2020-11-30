@@ -99,6 +99,10 @@ class SystemState:
     routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = field(
         default_factory=dict)
 
+    backend_goal_ids: Dict[BackendTag, GoalId] = field(default_factory=dict)
+    traffic_goal_ids: Dict[EndpointTag, GoalId] = field(default_factory=dict)
+    route_goal_ids: Dict[BackendTag, GoalId] = field(default_factory=dict)
+
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
         return {
             tag: info.backend_config
@@ -108,9 +112,12 @@ class SystemState:
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
 
-    def add_backend(self, backend_tag: BackendTag,
-                    backend_info: BackendInfo) -> None:
+    def add_backend(self,
+                    backend_tag: BackendTag,
+                    backend_info: BackendInfo,
+                    goal_id: GoalId = 0) -> None:
         self.backends[backend_tag] = backend_info
+        self.backend_goal_ids = goal_id
 
     def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         endpoints = {}
