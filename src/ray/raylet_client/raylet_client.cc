@@ -25,6 +25,12 @@
 using MessageType = ray::protocol::MessageType;
 
 namespace {
+inline flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
+  return ray::protocol::CreateAddress(
+      fbb, fbb.CreateString(address.raylet_id()), fbb.CreateString(address.ip_address()),
+      address.port(), fbb.CreateString(address.worker_id()));
+}
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
@@ -32,10 +38,7 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
   std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
-    auto fbb_addr = ray::protocol::CreateAddress(
-        fbb, fbb.CreateString(addr.raylet_id()), fbb.CreateString(addr.ip_address()),
-        addr.port(), fbb.CreateString(addr.worker_id()));
-    address_vec.push_back(fbb_addr);
+    address_vec.push_back(to_flatbuf(fbb, addr));
   }
   return fbb.CreateVector(address_vec);
 }
@@ -306,19 +309,21 @@ Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
 }
 
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity, const NodeID &client_Id) {
+                                         const double capacity, const NodeID &node_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
-                                                    capacity, to_flatbuf(fbb, client_Id));
+                                                    capacity, to_flatbuf(fbb, node_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
 void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+    const int64_t backlog_size) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(request, callback);
 }
 
@@ -397,6 +402,25 @@ void raylet::RayletClient::CancelResourceReserve(
   grpc_client_->CancelResourceReserve(request, callback);
 }
 
+void raylet::RayletClient::ReleaseUnusedBundles(
+    const std::vector<rpc::Bundle> &bundles_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) {
+  rpc::ReleaseUnusedBundlesRequest request;
+  for (auto &bundle : bundles_in_use) {
+    request.add_bundles_in_use()->CopyFrom(bundle);
+  }
+  grpc_client_->ReleaseUnusedBundles(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing bundles from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
+}
+
 void raylet::RayletClient::PinObjectIDs(
     const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) {
@@ -414,11 +438,14 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
-Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
+                                             const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id),
+                                                      to_flatbuf(fbb, owner_address));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
+
+  RAY_CHECK_OK(conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
 }
 
 }  // namespace ray

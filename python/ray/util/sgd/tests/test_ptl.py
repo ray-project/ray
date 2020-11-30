@@ -209,3 +209,9 @@ def test_correctness(ray_start_2_cpus, num_workers, use_local):
     assert train1_stats["train_loss"] == train2_stats["train_loss"]
     assert val1_stats["val_loss"] == val2_stats["val_loss"]
     assert val1_stats["val_acc"] == val2_stats["val_accuracy"]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(sys.argv[1:] + ["-v", __file__]))

@@ -1,4 +1,4 @@
-cartpole-dqn:
+cartpole-simpleq:
     env: CartPole-v0
     run: SimpleQ
     stop:

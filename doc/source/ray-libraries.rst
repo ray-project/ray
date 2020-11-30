@@ -96,11 +96,24 @@ Alibi is an open source Python library aimed at machine learning model inspectio
 
 GitHub: `https://github.com/SeldonIO/alibi <https://github.com/SeldonIO/alibi>`__
 
+Scikit Learn |scikit|
+---------------------
+
+Scikit-learn is a free software machine learning library for the Python programming language. It features various classification, regression and clustering algorithms including support vector machines, random forests, gradient boosting, k-means and DBSCAN, and is designed to interoperate with the Python numerical and scientific libraries NumPy and SciPy.
+
+[`Link to integration <https://docs.ray.io/en/master/joblib.html>`__]
+
 Spacy |spacy|
 -------------
 spaCy is a library for advanced Natural Language Processing in Python and Cython. It's built on the very latest research, and was designed from day one to be used in real products.
 
 [`Link to integration <https://pypi.org/project/spacy-ray/>`__]
+
+XGBoost |xgboost|
+-----------------
+XGBoost is a popular gradient boosting library for classification and regression. It is one of the most popular tools in data science and workhorse of many top-performing Kaggle kernels.
+
+[`Link to integration <https://github.com/ray-project/xgboost_ray>`__]
 
 .. |classyvision| image:: images/classyvision.png
     :class: inline-figure
@@ -142,11 +155,19 @@ spaCy is a library for advanced Natural Language Processing in Python and Cython
     :class: inline-figure
     :height: 30
 
+.. |scikit| image:: images/scikit.png
+    :class: inline-figure
+    :height: 30
+
 .. |seldon| image:: images/seldon.png
     :class: inline-figure
     :height: 30
 
 .. |spacy| image:: images/spacy.png
+    :class: inline-figure
+    :height: 30
+
+.. |xgboost| image:: images/xgboost_logo.png
     :class: inline-figure
     :height: 30
 

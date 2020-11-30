@@ -200,14 +200,24 @@ const NodeInfo: React.FC<{}> = () => {
   )?.workerAccessor;
   const sortWorkerComparator =
     sortWorkerAccessor && getFnComparator(order, sortWorkerAccessor);
+
+  // Show GPU features only if there is at least one GPU in cluster.
+  const showGPUs =
+    nodes.map((n) => n.gpus).filter((gpus) => gpus.length !== 0).length !== 0;
+  const filterPredicate = (
+    feature: NodeInfoFeature | HeaderInfo<nodeInfoColumnId>,
+  ) => showGPUs || (feature.id !== "gpu" && feature.id !== "gram");
+  const filteredFeatures = nodeInfoFeatures.filter(filterPredicate);
+  const filteredHeaders = nodeInfoHeaders.filter(filterPredicate);
+
   const tableContents = isGrouped
     ? makeGroupedTableContents(
         nodes,
         sortWorkerComparator,
         sortNodeComparator,
-        nodeInfoFeatures,
+        filteredFeatures,
       )
-    : makeUngroupedTableContents(nodes, sortWorkerComparator, nodeInfoFeatures);
+    : makeUngroupedTableContents(nodes, sortWorkerComparator, filteredFeatures);
   return (
     <React.Fragment>
       <FormControlLabel
@@ -230,7 +240,7 @@ const NodeInfo: React.FC<{}> = () => {
               setOrder("asc");
             }
           }}
-          headerInfo={nodeInfoHeaders}
+          headerInfo={filteredHeaders}
           order={order}
           orderBy={orderBy}
           firstColumnEmpty={true}
@@ -240,7 +250,7 @@ const NodeInfo: React.FC<{}> = () => {
           <TotalRow
             clusterTotalWorkers={clusterTotalWorkers}
             nodes={nodes}
-            features={nodeInfoFeatures.map(
+            features={filteredFeatures.map(
               (feature) => feature.ClusterFeatureRenderFn,
             )}
           />

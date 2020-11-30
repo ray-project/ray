@@ -10,11 +10,7 @@ import {
   launchKillActor,
   launchProfiling,
 } from "../../../api";
-import { sum } from "../../../common/util";
 import ActorDetailsPane from "./ActorDetailsPane";
-
-const memoryDebuggingDocLink =
-  "https://docs.ray.io/en/latest/memory-management.html#debugging-using-ray-memory";
 
 const useActorStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -102,80 +98,6 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
       launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
-
-  const information = isFullActorInfo(actor)
-    ? [
-        {
-          label: "Resources",
-          value:
-            actor.usedResources &&
-            Object.entries(actor.usedResources).length > 0 &&
-            Object.entries(actor.usedResources)
-              .sort((a, b) => a[0].localeCompare(b[0]))
-              .map(
-                ([key, value]) =>
-                  `${sum(
-                    value.resourceSlots.map((slot) => slot.allocation),
-                  )} ${key}`,
-              )
-              .join(", "),
-        },
-        {
-          label: "Number of pending tasks",
-          value: actor.taskQueueLength?.toLocaleString() ?? "0",
-          tooltip:
-            "The number of tasks that are currently pending to execute on this actor. If this number " +
-            "remains consistently high, it may indicate that this actor is a bottleneck in your application.",
-        },
-        {
-          label: "Number of executed tasks",
-          value: actor.numExecutedTasks?.toLocaleString() ?? "0",
-          tooltip:
-            "The number of tasks this actor has executed throughout its lifetimes.",
-        },
-        {
-          label: "Number of ObjectRefs in scope",
-          value: actor.numObjectRefsInScope?.toLocaleString() ?? "0",
-          tooltip:
-            "The number of ObjectRefs that this actor is keeping in scope via its internal state. " +
-            "This does not imply that the objects are in active use or colocated on the node with the actor " +
-            `currently. This can be useful for debugging memory leaks. See the docs at ${memoryDebuggingDocLink} ` +
-            "for more information.",
-        },
-        {
-          label: "Number of local objects",
-          value: actor.numLocalObjects?.toLocaleString() ?? "0",
-          tooltip:
-            "The number of small objects that this actor has stored in its local in-process memory store. This can be useful for " +
-            `debugging memory leaks. See the docs at ${memoryDebuggingDocLink} for more information`,
-        },
-        {
-          label: "Object store memory used (MiB)",
-          value: actor.usedObjectStoreMemory?.toLocaleString() ?? "0",
-          tooltip:
-            "The total amount of memory that this actor is occupying in the Ray object store. " +
-            "If this number is increasing without bounds, you might have a memory leak. See " +
-            `the docs at: ${memoryDebuggingDocLink} for more information.`,
-        },
-      ]
-    : [
-        {
-          label: "Actor ID",
-          value: actor.actorId,
-          tooltip: "",
-        },
-        {
-          label: "Required resources",
-          value:
-            actor.requiredResources &&
-            Object.entries(actor.requiredResources).length > 0 &&
-            Object.entries(actor.requiredResources)
-              .sort((a, b) => a[0].localeCompare(b[0]))
-              .map(([key, value]) => `${value.toLocaleString()} ${key}`)
-              .join(", "),
-          tooltip: "",
-        },
-      ];
 
   // Construct the custom message from the actor.
   let actorCustomDisplay: JSX.Element[] = [];
@@ -273,11 +195,7 @@ const Actor: React.FC<ActorProps> = ({ actor }) => {
           </span>
         )}
       </Typography>
-      <ActorDetailsPane
-        actorDetails={information}
-        actorClass={actor.actorClass}
-        actorState={actor.state}
-      />
+      <ActorDetailsPane actor={actor} />
       {isFullActorInfo(actor) && (
         <React.Fragment>
           {actorCustomDisplay.length > 0 && (

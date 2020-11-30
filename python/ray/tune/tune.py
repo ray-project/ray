@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -10,21 +11,15 @@ from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.registry import get_trainable_cls
-from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
+from ray.tune.syncer import wait_for_sync, set_sync_periods, \
+    SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
-                                 FIFOScheduler, MedianStoppingRule)
+from ray.tune.schedulers import FIFOScheduler
 
 logger = logging.getLogger(__name__)
-
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-}
 
 try:
     class_name = get_ipython().__class__.__name__
@@ -33,17 +28,9 @@ except NameError:
     IS_NOTEBOOK = False
 
 
-def _make_scheduler(args):
-    if args.scheduler in _SCHEDULERS:
-        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
-    else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
-
-
 def _check_default_resources_override(run_identifier):
     if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overriden.
+        # If obscure dtype, assume it is overridden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
     return hasattr(trainable_cls, "default_resource_request") and (
@@ -85,7 +72,6 @@ def run(
         checkpoint_at_end=False,
         verbose=2,
         progress_reporter=None,
-        loggers=None,
         log_to_file=False,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -102,6 +88,7 @@ def run(
         raise_on_failed_trial=True,
         callbacks=None,
         # Deprecated args
+        loggers=None,
         ray_auto_init=None,
         run_errored_only=None,
         global_checkpoint_period=None,
@@ -207,9 +194,6 @@ def run(
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        loggers (list): List of logger creators to be used with
-            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
-            See `ray/tune/logger.py`.
         log_to_file (bool|str|Sequence): Log stdout and stderr to files in
             Tune's trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -262,7 +246,9 @@ def run(
             trial (of ERROR state) when the experiments complete.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
-            ``ray.tune.trial_runner.Callback`` class.
+            ``ray.tune.callback.Callback`` class. If not passed,
+            `LoggerCallback` and `SyncerCallback` callbacks are automatically
+            added.
 
 
     Returns:
@@ -271,6 +257,7 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
                          "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
@@ -323,7 +310,6 @@ def run(
                 sync_to_driver=sync_config.sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
-                loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
@@ -367,6 +353,10 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your scheduler or from your call to `tune.run()`")
 
+    # Create logger and syncer callbacks
+    callbacks = create_default_callbacks(
+        callbacks, sync_config, loggers=loggers)
+
     runner = TrialRunner(
         search_alg=search_alg,
         scheduler=scheduler,
@@ -409,7 +399,7 @@ def run(
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
-            # "default_resources" is manually overriden.
+            # "default_resources" is manually overridden.
             pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
@@ -420,10 +410,12 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    tune_start = time.time()
     while not runner.is_finished():
         runner.step()
         if verbose:
             _report_progress(runner, progress_reporter)
+    tune_taken = time.time() - tune_start
 
     try:
         runner.checkpoint(force=True)
@@ -447,6 +439,10 @@ def run(
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
 
+    all_taken = time.time() - all_start
+    logger.info(f"Total run time: {all_taken:.2f} seconds "
+                f"({tune_taken:.2f} seconds for the tuning loop).")
+
     trials = runner.get_trials()
     return ExperimentAnalysis(
         runner.checkpoint_file,
@@ -465,7 +461,8 @@ def run_experiments(experiments,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=True):
+                    concurrent=True,
+                    callbacks=None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -495,7 +492,8 @@ def run_experiments(experiments,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler).trials
+            scheduler=scheduler,
+            callbacks=callbacks).trials
     else:
         trials = []
         for exp in experiments:
@@ -509,5 +507,6 @@ def run_experiments(experiments,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler).trials
+                scheduler=scheduler,
+                callbacks=callbacks).trials
         return trials

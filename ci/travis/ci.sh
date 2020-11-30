@@ -159,7 +159,6 @@ test_python() {
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
-      -python/ray/tests:test_webui
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -208,7 +207,7 @@ build_dashboard_front_end() {
     { echo "WARNING: Skipping dashboard due to NPM incompatibilities with Windows"; } 2> /dev/null
   else
     (
-      cd ray/dashboard/client
+      cd ray/new_dashboard/client
       set +x  # suppress set -x since it'll get very noisy here
       . "${HOME}/.nvm/nvm.sh"
       nvm use --silent node
@@ -286,12 +285,13 @@ build_wheels() {
         -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
+        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
+      docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+      quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
@@ -334,7 +334,7 @@ lint_bazel() {
 
 lint_web() {
   (
-    cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
+    cd "${WORKSPACE_DIR}"/python/ray/new_dashboard/client
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
     install_npm_project

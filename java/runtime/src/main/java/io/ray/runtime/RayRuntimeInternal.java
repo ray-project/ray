@@ -6,6 +6,7 @@ import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.functionmanager.FunctionManager;
 import io.ray.runtime.gcs.GcsClient;
 import io.ray.runtime.object.ObjectStore;
+import io.ray.runtime.task.TaskExecutor;
 
 /**
  * This interface is required to make {@link RayRuntimeProxy} work.
@@ -20,6 +21,8 @@ public interface RayRuntimeInternal extends RayRuntime {
   WorkerContext getWorkerContext();
 
   ObjectStore getObjectStore();
+
+  TaskExecutor getTaskExecutor();
 
   FunctionManager getFunctionManager();
 

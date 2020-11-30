@@ -65,6 +65,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
   }
 
+  protected void removeActorContext(UniqueId workerId) {
+    this.actorContextMap.remove(workerId);
+  }
+
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);

@@ -35,6 +35,7 @@ void GcsObjectManager::HandleGetObjectLocations(
   RAY_LOG(DEBUG) << "Finished getting object locations, job id = "
                  << object_id.TaskId().JobId() << ", object id = " << object_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_OBJECT_LOCATIONS_REQUEST];
 }
 
 void GcsObjectManager::HandleGetAllObjectLocations(
@@ -54,6 +55,7 @@ void GcsObjectManager::HandleGetAllObjectLocations(
   }
   RAY_LOG(DEBUG) << "Finished getting all object locations.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_OBJECT_LOCATIONS_REQUEST];
 }
 
 void GcsObjectManager::HandleAddObjectLocation(
@@ -107,6 +109,7 @@ void GcsObjectManager::HandleAddObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
+  ++counts_[CountType::ADD_OBJECT_LOCATION_REQUEST];
 }
 
 void GcsObjectManager::HandleRemoveObjectLocation(
@@ -152,6 +155,7 @@ void GcsObjectManager::HandleRemoveObjectLocation(
   if (!status.ok()) {
     on_done(status);
   }
+  ++counts_[CountType::REMOVE_OBJECT_LOCATION_REQUEST];
 }
 
 void GcsObjectManager::AddObjectsLocation(
@@ -284,24 +288,32 @@ const ObjectLocationInfo GcsObjectManager::GenObjectLocationInfo(
   return object_data;
 }
 
-void GcsObjectManager::LoadInitialData(const EmptyCallback &done) {
-  RAY_LOG(INFO) << "Loading initial data.";
-  auto callback = [this,
-                   done](const std::unordered_map<ObjectID, ObjectLocationInfo> &result) {
-    absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
-    for (auto &item : result) {
-      for (const auto &loc : item.second.locations()) {
-        node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
-      }
+void GcsObjectManager::Initialize(const GcsInitData &gcs_init_data) {
+  absl::flat_hash_map<NodeID, ObjectSet> node_to_objects;
+  for (const auto &item : gcs_init_data.Objects()) {
+    for (const auto &loc : item.second.locations()) {
+      node_to_objects[NodeID::FromBinary(loc.manager())].insert(item.first);
     }
+  }
 
-    for (auto &item : node_to_objects) {
-      AddObjectsLocation(item.first, item.second);
-    }
-    RAY_LOG(INFO) << "Finished loading initial data.";
-    done();
-  };
-  RAY_CHECK_OK(gcs_table_storage_->ObjectTable().GetAll(callback));
+  for (auto &item : node_to_objects) {
+    AddObjectsLocation(item.first, item.second);
+  }
+}
+
+std::string GcsObjectManager::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::ostringstream stream;
+  stream << "GcsObjectManager: {GetObjectLocations request count: "
+         << counts_[CountType::GET_OBJECT_LOCATIONS_REQUEST]
+         << ", GetAllObjectLocations request count: "
+         << counts_[CountType::GET_ALL_OBJECT_LOCATIONS_REQUEST]
+         << ", AddObjectLocation request count: "
+         << counts_[CountType::ADD_OBJECT_LOCATION_REQUEST]
+         << ", RemoveObjectLocation request count: "
+         << counts_[CountType::REMOVE_OBJECT_LOCATION_REQUEST]
+         << ", Object count: " << object_to_locations_.size() << "}";
+  return stream.str();
 }
 
 }  // namespace gcs

@@ -8,10 +8,15 @@ from ray.tune.schedulers.pbt import (PopulationBasedTraining,
                                      PopulationBasedTrainingReplay)
 
 
+def _pb2_importer(*args, **kwargs):
+    # PB2 introduces a GPy dependency which can be expensive, so we import
+    # lazily.
+    from ray.tune.schedulers.pb2 import PB2
+    return PB2(*args, **kwargs)
+
+
 def create_scheduler(
         scheduler,
-        metric=None,
-        mode=None,
         **kwargs,
 ):
     """Instantiate a scheduler based on the given string.
@@ -20,45 +25,26 @@ def create_scheduler(
 
     Args:
         scheduler (str): The scheduler to use.
-        metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
-        **kwargs: Additional parameters.
+        **kwargs: Scheduler parameters.
             These keyword arguments will be passed to the initialization
-            function of the chosen class.
+            function of the chosen scheduler.
     Returns:
         ray.tune.schedulers.trial_scheduler.TrialScheduler: The scheduler.
     Example:
-        >>> scheduler = tune.create_scheduler('pbt')
+        >>> scheduler = tune.create_scheduler('pbt', **pbt_kwargs)
     """
 
-    def _import_async_hyperband_scheduler():
-        from ray.tune.schedulers import AsyncHyperBandScheduler
-        return AsyncHyperBandScheduler
-
-    def _import_median_stopping_rule_scheduler():
-        from ray.tune.schedulers import MedianStoppingRule
-        return MedianStoppingRule
-
-    def _import_hyperband_scheduler():
-        from ray.tune.schedulers import HyperBandScheduler
-        return HyperBandScheduler
-
-    def _import_hb_bohb_scheduler():
-        from ray.tune.schedulers import HyperBandForBOHB
-        return HyperBandForBOHB
-
-    def _import_pbt_search():
-        from ray.tune.schedulers import PopulationBasedTraining
-        return PopulationBasedTraining
-
     SCHEDULER_IMPORT = {
-        "async_hyperband": _import_async_hyperband_scheduler,
-        "median_stopping_rule": _import_median_stopping_rule_scheduler,
-        "hyperband": _import_hyperband_scheduler,
-        "hb_bohb": _import_hb_bohb_scheduler,
-        "pbt": _import_pbt_search,
+        "fifo": FIFOScheduler,
+        "async_hyperband": AsyncHyperBandScheduler,
+        "asynchyperband": AsyncHyperBandScheduler,
+        "median_stopping_rule": MedianStoppingRule,
+        "medianstopping": MedianStoppingRule,
+        "hyperband": HyperBandScheduler,
+        "hb_bohb": HyperBandForBOHB,
+        "pbt": PopulationBasedTraining,
+        "pbt_replay": PopulationBasedTrainingReplay,
+        "pb2": _pb2_importer,
     }
     scheduler = scheduler.lower()
     if scheduler not in SCHEDULER_IMPORT:
@@ -66,8 +52,8 @@ def create_scheduler(
             f"Search alg must be one of {list(SCHEDULER_IMPORT)}. "
             f"Got: {scheduler}")
 
-    SchedulerClass = SCHEDULER_IMPORT[scheduler]()
-    return SchedulerClass(metric=metric, mode=mode, **kwargs)
+    SchedulerClass = SCHEDULER_IMPORT[scheduler]
+    return SchedulerClass(**kwargs)
 
 
 __all__ = [

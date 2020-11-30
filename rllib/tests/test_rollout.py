@@ -170,7 +170,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 "policy_mapping_fn": policy_fn,
             },
         }
-        stop = {"episode_reward_mean": 190.0}
+        stop = {"episode_reward_mean": 180.0}
         tune.run(
             algo,
             config=config,

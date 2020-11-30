@@ -102,7 +102,8 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
+      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
@@ -327,7 +328,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
                             function_descriptor, JobID::Nil(), TaskID::Nil(), 0,
                             TaskID::Nil(), empty_address, 1, resources, resources,
-                            PlacementGroupID::Nil(), true);
+                            std::make_pair(PlacementGroupID::Nil(), -1), true);
   return builder.Build();
 }
 
@@ -1064,7 +1065,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try force kill, exiting the worker
-  ASSERT_TRUE(submitter.CancelTask(task, true).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
             task.TaskId().Binary());
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("workerdying"), true));
@@ -1080,7 +1081,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try non-force kill, worker returns normally
-  ASSERT_TRUE(submitter.CancelTask(task, false).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, false, false).ok());
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(worker_client->kill_requests.front().intended_task_id(),
             task.TaskId().Binary());
@@ -1113,7 +1114,7 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_TRUE(submitter.CancelTask(task, true).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1151,7 +1152,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
-  ASSERT_TRUE(submitter.CancelTask(task, true).ok());
+  ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, obj1));
   ASSERT_EQ(worker_client->kill_requests.size(), 0);

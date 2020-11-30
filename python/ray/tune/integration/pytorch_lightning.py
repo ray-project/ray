@@ -78,8 +78,8 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_validation_batch_end(self, trainer: Trainer,
-                                pl_module: LightningModule, batch, batch_idx,
-                                dataloader_idx):
+                                pl_module: LightningModule, outputs, batch,
+                                batch_idx, dataloader_idx):
         if "validation_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -89,7 +89,7 @@ class TuneCallback(Callback):
             self._handle(trainer, pl_module)
 
     def on_test_batch_end(self, trainer: Trainer, pl_module: LightningModule,
-                          batch, batch_idx, dataloader_idx):
+                          outputs, batch, batch_idx, dataloader_idx):
         if "test_batch_end" in self._on:
             self._handle(trainer, pl_module)
 
@@ -162,7 +162,7 @@ class TuneReportCallback(TuneCallback):
     """
 
     def __init__(self,
-                 metrics: Union[str, List[str], Dict[str, str]],
+                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
                  on: Union[str, List[str]] = "validation_end"):
         super(TuneReportCallback, self).__init__(on)
         if isinstance(metrics, str):
@@ -170,13 +170,22 @@ class TuneReportCallback(TuneCallback):
         self._metrics = metrics
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
-        report_dict = {}
-        for key in self._metrics:
-            if isinstance(self._metrics, dict):
-                metric = self._metrics[key]
-            else:
-                metric = key
-            report_dict[key] = trainer.callback_metrics[metric].item()
+        # Don't report if just doing initial validation sanity checks.
+        if trainer.running_sanity_check:
+            return
+        if not self._metrics:
+            report_dict = {
+                k: v.item()
+                for k, v in trainer.callback_metrics.items()
+            }
+        else:
+            report_dict = {}
+            for key in self._metrics:
+                if isinstance(self._metrics, dict):
+                    metric = self._metrics[key]
+                else:
+                    metric = key
+                report_dict[key] = trainer.callback_metrics[metric].item()
         tune.report(**report_dict)
 
 
@@ -206,6 +215,8 @@ class _TuneCheckpointCallback(TuneCallback):
         self._filename = filename
 
     def _handle(self, trainer: Trainer, pl_module: LightningModule):
+        if trainer.running_sanity_check:
+            return
         with tune.checkpoint_dir(step=trainer.global_step) as checkpoint_dir:
             trainer.save_checkpoint(
                 os.path.join(checkpoint_dir, self._filename))
@@ -248,7 +259,7 @@ class TuneReportCheckpointCallback(TuneCallback):
     """
 
     def __init__(self,
-                 metrics: Union[str, List[str], Dict[str, str]],
+                 metrics: Union[None, str, List[str], Dict[str, str]] = None,
                  filename: str = "checkpoint",
                  on: Union[str, List[str]] = "validation_end"):
         super(TuneReportCheckpointCallback, self).__init__(on)

@@ -2,10 +2,13 @@ import logging
 import pickle
 from typing import Dict, List, Optional, Tuple, Union
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import is_nan_or_inf, unflatten_dict
 
 try:
     import skopt as sko
@@ -62,6 +65,9 @@ class SkOptSearch(Searcher):
 
     This Search Algorithm requires you to pass in a `skopt Optimizer object`_.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     Parameters:
         optimizer (skopt.optimizer.Optimizer): Optimizer provided
             from skopt.
@@ -70,7 +76,9 @@ class SkOptSearch(Searcher):
             parameters. If you passed an optimizer instance as the
             `optimizer` argument, this should be a list of parameter names
             instead.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list of lists): A list of points you'd like to run
@@ -152,6 +160,14 @@ class SkOptSearch(Searcher):
         self._parameter_names = None
         self._parameter_ranges = None
 
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space, join=True)
+
         self._space = space
 
         if self._space:
@@ -171,11 +187,11 @@ class SkOptSearch(Searcher):
 
         self._skopt_opt = optimizer
         if self._skopt_opt or self._space:
-            self.setup_skopt()
+            self._setup_skopt()
 
         self._live_trial_mapping = {}
 
-    def setup_skopt(self):
+    def _setup_skopt(self):
         _validate_warmstart(self._parameter_names, self._points_to_evaluate,
                             self._evaluated_rewards)
 
@@ -200,6 +216,10 @@ class SkOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = 1.
 
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self._skopt_opt:
@@ -215,16 +235,20 @@ class SkOptSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_skopt()
+        self._setup_skopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._skopt_opt:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
@@ -254,8 +278,9 @@ class SkOptSearch(Searcher):
 
     def _process_result(self, trial_id: str, result: Dict):
         skopt_trial_info = self._live_trial_mapping[trial_id]
-        self._skopt_opt.tell(skopt_trial_info,
-                             self._metric_op * result[self._metric])
+        if result and not is_nan_or_inf(result[self._metric]):
+            self._skopt_opt.tell(skopt_trial_info,
+                                 self._metric_op * result[self._metric])
 
     def save(self, checkpoint_path: str):
         trials_object = (self._initial_points, self._skopt_opt)
@@ -269,7 +294,7 @@ class SkOptSearch(Searcher):
         self._skopt_opt = trials_object[1]
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict:
+    def convert_search_space(spec: Dict, join: bool = False) -> Dict:
         spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
@@ -310,5 +335,9 @@ class SkOptSearch(Searcher):
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
+
+        if join:
+            spec.update(space)
+            space = spec
 
         return space

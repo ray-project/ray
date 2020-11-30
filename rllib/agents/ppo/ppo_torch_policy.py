@@ -7,8 +7,7 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping, \
-    view_requirements_fn
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -266,10 +265,9 @@ PPOTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_ppo_gae,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
-    after_init=setup_mixins,
+    before_loss_init=setup_mixins,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    view_requirements_fn=view_requirements_fn,
 )

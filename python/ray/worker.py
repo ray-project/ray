@@ -47,13 +47,14 @@ from ray.exceptions import (
     ObjectStoreFullError,
 )
 from ray.function_manager import FunctionActorManager
-from ray.utils import (_random_string, check_oversized_pickle, is_cython,
-                       setup_logger, create_and_init_new_worker_log, open_log)
+from ray.ray_logging import setup_logger
+from ray.utils import _random_string, check_oversized_pickle, is_cython
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 LOCAL_MODE = 2
-IO_WORKER_MODE = 3
+SPILL_WORKER_MODE = 3
+RESTORE_WORKER_MODE = 4
 
 ERROR_KEY_PREFIX = b"Error:"
 
@@ -121,9 +122,6 @@ class Worker:
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
-        # Functions to run to process the values returned by ray.get. Each
-        # postprocessor must take two arguments ("object_refs", and "values").
-        self._post_get_hooks = []
 
     @property
     def connected(self):
@@ -359,8 +357,9 @@ class Worker:
                                    "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hmset(
-                key, {
+            self.redis_client.hset(
+                key,
+                mapping={
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
@@ -368,7 +367,7 @@ class Worker:
                 })
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hmset and rpush, then the program will
+            # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
@@ -464,21 +463,6 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
-def print_failed_task(task_status):
-    """Print information about failed tasks.
-
-    Args:
-        task_status (Dict): A dictionary containing the name, operationid, and
-            error message for a failed task.
-    """
-    logger.error(f"""
-      Error: Task failed
-        Function Name: {task_status["function_name"]}
-        Task ID: {task_status["operationid"]}
-        Error Message: \n{task_status["error_message"]}
-    """)
-
-
 def init(
         address=None,
         *,
@@ -510,7 +494,6 @@ def init(
         _load_code_from_local=False,
         _lru_evict=False,
         _metrics_export_port=None,
-        _object_spilling_config=None,
         _system_config=None):
     """
     Connect to an existing Ray cluster or start one and connect to it.
@@ -609,9 +592,7 @@ def init(
         _metrics_export_port(int): Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
-        _object_spilling_config (str): The configuration json string for object
-            spilling I/O worker.
-        _system_config (str): JSON configuration for overriding
+        _system_config (dict): Configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
     Returns:
@@ -621,6 +602,29 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    # Try to increase the file descriptor limit, which is too low by
+    # default for Ray: https://github.com/ray-project/ray/issues/11239
+    try:
+        import resource
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            logger.debug("Automatically increasing RLIMIT_NOFILE to max "
+                         "value of {}".format(hard))
+            try:
+                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            except ValueError:
+                logger.debug("Failed to raise limit.")
+        soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < 4096:
+            logger.warning(
+                "File descriptor limit {} is too low for production "
+                "servers and may result in connection errors. "
+                "At least 8192 is recommended. --- "
+                "Fix with 'ulimit -n 8192'".format(soft))
+    except ImportError:
+        logger.debug("Could not import resource module (on Windows)")
+        pass
 
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
@@ -657,8 +661,8 @@ def init(
 
     if global_worker.connected:
         if ignore_reinit_error:
-            logger.error("Calling ray.init() again after it has already been "
-                         "called.")
+            logger.info(
+                "Calling ray.init() again after it has already been called.")
             return
         else:
             raise RuntimeError("Maybe you called ray.init twice by accident? "
@@ -704,8 +708,7 @@ def init(
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
-            metrics_export_port=_metrics_export_port,
-            object_spilling_config=_object_spilling_config)
+            metrics_export_port=_metrics_export_port)
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler. We still spawn a reaper process in case the atexit handler
@@ -821,7 +824,6 @@ def shutdown(_exiting_interpreter=False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
-    global_worker._post_get_hooks = []
 
 
 atexit.register(shutdown, True)
@@ -864,68 +866,6 @@ last_task_error_raise_time = 0
 
 # The max amount of seconds to wait before printing out an uncaught error.
 UNCAUGHT_ERROR_GRACE_PERIOD = 5
-
-
-def _set_log_file(file_name, worker_pid, old_obj, setter_func):
-    # Line-buffer the output (mode 1).
-    f = create_and_init_new_worker_log(file_name, worker_pid)
-
-    # TODO (Alex): Python seems to always flush when writing. If that is no
-    # longer true, then we need to manually flush the old buffer.
-    # old_obj.flush()
-
-    # TODO (Alex): Flush the c/c++ userspace buffers if necessary.
-    # `fflush(stdout); cout.flush();`
-
-    fileno = old_obj.fileno()
-
-    # C++ logging requires redirecting the stdout file descriptor. Note that
-    # dup2 will automatically close the old file descriptor before overriding
-    # it.
-    os.dup2(f.fileno(), fileno)
-
-    # We also manually set sys.stdout and sys.stderr because that seems to
-    # have an effect on the output buffering. Without doing this, stdout
-    # and stderr are heavily buffered resulting in seemingly lost logging
-    # statements. We never want to close the stdout file descriptor, dup2 will
-    # close it when necessary and we don't want python's GC to close it.
-    setter_func(open_log(fileno, unbuffered=True, closefd=False))
-
-    return os.path.abspath(f.name)
-
-
-def set_log_file(stdout_name, stderr_name):
-    """Sets up logging for the current worker, creating the (fd backed) file and
-    flushing buffers as is necessary.
-
-    Args:
-        stdout_name (str): The file name that stdout should be written to.
-        stderr_name(str): The file name that stderr should be written to.
-
-    Returns:
-        (tuple) The absolute paths of the files that stdout and stderr will be
-    written to.
-
-    """
-    stdout_path = ""
-    stderr_path = ""
-    worker_pid = os.getpid()
-
-    # lambda cannot contain assignment
-    def stdout_setter(x):
-        sys.stdout = x
-
-    def stderr_setter(x):
-        sys.stderr = x
-
-    if stdout_name:
-        _set_log_file(stdout_name, worker_pid, sys.stdout, stdout_setter)
-
-    # The stderr case should be analogous to the stdout case
-    if stderr_name:
-        _set_log_file(stderr_name, worker_pid, sys.stderr, stderr_setter)
-
-    return stdout_path, stderr_path
 
 
 def print_logs(redis_client, threads_stopped, job_id):
@@ -1005,7 +945,8 @@ def print_logs(redis_client, threads_stopped, job_id):
 def print_error_messages_raylet(task_error_queue, threads_stopped):
     """Prints message received in the given output queue.
 
-    This checks periodically if any un-raised errors occured in the background.
+    This checks periodically if any un-raised errors occurred in the
+    background.
 
     Args:
         task_error_queue (queue.Queue): A queue used to receive errors from the
@@ -1144,7 +1085,7 @@ def connect(node,
     worker.redis_client = node.create_redis_client()
 
     # Initialize some fields.
-    if mode in (WORKER_MODE, IO_WORKER_MODE):
+    if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
         # We should not specify the job_id if it's `WORKER_MODE`.
         assert job_id is None
         job_id = JobID.nil()
@@ -1163,10 +1104,14 @@ def connect(node,
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
 
-    if mode is not SCRIPT_MODE and setproctitle:
+    if mode is not SCRIPT_MODE and mode is not LOCAL_MODE and setproctitle:
         process_name = ray_constants.WORKER_PROCESS_TYPE_IDLE_WORKER
-        if mode is IO_WORKER_MODE:
-            process_name = ray_constants.WORKER_PROCESS_TYPE_IO_WORKER
+        if mode is SPILL_WORKER_MODE:
+            process_name = (
+                ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE)
+        elif mode is RESTORE_WORKER_MODE:
+            process_name = (
+                ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
         setproctitle.setproctitle(process_name)
 
     if not isinstance(job_id, JobID):
@@ -1201,31 +1146,10 @@ def connect(node,
         import __main__ as main
         driver_name = (main.__file__
                        if hasattr(main, "__file__") else "INTERACTIVE MODE")
-    elif mode == WORKER_MODE or mode == IO_WORKER_MODE:
-        # Check the RedirectOutput key in Redis and based on its value redirect
-        # worker output and error to their own files.
-        # This key is set in services.py when Redis is started.
-        redirect_worker_output_val = worker.redis_client.get("RedirectOutput")
-        if (redirect_worker_output_val is not None
-                and int(redirect_worker_output_val) == 1):
-            log_stdout_file_name, log_stderr_file_name = (
-                node.get_job_redirected_log_file(worker.worker_id))
-            try:
-                log_stdout_file_path, log_stderr_file_path = \
-                    set_log_file(log_stdout_file_name, log_stderr_file_name)
-            except IOError:
-                raise IOError(
-                    "Workers must be able to redirect their output at"
-                    "the file descriptor level.")
     elif not LOCAL_MODE:
         raise ValueError(
             "Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    # TODO (Alex): `current_logging_job` tracks the current job so that we know
-    # when to switch log files. If all logging functionaility was moved to c++,
-    # the functionaility in `_raylet.pyx::switch_worker_log_if_necessary` could
-    # be moved to `CoreWorker::SetCurrentTaskId()`.
-    worker.current_logging_job_id = None
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
@@ -1347,11 +1271,13 @@ def disconnect(exiting_interpreter=False):
 
 @contextmanager
 def _changeproctitle(title, next_title):
-    setproctitle.setproctitle(title)
+    if _mode() is not LOCAL_MODE:
+        setproctitle.setproctitle(title)
     try:
         yield
     finally:
-        setproctitle.setproctitle(next_title)
+        if _mode() is not LOCAL_MODE:
+            setproctitle.setproctitle(next_title)
 
 
 def show_in_dashboard(message, key="", dtype="text"):
@@ -1365,7 +1291,7 @@ def show_in_dashboard(message, key="", dtype="text"):
         message (str): Message to be displayed.
         key (str): The key name for the message. Multiple message under
             different keys will be displayed at the same time. Messages
-            under the same key will be overriden.
+            under the same key will be overridden.
         data_type (str): The type of message for rendering. One of the
             following: text, html.
     """
@@ -1382,7 +1308,7 @@ def show_in_dashboard(message, key="", dtype="text"):
     worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
-# Global varaible to make sure we only send out the warning once
+# Global variable to make sure we only send out the warning once.
 blocking_get_inside_async_warned = False
 
 
@@ -1449,10 +1375,6 @@ def get(object_refs, *, timeout=None):
                     raise value.as_instanceof_cause()
                 else:
                     raise value
-
-        # Run post processors.
-        for post_processor in worker._post_get_hooks:
-            values = post_processor(object_refs, values)
 
         if is_individual_id:
             values = values[0]
@@ -1593,6 +1515,8 @@ def get_actor(name):
     Raises:
         ValueError if the named actor does not exist.
     """
+    if not name:
+        raise ValueError("Please supply a non-empty value to get_actor")
     worker = global_worker
     worker.check_connected()
     handle = worker.core_worker.get_named_actor_handle(name)
@@ -1625,7 +1549,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
-def cancel(object_ref, *, force=False):
+def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
 
     If the specified task is pending execution, it will not be executed. If
@@ -1645,6 +1569,8 @@ def cancel(object_ref, *, force=False):
             that should be canceled.
         force (boolean): Whether to force-kill a running task by killing
             the worker that is running the task.
+        recursive (boolean): Whether to try to cancel tasks submitted by the
+            task specified.
     Raises:
         TypeError: This is also raised for actor tasks.
     """
@@ -1655,7 +1581,7 @@ def cancel(object_ref, *, force=False):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
             f"Got: {type(object_ref)}.")
-    return worker.core_worker.cancel_task(object_ref, force)
+    return worker.core_worker.cancel_task(object_ref, force, recursive)
 
 
 def _mode(worker=global_worker):
@@ -1680,10 +1606,7 @@ def make_decorator(num_returns=None,
                    max_retries=None,
                    max_restarts=None,
                    max_task_retries=None,
-                   worker=None,
-                   placement_group=None,
-                   placement_group_bundle_index=-1,
-                   placement_group_capture_child_tasks=True):
+                   worker=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -1712,9 +1635,7 @@ def make_decorator(num_returns=None,
             return ray.remote_function.RemoteFunction(
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
-                num_returns, max_calls, max_retries, placement_group,
-                placement_group_bundle_index,
-                placement_group_capture_child_tasks)
+                num_returns, max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -1838,15 +1759,12 @@ def remote(*args, **kwargs):
             crashes unexpectedly. The minimum valid value is 0,
             the default is 4 (default), and a value of -1 indicates
             infinite retries.
-        placement_group (:obj:`PlacementGroup`): The placement group
-            this task belongs to, or ``None`` if it doesn't belong
-            to any group.
-        placement_group_bundle_index (int): The index of the bundle
-            if the task belongs to a placement group, which may be
-            -1 to indicate any available bundle.
-        placement_group_capture_child_tasks (bool): Default True.
-            If True, all the child tasks (including actor creation)
-            are scheduled in the same placement group.
+        override_environment_variables (Dict[str, str]): This specifies
+            environment variables to override for the actor or task.  The
+            overrides are propagated to all child actors and tasks.  This
+            is a dictionary mapping variable names to their values.  Existing
+            variables can be overridden, new ones can be created, and an
+            existing variable can be unset by setting it to an empty string.
 
     """
     worker = global_worker
@@ -1878,9 +1796,6 @@ def remote(*args, **kwargs):
             "max_restarts",
             "max_task_retries",
             "max_retries",
-            "placement_group",
-            "placement_group_bundle_index",
-            "placement_group_capture_child_tasks",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None

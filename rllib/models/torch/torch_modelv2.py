@@ -48,9 +48,10 @@ class TorchModelV2(ModelV2):
 
     @override(ModelV2)
     def variables(self, as_dict: bool = False) -> List[TensorType]:
+        p = list(self.parameters())
         if as_dict:
-            return self.state_dict()
-        return list(self.parameters())
+            return {k: p[i] for i, k in enumerate(self.state_dict().keys())}
+        return p
 
     @override(ModelV2)
     def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:

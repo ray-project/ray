@@ -61,7 +61,7 @@ class CustomActionDistribution(TFActionDistribution):
         return tf.zeros(self.output_shape)
 
 
-class ModelCatalogTest(unittest.TestCase):
+class TestModelCatalog(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 

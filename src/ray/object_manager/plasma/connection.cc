@@ -47,8 +47,7 @@ const std::vector<std::string> GenerateEnumNames(const char *const *enum_names_p
 }
 
 static const std::vector<std::string> object_store_message_enum =
-    GenerateEnumNames(flatbuf::EnumNamesMessageType(),
-                      static_cast<int>(MessageType::MIN),
+    GenerateEnumNames(flatbuf::EnumNamesMessageType(), static_cast<int>(MessageType::MIN),
                       static_cast<int>(MessageType::MAX));
 }  // namespace
 
@@ -59,21 +58,21 @@ Client::Client(ray::MessageHandler &message_handler, ray::local_stream_socket &&
 
 std::shared_ptr<Client> Client::Create(PlasmaStoreMessageHandler message_handler,
                                        ray::local_stream_socket &&socket) {
-  ray::MessageHandler ray_message_handler = [message_handler](
-      std::shared_ptr<ray::ClientConnection> client,
-      int64_t message_type, const std::vector<uint8_t> &message) {
-    Status s = message_handler(
-        std::static_pointer_cast<Client>(client->shared_ClientConnection_from_this()),
-        (MessageType)message_type, message);
-    if (!s.ok()) {
-      if (!s.IsDisconnected()) {
-        RAY_LOG(ERROR) << "Fail to process client message. " << s.ToString();
-      }
-      client->Close();
-    } else {
-      client->ProcessMessages();
-    }
-  };
+  ray::MessageHandler ray_message_handler =
+      [message_handler](std::shared_ptr<ray::ClientConnection> client,
+                        int64_t message_type, const std::vector<uint8_t> &message) {
+        Status s = message_handler(
+            std::static_pointer_cast<Client>(client->shared_ClientConnection_from_this()),
+            (MessageType)message_type, message);
+        if (!s.ok()) {
+          if (!s.IsDisconnected()) {
+            RAY_LOG(ERROR) << "Fail to process client message. " << s.ToString();
+          }
+          client->Close();
+        } else {
+          client->ProcessMessages();
+        }
+      };
   std::shared_ptr<Client> self(new Client(ray_message_handler, std::move(socket)));
   // Let our manager process our new connection.
   self->ProcessMessages();
@@ -97,17 +96,18 @@ Status Client::SendFd(MEMFD_TYPE fd) {
     }
     HANDLE target_handle = NULL;
     bool success = DuplicateHandle(GetCurrentProcess(), fd, target_process,
-                                  &target_handle, 0, TRUE, DUPLICATE_SAME_ACCESS);
+                                   &target_handle, 0, TRUE, DUPLICATE_SAME_ACCESS);
     if (!success) {
       // TODO(suquark): Define better error type.
-      return Status::IOError("Fail to duplicate handle to PID = " + std::to_string(target_pid));
+      return Status::IOError("Fail to duplicate handle to PID = " +
+                             std::to_string(target_pid));
     }
     Status s = WriteBuffer({boost::asio::buffer(&target_handle, sizeof(target_handle))});
     if (!s.ok()) {
       /* we failed to send the handle, and it needs cleaning up! */
       HANDLE duplicated_back = NULL;
-      if (DuplicateHandle(target_process, fd, GetCurrentProcess(),
-                          &duplicated_back, 0, FALSE, DUPLICATE_CLOSE_SOURCE)) {
+      if (DuplicateHandle(target_process, fd, GetCurrentProcess(), &duplicated_back, 0,
+                          FALSE, DUPLICATE_CLOSE_SOURCE)) {
         CloseHandle(duplicated_back);
       }
       CloseHandle(target_process);
@@ -129,8 +129,8 @@ Status Client::SendFd(MEMFD_TYPE fd) {
   return Status::OK();
 }
 
-StoreConn::StoreConn(ray::local_stream_socket &&socket) :
-  ray::ServerConnection(std::move(socket)) {}
+StoreConn::StoreConn(ray::local_stream_socket &&socket)
+    : ray::ServerConnection(std::move(socket)) {}
 
 Status StoreConn::RecvFd(MEMFD_TYPE *fd) {
 #ifdef _WIN32

@@ -12,6 +12,8 @@ import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray._private.services
 import ray.utils
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.new_dashboard.datacenter import DataSource
@@ -24,6 +26,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
+        self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -48,7 +51,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         profiling_info = (json.loads(reply.profiling_stats)
                           if reply.profiling_stats else reply.std_out)
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Profiling success.",
             profiling_info=profiling_info)
@@ -61,14 +64,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except yaml.YAMLError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
             except FileNotFoundError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
-                    message=f"Invalid config, could not load YAML.")
+                    message="Invalid config, could not load YAML.")
 
             payload = {
                 "min_workers": cfg["min_workers"],
@@ -90,10 +93,33 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             self._ray_config = payload
 
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Fetched ray config.",
             **self._ray_config,
+        )
+
+    @routes.get("/api/cluster_status")
+    async def get_cluster_status(self, req):
+        """Returns status information about the cluster.
+
+        Currently contains two fields:
+            autoscaling_status (str): a status message from the autoscaler.
+            autoscaling_error (str): an error message from the autoscaler if
+                anything has gone wrong during autoscaling.
+
+        These fields are both read from the GCS, it's expected that the
+        autoscaler writes them there.
+        """
+
+        aioredis_client = self._dashboard_head.aioredis_client
+        status = await aioredis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+        error = await aioredis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+        return dashboard_utils.rest_response(
+            success=True,
+            message="Got cluster status.",
+            autoscaling_status=status.decode() if status else None,
+            autoscaling_error=error.decode() if error else None,
         )
 
     async def run(self, server):

@@ -57,6 +57,24 @@ class WorkerPoolInterface {
   virtual ~WorkerPoolInterface(){};
 };
 
+/// \class IOWorkerPoolInterface
+///
+/// Used for object spilling manager unit tests.
+class IOWorkerPoolInterface {
+ public:
+  virtual void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
+  virtual ~IOWorkerPoolInterface(){};
+};
+
 class WorkerInterface;
 class Worker;
 
@@ -64,7 +82,7 @@ class Worker;
 ///
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
 /// is a container for a unit of work.
-class WorkerPool : public WorkerPoolInterface {
+class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  public:
   /// Create a pool and asynchronously start at least the specified number of workers per
   /// language.
@@ -83,6 +101,8 @@ class WorkerPool : public WorkerPoolInterface {
   /// If this is set to 0, workers will bind on random ports.
   /// \param max_worker_port The highest port number that workers started will bind on.
   /// If this is not set to 0, min_worker_port must also not be set to 0.
+  /// \param worker_ports An explicit list of open ports that workers started will bind
+  /// on. This takes precedence over min_worker_port and max_worker_port.
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   /// \param raylet_config The raylet config list of this node.
@@ -91,6 +111,7 @@ class WorkerPool : public WorkerPoolInterface {
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
              int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
+             const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
              const std::unordered_map<std::string, std::string> &raylet_config,
@@ -133,13 +154,12 @@ class WorkerPool : public WorkerPoolInterface {
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.
-  /// \param[in] job_id The job ID of the driver.
   /// \param[in] job_config The config of the job.
   /// \param[in] send_reply_callback The callback to invoke after registration is
   /// finished/failed.
   /// \return If the registration is successful.
   Status RegisterDriver(const std::shared_ptr<WorkerInterface> &worker,
-                        const JobID &job_id, const rpc::JobConfig &job_config,
+                        const rpc::JobConfig &job_config,
                         std::function<void(Status, int)> send_reply_callback);
 
   /// Get the client connection's registered worker.
@@ -169,18 +189,31 @@ class WorkerPool : public WorkerPoolInterface {
   /// \param The driver to disconnect. The driver must be registered.
   void DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver);
 
-  /// Add an idle I/O worker to the pool.
+  /// Add an idle spill I/O worker to the pool.
   ///
-  /// \param worker The idle I/O worker to add.
-  void PushIOWorker(const std::shared_ptr<WorkerInterface> &worker);
+  /// \param worker The idle spill I/O worker to add.
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker);
 
-  /// Pop an idle I/O worker from the pool and trigger a callback when
-  /// an I/O worker is available.
+  /// Pop an idle spill I/O worker from the pool and trigger a callback when
+  /// an spill I/O worker is available.
   /// The caller is responsible for pushing the worker back onto the
   /// pool once the worker has completed its work.
   ///
-  /// \param callback The callback that returns an available I/O worker.
-  void PopIOWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  /// \param callback The callback that returns an available spill I/O worker.
+  void PopSpillWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
+  /// Add an idle restore I/O worker to the pool.
+  ///
+  /// \param worker The idle I/O worker to add.
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker);
+
+  /// Pop an idle restore I/O worker from the pool and trigger a callback when
+  /// an restore I/O worker is available.
+  /// The caller is responsible for pushing the worker back onto the
+  /// pool once the worker has completed its work.
+  ///
+  /// \param callback The callback that returns an available restore I/O worker.
+  void PopRestoreWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Add an idle worker to the pool.
   ///
@@ -194,6 +227,14 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return An idle worker with the requested task spec. Returns nullptr if no
   /// such worker exists.
   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec);
+
+  /// Try to prestart a number of workers suitable the given task spec. Prestarting
+  /// is needed since core workers request one lease at a time, if starting is slow,
+  /// then it means it takes a long time to scale up when multi-tenancy is on.
+  ///
+  /// \param task_spec The returned worker must be able to execute this task.
+  /// \param backlog_size The number of tasks in the client backlog of this shape.
+  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
@@ -211,13 +252,17 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Get all the registered workers.
   ///
-  /// \return A list containing all the workers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers() const;
+  /// \param filter_dead_workers whether or not if this method will filter dead workers
+  /// that are still registered. \return A list containing all the workers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers = false) const;
 
   /// Get all the registered drivers.
   ///
-  /// \return A list containing all the drivers.
-  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers() const;
+  /// \param filter_dead_drivers whether or not if this method will filter dead drivers
+  /// that are still registered. \return A list containing all the drivers.
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredDrivers(
+      bool filter_dead_drivers = false) const;
 
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
@@ -237,9 +282,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return string.
   std::string DebugString() const;
 
-  /// Record metrics.
-  void RecordMetrics() const;
-
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
@@ -249,14 +291,17 @@ class WorkerPool : public WorkerPoolInterface {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
-  /// \param worker_type The type of the worker.
+  /// \param worker_type The type of the worker. This worker type is internal to
+  ///                             worker pool abstraction. Outside this class, workers
+  ///                             will have rpc::WorkerType instead.
   /// \param job_id The ID of the job to which the started worker process belongs.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  Process StartWorkerProcess(const Language &language, const rpc::WorkerType worker_type,
-                             const JobID &job_id,
-                             std::vector<std::string> dynamic_options = {});
+  Process StartWorkerProcess(
+      const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
+      std::vector<std::string> dynamic_options = {},
+      std::unordered_map<std::string, std::string> override_environment_variables = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -272,6 +317,18 @@ class WorkerPool : public WorkerPoolInterface {
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
 
+  struct IOWorkerState {
+    /// The pool of idle I/O workers.
+    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
+    /// The queue of pending I/O tasks.
+    std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
+    /// All I/O workers that have registered and are still connected, including both
+    /// idle and executing.
+    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
+    /// Number of starting I/O workers.
+    int num_starting_io_workers = 0;
+  };
+
   /// An internal data structure that maintains the pool state per language.
   struct State {
     /// The commands and arguments used to start the worker process
@@ -285,15 +342,10 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_set<std::shared_ptr<WorkerInterface>> idle;
     /// The pool of idle actor workers.
     std::unordered_map<ActorID, std::shared_ptr<WorkerInterface>> idle_actor;
-    /// The pool of idle I/O workers.
-    std::queue<std::shared_ptr<WorkerInterface>> idle_io_workers;
-    /// The queue of pending I/O tasks.
-    std::queue<std::function<void(std::shared_ptr<WorkerInterface>)>> pending_io_tasks;
-    /// All I/O workers that have registered and are still connected, including both
-    /// idle and executing.
-    std::unordered_set<std::shared_ptr<WorkerInterface>> registered_io_workers;
-    /// Number of starting I/O workers.
-    int num_starting_io_workers = 0;
+    // States for io workers used for spilling objects.
+    IOWorkerState spill_io_worker_state;
+    // States for io workers used for restoring objects.
+    IOWorkerState restore_io_worker_state;
     /// All workers that have registered and are still connected, including both
     /// idle and executing.
     std::unordered_set<std::shared_ptr<WorkerInterface>> registered_workers;
@@ -307,8 +359,6 @@ class WorkerPool : public WorkerPoolInterface {
     std::unordered_map<Process, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
     std::unordered_map<TaskID, Process> tasks_to_dedicated_workers;
-    /// A map for looking up the owner JobId by the pid of worker.
-    std::unordered_map<pid_t, JobID> worker_pids_to_assigned_jobs;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -355,9 +405,14 @@ class WorkerPool : public WorkerPoolInterface {
   /// Try start all I/O workers waiting to be started.
   /// \param language The language of the I/O worker. Currently only Python I/O
   /// workers are effective.
-  /// \param state The state including the number of I/O workers waiting to be
-  /// started.
-  void TryStartIOWorkers(const Language &language, State &state);
+  void TryStartIOWorkers(const Language &language);
+
+  /// Try start spill or restore io workers.
+  /// \param language The language of the I/O worker. Currently only Python I/O
+  /// workers are effective.
+  /// \param worker_type The worker type. It is currently either spill worker or restore
+  /// worker.
+  void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
 
   /// Try killing idle workers to ensure the running workers are in a
   /// reasonable size.
@@ -372,6 +427,27 @@ class WorkerPool : public WorkerPoolInterface {
   /// \return The workers of the given process.
   std::unordered_set<std::shared_ptr<WorkerInterface>> GetWorkersByProcess(
       const Process &process);
+
+  /// Get either restore or spill worker state from state based on worker_type.
+  ///
+  /// \param worker_type IO Worker Type.
+  /// \param state Worker pool internal state.
+  IOWorkerState &GetIOWorkerStateFromWorkerType(const rpc::WorkerType &worker_type,
+                                                State &state) const;
+
+  /// Push IOWorker (e.g., spill worker and restore worker) based on the given
+  /// worker_type.
+  void PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
+                            const rpc::WorkerType &worker_type);
+
+  /// Pop IOWorker (e.g., spill worker and restore worker) based on the given worker_type.
+  void PopIOWorkerInternal(
+      const rpc::WorkerType &worker_type,
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
+  /// Return true if the given worker type is IO worker type. Currently, there are 2 IO
+  /// worker types (SPILL_WORKER and RESTORE_WORKER).
+  bool IsIOWorkerType(const rpc::WorkerType &worker_type);
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   boost::asio::io_service *io_service_;
@@ -407,7 +483,7 @@ class WorkerPool : public WorkerPoolInterface {
   int num_initial_python_workers_for_first_job_;
 
   /// This map tracks the latest infos of unfinished jobs.
-  absl::flat_hash_map<JobID, rpc::JobConfig> unfinished_jobs_;
+  absl::flat_hash_map<JobID, rpc::JobConfig> all_jobs_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes

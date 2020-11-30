@@ -143,7 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child.
+# TODO(sven): Make this a TorchPolicy child via `build_torch_policy`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 

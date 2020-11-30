@@ -174,6 +174,16 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   return config_proto.SerializeAsString();
 }
 
+std::unique_ptr<std::string> GlobalStateAccessor::GetAllHeartbeat() {
+  std::unique_ptr<std::string> heartbeat_batch_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllHeartbeat(
+      TransformForItemCallback<rpc::HeartbeatBatchTableData>(heartbeat_batch_data,
+                                                             promise)));
+  promise.get_future().get();
+  return heartbeat_batch_data;
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;
@@ -235,6 +245,16 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
       }));
   promise.get_future().get();
   return true;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
+  std::vector<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(

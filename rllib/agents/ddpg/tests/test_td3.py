@@ -38,13 +38,16 @@ class TestTD3(unittest.TestCase):
             trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_action(obs, explore=False)
-            for _ in range(50):
+            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            for i in range(50):
                 a = trainer.compute_action(obs, explore=False)
+                self.assertEqual(trainer.get_policy().global_timestep, i + 2)
                 check(a, a_)
             # explore=None (default: explore) should return different actions.
             actions = []
-            for _ in range(50):
+            for i in range(50):
                 actions.append(trainer.compute_action(obs))
+                self.assertEqual(trainer.get_policy().global_timestep, i + 52)
             check(np.std(actions), 0.0, false=True)
             trainer.stop()
 
@@ -58,23 +61,27 @@ class TestTD3(unittest.TestCase):
                 "final_scale": 0.001,
             }
             trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
-            # ts=1 (get a deterministic action as per explore=False).
+            # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_action(obs, explore=False)
-            # ts=2-5 (in random window).
+            self.assertEqual(trainer.get_policy().global_timestep, 1)
+            # ts=1-29 (in random window).
             random_a = []
-            for _ in range(29):
+            for i in range(1, 30):
                 random_a.append(trainer.compute_action(obs, explore=True))
+                self.assertEqual(trainer.get_policy().global_timestep, i + 1)
                 check(random_a[-1], deterministic_action, false=True)
             self.assertTrue(np.std(random_a) > 0.5)
 
             # ts > 30 (a=deterministic_action + scale * N[0,1])
-            for _ in range(50):
+            for i in range(50):
                 a = trainer.compute_action(obs, explore=True)
+                self.assertEqual(trainer.get_policy().global_timestep, i + 31)
                 check(a, deterministic_action, rtol=0.1)
 
             # ts >> 30 (BUT: explore=False -> expect deterministic action).
-            for _ in range(50):
+            for i in range(50):
                 a = trainer.compute_action(obs, explore=False)
+                self.assertEqual(trainer.get_policy().global_timestep, i + 81)
                 check(a, deterministic_action)
             trainer.stop()
 

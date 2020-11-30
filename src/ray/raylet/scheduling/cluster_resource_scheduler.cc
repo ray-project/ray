@@ -159,6 +159,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
+                                                         bool actor_creation,
                                                          int64_t *total_violations) {
   // Minimum number of soft violations across all nodes that can schedule the request.
   // We will pick the node with the smallest number of soft violations.
@@ -166,6 +167,25 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // Node associated to min_violations.
   int64_t best_node = -1;
   *total_violations = 0;
+
+  if (actor_creation && task_req.IsEmpty()) {
+    // This an actor which requires no resources.
+    // Pick a random node to to avoid all scheduling all actors on the local node.
+    if (nodes_.size() > 0) {
+      int idx = std::rand() % nodes_.size();
+      for (auto &node : nodes_) {
+        if (idx == 0) {
+          best_node = node.first;
+          break;
+        }
+        idx--;
+      }
+    }
+    RAY_LOG(DEBUG) << "GetBestSchedulableNode, best_node = " << best_node
+                   << ", # nodes = " << nodes_.size()
+                   << ", task_req = " << task_req.DebugString();
+    return best_node;
+  }
 
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
@@ -211,10 +231,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
-    const std::unordered_map<std::string, double> &task_resources,
+    const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
     int64_t *total_violations) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
-  int64_t node_id = GetBestSchedulableNode(task_request, total_violations);
+  int64_t node_id =
+      GetBestSchedulableNode(task_request, actor_creation, total_violations);
 
   std::string id_string;
   if (node_id == -1) {
@@ -308,18 +329,18 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
-void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
+void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
-  int64_t client_id = string_to_int_map_.Get(client_id_string);
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
 
-  auto it = nodes_.find(client_id);
+  auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     node_resources.predefined_resources.resize(PredefinedResources_MAX);
-    client_id = string_to_int_map_.Insert(client_id_string);
-    RAY_CHECK(nodes_.emplace(client_id, node_resources).second);
-    it = nodes_.find(client_id);
+    node_id = string_to_int_map_.Insert(node_id_string);
+    RAY_CHECK(nodes_.emplace(node_id, node_resources).second);
+    it = nodes_.find(node_id);
     RAY_CHECK(it != nodes_.end());
   }
 
@@ -366,10 +387,10 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_
   }
 }
 
-void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
+void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
                                               const std::string &resource_name) {
-  int64_t client_id = string_to_int_map_.Get(client_id_string);
-  auto it = nodes_.find(client_id);
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
+  auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return;
   }
@@ -765,7 +786,7 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
 }
 
 void ClusterResourceScheduler::AllocateRemoteTaskResources(
-    std::string &node_string,
+    const std::string &node_string,
     const std::unordered_map<std::string, double> &task_resources) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
   auto node_id = string_to_int_map_.Insert(node_string);
@@ -783,17 +804,16 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
 }
 
 void ClusterResourceScheduler::Heartbeat(
-    bool light_heartbeat_enabled,
-    std::shared_ptr<HeartbeatTableData> heartbeat_data) const {
+    bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> heartbeat_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
 
-  if (light_heartbeat_enabled) {
-    // TODO
-    RAY_CHECK(false) << "TODO";
+  if (light_heartbeat_enabled && last_report_resources_ &&
+      resources == *last_report_resources_.get()) {
+    return;
   } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {
       const auto &label = ResourceEnumToString((PredefinedResources)i);
@@ -818,6 +838,10 @@ void ClusterResourceScheduler::Heartbeat(
       if (capacity.total != 0) {
         (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
       }
+    }
+    heartbeat_data->set_resources_available_changed(true);
+    if (light_heartbeat_enabled) {
+      last_report_resources_.reset(new NodeResources(resources));
     }
   }
 }

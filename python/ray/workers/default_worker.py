@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import time
 import sys
@@ -10,6 +11,8 @@ import ray.node
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.parameter import RayParams
+from ray.ray_logging import (StandardStreamInterceptor,
+                             setup_and_get_worker_interceptor_logger)
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -108,36 +111,34 @@ parser.add_argument(
     "the search path for user code. This will be used as `CLASSPATH` in "
     "Java and `PYTHONPATH` in Python.")
 if __name__ == "__main__":
+    # NOTE(sang): For some reason, if we move the code below
+    # to a separate function, tensorflow will capture that method
+    # as a step function. For more details, check out
+    # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
-
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+    ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
     if args.worker_type == "WORKER":
         mode = ray.WORKER_MODE
-    elif args.worker_type == "IO_WORKER":
-        mode = ray.IO_WORKER_MODE
+    elif args.worker_type == "SPILL_WORKER":
+        mode = ray.SPILL_WORKER_MODE
+    elif args.worker_type == "RESTORE_WORKER":
+        mode = ray.RESTORE_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
     # NOTE(suquark): We must initialize the external storage before we
     # connect to raylet. Otherwise we may receive requests before the
     # external storage is intialized.
-    if mode == ray.IO_WORKER_MODE:
+    if mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE:
         from ray import external_storage
         if args.object_spilling_config:
-            object_spilling_config = json.loads(args.object_spilling_config)
+            object_spilling_config = base64.b64decode(
+                args.object_spilling_config)
+            object_spilling_config = json.loads(object_spilling_config)
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(object_spilling_config)
-
-    system_config = {}
-    if args.config_list is not None:
-        config_list = args.config_list.split(",")
-        if len(config_list) > 1:
-            i = 0
-            while i < len(config_list):
-                system_config[config_list[i]] = config_list[i + 1]
-                i += 2
 
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
@@ -161,7 +162,6 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
         metrics_agent_port=args.metrics_agent_port,
-        _system_config=system_config,
     )
 
     node = ray.node.Node(
@@ -171,11 +171,26 @@ if __name__ == "__main__":
         spawn_reaper=False,
         connect_only=True)
     ray.worker._global_node = node
-
     ray.worker.connect(node, mode=mode)
+
+    # Redirect stdout and stderr to the default worker interceptor logger.
+    # NOTE: We deprecated redirect_worker_output arg,
+    # so we don't need to handle here.
+    stdout_interceptor = StandardStreamInterceptor(
+        setup_and_get_worker_interceptor_logger(args, is_for_stdout=True),
+        intercept_stdout=True)
+    stderr_interceptor = StandardStreamInterceptor(
+        setup_and_get_worker_interceptor_logger(args, is_for_stdout=False),
+        intercept_stdout=False)
+    # Although the os level fd is duplicated already, we should overwrite
+    # the python level stdout/stderr object.
+    # Otherwise, buffers won't be flushed.
+    sys.stdout = stdout_interceptor
+    sys.stderr = stderr_interceptor
+
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif mode == ray.IO_WORKER_MODE:
+    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE):
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

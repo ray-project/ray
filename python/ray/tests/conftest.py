@@ -227,3 +227,13 @@ def error_pubsub():
     p = init_error_pubsub()
     yield p
     p.close()
+
+
+@pytest.fixture()
+def log_pubsub():
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
+    p.psubscribe(log_channel)
+    yield p
+    p.close()

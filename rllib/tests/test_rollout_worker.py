@@ -147,7 +147,8 @@ class TestRolloutWorker(unittest.TestCase):
 
     def test_basic(self):
         ev = RolloutWorker(
-            env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_spec=MockPolicy)
         batch = ev.sample()
         for key in [
                 "obs", "actions", "rewards", "dones", "advantages",
@@ -173,7 +174,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_batch_ids(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=1)
         batch1 = ev.sample()
         batch2 = ev.sample()
@@ -186,39 +187,35 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         # Allow for Unittest run.
         ray.init(num_cpus=5, ignore_reinit_error=True)
-        for fw in framework_iterator(frameworks=()):
+        for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2CTrainer(
                 env="CartPole-v0",
                 config={
                     "num_workers": 1,
+                    # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
                     "lr_schedule": [[0, 0.1], [100000, 0.000001]],
                     "framework": fw,
                 })
-            result = agent.train()
-            for i in range(10):
+            policy = agent.get_policy()
+            for i in range(3):
                 result = agent.train()
-                print("num_steps_sampled={}".format(
-                    result["info"]["num_steps_sampled"]))
                 print("num_steps_trained={}".format(
                     result["info"]["num_steps_trained"]))
                 print("num_steps_sampled={}".format(
                     result["info"]["num_steps_sampled"]))
-                print("num_steps_trained={}".format(
-                    result["info"]["num_steps_trained"]))
-                if i == 0:
-                    self.assertGreater(
-                        result["info"]["learner"]["default_policy"]["cur_lr"],
-                        0.01)
-                if result["info"]["learner"]["default_policy"]["cur_lr"] < \
-                        0.07:
-                    break
-            self.assertLess(
-                result["info"]["learner"]["default_policy"]["cur_lr"], 0.07)
+                global_timesteps = policy.global_timestep
+                print("global_timesteps={}".format(global_timesteps))
+                expected_lr = \
+                    0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
+                lr = policy.cur_lr
+                if fw == "tf":
+                    lr = policy._sess.run(lr)
+                check(lr, expected_lr, rtol=0.05)
             agent.stop()
 
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
-        for fw in framework_iterator(frameworks=()):
+        for fw in framework_iterator():
             pg = PGTrainer(
                 env="fail", config={
                     "num_workers": 1,
@@ -264,6 +261,7 @@ class TestRolloutWorker(unittest.TestCase):
                     "rollout_fragment_length": 5,
                     "num_envs_per_worker": 2,
                     "framework": fw,
+                    "create_env_on_driver": True,
                 })
             results = pg.workers.foreach_worker(
                 lambda ev: ev.rollout_fragment_length)
@@ -288,7 +286,7 @@ class TestRolloutWorker(unittest.TestCase):
                 p_done=0.0,
                 check_action_bounds=True,
             )),
-            policy=RandomPolicy,
+            policy_spec=RandomPolicy,
             policy_config=dict(
                 action_space=action_space,
                 ignore_action_bounds=True,
@@ -312,7 +310,7 @@ class TestRolloutWorker(unittest.TestCase):
                 p_done=0.0,
                 check_action_bounds=True,
             )),
-            policy=RandomPolicy,
+            policy_spec=RandomPolicy,
             policy_config=dict(
                 action_space=action_space,
                 ignore_action_bounds=True,
@@ -331,7 +329,7 @@ class TestRolloutWorker(unittest.TestCase):
                 p_done=0.0,
                 check_action_bounds=True,
             )),
-            policy=RandomPolicy,
+            policy_spec=RandomPolicy,
             policy_config=dict(action_space=action_space),
             # Should not be a problem as RandomPolicy abides to bounds.
             clip_actions=False,
@@ -345,7 +343,7 @@ class TestRolloutWorker(unittest.TestCase):
         # Clipping: True (clip between -1.0 and 1.0).
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             clip_rewards=True,
             batch_mode="complete_episodes")
         self.assertEqual(max(ev.sample()["rewards"]), 1)
@@ -363,7 +361,7 @@ class TestRolloutWorker(unittest.TestCase):
                     p_done=0.0,
                     max_episode_len=10,
                 )),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             clip_rewards=2.0,
             batch_mode="complete_episodes")
         sample = ev2.sample()
@@ -376,7 +374,7 @@ class TestRolloutWorker(unittest.TestCase):
         # Clipping: Off.
         ev2 = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             clip_rewards=False,
             batch_mode="complete_episodes")
         self.assertEqual(max(ev2.sample()["rewards"]), 100)
@@ -387,7 +385,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_hard_horizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="complete_episodes",
             rollout_fragment_length=10,
             episode_horizon=4,
@@ -406,7 +404,7 @@ class TestRolloutWorker(unittest.TestCase):
         # A gym env's max_episode_steps is smaller than Trainer's horizon.
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="complete_episodes",
             rollout_fragment_length=10,
             episode_horizon=6,
@@ -427,7 +425,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_soft_horizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="complete_episodes",
             rollout_fragment_length=10,
             episode_horizon=4,
@@ -442,11 +440,11 @@ class TestRolloutWorker(unittest.TestCase):
     def test_metrics(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="complete_episodes")
         remote_ev = RolloutWorker.as_remote().remote(
             env_creator=lambda _: MockEnv(episode_length=10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="complete_episodes")
         ev.sample()
         ray.get(remote_ev.sample.remote())
@@ -459,7 +457,7 @@ class TestRolloutWorker(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             sample_async=True,
-            policy=MockPolicy)
+            policy_spec=MockPolicy)
         batch = ev.sample()
         for key in ["obs", "actions", "rewards", "dones", "advantages"]:
             self.assertIn(key, batch)
@@ -469,7 +467,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_auto_vectorization(self):
         ev = RolloutWorker(
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="truncate_episodes",
             rollout_fragment_length=2,
             num_envs=8)
@@ -493,7 +491,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_batches_larger_when_vectorized(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=8),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="truncate_episodes",
             rollout_fragment_length=4,
             num_envs=4)
@@ -509,7 +507,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_vector_env_support(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             batch_mode="truncate_episodes",
             rollout_fragment_length=10)
         for _ in range(8):
@@ -527,7 +525,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=15,
             batch_mode="truncate_episodes")
         batch = ev.sample()
@@ -537,7 +535,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=5,
             batch_mode="complete_episodes")
         batch = ev.sample()
@@ -547,7 +545,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_complete_episodes_packing(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             rollout_fragment_length=15,
             batch_mode="complete_episodes")
         batch = ev.sample()
@@ -560,7 +558,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_filter_sync(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             sample_async=True,
             observation_filter="ConcurrentMeanStdFilter")
         time.sleep(2)
@@ -574,7 +572,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_get_filters(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             sample_async=True,
             observation_filter="ConcurrentMeanStdFilter")
         self.sample_and_flush(ev)
@@ -590,7 +588,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_sync_filter(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             sample_async=True,
             observation_filter="ConcurrentMeanStdFilter")
         obs_f = self.sample_and_flush(ev)
@@ -616,7 +614,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertFalse("env_key_2" in os.environ)
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             extra_python_environs=extra_envs)
         self.assertTrue("env_key_1" in os.environ)
         self.assertTrue("env_key_2" in os.environ)
@@ -629,7 +627,7 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_env_seed(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
-            policy=MockPolicy,
+            policy_spec=MockPolicy,
             seed=1)
         assert not hasattr(ev.env, "seed")
         ev.stop()
