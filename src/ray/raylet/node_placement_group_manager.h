@@ -17,30 +17,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/bundle_spec.h"
-
-
-#include "ray/rpc/grpc_client.h"
-#include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/common/task/task.h"
-#include "ray/common/ray_object.h"
-#include "ray/common/client_connection.h"
-#include "ray/common/task/task_common.h"
-#include "ray/object_manager/object_manager.h"
-#include "ray/raylet/actor_registration.h"
-#include "ray/raylet/agent_manager.h"
-#include "ray/raylet/local_object_manager.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
-#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
-#include "ray/raylet/scheduling_policy.h"
-#include "ray/raylet/scheduling_queue.h"
-#include "ray/raylet/reconstruction_policy.h"
-#include "ray/raylet/task_dependency_manager.h"
-#include "ray/raylet/worker_pool.h"
-#include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/ordered_set.h"
-#include "ray/raylet/node_placement_group_manager.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace ray {
 
@@ -70,8 +47,8 @@ struct pair_hash {
 class NodePlacementGroupManager {
 
  public:
-  NodePlacementGroupManager(std::shared_ptr<ResourceIdSet> local_available_resources_,
-                            std::shared_ptr<std::unordered_map<NodeID, SchedulingResources>> cluster_resource_map_,
+  NodePlacementGroupManager(ResourceIdSet &local_available_resources_,
+                            std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
                             const NodeID &self_node_id_);
 
   bool PrepareBundleResources(const BundleSpecification &bundle_spec);
@@ -86,14 +63,14 @@ class NodePlacementGroupManager {
 
   void ReturnUnusedBundleResources(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
-  const ResourceIdSet &GetAllResourceIdSet() const { return *local_available_resources_; };
+  const ResourceIdSet &GetAllResourceIdSet() const { return local_available_resources_; };
 
-  const SchedulingResources &GetAllResourceSetWithoutId() const { return (*cluster_resource_map_)[self_node_id_]; }
+  const SchedulingResources &GetAllResourceSetWithoutId() const { return cluster_resource_map_[self_node_id_]; }
 
  private:
   /// The resources (and specific resource IDs) that are currently available.
-  std::shared_ptr<ResourceIdSet> local_available_resources_;
-  std::shared_ptr<std::unordered_map<NodeID, SchedulingResources>> cluster_resource_map_;
+  ResourceIdSet &local_available_resources_;
+  std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_;
   
   NodeID self_node_id_;
   

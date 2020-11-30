@@ -18,14 +18,12 @@
 #include <fstream>
 #include <memory>
 
-#include "ray/common/id.h"
-
 namespace ray {
 
 namespace raylet {
 
-NodePlacementGroupManager::NodePlacementGroupManager(std::shared_ptr<ResourceIdSet> local_available_resources_,
-                            std::shared_ptr<std::unordered_map<NodeID, SchedulingResources>> cluster_resource_map_,
+NodePlacementGroupManager::NodePlacementGroupManager(ResourceIdSet &local_available_resources_,
+                            std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
                             const NodeID &self_node_id_)
                             :local_available_resources_(local_available_resources_),
                             cluster_resource_map_(cluster_resource_map_),
@@ -50,7 +48,7 @@ bool NodePlacementGroupManager::PrepareBundleResources(const BundleSpecification
     }
   }
 
-  auto &local_resource_set = (*cluster_resource_map_)[self_node_id_];
+  auto &local_resource_set = cluster_resource_map_[self_node_id_];
   auto bundle_state = std::make_shared<BundleState>();
   bool local_resource_enough = bundle_spec.GetRequiredResources().IsSubset(local_resource_set.GetAvailableResources());
 
@@ -63,7 +61,7 @@ bool NodePlacementGroupManager::PrepareBundleResources(const BundleSpecification
     // Prepare resources. This shouldn't create formatted placement group resources
     // because that'll be done at the commit phase.
     bundle_state->acquired_resources =
-        local_available_resources_->Acquire(bundle_spec.GetRequiredResources());
+        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
     local_resource_set.Acquire(bundle_spec.GetRequiredResources());
 
     // Register bundle state.
@@ -94,10 +92,10 @@ void NodePlacementGroupManager::CommitBundleResources(const BundleSpecification 
 
   const auto &bundle_resource_labels = bundle_spec.GetAllPlacementGroupResourceLabels();
   for (const auto &resource: bundle_resource_labels) {
-    local_available_resources_->AddOrUpdateResource(resource.first, resource.second);
+    local_available_resources_.AddOrUpdateResource(resource.first, resource.second);
   }
 
-  (*cluster_resource_map_)[self_node_id_].AddOrUpdateResource(ResourceSet(bundle_resource_labels));
+  cluster_resource_map_[self_node_id_].AddOrUpdateResource(ResourceSet(bundle_resource_labels));
 
   RAY_CHECK(acquired_resources.AvailableResources().size() > 0)
       << "Prepare should've been failed if there were no acquireable resources.";
@@ -122,12 +120,12 @@ void NodePlacementGroupManager::ReturnBundleResources(const BundleSpecification 
   const auto &placement_group_resource_labels = bundle_spec.GetAllPlacementGroupResourceLabels();
   
   // Return resources to local_available_resources_.
-  local_available_resources_->Release(ResourceIdSet(resource_set));
-  local_available_resources_->Acquire(ResourceSet(placement_group_resource_labels));
+  local_available_resources_.Release(ResourceIdSet(resource_set));
+  local_available_resources_.Acquire(ResourceSet(placement_group_resource_labels));
 
   // Return resources to SchedulingResources.
-  (*cluster_resource_map_)[self_node_id_].Release(resource_set);
-  (*cluster_resource_map_)[self_node_id_].Acquire(ResourceSet(placement_group_resource_labels));
+  cluster_resource_map_[self_node_id_].Release(resource_set);
+  cluster_resource_map_[self_node_id_].Acquire(ResourceSet(placement_group_resource_labels));
 }
 
 void NodePlacementGroupManager::ReturnUnusedBundleResources(const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {

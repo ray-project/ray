@@ -714,8 +714,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
-  std::shared_ptr<ResourceIdSet> local_available_resources_;
-  std::shared_ptr<std::unordered_map<NodeID, SchedulingResources>> cluster_resource_map_ = std::make_shared<std::unordered_map<NodeID, SchedulingResources>>();
+  ResourceIdSet local_available_resources_;
+  std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
   /// A pool of workers.
   WorkerPool worker_pool_;
