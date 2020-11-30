@@ -93,7 +93,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Implements the Objects() interface.
   ObjectTable &object_table();
   /// Implements the Nodes() interface.
-  ClientTable &client_table();
+  NodeTable &node_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
@@ -122,7 +122,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
   std::unique_ptr<HeartbeatBatchTable> heartbeat_batch_table_;
   std::unique_ptr<ProfileTable> profile_table_;
-  std::unique_ptr<ClientTable> client_table_;
+  std::unique_ptr<NodeTable> node_table_;
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
