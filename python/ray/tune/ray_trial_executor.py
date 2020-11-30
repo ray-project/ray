@@ -433,7 +433,7 @@ class RayTrialExecutor(TrialExecutor):
         now = time.time()
         if now - self._last_ip_refresh < self._refresh_period:
             return self._last_ip_addresses
-        logger.info("Checking ips from Ray state.")
+        logger.debug("Checking ips from Ray state.")
         self._last_ip_refresh = now
         nodes = ray.state.nodes()
         ip_addresses = set()
@@ -540,7 +540,7 @@ class RayTrialExecutor(TrialExecutor):
     def _update_avail_resources(self, num_retries=5):
         if time.time() - self._last_resource_refresh < self._refresh_period:
             return
-        logger.info("Checking resources.")
+        logger.debug("Checking Ray cluster resources.")
         resources = None
         for i in range(num_retries):
             if i > 0:
