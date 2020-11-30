@@ -1,4 +1,3 @@
-import os
 import sys
 import logging
 import requests
@@ -14,8 +13,6 @@ from ray.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
-
-os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
 
 logger = logging.getLogger(__name__)
 

@@ -89,32 +89,34 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
-int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
+int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
+                                               int64_t min_bytes_to_spill) {
+  RAY_CHECK(num_bytes_to_spill >= min_bytes_to_spill);
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
-    return num_bytes_required;
+    return min_bytes_to_spill;
   }
 
   absl::MutexLock lock(&mutex_);
 
-  RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_required;
-  int64_t num_bytes_to_spill = 0;
+  RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_to_spill;
+  int64_t bytes_to_spill = 0;
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
-  while (num_bytes_to_spill < num_bytes_required && it != pinned_objects_.end()) {
-    num_bytes_to_spill += it->second->GetSize();
+  while (bytes_to_spill < num_bytes_to_spill && it != pinned_objects_.end()) {
+    bytes_to_spill += it->second->GetSize();
     objects_to_spill.push_back(it->first);
     it++;
   }
   if (!objects_to_spill.empty()) {
-    RAY_LOG(INFO) << "Spilling objects of total size " << num_bytes_to_spill;
+    RAY_LOG(INFO) << "Spilling objects of total size " << bytes_to_spill;
     auto start_time = current_time_ms();
     SpillObjectsInternal(
-        objects_to_spill, [num_bytes_to_spill, start_time](const Status &status) {
+        objects_to_spill, [bytes_to_spill, start_time](const Status &status) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
           } else {
-            RAY_LOG(INFO) << "Spilled " << num_bytes_to_spill << " in "
+            RAY_LOG(INFO) << "Spilled " << bytes_to_spill << " in "
                           << (current_time_ms() - start_time) << "ms";
           }
         });
@@ -124,8 +126,7 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_required) {
   //  bytes that are currently being spilled from the amount of space
   //  requested. If the space is claimed by another client, this client may
   //  need to request space again.
-  num_bytes_required -= num_bytes_pending_spill_;
-  return num_bytes_required;
+  return min_bytes_to_spill - num_bytes_pending_spill_;
 }
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
@@ -169,7 +170,6 @@ void LocalObjectManager::SpillObjectsInternal(
     }
     return;
   }
-
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
@@ -246,6 +246,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
+    request.add_object_ids_to_restore(object_id.Binary());
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
         [this, object_id, callback, io_worker](const ray::Status &status,

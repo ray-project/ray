@@ -10,6 +10,7 @@
 import ray
 
 from ray.experimental.client.api import APIImpl
+from ray.experimental.client.common import ClientRemoteFunc
 
 
 class CoreRayAPI(APIImpl):
@@ -25,8 +26,16 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
-    def call_remote(self, f, *args, **kwargs):
-        return f.remote(*args, **kwargs)
+    def call_remote(self, f: ClientRemoteFunc, *args, **kwargs):
+        if f._raylet_remote_func is None:
+            f._raylet_remote_func = ray.remote(f._func)
+        return f._raylet_remote_func.remote(*args, **kwargs)
 
     def close(self, *args, **kwargs):
         return None
+
+    # Allow for generic fallback to ray.* in remote methods. This allows calls
+    # like ray.nodes() to be run in remote functions even though the client
+    # doesn't currently support them.
+    def __getattr__(self, key: str):
+        return getattr(ray, key)
