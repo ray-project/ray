@@ -1,7 +1,6 @@
 from __future__ import absolute_import
 
 import os
-import warnings
 from pickle import PicklingError
 
 from ray.cloudpickle.cloudpickle import *  # noqa
@@ -16,7 +15,7 @@ __version__ = "1.6.0"
 
 
 def _warn_msg(obj, method, exc):
-    warnings.warn(
+    return (
         f"{method}({str(obj)}) failed."
         "\nTo check which non-serializable variables are captured "
         "in scope, re-run the ray script with 'RAY_PICKLE_VERBOSE_DEBUG=1'.")
@@ -31,8 +30,8 @@ def dump_debug(obj, *args, **kwargs):
             inspect_serializability(obj)
             raise
         else:
-            _warn_msg(obj, "ray.cloudpickle.dump", exc)
-            raise
+            msg = _warn_msg(obj, "ray.cloudpickle.dump", exc)
+            raise type(exc)(msg)
 
 
 def dumps_debug(obj, *args, **kwargs):
@@ -44,5 +43,5 @@ def dumps_debug(obj, *args, **kwargs):
             inspect_serializability(obj)
             raise
         else:
-            _warn_msg(obj, "ray.cloudpickle.dumps", exc)
-            raise
+            msg = _warn_msg(obj, "ray.cloudpickle.dumps", exc)
+            raise type(exc)(msg)
