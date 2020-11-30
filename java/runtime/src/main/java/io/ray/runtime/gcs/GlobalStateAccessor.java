@@ -82,8 +82,7 @@ public class GlobalStateAccessor {
 
   public byte[] getPlacementGroupInfo(PlacementGroupId placementGroupId) {
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkNotNull(placementGroupId,
-          "PlacementGroupId can't be null when get placement group info.");
+      validateGlobalStateAccessorPointer();
       return nativeGetPlacementGroupInfo(globalStateAccessorNativePointer,
         placementGroupId.getBytes());
     }
@@ -93,6 +92,14 @@ public class GlobalStateAccessor {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       return this.nativeGetAllPlacementGroupInfo(globalStateAccessorNativePointer);
+    }
+  }
+
+  public boolean waitPlacementGroupReady(PlacementGroupId placementGroupId, int timeoutMs) {
+    synchronized (GlobalStateAccessor.class) {
+      validateGlobalStateAccessorPointer();
+      return nativeWaitPlacementGroupReady(globalStateAccessorNativePointer,
+        placementGroupId.getBytes(), timeoutMs);
     }
   }
 
@@ -157,4 +164,7 @@ public class GlobalStateAccessor {
       byte[] placementGroupId);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
+
+  private native boolean nativeWaitPlacementGroupReady(long nativePtr,
+      byte[] placementGroupId, int timeoutMs);
 }
