@@ -52,8 +52,6 @@ pip install terminado
 pip install torch>=1.6 torchvision
 pip install -U tensorflow-gpu
 
-sleep 100000000
-
 if [ -z "$commit" ]; then
   cob="origin/$ray_branch"
 else
