@@ -8,12 +8,8 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-<<<<<<< HEAD
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils import add_mixins
-=======
 from ray.rllib.utils import add_mixins, force_list
->>>>>>> 9ce7ad17fd4aa4a052802058d75ae3b5fd60cfb1
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
