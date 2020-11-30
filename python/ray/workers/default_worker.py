@@ -111,6 +111,10 @@ parser.add_argument(
     "the search path for user code. This will be used as `CLASSPATH` in "
     "Java and `PYTHONPATH` in Python.")
 if __name__ == "__main__":
+    # NOTE(sang): For some reason, if we move the code below
+    # to a separate function, tensorflow will capture that method
+    # as a step function. For more details, check out
+    # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
     ray.ray_logging.setup_logger(args.logging_level, args.logging_format)
 
