@@ -566,7 +566,19 @@ class Trainer(Trainable):
                         pybullet_envs.getList()
                     except (ModuleNotFoundError, ImportError):
                         pass
-                    return gym.make(env, **env_context)
+                    # Try creating a gym env. If this fails we can output a
+                    # decent error message.
+                    try:
+                        return gym.make(env, **env_context)
+                    except gym.error.Error as e:
+                        raise ValueError(
+                            "The env string you provided ({}) is a) not a "
+                            "known gym/PyBullet environment specifier or b) "
+                            "not registered ! To register your custom envs, "
+                            "do `from ray import tune; tune.register('[name]',"
+                            " lambda cfg: [return actual "
+                            "env from here using cfg])`. Then you can use "
+                            "[name] as your config['env'].".format(env))
 
                 self.env_creator = _creator
         else:

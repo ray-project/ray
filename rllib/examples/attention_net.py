@@ -1,3 +1,4 @@
+#TODO: add comment linking to this script into tuned_examples ppo yaml file
 import argparse
 import os
 
