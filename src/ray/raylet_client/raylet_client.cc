@@ -336,14 +336,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 
-void raylet::RayletClient::DeleteSpilledObject(
-    const ObjectID &object_id,
-    const rpc::ClientCallback<rpc::DeleteSpilledObjectReply> &callback) {
-  rpc::DeleteSpilledObjectRequest request;
-  request.set_object_id(object_id.Binary());
-  grpc_client_->DeleteSpilledObject(request, callback);
-}
-
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
                                           bool disconnect_worker) {
   rpc::ReturnWorkerRequest request;

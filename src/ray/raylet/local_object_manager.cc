@@ -295,14 +295,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   });
 }
 
-void LocalObjectManager::DeleteSpilledObjectIfNecessary(const ObjectID object_id) {
-  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
-  absl::MutexLock lock(&mutex_);
-  // We don't filter non-spilled objects here because that will be addressed when the
-  // queue is processed.
-  spilled_object_pending_delete_.push(object_id);
-}
-
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
   RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   absl::MutexLock lock(&mutex_);

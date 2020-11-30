@@ -567,16 +567,6 @@ void NodeManager::HandleRequestObjectSpillage(
       });
 }
 
-void NodeManager::HandleDeleteSpilledObject(
-    const rpc::DeleteSpilledObjectRequest &request, rpc::DeleteSpilledObjectReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  if (object_pinning_enabled_) {
-    local_object_manager_.DeleteSpilledObjectIfNecessary(
-        ObjectID::FromBinary(request.object_id()));
-  }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
 void NodeManager::HandleReleaseUnusedBundles(
     const rpc::ReleaseUnusedBundlesRequest &request,
     rpc::ReleaseUnusedBundlesReply *reply, rpc::SendReplyCallback send_reply_callback) {

@@ -17,6 +17,7 @@
 #include <boost/asio/ip/tcp.hpp>
 
 #include "ray/util/filesystem.h"
+#include "ray/util/logging.h"
 
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())

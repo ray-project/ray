@@ -109,11 +109,6 @@ class LocalObjectManager {
   /// Try to clear any objects that have been freed.
   void FlushFreeObjectsIfNeeded(int64_t now_ms);
 
-  /// Delete a given spilled object if necessary.
-  ///
-  /// \param object_id Object id to delete.
-  void DeleteSpilledObjectIfNecessary(const ObjectID object_id);
-
   /// Judge if objects are deletable from pending_delete_queue and delete them if
   /// necessary.
   /// TODO(sang): We currently only use 1 IO worker per each call to this method because
@@ -149,7 +144,6 @@ class LocalObjectManager {
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
 
   /// Run periodic operations such as processing the deletion queue or spilling objects.
-  /// TODO(sang): Implement flushing buffered objects in the next PR.
   void DoPeriodicOperations();
 
   boost::asio::io_service &io_context_;
