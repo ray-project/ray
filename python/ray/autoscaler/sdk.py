@@ -190,9 +190,9 @@ def request_resources(num_cpus: Optional[int] = None,
     account existing resource usage.
     
     For example, suppose you call ``request_resources(num_cpus=100)`` and
-    there are 45 currently running tasks. Then, enough nodes will be added so
-    up to 100 tasks can run concurrently. It does **not** add enough nodes so
-    that 145 tasks can run.
+    there are 45 currently running tasks, each requiring 1 CPU. Then, enough
+    nodes will be added so up to 100 tasks can run concurrently. It does
+    **not** add enough nodes so that 145 tasks can run.
 
     This call is only a hint to the autoscaler. The actual resulting cluster
     size may be slightly larger or smaller than expected depending on the
