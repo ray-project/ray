@@ -133,6 +133,9 @@ def inspect_serializability(base_obj,
     Returns:
         bool: True if serializable.
         set: Set of objects that cloudpickle is unable to serialize.
+
+    .. versionadded:: 1.1.0
+
     """
     colorama.init()
     top_level = False
@@ -155,7 +158,7 @@ def inspect_serializability(base_obj,
         # _printer.print("...pass...")
         return True, _failure_set
     except Exception as e:
-        _printer.print(f"{colorama.Fore.RED}!!! FAIL{colorama.Fore.RESET}"
+        _printer.print(f"{colorama.Fore.RED}!!! FAIL{colorama.Fore.RESET} "
                        f"serialization: {e}")
         found = True
         try:
@@ -176,6 +179,9 @@ def inspect_serializability(base_obj,
     else:
         _inspect_generic_serialization(
             base_obj, depth=depth, parent=base_obj, failure_set=_failure_set)
+
+    if not _failure_set:
+        _failure_set.add(FailureTuple(base_obj, name, parent))
 
     if top_level:
         print("=" * min(len(declaration), 80))
