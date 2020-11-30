@@ -29,6 +29,12 @@ The numpy array is stored as a read-only object, and all Ray workers on the same
 
 .. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors hold objects that cannot be serialized.
 
+PyTorch Tensors
+---------------
+
+Ray supports zero-copy serialization for PyTorch tensors by default. However, this would enforcing the importing of
+the ``torch`` module. To disable this feature, one can set the environment variable ``RAY_DISABLE_PYTORCH_SERIALIZER=1``.
+
 Serialization notes
 -------------------
 

@@ -58,7 +58,8 @@ ray_files = [
     "ray/streaming/_streaming.so",
 ]
 
-if BUILD_JAVA:
+if BUILD_JAVA or os.path.exists(
+        os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
 # These are the directories where automatically generated Python protobuf
@@ -68,9 +69,10 @@ generated_python_directories = [
     "ray/streaming/generated",
 ]
 
-optional_ray_files = ["ray/nightly-wheels.yaml"]
+ray_files.append("ray/nightly-wheels.yaml")
 
-ray_autoscaler_files = [
+# Autoscaler files.
+ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/_private/azure/azure-vm-template.json",
@@ -83,21 +85,11 @@ ray_autoscaler_files = [
     "ray/autoscaler/ray-schema.json",
 ]
 
-ray_project_files = [
-    "ray/projects/schema.json",
-    "ray/projects/templates/cluster_template.yaml",
-    "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt",
-]
-
-ray_dashboard_files = [
+# Dashboard files.
+ray_files += [
     os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
     os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
-
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
-optional_ray_files += ray_dashboard_files
 
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements.txt
@@ -279,7 +271,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle"]
+        pip_packages = ["psutil", "setproctitle==1.1.10"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -364,14 +356,6 @@ def pip_run(build_ext):
 
     for filename in files_to_include:
         move_file(build_ext.build_lib, filename)
-
-    # Try to copy over the optional files.
-    for filename in optional_ray_files:
-        try:
-            move_file(build_ext.build_lib, filename)
-        except Exception:
-            print("Failed to copy optional file {}. This is ok."
-                  .format(filename))
 
 
 def api_main(program, *args):

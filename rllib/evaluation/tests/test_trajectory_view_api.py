@@ -1,4 +1,5 @@
 import copy
+import gym
 from gym.spaces import Box, Discrete
 import time
 import unittest
@@ -9,9 +10,10 @@ import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
-    EpisodeEnvAwarePolicy
+    EpisodeEnvAwareLSTMPolicy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.test_utils import framework_iterator, check
 
 
@@ -75,15 +77,17 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"] = config["model"].copy()
         # Activate LSTM + prev-action + rewards.
         config["model"]["use_lstm"] = True
-        config["model"]["lstm_use_prev_action_reward"] = True
+        config["model"]["lstm_use_prev_action"] = True
+        config["model"]["lstm_use_prev_reward"] = True
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
             view_req_model = policy.model.inference_view_requirements
             view_req_policy = policy.view_requirements
-            assert len(view_req_model) == 5, view_req_model
-            assert len(view_req_policy) == 18, view_req_policy
+            # 7=obs, prev-a + r, 2x state-in, 2x state-out.
+            assert len(view_req_model) == 7, view_req_model
+            assert len(view_req_policy) == 19, view_req_policy
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
@@ -117,7 +121,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         obs_space = Box(-1.0, 1.0, shape=(700, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,
@@ -143,7 +146,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policy_mapping_fn": policy_fn,
         }
         num_iterations = 2
-        # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             print("w/ traj. view API")
             config["_use_trajectory_view_api"] = True
@@ -210,6 +212,38 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                             sampler_perf_wo["mean_action_processing_ms"])
             self.assertLess(duration_w, duration_wo)
 
+    def test_traj_view_next_action(self):
+        action_space = Discrete(2)
+        rollout_worker_w_api = RolloutWorker(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_config=ppo.DEFAULT_CONFIG,
+            rollout_fragment_length=200,
+            policy_spec=ppo.PPOTorchPolicy,
+            policy_mapping_fn=None,
+            num_envs=1,
+        )
+        # Add the next action to the view reqs of the policy.
+        # This should be visible then in postprocessing and train batches.
+        rollout_worker_w_api.policy_map["default_policy"].view_requirements[
+            "next_actions"] = ViewRequirement(
+                SampleBatch.ACTIONS, shift=1, space=action_space)
+        # Make sure, we have DONEs as well.
+        rollout_worker_w_api.policy_map["default_policy"].view_requirements[
+            "dones"] = ViewRequirement()
+        batch = rollout_worker_w_api.sample()
+        self.assertTrue("next_actions" in batch.data)
+        expected_a_ = None  # expected next action
+        for i in range(len(batch["actions"])):
+            a, d, a_ = batch["actions"][i], batch["dones"][i], \
+                       batch["next_actions"][i]
+            if not d and expected_a_ is not None:
+                check(a, expected_a_)
+            elif d:
+                check(a_, 0)
+                expected_a_ = None
+                continue
+            expected_a_ = a_
+
     def test_traj_view_lstm_functionality(self):
         action_space = Box(-float("inf"), float("inf"), shape=(3, ))
         obs_space = Box(float("-inf"), float("inf"), (4, ))
@@ -217,7 +251,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
         }
 
         def policy_fn(agent_id):
@@ -280,8 +314,8 @@ def analyze_rnn_batch(batch, max_seq_len):
         state_in_1 = batch["state_in_1"][idx]
 
         # Check postprocessing outputs.
-        if "postprocessed_column" in batch:
-            postprocessed_col_t = batch["postprocessed_column"][idx]
+        if "2xobs" in batch:
+            postprocessed_col_t = batch["2xobs"][idx]
             assert (obs_t == postprocessed_col_t / 2.0).all()
 
         # Check state-in/out and next-obs values.
@@ -350,8 +384,8 @@ def analyze_rnn_batch(batch, max_seq_len):
             r_t = batch["rewards"][k]
 
             # Check postprocessing outputs.
-            if "postprocessed_column" in batch:
-                postprocessed_col_t = batch["postprocessed_column"][k]
+            if "2xobs" in batch:
+                postprocessed_col_t = batch["2xobs"][k]
                 assert (obs_t == postprocessed_col_t / 2.0).all()
 
             # Check state-in/out and next-obs values.

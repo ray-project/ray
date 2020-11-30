@@ -257,7 +257,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
-            callbacks (DefaultCallbacks): Custom training callbacks.
+            callbacks (Type[DefaultCallbacks]): Custom sub-class of
+                DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator (Callable[[IOContext], InputReader]): Function that
                 returns an InputReader object for loading previous generated
                 experiences.
@@ -340,7 +341,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}

@@ -283,7 +283,7 @@ install_dependencies() {
     fi
   fi
 
-  # Additional RLlib dependencies.
+  # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
     # install the following packages for testing on travis only
@@ -331,7 +331,7 @@ install_dependencies() {
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"
