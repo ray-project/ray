@@ -40,38 +40,97 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   pull_manager_.Pull(obj1, addr1);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
-  const std::unordered_set<NodeID> client_ids;
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "");
+
+  // There are no client ids to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  client_ids.insert(NodeID::FromRandom());
   pull_manager_.OnLocationChange(ObjectID::FromRandom(), client_ids, "");
 
-  // client_ids is empty here, so there's no node to send a request to.
+  // Now we're getting a notification about an object we aren't trying to pull.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+
+  pull_manager_.CancelPull(obj1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+}
+
+TEST_F(PullManagerTest, TestRestoreSpilledObject) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  rpc::Address addr1;
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  pull_manager_.Pull(obj1, addr1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+
+  // The behavior is supposed to be to always restore the spilled object if possible (even if it exists elsewhere in the cluster).
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  pull_manager_.CancelPull(obj1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+}
+
+TEST_F(PullManagerTest, TestManyUpdates) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  rpc::Address addr1;
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  pull_manager_.Pull(obj1, addr1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+
+  for (int i = 0; i < 100; i++) {
+    pull_manager_.OnLocationChange(obj1, client_ids, "");
+  }
+
+  ASSERT_EQ(num_send_pull_request_calls_, 100);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 }
 
-  TEST_F(PullManagerTest, TestManyUpdates) {
-    ObjectID obj1 = ObjectID::FromRandom();
-    rpc::Address addr1;
-    ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
-    pull_manager_.Pull(obj1, addr1);
-    ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+TEST_F(PullManagerTest, TestRetryTimer) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  rpc::Address addr1;
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  pull_manager_.Pull(obj1, addr1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
-    std::unordered_set<NodeID> client_ids;
-    client_ids.insert(NodeID::FromRandom());
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
 
-    for (int i = 0; i < 100; i++) {
-      pull_manager_.OnLocationChange(obj1, client_ids, "");
-    }
+  // We need to call OnLocationChange at least once, to population the list of nodes with the object.
+  pull_manager_.OnLocationChange(obj1, client_ids, "");
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-    ASSERT_EQ(num_send_pull_request_calls_, 100);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
-
-    pull_manager_.CancelPull(obj1);
-    ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  for (int i = 0; i < 127; i++) {
+    pull_manager_.Tick();
   }
 
+  // We should make a pull request every tick (even if it's a duplicate to a node we're already pulling from).
+  ASSERT_EQ(num_send_pull_request_calls_, 128);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  pull_manager_.CancelPull(obj1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+}
 
 TEST_F(PullManagerTest, TestBasic) {
   ObjectID obj1 = ObjectID::FromRandom();
