@@ -75,7 +75,7 @@ class PullManager {
   void Tick();
 
   /// The number of ongoing object pulls.
-  int NumRequests() const;
+  int NumActiveRequests() const;
 
  private:
   /// A helper structure for tracking information about each ongoing object pull.

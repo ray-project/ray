@@ -11,16 +11,14 @@ PullManager::PullManager(
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       get_rand_int_(get_rand_int),
-      restore_spilled_object_(restore_spilled_object) {
-  object_is_local(ObjectID::FromRandom());
-}
+      restore_spilled_object_(restore_spilled_object) {}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
                  << " of object " << object_id;
   // Check if object is already local.
   if (object_is_local_(object_id)) {
-    RAY_LOG(ERROR) << object_id << " attempted to pull an object that's already local.";
+    RAY_LOG(DEBUG) << object_id << " attempted to pull an object that's already local.";
     return false;
   }
   if (pull_requests_.find(object_id) != pull_requests_.end()) {
@@ -54,14 +52,6 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                                 TryPull(object_id);
                               }
                             });
-  } else if (it->second.client_locations.empty()) {
-    // The object locations are now empty, so we should wait for the next
-    // notification about a new object location.  Cancel the timer until
-    // the next Pull attempt since there are no more clients to try.
-    if (it->second.retry_timer != nullptr) {
-      it->second.retry_timer->cancel();
-      it->second.timer_set = false;
-    }
   } else {
     // New object locations were found, so begin trying to pull from a
     // client. This will be called every time a new client location
@@ -130,6 +120,13 @@ bool PullManager::CancelPull(const ObjectID &object_id) {
   return true;
 }
 
-int PullManager::NumRequests() const { return pull_requests_.size(); }
+void PullManager::Tick() {
+  for (const auto &pair : pull_requests_) {
+    const auto &object_id = pair.first;
+    TryPull(object_id);
+  }
+}
+
+int PullManager::NumActiveRequests() const { return pull_requests_.size(); }
 
 }  // namespace ray
