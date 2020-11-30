@@ -43,6 +43,7 @@ BackendTag = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
+GoalId = int
 
 
 class TrafficPolicy:
@@ -418,7 +419,7 @@ class Checkpoint:
     goal_state: SystemState
     current_state: SystemState
     reconciler: ActorStateReconciler
-    # TODO(ilr) Rename to PendingState
+    # TODO(ilr) Rename reconciler to PendingState
 
 
 @ray.remote
@@ -555,7 +556,8 @@ class ServeController:
         start = time.time()
 
         checkpoint = pickle.dumps(
-            Checkpoint(self.current_state, self.actor_reconciler))
+            Checkpoint(self.goal_state, self.current_state,
+                       self.actor_reconciler))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -645,6 +647,9 @@ class ServeController:
     def get_all_backends(self) -> Dict[str, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
         return self.current_state.get_backend_configs()
+
+    def get_all_endpoints(self) -> Dict[str, Dict[str, Any]]:
+        return self.current_state.get_endpoints()
 
     async def _set_traffic(self, endpoint_name: str,
                            traffic_dict: Dict[str, float]) -> None:
