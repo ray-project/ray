@@ -41,6 +41,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/raylet/node_placement_group_manager.h"
 // clang-format on
 
 namespace ray {
@@ -102,27 +103,6 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
-
-enum CommitState {
-  /// Resources are prepared.
-  PREPARED,
-  /// Resources are COMMITTED.
-  COMMITTED
-};
-
-struct BundleState {
-  /// Leasing state for 2PC protocol.
-  CommitState state;
-  /// Resources that are acquired at preparation stage.
-  ResourceIdSet acquired_resources;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -734,8 +714,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
-  ResourceIdSet local_available_resources_;
-  std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
+  std::shared_ptr<ResourceIdSet> local_available_resources_;
+  std::shared_ptr<std::unordered_map<NodeID, SchedulingResources>> cluster_resource_map_ = std::make_shared<std::unordered_map<NodeID, SchedulingResources>>();
 
   /// A pool of workers.
   WorkerPool worker_pool_;
@@ -824,15 +804,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
-  /// This map represents the commit state of 2PC protocol for atomic placement group
-  /// creation.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
-      bundle_state_map_;
-
-  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
-      bundle_spec_map_;
-
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
   int64_t record_metrics_period_;
@@ -848,6 +819,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
+
+  /// Placement group manager in node level.
+  NodePlacementGroupManager placement_group_manager_;
 };
 
 }  // namespace raylet

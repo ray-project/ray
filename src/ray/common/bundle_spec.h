@@ -72,6 +72,9 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     on_spillback_ = callback;
   }
 
+  /// Get all placement group bundle resource labels.
+  const std::unordered_map<std::string, double> &GetAllPlacementGroupResourceLabels() const { return bundle_resource_labels_; }
+
   /// Returns the schedule bundle callback, or nullptr.
   const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
 
@@ -82,18 +85,22 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
 
  private:
   void ComputeResources();
+  void ComputeBundleResourceLabels();
 
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> unit_resource_;
 
+  /// Store all bundle resource labels, e.g., CPU -> CPU_group_i, CPU_group_YYY_i, PlacementGroup_implicit_i_YYY.
+  std::unordered_map<std::string, double> bundle_resource_labels_;
+
   mutable ScheduleBundleCallback on_schedule_ = nullptr;
 
   mutable SpillbackBundleCallback on_spillback_ = nullptr;
 };
 
-/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+/// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index = -1);
