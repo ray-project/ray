@@ -619,13 +619,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
                                           const ActorCheckpointID &checkpoint_id);
 
-  /// Sets a resource with the specified capacity and client id
+  /// Sets a resource with the specified capacity and node id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
-  /// \param[in] client_Id NodeID where the resource is to be set.
+  /// \param[in] node_id NodeID where the resource is to be set.
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &client_id);
+                     const NodeID &node_id);
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
