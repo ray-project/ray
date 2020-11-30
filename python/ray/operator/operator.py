@@ -20,7 +20,6 @@ kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/op
 """ # noqa
 import logging
 import threading
-
 import yaml
 
 from ray._private import services
@@ -38,12 +37,13 @@ class RayCluster():
 
         self.setup_logging()
 
-        self.thread = threading.Thread(name=self.name)
-        self.thread.start(target=self.create_or_update)
+        self.thread = threading.Thread(
+            name=self.name, target=self.create_or_update)
+        self.thread.start()
 
     def setup_logging(self):
         self.handler = logging.StreamHandler()
-        self.handler.addFilter(lambda rec: rec.threadName == self.name)
+        # self.handler.addFilter(lambda rec: rec.threadName == self.name)
         logging_format = ":".join([self.name, ray_constants.LOGGER_FORMAT])
         self.handler.setFormatter(logging.Formatter(logging_format))
         operator_utils.root_logger.addHandler(self.handler)
@@ -73,27 +73,33 @@ class RayCluster():
         # TODO: Add support for user-specified redis port and password
         redis_address = services.address(ray_head_pod_ip,
                                          ray_constants.DEFAULT_PORT)
-        self.mtr = monitor.Monitor(redis_address, self.config_path,
-                                   ray_constants.REDIS_DEFAULT_PASSWORD)
+        self.mtr = monitor.Monitor(
+            redis_address=redis_address,
+            autoscaling_config=self.config_path,
+            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
+            prefix_cluster_info=True)
         self.mtr.run()
 
-    def update(self):
+    def stop_monitor(self):
         self.mtr.stop()
         self.thread.join()
-        self.thread = threading.Thread(name=self.name)
-        self.thread.start(target=self.create_or_update)
 
-    def __del__(self):
-        self.mtr.stop()
-        self.thread.join()
-        self.thread = threading.Thread(name=self.name)
-        self.thread.start(target=self.teardown)
-        self.thread.join()
+    def update(self):
+        self.stop_monitor()
+        self.thread = threading.Thread(
+            name=self.name, target=self.create_or_update)
+        self.thread.start()
+
+    def tear_down(self):
+        self.stop_monitor()
+        self.thread = threading.Thread(name=self.name, target=self._tear_down)
+        self.thread.start()
         operator_utils.root_logger.removeHandler(self.handler)
 
-    def teardown(self):
+    def _tear_down(self):
         commands.teardown_cluster(
             self.config_path,
+            yes=True,
             workers_only=False,
             override_cluster_name=None,
             keep_min_workers=False)
@@ -109,9 +115,8 @@ def cluster_action(cluster_config, event_type):
     elif event_type == "MODIFIED":
         ray_clusters[cluster_name].update()
     elif event_type == "DELETED":
+        ray_clusters[cluster_name].tear_down()
         del ray_clusters[cluster_name]
-    else:
-        raise ValueError(f"Event type '{event_type}' unrecognized.")
 
 
 def main():

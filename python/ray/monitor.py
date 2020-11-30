@@ -113,7 +113,9 @@ class Monitor:
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(
-                autoscaling_config, self.load_metrics, prefix_cluster_info)
+                autoscaling_config,
+                self.load_metrics,
+                prefix_cluster_info=prefix_cluster_info)
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None

@@ -12,6 +12,7 @@ from ray.autoscaler._private.kubernetes import core_api, custom_objects_api
 RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 
 RAY_CONFIG_DIR = os.path.expanduser("~/ray_cluster_configs")
+os.mkdir(RAY_CONFIG_DIR)
 CONFIG_SUFFIX = "_config.yaml"
 
 CONFIG_FIELDS = {
@@ -51,22 +52,13 @@ def write_config(config, config_path):
 
 
 def cluster_cr_stream():
-    w = watch.Watch(
+    w = watch.Watch()
+    return w.stream(
         custom_objects_api().list_namespaced_custom_object,
         namespace=RAY_NAMESPACE,
         group="cluster.ray.io",
         version="v1",
         plural="rayclusters")
-    return w.stream
-
-
-def get_cluster_cr():
-    return custom_objects_api().list_namespaced_custom_object(
-        namespace=RAY_NAMESPACE,
-        group="cluster.ray.io",
-        version="v1",
-        plural="rayclusters",
-        field_selector="metadata.name=test-cluster")["items"][0]
 
 
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:

@@ -247,6 +247,7 @@ def hash_runtime_conf(file_mounts,
 
 
 def add_prefix(info_string, prefix):
+    """Prefixes each line of info_string, except the first, by prefix."""
     lines = info_string.split("\n")
     prefixed_lines = [lines[0]]
     for line in lines[1:]:
