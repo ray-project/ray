@@ -270,7 +270,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     ray::rpc::SendReplyCallback send_reply_callback) {
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
-  RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
+  RegisterPlacementGroup(placement_group, [this, reply, send_reply_callback,
                                            placement_group](Status status) {
     if (status.ok()) {
       RAY_LOG(INFO) << "Finished registering placement group, "
@@ -280,6 +280,17 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
                     << placement_group->DebugString() << ", cause: " << status.message();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+
+    // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
+    // placement group and remove all of them from placement_group_to_create_callbacks_.
+    auto iter =
+        placement_group_to_create_callbacks_.find(placement_group->GetPlacementGroupID());
+    if (iter != placement_group_to_create_callbacks_.end()) {
+      for (auto &callback : iter->second) {
+        callback(status);
+      }
+      placement_group_to_create_callbacks_.erase(iter);
+    }
   });
   ++counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST];
 }

@@ -160,6 +160,13 @@ class GlobalStateAccessor {
   std::unique_ptr<std::string> GetPlacementGroupInfo(
       const PlacementGroupID &placement_group_id);
 
+  /// Returns once the placement group is created or the timeout expires.
+  ///
+  /// \param placement_group The ID of placement group to wait for.
+  /// \return True if the placement group is created. False otherwise.
+  bool WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                               int timeout_ms);
+
  private:
   /// MultiItem transformation helper in template style.
   ///
