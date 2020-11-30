@@ -42,12 +42,36 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
 
   const std::unordered_set<NodeID> client_ids;
   pull_manager_.OnLocationChange(ObjectID::FromRandom(), client_ids, "");
+
+  // client_ids is empty here, so there's no node to send a request to.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 }
+
+  TEST_F(PullManagerTest, TestManyUpdates) {
+    ObjectID obj1 = ObjectID::FromRandom();
+    rpc::Address addr1;
+    ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+    pull_manager_.Pull(obj1, addr1);
+    ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+
+    std::unordered_set<NodeID> client_ids;
+    client_ids.insert(NodeID::FromRandom());
+
+    for (int i = 0; i < 100; i++) {
+      pull_manager_.OnLocationChange(obj1, client_ids, "");
+    }
+
+    ASSERT_EQ(num_send_pull_request_calls_, 100);
+    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+    pull_manager_.CancelPull(obj1);
+    ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  }
+
 
 TEST_F(PullManagerTest, TestBasic) {
   ObjectID obj1 = ObjectID::FromRandom();
@@ -59,6 +83,7 @@ TEST_F(PullManagerTest, TestBasic) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   pull_manager_.OnLocationChange(obj1, client_ids, "");
+
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
