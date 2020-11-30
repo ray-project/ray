@@ -4,7 +4,7 @@ min_workers: 9
 max_workers: 9
 
 target_utilization_fraction: 0.8
-idle_timeout_minutes: 315
+idle_timeout_minutes: 15
 
 docker:
     image: rayproject/ray-ml:nightly-gpu

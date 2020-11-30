@@ -55,7 +55,7 @@ WHEEL_DIR=$(mktemp -d)
 wget --quiet "$WHEEL_URL" -P "$WHEEL_DIR"
 WHEEL="$WHEEL_DIR/$(basename "$WHEEL_DIR"/*.whl)"
 # Build base-deps, ray-deps, and ray.
-for IMAGE in "base-deps" "ray-deps" "ray" "ray-ml"
+for IMAGE in "base-deps" "ray-deps" "ray"
 do
     cp "$WHEEL" "docker/$IMAGE/$(basename "$WHEEL")"
     if [ $OUTPUT_SHA ]; then
