@@ -298,4 +298,14 @@ public final class Ray extends RayCall {
   public static void removePlacementGroup(PlacementGroupId id) {
     internal().removePlacementGroup(id);
   }
+
+  /**
+   * Wait for placement group until ready.
+   * @param id Id of placement group.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the placement group is created. False otherwise.
+   */
+  public static boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    return internal().waitPlacementGroupReady(id, timeoutMs);
+  }
 }

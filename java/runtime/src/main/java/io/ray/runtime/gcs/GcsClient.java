@@ -77,6 +77,16 @@ public class GcsClient {
     return placementGroups;
   }
 
+  /**
+   * Wait for placement group until ready.
+   * @param placementGroupId Id of placement group.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the placement group is created. False otherwise.
+   */
+  public boolean waitPlacementGroupReady(PlacementGroupId placementGroupId, int timeoutMs) {
+    return globalStateAccessor.waitPlacementGroupReady(placementGroupId, timeoutMs);
+  }
+
   public List<NodeInfo> getAllNodeInfo() {
     List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 
