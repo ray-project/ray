@@ -462,6 +462,7 @@ class ServeController:
         # Current State
         self.current_state = SystemState()
         # Goal State
+        # TODO(ilr) This is currently *unused* until the refactor of the serve controller.
         self.goal_state = SystemState()
         # ActorStateReconciler
         self.actor_reconciler = ActorStateReconciler(controller_name, detached)
