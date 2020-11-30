@@ -156,8 +156,8 @@ class Monitor:
                 heartbeat_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
-            client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
-            ip = self.raylet_id_to_ip_map.get(client_id)
+            node_id = ray.utils.binary_to_hex(heartbeat_message.node_id)
+            ip = self.raylet_id_to_ip_map.get(node_id)
             if ip:
                 self.load_metrics.update(ip, total_resources,
                                          available_resources, resource_load,
@@ -165,7 +165,7 @@ class Monitor:
                                          pending_placement_groups)
             else:
                 logger.warning(
-                    f"Monitor: could not find ip for client {client_id}")
+                    f"Monitor: could not find ip for node {node_id}")
 
     def autoscaler_resource_request_handler(self, _, data):
         """Handle a notification of a resource request for the autoscaler.
