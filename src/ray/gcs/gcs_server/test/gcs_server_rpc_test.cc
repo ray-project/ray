@@ -585,7 +585,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
   // Report heartbeat
   rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_client_id(gcs_node_info->node_id());
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
   // Update node resources

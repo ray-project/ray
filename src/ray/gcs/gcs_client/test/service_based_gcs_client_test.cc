@@ -796,7 +796,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   // Report heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   // Set this flag because GCS won't publish unchanged heartbeat.
   heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -819,13 +819,13 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeatWithLightHeartbeat) {
   // Report unchanged heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitForExpectedCount(heartbeat_batch_count, 0);
 
   // Report changed heartbeat of a node to GCS.
   auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_client_id(node_id.Binary());
+  heartbeat1->set_node_id(node_id.Binary());
   heartbeat1->set_resources_available_changed(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat1));
   WaitForExpectedCount(heartbeat_batch_count, 1);
@@ -847,7 +847,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   // Report heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   // Set this flag to indicate resources has changed.
   heartbeat->set_resources_available_changed(true);
   (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
@@ -879,7 +879,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResourcesWithLightHeartbeat
   // Report heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   heartbeat->set_resources_available_changed(true);
   (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
   (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
@@ -895,7 +895,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResourcesWithLightHeartbeat
 
   // Report unchanged heartbeat of a node to GCS.
   auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_client_id(node_id.Binary());
+  heartbeat1->set_node_id(node_id.Binary());
   (*heartbeat1->mutable_resources_available())["GPU"] = 8.0;
   ASSERT_TRUE(ReportHeartbeat(heartbeat1));
   WaitForExpectedCount(heartbeat_batch_count, 1);
@@ -1223,7 +1223,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_info->node_id());
+  heartbeat->set_node_id(node_info->node_id());
   // Set this flag because GCS won't publish unchanged heartbeat.
   heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -1235,7 +1235,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   ASSERT_TRUE(UpdateResources(node_id, key));
-  heartbeat->set_client_id(node_info->node_id());
+  heartbeat->set_node_id(node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
 
   WaitForExpectedCount(node_change_count, 2);
