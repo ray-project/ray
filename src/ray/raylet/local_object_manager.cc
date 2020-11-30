@@ -14,6 +14,7 @@
 
 #include "ray/raylet/local_object_manager.h"
 #include "ray/util/asio_util.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -59,16 +60,17 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
-  {
-    if (object_pinning_enabled_) {
-      absl::MutexLock lock(&mutex_);
-      RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-      // The object should be in one of these stats; pinned, spilling, or spilled.
-      RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
-                (spilled_objects_url_.count(object_id) > 0) ||
-                (objects_pending_spill_.count(object_id) > 0));
-      pinned_objects_.erase(object_id);
+  if (object_pinning_enabled_) {
+    absl::MutexLock lock(&mutex_);
+    RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+    // The object should be in one of these stats; pinned, spilling, or spilled.
+    RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
+              (spilled_objects_url_.count(object_id) > 0) ||
+              (objects_pending_spill_.count(object_id) > 0));
+    if (automatic_object_deletion_enabled_) {
+      spilled_object_pending_delete_.push(object_id);
     }
+    pinned_objects_.erase(object_id);
   }
 
   // Try to evict all copies of the object from the cluster.
@@ -239,13 +241,20 @@ void LocalObjectManager::AddSpilledUrls(
           *num_bytes_spilled += it->second->GetSize();
           objects_pending_spill_.erase(it);
 
-          // Update the object_id - url ref count to use it for deletion later.
-          spilled_objects_url_.emplace(object_id, object_url);
-          if (url_ref_count_.count(object_url) == 0) {
-            url_ref_count_.emplace(object_url, 1);
+          // Update the object_id -> url_ref_count to use it for deletion later.
+          // We need to track the references here because a single file can contain
+          // multiple objects, and we shouldn't delete the file until
+          // all the objects are gone out of scope.
+          // object_url is equivalent to url_with_offset.
+          auto parsed_url = ParseURL(object_url);
+          const auto base_url_it = parsed_url->find("url");
+          RAY_CHECK(base_url_it != parsed_url->end());
+          if (!url_ref_count_.contains(base_url_it->second)) {
+            url_ref_count_[base_url_it->second] = 1;
           } else {
-            url_ref_count_[object_url] += 1;
+            url_ref_count_[base_url_it->second] += 1;
           }
+          spilled_objects_url_.emplace(object_id, object_url);
 
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
@@ -298,6 +307,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
   RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   absl::MutexLock lock(&mutex_);
   std::vector<std::string> object_urls_to_delete;
+
+  // Process upto batch size of objects to delete.
   while (!spilled_object_pending_delete_.empty() &&
          object_urls_to_delete.size() < max_batch_size) {
     auto &object_id = spilled_object_pending_delete_.front();
@@ -305,23 +316,21 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
     // processed, but it should be fine because the spilling will be eventually done, and
     // deleting objects is the low priority tasks.
     // This will instead enable simpler logic after this block.
-    if (objects_pending_spill_.count(object_id) != 0) {
-      break;
-    }
-
-    // If the object is still pinned, do nothing. This can happen because when the object
-    // reference is deleted, core worker sends 2 requests almost at the same time (one to
-    // reply to WaitForObjectEviction and the other for deleting objects), and grpc
-    // doesn't guarantee the ordering here. This will eventually be resolved.
-    if (pinned_objects_.count(object_id) != 0) {
+    if (objects_pending_spill_.contains(object_id)) {
       break;
     }
 
     // Object id is either spilled or not spilled at this point.
-    const auto &spilled_objects_url_it = spilled_objects_url_.find(object_id);
+    const auto spilled_objects_url_it = spilled_objects_url_.find(object_id);
     if (spilled_objects_url_it != spilled_objects_url_.end()) {
+      // If the object was spilled, see if we can delete it. We should first check the ref
+      // count.
       std::string &object_url = spilled_objects_url_it->second;
-      const auto &url_ref_count_it = url_ref_count_.find(object_url);
+      // Note that here, we need to parse the object url to obtain the base_url.
+      auto parsed_url = ParseURL(object_url);
+      const auto base_url_it = parsed_url->find("url");
+      RAY_CHECK(base_url_it != parsed_url->end());
+      const auto &url_ref_count_it = url_ref_count_.find(base_url_it->second);
       RAY_CHECK(url_ref_count_it != url_ref_count_.end())
           << "url_ref_count_ should exist when spilled_objects_url_ exists. Please "
              "submit a Github issue if you see this error.";
@@ -344,7 +353,8 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
 void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_delete) {
   io_worker_pool_.PopDeleteWorker(
       [this, urls_to_delete](std::shared_ptr<WorkerInterface> io_worker) {
-        RAY_LOG(DEBUG) << "Sending delete spilled object request";
+        RAY_LOG(DEBUG) << "Sending delete spilled object request. Length: "
+                       << urls_to_delete.size();
         rpc::DeleteSpilledObjectsRequest request;
         for (const auto &url : urls_to_delete) {
           request.add_spilled_objects_url(std::move(url));
@@ -362,9 +372,7 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
 }
 
 void LocalObjectManager::DoPeriodicOperations() {
-  if (!object_pinning_enabled_) {
-    // Periodic operations are used only for object spilling which is currently
-    // unavailable when object pinning is disabled.
+  if (!object_pinning_enabled_ || !automatic_object_deletion_enabled_) {
     return;
   }
   execute_after(io_context_,

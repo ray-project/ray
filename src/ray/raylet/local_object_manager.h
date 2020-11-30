@@ -38,7 +38,7 @@ class LocalObjectManager {
                      IOWorkerPoolInterface &io_worker_pool,
                      gcs::ObjectInfoAccessor &object_info_accessor,
                      rpc::CoreWorkerClientPool &owner_client_pool,
-                     bool object_pinning_enabled,
+                     bool object_pinning_enabled, bool automatic_object_deletion_enabled,
                      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
                      SpaceReleasedCallback on_objects_spilled)
       : io_context_(io_context),
@@ -48,6 +48,7 @@ class LocalObjectManager {
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
         object_pinning_enabled_(object_pinning_enabled),
+        automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         on_objects_spilled_(on_objects_spilled),
         last_free_objects_at_ms_(current_time_ms()) {
@@ -172,6 +173,9 @@ class LocalObjectManager {
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled_;
 
+  /// Whether to enable automatic deletion when refs are gone out of scope.
+  bool automatic_object_deletion_enabled_;
+
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
@@ -216,11 +220,11 @@ class LocalObjectManager {
   /// because those objects could be still in progress of spilling.
   std::queue<ObjectID> spilled_object_pending_delete_ GUARDED_BY(mutex_);
 
-  /// Mapping from object id to urls. We cannot reuse pinned_objects_ because
-  /// pinned_objects_ entries are deleted when spilling happened.
+  /// Mapping from object id to url_with_offsets. We cannot reuse pinned_objects_ because
+  /// pinned_objects_ entries are deleted when spilling happens.
   absl::flat_hash_map<ObjectID, std::string> spilled_objects_url_ GUARDED_BY(mutex_);
 
-  /// URL -> ref_count. It is used because there could be multiple objects
+  /// Base URL -> ref_count. It is used because there could be multiple objects
   /// within a single spilled file. We need to ref count to avoid deleting the file
   /// before all objects within that file are out of scope.
   absl::flat_hash_map<std::string, uint64_t> url_ref_count_ GUARDED_BY(mutex_);

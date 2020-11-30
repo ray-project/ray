@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import random
 import platform
 import sys
@@ -58,6 +59,7 @@ def test_sample_benchmark(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 0,
             "max_io_workers": max_io_workers,
             "object_spilling_config": object_spilling_config,
+            "automatic_object_deletion_enabled": False,
         })
     arr = np.random.rand(object_size)
     replay_buffer = []
@@ -135,6 +137,7 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
             "max_io_workers": 4,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "automatic_object_deletion_enabled": False,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -196,6 +199,7 @@ def test_spill_objects_manually_from_workers(object_spilling_config,
             "max_io_workers": 4,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "automatic_object_deletion_enabled": False,
         })
 
     @ray.remote
@@ -227,6 +231,7 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
             "max_io_workers": 4,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
+            "automatic_object_deletion_enabled": False,
         })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -414,7 +419,6 @@ def test_delete_objects(tmp_path, shutdown_only):
                     "directory_path": str(temp_folder)
                 }
             }),
-            "min_spilling_size": 0,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -457,7 +461,6 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
                     "directory_path": str(temp_folder)
                 }
             }),
-            "min_spilling_size": 0,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -486,6 +489,78 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     # After all, make sure all objects are killed without race condition.
     del replay_buffer
     del ref
+    wait_for_condition(is_dir_empty, timeout=1000)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+            "min_spilling_size": 0,
+        })
+
+    arr = np.random.rand(1024 * 1024)  # 8 MB data
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.replay_buffer = []
+
+        def get_pid(self):
+            return os.getpid()
+
+        def create_objects(self):
+            for _ in range(80):
+                ref = None
+                while ref is None:
+                    ref = ray.put(arr)
+                    self.replay_buffer.append(ref)
+                # Remove the replay buffer with 60% probability.
+                if random.randint(0, 9) < 6:
+                    self.replay_buffer.pop()
+
+            # Do random sampling.
+            for _ in range(200):
+                ref = random.choice(self.replay_buffer)
+                sample = ray.get(ref, timeout=0)
+                assert np.array_equal(sample, arr)
+
+    a = Actor.remote()
+    actor_pid = ray.get(a.get_pid.remote())
+    ray.get(a.create_objects.remote())
+    os.kill(actor_pid, 9)
+
+    def wait_until_actor_dead():
+        try:
+            ray.get(a.get_pid.remote())
+        except ray.exceptions.RayActorError:
+            return True
+        return False
+
+    wait_for_condition(wait_until_actor_dead)
+
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
+
+    # After all, make sure all objects are deleted upon worker failures.
     wait_for_condition(is_dir_empty, timeout=1000)
 
 

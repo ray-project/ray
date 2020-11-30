@@ -1540,6 +1540,10 @@ cdef class CoreWorker:
     def force_spill_objects(self, object_refs):
         cdef c_vector[CObjectID] object_ids
         object_ids = ObjectRefsToVector(object_refs)
+        assert not RayConfig.instance().automatic_object_deletion_enabled(), (
+            "Automatic object deletion is not supported for"
+            "force_spill_objects yet. Please set"
+            "automatic_object_deletion_enabled: False in Ray's system config.")
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .SpillObjects(object_ids))
