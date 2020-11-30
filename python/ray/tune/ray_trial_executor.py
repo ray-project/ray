@@ -25,7 +25,7 @@ from ray.tune.utils import warn_if_slow
 
 logger = logging.getLogger(__name__)
 
-RAY_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
+TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
@@ -139,7 +139,7 @@ class RayTrialExecutor(TrialExecutor):
                  queue_trials=False,
                  reuse_actors=False,
                  ray_auto_init=None,
-                 refresh_period=RAY_STATE_REFRESH_PERIOD):
+                 refresh_period=None):
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -164,6 +164,11 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+
+        if refresh_period is None:
+            refresh_period = float(
+                os.environ.get("TUNE_STATE_REFRESH_PERIOD",
+                               TUNE_STATE_REFRESH_PERIOD))
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
         self._last_ip_refresh = float("-inf")
