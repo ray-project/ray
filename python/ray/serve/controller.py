@@ -94,7 +94,7 @@ class BackendInfo(BaseModel):
 @dataclass
 class SystemState:
     backends: Dict[BackendTag, BackendInfo] = field(default_factory=dict)
-    traffic_policies: Dict[EndpointTag, Tuple[TrafficPolicy]] = field(
+    traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(
         default_factory=dict)
     routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = field(
         default_factory=dict)
@@ -462,7 +462,8 @@ class ServeController:
         # Current State
         self.current_state = SystemState()
         # Goal State
-        # TODO(ilr) This is currently *unused* until the refactor of the serve controller.
+        # TODO(ilr) This is currently *unused* until the refactor of the serve
+        # controller.
         self.goal_state = SystemState()
         # ActorStateReconciler
         self.actor_reconciler = ActorStateReconciler(controller_name, detached)
