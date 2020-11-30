@@ -50,7 +50,7 @@ void GcsHeartbeatManager::Stop() {
   }
 }
 
-void GcsHeartbeatManager::AddNode(const ray::NodeID &node_id) {
+void GcsHeartbeatManager::AddNode(const NodeID &node_id) {
     io_service_.post(
   [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); });
 }

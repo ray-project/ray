@@ -308,6 +308,11 @@ RAY_CONFIG(bool, enable_multi_tenancy,
            getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
                getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
 
+/// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
+RAY_CONFIG(bool, enable_worker_prestart,
+           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
+               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
+
 /// The interval of periodic idle worker killing. A negative value means worker capping is
 /// disabled.
 RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)

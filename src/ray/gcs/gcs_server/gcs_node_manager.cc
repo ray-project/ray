@@ -101,7 +101,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
 void GcsNodeManager::HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
                                            rpc::ReportResourceUsageReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.resources().client_id());
+  NodeID node_id = NodeID::FromBinary(request.resources().node_id());
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(request.resources());
 
