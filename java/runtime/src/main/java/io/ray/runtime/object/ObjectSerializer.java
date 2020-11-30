@@ -34,14 +34,14 @@ public class ObjectSerializer {
   private static final byte[] TASK_EXECUTION_EXCEPTION_META = String
       .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
-  public static final byte OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
-  public static final byte OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
-  public static final byte OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
-  public static final byte OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
   // A constant used as object metadata to indicate the object is an actor handle.
   // This value should be synchronized with the Python definition in ray_constants.py
   // TODO(fyrestone): Serialize the ActorHandle via the custom type feature of XLANG.
-  public static final byte OBJECT_METADATA_TYPE_ACTOR_HANDLE = "ACTOR_HANDLE".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_ACTOR_HANDLE = "ACTOR_HANDLE".getBytes();
 
   // When an outer object is being serialized, the nested ObjectRefs are all
   // serialized and the writeExternal method of the nested ObjectRefs are
