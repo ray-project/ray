@@ -257,5 +257,16 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
   return placement_group_table_data;
 }
 
+bool GlobalStateAccessor::WaitPlacementGroupReady(
+    const PlacementGroupID &placement_group_id, int timeout_ms) {
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
+      placement_group_id,
+      [&promise](const Status &status) { promise.set_value(status.ok()); }));
+  auto future = promise.get_future();
+  auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
+  return status == std::future_status::ready && future.get();
+}
+
 }  // namespace gcs
 }  // namespace ray
