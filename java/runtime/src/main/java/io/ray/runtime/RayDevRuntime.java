@@ -102,6 +102,13 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    // TODO(ffbin): We need a LocalGcsClient before implements this.
+    throw new UnsupportedOperationException(
+            "Ray doesn't support placement group operations in local mode.");
+  }
+
+  @Override
   public void exitActor() {
 
   }
