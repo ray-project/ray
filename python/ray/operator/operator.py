@@ -19,6 +19,7 @@ kubectl -n raytest create configmap ray-operator-configmap --from-file=python/ra
 kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/operator_config.yaml
 """ # noqa
 import logging
+import os
 import threading
 import yaml
 
@@ -120,6 +121,8 @@ def cluster_action(cluster_config, event_type):
 
 
 def main():
+    if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
+        os.mkdir(operator_utils.RAY_CONFIG_DIR)
     stream = operator_utils.cluster_cr_stream()
     for event in stream:
         cluster_cr = event["object"]

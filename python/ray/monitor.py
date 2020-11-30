@@ -1,5 +1,4 @@
 """Autoscaler monitoring loop daemon."""
-
 import argparse
 import logging
 import logging.handlers
@@ -126,6 +125,7 @@ class Monitor:
 
     def __del__(self):
         """Destruct the monitor object."""
+        logger.debug("Monitor: Destructor accessed.")
         # We close the pubsub client to avoid leaking file descriptors.
         try:
             primary_subscribe_client = self.primary_subscribe_client
@@ -256,7 +256,6 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
-
         self.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
 
         # Handle messages from the subscription channels.

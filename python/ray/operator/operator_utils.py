@@ -12,7 +12,6 @@ from ray.autoscaler._private.kubernetes import core_api, custom_objects_api
 RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 
 RAY_CONFIG_DIR = os.path.expanduser("~/ray_cluster_configs")
-os.mkdir(RAY_CONFIG_DIR)
 CONFIG_SUFFIX = "_config.yaml"
 
 CONFIG_FIELDS = {
