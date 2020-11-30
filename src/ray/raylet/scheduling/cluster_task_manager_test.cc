@@ -79,7 +79,8 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {}, PlacementGroupID::Nil(), true);
+                                 required_resources, {},
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true);
 
   for (int i = 0; i < num_args; i++) {
     ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);

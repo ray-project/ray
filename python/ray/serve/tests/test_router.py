@@ -10,7 +10,6 @@ import pytest
 from ray.serve.context import TaskContext
 
 import ray
-from ray.serve.config import BackendConfig
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Query, ReplicaSet, RequestMetadata, Router
 from ray.serve.utils import get_random_letters
@@ -59,45 +58,6 @@ def mock_task_runner():
 @pytest.fixture
 def task_runner_mock_actor():
     yield mock_task_runner()
-
-
-@pytest.fixture
-def mock_controller():
-    @ray.remote(num_cpus=0)
-    class MockControllerActor:
-        def __init__(self):
-            from ray.serve.long_poll import LongPollerHost
-            self.host = LongPollerHost()
-            self.backend_replicas = defaultdict(list)
-            self.backend_configs = dict()
-            self.clear()
-
-        def clear(self):
-            self.host.notify_changed("worker_handles", {})
-            self.host.notify_changed("traffic_policies", {})
-            self.host.notify_changed("backend_configs", {})
-
-        async def listen_for_change(self, snapshot_ids):
-            return await self.host.listen_for_change(snapshot_ids)
-
-        def set_traffic(self, endpoint, traffic_policy):
-            self.host.notify_changed("traffic_policies",
-                                     {endpoint: traffic_policy})
-
-        def add_new_replica(self,
-                            backend_tag,
-                            runner_actor,
-                            backend_config=BackendConfig()):
-            self.backend_replicas[backend_tag].append(runner_actor)
-            self.backend_configs[backend_tag] = backend_config
-
-            self.host.notify_changed(
-                "worker_handles",
-                self.backend_replicas,
-            )
-            self.host.notify_changed("backend_configs", self.backend_configs)
-
-    yield MockControllerActor.remote()
 
 
 async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,

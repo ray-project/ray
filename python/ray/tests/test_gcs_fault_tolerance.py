@@ -6,6 +6,7 @@ from ray.test_utils import (
     generate_system_config_map,
     wait_for_condition,
     wait_for_pid_to_exit,
+    new_scheduler_enabled,
 )
 
 
@@ -20,6 +21,7 @@ def increase(x):
     return x + 1
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="notimpl")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(

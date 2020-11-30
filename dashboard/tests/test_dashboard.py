@@ -28,8 +28,6 @@ import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.modules
 
-os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
-
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
