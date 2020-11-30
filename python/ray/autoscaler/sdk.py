@@ -188,7 +188,7 @@ def request_resources(num_cpus: Optional[int] = None,
     The cluster will immediately attempt to scale to accommodate the requested
     resources, bypassing normal upscaling speed constraints. This takes into
     account existing resource usage.
-    
+
     For example, suppose you call ``request_resources(num_cpus=100)`` and
     there are 45 currently running tasks, each requiring 1 CPU. Then, enough
     nodes will be added so up to 100 tasks can run concurrently. It does
