@@ -442,7 +442,7 @@ py_test(
 py_test(
     name = "test_ddpg",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
 
