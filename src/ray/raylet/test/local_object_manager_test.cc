@@ -650,6 +650,11 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
+    std::unique_ptr<RayObject> object(
+        new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
+    objects.push_back(std::move(object));
+  }
+  manager.PinObjects(object_ids, std::move(objects));
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // Objects are spilled.
@@ -749,6 +754,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   manager.ProcessSpilledObjectsDeleteQueue(max_batch_size);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   ASSERT_EQ(deleted_urls_size, max_batch_size);
+}
 
 TEST_F(LocalObjectManagerTest,
        TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill) {
@@ -768,7 +774,6 @@ TEST_F(LocalObjectManagerTest,
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
     total_size += object_size;
-
     std::unique_ptr<RayObject> object(
         new RayObject(data_buffer, nullptr, std::vector<ObjectID>()));
     objects.push_back(std::move(object));
