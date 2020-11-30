@@ -217,7 +217,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
     rpc_service_.post([this, object_id, client_id, rpc_client]() {
       rpc::PullRequest pull_request;
       pull_request.set_object_id(object_id.Binary());
-      pull_request.set_client_id(self_node_id_.Binary());
+      pull_request.set_node_id(self_node_id_.Binary());
 
       rpc_client->Pull(pull_request, [object_id, client_id](const Status &status,
                                                             const rpc::PullReply &reply) {

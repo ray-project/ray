@@ -171,14 +171,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Send pull request
   ///
   /// \param object_id Object id
-<<<<<<< HEAD
   /// \param client_id Remote server client id
   void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
-=======
-  /// \param node_id Remote server node id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &node_id,
-                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
->>>>>>> b85c6abc3eb4fdd330acc4fbb033275dc933c268
 
   /// Get the rpc client according to the node ID
   ///
@@ -289,16 +283,6 @@ class ObjectManager : public ObjectManagerInterface,
  private:
   friend class TestObjectManager;
 
-<<<<<<< HEAD
-=======
-  struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), node_locations() {}
-    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
-    bool timer_set;
-    std::vector<NodeID> node_locations;
-  };
-
->>>>>>> b85c6abc3eb4fdd330acc4fbb033275dc933c268
   struct WaitState {
     WaitState(boost::asio::io_service &service, int64_t timeout_ms,
               const WaitCallback &callback)

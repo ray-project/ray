@@ -84,7 +84,7 @@ class PullManager {
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
     std::vector<NodeID> client_locations;
-  }
+  };
 
   /// See the constructor's arguments.
   NodeID self_node_id_;

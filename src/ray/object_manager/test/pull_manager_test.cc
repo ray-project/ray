@@ -36,9 +36,9 @@ class PullManagerTest : public ::testing::Test {
 TEST_F(PullManagerTest, TestStaleSubscription) {
   ObjectID obj1 = ObjectID::FromRandom();
   rpc::Address addr1;
-  ASSERT_EQ(pull_manager_.NumRequests(), 0);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
   pull_manager_.Pull(obj1, addr1);
-  ASSERT_EQ(pull_manager_.NumRequests(), 1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
   const std::unordered_set<NodeID> client_ids;
   pull_manager_.OnLocationChange(ObjectID::FromRandom(), client_ids, "");
@@ -46,15 +46,15 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
-  ASSERT_EQ(pull_manager_.NumRequests(), 0);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 }
 
 TEST_F(PullManagerTest, TestBasic) {
   ObjectID obj1 = ObjectID::FromRandom();
   rpc::Address addr1;
-  ASSERT_EQ(pull_manager_.NumRequests(), 0);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
   pull_manager_.Pull(obj1, addr1);
-  ASSERT_EQ(pull_manager_.NumRequests(), 1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -63,7 +63,7 @@ TEST_F(PullManagerTest, TestBasic) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
-  ASSERT_EQ(pull_manager_.NumRequests(), 0);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 }
 
 }  // namespace ray
