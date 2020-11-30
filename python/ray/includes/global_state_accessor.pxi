@@ -147,3 +147,11 @@ cdef class GlobalStateAccessor:
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
+
+    def wait_placement_group_ready(self, placement_group_id, timeout_ms):
+        cdef c_bool result
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        with nogil:
+            result = self.inner.get().WaitPlacementGroupReady(cplacement_group_id, timeout_ms)
+        return result
