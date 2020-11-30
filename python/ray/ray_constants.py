@@ -178,6 +178,11 @@ WORKER_PROCESS_TYPE_RESTORE_WORKER = (
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
+# The object metadata field uses the following format: It is a comma
+# separated list of fields. The first field is mandatory and is the
+# type of the object (see types below) or an integer, which is interpreted
+# as an error value.
+
 # A constant used as object metadata to indicate the object is cross language.
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 # A constant used as object metadata to indicate the object is python specific.
@@ -207,3 +212,6 @@ MACH_PAGE_SIZE_BYTES = 4096
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
 MAX_INT64_VALUE = 9223372036854775807
+
+# Object Spilling related constants
+DEFAULT_OBJECT_PREFIX = "ray_spilled_object"

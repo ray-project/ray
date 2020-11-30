@@ -176,7 +176,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
  private:
-  /// Methods for handling clients.
+  /// Methods for handling nodes.
 
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
@@ -195,21 +195,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void NodeRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
-  /// \param client_id ID of the node that created or updated resources.
+  /// \param node_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const NodeID &client_id,
+  void ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
-  /// \param client_id ID of the node that deleted resources.
+  /// \param node_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const NodeID &client_id,
+  void ResourceDeleted(const NodeID &node_id,
                        const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
-  /// This is called whenever there's an update to the resources on the local client.
+  /// This is called whenever there's an update to the resources on the local node.
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
@@ -726,9 +726,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t last_heartbeat_at_ms_;
   /// Only the changed part will be included in heartbeat if this is true.
   const bool light_heartbeat_enabled_;
-  /// Cache which stores resources in last heartbeat used to check if they are changed.
-  /// Used by light heartbeat.
-  SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -817,7 +814,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
-  /// Cache for the ClientTable in the GCS.
+  /// Cache for the NodeTable in the GCS.
   absl::flat_hash_set<NodeID> failed_nodes_cache_;
 
   /// Concurrency for the following map
