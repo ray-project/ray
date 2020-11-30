@@ -401,6 +401,20 @@ def test_delete_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+            "min_spilling_size": 0,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -443,6 +457,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
                     "directory_path": str(temp_folder)
                 }
             }),
+            "min_spilling_size": 0,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
