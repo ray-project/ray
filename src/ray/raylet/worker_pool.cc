@@ -913,6 +913,41 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   return worker;
 }
 
+void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
+                                 int64_t backlog_size) {
+  // Code path of task that needs a dedicated worker: an actor creation task with
+  // dynamic worker options, or any task with environment variable overrides.
+  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+      task_spec.OverrideEnvironmentVariables().size() > 0) {
+    return;  // Not handled.
+  }
+
+  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  // The number of available workers that can be used for this task spec.
+  int num_usable_workers = state.idle.size();
+  for (auto &entry : state.starting_worker_processes) {
+    num_usable_workers += entry.second;
+  }
+  // The number of workers total regardless of suitability for this task.
+  int num_workers_total = 0;
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    if (!worker->IsDead()) {
+      num_workers_total++;
+    }
+  }
+  auto desired_usable_workers =
+      std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
+  if (num_usable_workers < desired_usable_workers) {
+    int64_t num_needed = desired_usable_workers - num_usable_workers;
+    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
+                   << backlog_size << " and soft limit " << num_workers_soft_limit_;
+    for (int i = 0; i < num_needed; i++) {
+      StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                         task_spec.JobId());
+    }
+  }
+}
+
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));

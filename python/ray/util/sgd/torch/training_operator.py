@@ -777,7 +777,14 @@ class TrainingOperator:
                  lightning_module_cls,
                  train_dataloader=None,
                  val_dataloader=None):
-        """Creates a TrainingOperator from a Pytorch Lightning Module.
+        """Create a custom TrainingOperator class from a LightningModule.
+
+        .. code-block:: python
+
+            MyLightningOperator = TrainingOperator.from_ptl(
+                MyLightningModule)
+            trainer = TorchTrainer(training_operator_cls=MyLightningOperator,
+                ...)
 
         Args:
             lightning_module_cls: Your LightningModule class. An object of
@@ -793,7 +800,7 @@ class TrainingOperator:
             A TrainingOperator class properly configured given the
             LightningModule.
         """
-        from ray.util.sgd.torch.ptl_operator import LightningOperator
+        from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):
             _lightning_module_cls = lightning_module_cls
@@ -810,11 +817,19 @@ class TrainingOperator:
                       loss_creator=None,
                       scheduler_creator=None,
                       serialize_data_creation=True):
-        """A utility method to create a custom TrainingOperator class from
-        creator functions. This is useful for backwards compatibility with
+        """Create a custom TrainingOperator class from creator functions.
+
+        This method is useful for backwards compatibility with
         previous versions of Ray. To provide custom training and validation,
         you should subclass the class that is returned by this method instead
         of ``TrainingOperator``.
+
+        .. code-block:: python
+
+            MyCreatorOperator = TrainingOperator.from_creators(
+                model_creator, optimizer_creator)
+            trainer = TorchTrainer(training_operator_cls=MyCreatorOperator,
+                ...)
 
         Args:
             model_creator (dict -> Model(s)): Constructor function that takes
@@ -853,8 +868,8 @@ class TrainingOperator:
                 system). Defaults to True.
 
         Returns:
-            A TrainingOperator class with a ``setup`` method that utilizes
-            the passed in creator functions.
+            A CreatorOperator class- a subclass of TrainingOperator with a
+            ``setup`` method that utilizes the passed in creator functions.
         """
 
         if not (callable(model_creator) and callable(optimizer_creator)):
@@ -929,8 +944,21 @@ class TrainingOperator:
 
 
 class CreatorOperator(TrainingOperator):
-    """A subclass of TrainingOperator specifically for defining training
-    state using creator functions.
+    """A subclass of TrainingOperator with training defined by creator funcs.
+
+    This class allows for backwards compatibility with pre Ray 1.0 versions.
+
+    This class is returned by `TrainingOperator.from_creators(...)`. If you
+    need to add custom functionality, you should subclass this class,
+    implement the appropriate methods and pass the subclass into
+    `TorchTrainer`.
+
+    .. code-block:: python
+
+        MyCreatorOperator = TrainingOperator.from_creators(
+            model_creator, optimizer_creator)
+        trainer = TorchTrainer(training_operator_cls=MyCreatorOperator,
+            ...)
     """
 
     def _validate_loaders(self, loaders):

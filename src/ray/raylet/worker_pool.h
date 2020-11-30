@@ -249,6 +249,14 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// such worker exists.
   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec);
 
+  /// Try to prestart a number of workers suitable the given task spec. Prestarting
+  /// is needed since core workers request one lease at a time, if starting is slow,
+  /// then it means it takes a long time to scale up when multi-tenancy is on.
+  ///
+  /// \param task_spec The returned worker must be able to execute this task.
+  /// \param backlog_size The number of tasks in the client backlog of this shape.
+  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
+
   /// Return the current size of the worker pool for the requested language. Counts only
   /// idle workers.
   ///

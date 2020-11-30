@@ -81,7 +81,7 @@ class SampleBatch:
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = len(self.data[k])
+            self.count = len(next(iter(self.data.values())))
 
         # Keeps track of new columns added after initial ones.
         self.new_columns = []

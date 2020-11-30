@@ -139,7 +139,8 @@ struct CoreWorkerOptions {
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
   /// Application-language callback to restore objects from external storage.
-  std::function<void(const std::vector<std::string> &)> restore_spilled_objects;
+  std::function<void(const std::vector<ObjectID> &, const std::vector<std::string> &)>
+      restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
       delete_spilled_objects;

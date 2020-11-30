@@ -9,13 +9,16 @@ import numpy as np
 import pytest
 import psutil
 import ray
+from ray.external_storage import (create_url_with_offset,
+                                  parse_url_with_offset)
 from ray.test_utils import wait_for_condition
 
 bucket_name = "object-spilling-test"
+spill_local_path = "/tmp/spill"
 file_system_object_spilling_config = {
     "type": "filesystem",
     "params": {
-        "directory_path": "/tmp"
+        "directory_path": spill_local_path
     }
 }
 smart_open_object_spilling_config = {
@@ -109,6 +112,17 @@ def test_invalid_config_raises_exception(shutdown_only):
         })
 
 
+def test_url_generation_and_parse():
+    url = "s3://abc/def/ray_good"
+    offset = 10
+    size = 30
+    url_with_offset = create_url_with_offset(url=url, offset=offset, size=size)
+    parsed_result = parse_url_with_offset(url_with_offset)
+    assert parsed_result.base_url == url
+    assert parsed_result.offset == offset
+    assert parsed_result.size == size
+
+
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_objects_manually(object_spilling_config, shutdown_only):
@@ -120,6 +134,7 @@ def test_spill_objects_manually(object_spilling_config, shutdown_only):
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
             "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -180,6 +195,7 @@ def test_spill_objects_manually_from_workers(object_spilling_config,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
             "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0,
         })
 
     @ray.remote
@@ -210,6 +226,7 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
             "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
             "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0,
         })
     arrays = [np.random.rand(100 * 1024) for _ in range(50)]
     objects = [ray.put(arr) for arr in arrays]
@@ -241,6 +258,7 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
                     "directory_path": "/tmp"
                 }
             }),
+            "min_spilling_size": 0,
         },
     }],
     indirect=True)
@@ -279,6 +297,7 @@ def test_spill_remote_object(ray_start_cluster_head):
 def test_spill_objects_automatically(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     ray.init(
+        num_cpus=1,
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
@@ -286,27 +305,30 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0
         })
-    arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
-
-    # Wait raylet for starting an IO worker.
-    time.sleep(1)
+    solution_buffer = []
+    buffer_length = 100
 
     # Create objects of more than 800 MiB.
-    for _ in range(100):
+    for _ in range(buffer_length):
         ref = None
         while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
             ref = ray.put(arr)
             replay_buffer.append(ref)
+            solution_buffer.append(arr)
 
     print("-----------------------------------")
-
     # randomly sample objects
     for _ in range(1000):
-        ref = random.choice(replay_buffer)
+        index = random.choice(list(range(buffer_length)))
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
-        assert np.array_equal(sample, arr)
+        assert np.array_equal(sample, solution)
 
 
 @pytest.mark.skipif(
@@ -322,6 +344,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
             "automatic_object_spilling_enabled": True,
             "max_io_workers": 2,
             "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0,
         },
     )
 
@@ -353,12 +376,10 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
+            "min_spilling_size": 0,
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
-
-    # Wait raylet for starting an IO worker.
-    time.sleep(1)
 
     # Create objects of more than 400 MiB.
     for _ in range(50):
@@ -380,19 +401,6 @@ def test_delete_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    ray.init(
-        object_store_memory=75 * 1024 * 1024,
-        _system_config={
-            "max_io_workers": 4,
-            "automatic_object_spilling_enabled": True,
-            "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
-            "object_spilling_config": json.dumps({
-                "type": "filesystem",
-                "params": {
-                    "directory_path": str(temp_folder)
-                }
-            }),
         })
     arr = np.random.rand(1024 * 1024)  # 8 MB data
     replay_buffer = []
@@ -464,6 +472,60 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
     del replay_buffer
     del ref
     wait_for_condition(is_dir_empty, timeout=1000)
+
+
+def test_fusion_objects(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    min_spilling_size = 30 * 1024 * 1024
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+            "min_spilling_size": min_spilling_size,
+        })
+    replay_buffer = []
+    solution_buffer = []
+    buffer_length = 100
+
+    # Create objects of more than 800 MiB.
+    for _ in range(buffer_length):
+        ref = None
+        while ref is None:
+            multiplier = random.choice([1, 2, 3])
+            arr = np.random.rand(multiplier * 1024 * 1024)
+            ref = ray.put(arr)
+            replay_buffer.append(ref)
+            solution_buffer.append(arr)
+
+    print("-----------------------------------")
+    # randomly sample objects
+    for _ in range(1000):
+        index = random.choice(list(range(buffer_length)))
+        ref = replay_buffer[index]
+        solution = solution_buffer[index]
+        sample = ray.get(ref, timeout=0)
+        assert np.array_equal(sample, solution)
+
+    is_test_passing = False
+    for path in temp_folder.iterdir():
+        file_size = path.stat().st_size
+        # Make sure there are at least one
+        # file_size that exceeds the min_spilling_size.
+        # If we don't fusion correctly, this cannot happen.
+        if file_size >= min_spilling_size:
+            is_test_passing = True
+    assert is_test_passing
 
 
 if __name__ == "__main__":
