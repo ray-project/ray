@@ -70,7 +70,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None):
+    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
         logger.info("schedule: %s %s" %
                     (task.name,
                      ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
@@ -85,7 +85,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 "Unimplemented Schedule task type: %s" %
                 ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
 
-    def _schedule_method(self, task, context=None):
+    def _schedule_method(self, task: ray_client_pb2.ClientTask,
+                         context=None) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
@@ -96,14 +97,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             self.object_refs[output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
-    def _schedule_actor(self, task, context=None):
+    def _schedule_actor(self, task: ray_client_pb2.ClientTask,
+                        context=None) -> ray_client_pb2.ClientTaskTicket:
         with stash_api_for_tests(self._test_mode):
             if task.payload_id not in self.registered_actor_classes:
                 actor_class_ref = self.object_refs[task.payload_id]
                 actor_class = ray.get(actor_class_ref)
                 if not inspect.isclass(actor_class):
                     raise Exception("Attempting to schedule actor that "
-                                    "isn't a ClientActorClass")
+                                    "isn't a ClientActorClass.")
                 reg_class = ray.remote(actor_class)
                 self.registered_actor_classes[task.payload_id] = reg_class
             remote_class = self.registered_actor_classes[task.payload_id]
@@ -113,13 +115,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             self.actor_refs[actor_ref.binary()] = actor
         return ray_client_pb2.ClientTaskTicket(return_id=actor_ref.binary())
 
-    def _schedule_function(self, task, context=None):
+    def _schedule_function(self, task: ray_client_pb2.ClientTask,
+                           context=None) -> ray_client_pb2.ClientTaskTicket:
         if task.payload_id not in self.function_refs:
             funcref = self.object_refs[task.payload_id]
             func = ray.get(funcref)
             if not isinstance(func, ClientRemoteFunc):
                 raise Exception("Attempting to schedule function that "
-                                "isn't a ClientRemoteFunc")
+                                "isn't a ClientRemoteFunc.")
             self.function_refs[task.payload_id] = func
         remote_func = self.function_refs[task.payload_id]
         arglist = _convert_args(task.args)
