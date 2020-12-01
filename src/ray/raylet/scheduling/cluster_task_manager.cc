@@ -366,12 +366,11 @@ void ClusterTaskManager::CommitPGBundle(BundleSpecification &bundle_spec) {
   for (const auto &resource : bundle_spec.GetRequiredResources().GetResourceMap()) {
     const auto &orig_name = resource.first;
     const auto &formatted_name = FormatPlacementGroupResource(orig_name, bundle_spec);
-    const auto &wildcard_name = FormatPlacementGroupResource(orig_name, bundle_spec);
+    const auto &wildcard_name = FormatPlacementGroupResource(orig_name, bundle_spec.PlacementGroupId(), -1);
     double quantity = resource.second;
     cluster_resource_scheduler_->AddLocalResource(formatted_name, quantity);
     cluster_resource_scheduler_->AddLocalResource(wildcard_name, quantity);
   }
-  RAY_LOG(ERROR) << "Added resources. Now: " << cluster_resource_scheduler_->DebugString();
 }
 
 

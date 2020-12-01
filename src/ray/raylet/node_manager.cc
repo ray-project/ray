@@ -1702,7 +1702,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     backlog_size = request.backlog_size();
   }
   Task task(task_message, backlog_size);
-  RAY_LOG(ERROR) << "Lease request received: " << task.DebugString();
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
@@ -1824,7 +1823,6 @@ void NodeManager::HandleCommitBundleResources(
   if (new_scheduler_enabled_) {
     cluster_task_manager_->CommitPGBundle(bundle_spec);
     send_reply_callback(Status::OK(), nullptr, nullptr);
-    RAY_LOG(ERROR) << "Committed " << bundle_spec.DebugString();
     // Schedule in case a lease request for this placement group arrived before the commit message.
     ScheduleAndDispatch();
   } else {

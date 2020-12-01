@@ -209,7 +209,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
 
 void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
     const std::shared_ptr<GcsPlacementGroup> &placement_group) {
-  RAY_LOG(ERROR) << "Successfully created placement group " << placement_group->GetName()
+  RAY_LOG(INFO) << "Successfully created placement group " << placement_group->GetName()
                 << ", id: " << placement_group->GetPlacementGroupID();
   placement_group->UpdateState(rpc::PlacementGroupTableData::CREATED);
   auto placement_group_id = placement_group->GetPlacementGroupID();
