@@ -73,7 +73,6 @@ from ray.includes.common cimport (
 )
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorCheckpointID,
     CObjectID,
     CNodeID,
     CPlacementGroupID,
@@ -357,11 +356,6 @@ cdef execute_task(
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
-        worker.actor_checkpoint_info[actor_id] = (
-            ray.worker.ActorCheckpointInfo(
-                num_tasks_since_last_checkpoint=0,
-                last_checkpoint_timestamp=int(1000 * time.time()),
-                checkpoint_ids=[]))
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -1469,26 +1463,6 @@ cdef class CoreWorker:
         check_status(CCoreWorkerProcess.GetCoreWorker().PushError(
             job_id.native(), error_type.encode("ascii"),
             error_message.encode("ascii"), timestamp))
-
-    def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef:
-            CActorCheckpointID checkpoint_id
-            CActorID c_actor_id = actor_id.native()
-
-        # PrepareActorCheckpoint will wait for raylet's reply, release
-        # the GIL so other Python threads can run.
-        with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker()
-                .PrepareActorCheckpoint(c_actor_id, &checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.Binary())
-
-    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
-                                             ActorCheckpointID checkpoint_id):
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker()
-            .NotifyActorResumedFromCheckpoint(
-                actor_id.native(), checkpoint_id.native()))
 
     def set_resource(self, basestring resource_name,
                      double capacity, NodeID client_id):
