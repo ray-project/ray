@@ -48,11 +48,11 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   log_based_actor_table_.reset(new LogBasedActorTable({primary_context}, this));
   actor_table_.reset(new ActorTable({primary_context}, this));
 
-  // TODO(micafan) Modify ClientTable' Constructor(remove NodeID) in future.
+  // TODO(micafan) Modify NodeTable' Constructor(remove NodeID) in future.
   // We will use NodeID instead of NodeID.
   // For worker/driver, it might not have this field(NodeID).
   // For raylet, NodeID should be initialized in raylet layer(not here).
-  client_table_.reset(new ClientTable({primary_context}, this));
+  node_table_.reset(new NodeTable({primary_context}, this));
 
   job_table_.reset(new JobTable({primary_context}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
@@ -101,7 +101,7 @@ std::string RedisGcsClient::DebugString() const {
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
   result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
   result << "\n- ProfileTable: " << profile_table_->DebugString();
-  result << "\n- ClientTable: " << client_table_->DebugString();
+  result << "\n- NodeTable: " << node_table_->DebugString();
   result << "\n- JobTable: " << job_table_->DebugString();
   return result.str();
 }
@@ -124,7 +124,7 @@ TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
 
 TaskLeaseTable &RedisGcsClient::task_lease_table() { return *task_lease_table_; }
 
-ClientTable &RedisGcsClient::client_table() { return *client_table_; }
+NodeTable &RedisGcsClient::node_table() { return *node_table_; }
 
 HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 

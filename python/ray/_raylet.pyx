@@ -291,13 +291,14 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
+            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
-                if metadata not in [
+                if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
-                        metadata, language))
+                        metadata_fields[0], language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectRefs are spilled to

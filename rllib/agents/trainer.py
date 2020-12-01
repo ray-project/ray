@@ -553,11 +553,22 @@ class Trainer(Trainable):
             elif "." in env:
                 self.env_creator = \
                     lambda env_context: from_config(env, env_context)
-            # Try gym.
+            # Try gym/PyBullet.
             else:
-                import gym  # soft dependency
-                self.env_creator = \
-                    lambda env_context: gym.make(env, **env_context)
+
+                def _creator(env_context):
+                    import gym
+                    # Allow for PyBullet envs to be used as well (via string).
+                    # This allows for doing things like
+                    # `env=CartPoleContinuousBulletEnv-v0`.
+                    try:
+                        import pybullet_envs
+                        pybullet_envs.getList()
+                    except (ModuleNotFoundError, ImportError):
+                        pass
+                    return gym.make(env, **env_context)
+
+                self.env_creator = _creator
         else:
             self.env_creator = lambda env_config: None
 

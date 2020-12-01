@@ -266,8 +266,8 @@ table SetResourceRequest {
   resource_name: string;
   // Capacity of the resource to be set.
   capacity: double;
-  // Client ID where this resource will be set.
-  client_id: string;
+  // Node ID where this resource will be set.
+  node_id: string;
 }
 
 table SubscribePlasmaReady {

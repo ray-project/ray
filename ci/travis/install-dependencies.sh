@@ -283,7 +283,7 @@ install_dependencies() {
     fi
   fi
 
-  # Additional RLlib dependencies.
+  # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
     # install the following packages for testing on travis only
@@ -315,7 +315,7 @@ install_dependencies() {
       *) TORCHVISION_VERSION=0.5.0;;
     esac
 
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+    pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
   fi

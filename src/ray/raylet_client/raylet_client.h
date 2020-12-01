@@ -317,10 +317,10 @@ class RayletClient : public PinObjectsInterface,
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id NodeID where the resource is to be set
+  /// \param node_id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &client_Id);
+                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.

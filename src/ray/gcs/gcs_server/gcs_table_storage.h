@@ -227,7 +227,7 @@ class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> &store_client)
       : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::CLIENT);
+    table_name_ = TablePrefix_Name(TablePrefix::NODE);
   }
 };
 
