@@ -29,7 +29,6 @@ atari_py
 dm_tree
 flask
 gym[atari]
-higher
 lz4
 opencv-python-headless==4.3.0.36
 pandas==1.0.5
