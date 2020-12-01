@@ -208,7 +208,7 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
 
 
 def test_worker_capping_fifo(shutdown_only):
-    # Start 2 initial workers by setting num_cpus to 2.
+    # Start 3 initial workers by setting num_cpus to 3.
     info = ray.init(num_cpus=3)
     wait_for_condition(lambda: len(get_workers()) == 3)
 
