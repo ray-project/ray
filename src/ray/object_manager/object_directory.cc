@@ -56,7 +56,7 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
       }
     }
   }
-  // Filter out the removed clients from the object locations.
+  // Filter out the removed nodes from the object locations.
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
       it = node_ids->erase(it);
@@ -71,29 +71,29 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
 }  // namespace
 
 ray::Status ObjectDirectory::ReportObjectAdded(
-    const ObjectID &object_id, const NodeID &client_id,
+    const ObjectID &object_id, const NodeID &node_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   ray::Status status =
-      gcs_client_->Objects().AsyncAddLocation(object_id, client_id, nullptr);
+      gcs_client_->Objects().AsyncAddLocation(object_id, node_id, nullptr);
   return status;
 }
 
 ray::Status ObjectDirectory::ReportObjectRemoved(
-    const ObjectID &object_id, const NodeID &client_id,
+    const ObjectID &object_id, const NodeID &node_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   ray::Status status =
-      gcs_client_->Objects().AsyncRemoveLocation(object_id, client_id, nullptr);
+      gcs_client_->Objects().AsyncRemoveLocation(object_id, node_id, nullptr);
   return status;
 };
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  auto node_info = gcs_client_->Nodes().Get(connection_info.client_id);
+  auto node_info = gcs_client_->Nodes().Get(connection_info.node_id);
   if (node_info) {
     NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
-    RAY_CHECK(result_node_id == connection_info.client_id);
+    RAY_CHECK(result_node_id == connection_info.node_id);
     connection_info.ip = node_info->node_manager_address();
     connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
   }
@@ -105,18 +105,18 @@ std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() 
   for (const auto &item : node_map) {
     RemoteConnectionInfo info(item.first);
     LookupRemoteConnectionInfo(info);
-    if (info.Connected() && info.client_id != gcs_client_->Nodes().GetSelfId()) {
+    if (info.Connected() && info.node_id != gcs_client_->Nodes().GetSelfId()) {
       remote_connections.push_back(info);
     }
   }
   return remote_connections;
 }
 
-void ObjectDirectory::HandleClientRemoved(const NodeID &client_id) {
+void ObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &listener : listeners_) {
     const ObjectID &object_id = listener.first;
-    if (listener.second.current_object_locations.count(client_id) > 0) {
-      // If the subscribed object has the removed client as a location, update
+    if (listener.second.current_object_locations.count(node_id) > 0) {
+      // If the subscribed object has the removed node as a location, update
       // its locations with an empty update so that the location will be removed.
       UpdateObjectLocations({}, gcs_client_, &listener.second.current_object_locations,
                             &listener.second.spilled_url);

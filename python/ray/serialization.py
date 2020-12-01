@@ -26,7 +26,6 @@ from ray._raylet import (
     MessagePackSerializedObject,
     RawSerializedObject,
 )
-from ray import serialization_addons
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +155,6 @@ class SerializationContext:
         # Because objects have default __reduce__ method, we only need to
         # treat ObjectRef specifically.
         self._register_cloudpickle_reducer(ray.ObjectRef, object_ref_reducer)
-        serialization_addons.apply(self)
 
     def _register_cloudpickle_reducer(self, cls, reducer):
         pickle.CloudPickler.dispatch[cls] = reducer
@@ -221,10 +219,10 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata):
+    def _deserialize_msgpack_data(self, data, metadata_fields):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
+        if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
@@ -242,23 +240,25 @@ class SerializationContext:
 
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
-            if metadata in [
+            metadata_fields = metadata.split(b",")
+            if metadata_fields[0] in [
                     ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                     ray_constants.OBJECT_METADATA_TYPE_PYTHON
             ]:
-                return self._deserialize_msgpack_data(data, metadata)
+                return self._deserialize_msgpack_data(data, metadata_fields)
             # Check if the object should be returned as raw bytes.
-            if metadata == ray_constants.OBJECT_METADATA_TYPE_RAW:
+            if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            elif metadata == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(data, metadata)
+            elif metadata_fields[
+                    0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return actor_handle_deserializer(obj)
             # Otherwise, return an exception object based on
             # the error type.
             try:
-                error_type = int(metadata)
+                error_type = int(metadata_fields[0])
             except Exception:
                 raise Exception(f"Can't deserialize object: {object_ref}, "
                                 f"metadata: {metadata}")
@@ -267,7 +267,7 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(data, metadata)
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()

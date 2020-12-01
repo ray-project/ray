@@ -204,7 +204,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   // Report heartbeat first time.
   std::promise<bool> promise1;
   auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_client_id(node_table_data->node_id());
+  heartbeat1->set_node_id(node_table_data->node_id());
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
       heartbeat1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
   WaitReady(promise1.get_future(), timeout_ms_);
@@ -216,7 +216,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   // Report heartbeat with resources changed.
   std::promise<bool> promise2;
   auto heartbeat2 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat2->set_client_id(node_table_data->node_id());
+  heartbeat2->set_node_id(node_table_data->node_id());
   (*heartbeat2->mutable_resources_total())["CPU"] = 1;
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
   heartbeat2->set_resources_available_changed(true);
@@ -238,7 +238,7 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   // Report heartbeat with resources unchanged. (Only works with light heartbeat enabled)
   std::promise<bool> promise3;
   auto heartbeat3 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat3->set_client_id(node_table_data->node_id());
+  heartbeat3->set_node_id(node_table_data->node_id());
   (*heartbeat3->mutable_resources_available())["CPU"] = 1;
   (*heartbeat3->mutable_resources_available())["GPU"] = 6;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
@@ -260,8 +260,8 @@ TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
-    auto client_id = NodeID::FromRandom();
-    auto profile_table_data = Mocker::GenProfileTableData(client_id);
+    auto node_id = NodeID::FromRandom();
+    auto profile_table_data = Mocker::GenProfileTableData(node_id);
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
         profile_table_data,
