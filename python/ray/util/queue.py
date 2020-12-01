@@ -12,7 +12,11 @@ class Full(Exception):
 
 
 class Queue:
-    """Queue implementation on Ray.
+    """A first-in, first-out queue implementation on Ray.  The behavior and use
+    cases are similar to those of the asyncio.Queue class.
+
+    Features both sync and async put and get methods, optional blocking, and
+    batching.
 
     Args:
         maxsize (int): maximum size of the queue. If zero, size is unbounded.
