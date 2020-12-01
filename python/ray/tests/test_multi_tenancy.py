@@ -36,7 +36,7 @@ def test_initial_workers(shutdown_only):
     wait_for_condition(lambda: len(get_workers()) == 1)
 
 
-# This test case starts some driver processes. Each driver process submits
+# This test case starts some driver processes. Each driver process submit
 # some tasks and collect the PIDs of the workers used by the driver. The
 # drivers output the PID list which will be read by the test case itself. The
 # test case will compare the PIDs used by different drivers and make sure that
