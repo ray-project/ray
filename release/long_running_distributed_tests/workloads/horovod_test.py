@@ -31,13 +31,12 @@ CIFAR10_STATS = {
     'std': (0.2023, 0.1994, 0.2010),
 }
 
-
 def train(config):
     import torch
     import horovod.torch as hvd
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = ResNet18().to(device)
+    net = ResNet18(None).to(device)
     optimizer = torch.optim.SGD(
         net.parameters(),
         lr=config["lr"],
@@ -51,19 +50,7 @@ def train(config):
     hvd.broadcast_parameters(net.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(CIFAR10_STATS["mean"], CIFAR10_STATS["std"]),
-    ])  # meanstd transformation
-
-    trainset = torchvision.datasets.CIFAR10(
-        root="/tmp/data_cifar",
-        train=True,
-        download=False,
-        transform=transform_train)
-
+    trainset = ray.get(config["data"])
     trainloader = torch.utils.data.DataLoader(
         trainset,
         batch_size=int(config["batch_size"]),
@@ -106,17 +93,34 @@ if __name__ == "__main__":
         train,
         use_gpu=True,
         num_hosts=1 if args.smoke_test else 2,
-        num_slots=2 if args.smoke_test else 4,
+        num_slots=2 if args.smoke_test else 2,
         replicate_pem=False)
+
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(CIFAR10_STATS["mean"], CIFAR10_STATS["std"]),
+    ])  # meanstd transformation
+
+    dataset = torchvision.datasets.CIFAR10(
+        root="/tmp/data_cifar",
+        train=True,
+        download=True,
+        transform=transform_train)
+
     analysis = tune.run(
         horovod_trainable,
         metric="loss",
         mode="min",
         config={
             "lr": tune.grid_search([0.1 * i for i in range(1, 10)]),
-            "batch_size": 64
+            "batch_size": 64,
+            "data": ray.put(dataset)
         },
         num_samples=1,
-        max_retries=-1,
-        callbacks=[FailureInjectorCallback()])
+        fail_fast=True
+        # max_retries=-1
+    )
+        # callbacks=[FailureInjectorCallback()])
     print("Best hyperparameters found were: ", analysis.best_config)
