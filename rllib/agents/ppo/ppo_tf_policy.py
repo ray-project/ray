@@ -335,7 +335,7 @@ class ValueNetworkMixin:
         else:
 
             @make_tf_callable(self.get_session())
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return tf.constant(0.0)
 
         self._value = value
