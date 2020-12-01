@@ -1,38 +1,32 @@
 import argparse
 import torch
 import torch.nn as nn
+import os
 import numpy as np
 import torchvision
 from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR10
 
 import torchvision.transforms as transforms
 
 import ray
 from ray import tune
-from ray.tune.utils.mock import FailureInjectorCallback
-from ray.tune.integration.horovod import DistributedTrainableCreator
+from ray.tune.integration.horovod import (DistributedTrainableCreator,
+                                          distributed_checkpoint_dir)
 from ray.util.sgd.torch.resnet import ResNet18
-import time
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--mode", type=str, default="square", choices=["square", "cubic"])
-parser.add_argument(
-    "--learning_rate", type=float, default=0.1, dest="learning_rate")
-parser.add_argument("--x_max", type=float, default=1., dest="x_max")
 parser.add_argument("--gpu", action="store_true")
 parser.add_argument(
     "--smoke-test", action="store_true", help=("Finish quickly for testing."))
 args = parser.parse_args()
 
 CIFAR10_STATS = {
-    'mean': (0.4914, 0.4822, 0.4465),
-    'std': (0.2023, 0.1994, 0.2010),
+    "mean": (0.4914, 0.4822, 0.4465),
+    "std": (0.2023, 0.1994, 0.2010),
 }
 
-def train(config):
-    import torch
+
+def train(config, checkpoint_dir=None):
     import horovod.torch as hvd
     hvd.init()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -41,9 +35,17 @@ def train(config):
         net.parameters(),
         lr=config["lr"],
     )
+    epoch = 0
+
+    if checkpoint_dir:
+        with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+            model_state, optimizer_state, epoch = torch.load(f)
+
+        net.load_state_dict(model_state)
+        optimizer.load_state_dict(optimizer_state)
+
     criterion = nn.CrossEntropyLoss()
     optimizer = hvd.DistributedOptimizer(optimizer)
-    num_steps = 5
     np.random.seed(1 + hvd.rank())
     torch.manual_seed(1234)
     # To ensure consistent initialization across slots,
@@ -51,16 +53,16 @@ def train(config):
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
     trainset = ray.get(config["data"])
-    trainloader = torch.utils.data.DataLoader(
+    trainloader = DataLoader(
         trainset,
         batch_size=int(config["batch_size"]),
         shuffle=True,
         num_workers=4)
 
-    for epoch in range(40):  # loop over the dataset multiple times
+    for epoch in range(epoch, 40):  # loop over the dataset multiple times
         running_loss = 0.0
         epoch_steps = 0
-        for i, data in enumerate(trainloader, 0):
+        for i, data in enumerate(trainloader):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
             inputs, labels = inputs.to(device), labels.to(device)
@@ -81,6 +83,13 @@ def train(config):
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1,
                                                 running_loss / epoch_steps))
+
+            if epoch % 3 == 0:
+                with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    torch.save(
+                        (net.state_dict(), optimizer.state_dict(), epoch),
+                        path)
 
 
 if __name__ == "__main__":
@@ -122,5 +131,5 @@ if __name__ == "__main__":
         fail_fast=True
         # max_retries=-1
     )
-        # callbacks=[FailureInjectorCallback()])
+    # callbacks=[FailureInjectorCallback()])
     print("Best hyperparameters found were: ", analysis.best_config)

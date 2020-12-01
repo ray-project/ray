@@ -1,7 +1,6 @@
 import argparse
 import numpy as np
 import os
-import random
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
@@ -11,7 +10,6 @@ import torchvision.transforms as transforms
 import ray
 from ray import tune
 from ray.tune import CLIReporter
-from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils.util import merge_dicts
 from ray.tune.utils.mock import FailureInjectorCallback
