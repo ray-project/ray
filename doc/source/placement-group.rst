@@ -65,7 +65,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
   ready, unready = ray.wait([pg.ready()], timeout=0)
 
   # You can look at placement group states using this API.
-  pprint(placement_group_table(pg))
+  print(placement_group_table(pg))
 
 Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
@@ -179,7 +179,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
   gpu_actors = [GPUActor.options(
           placement_group=pg,
           # This is the index from the original list.
-          # The index can be set to -1 to specify any available bundle.
+          # This index is set to -1 by default, which means any available bundle.
           placement_group_bundle_index=0) # Index of gpu_bundle is 0.
       .remote() for _ in range(2)]
 
@@ -187,6 +187,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
   extra_resource_actors = [extra_resource_task.options(
           placement_group=pg,
           # This is the index from the original list.
+          # This index is set to -1 by default, which means any available bundle.
           placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
       .remote() for _ in range(2)]
 
