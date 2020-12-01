@@ -334,6 +334,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_during_get(object_spilling_config, shutdown_only):
+    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     ray.init(
         num_cpus=4,
         object_store_memory=100 * 1024 * 1024,
@@ -362,24 +363,24 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
 
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
-    for x in ids:
-        try:
+    try:
+        for x in ids:
             print(x)
             ray.get(x, timeout=10)
-        except:
+    except:
+        for f in os.listdir('/tmp/ray/session_latest/logs'):
             try:
-                for f in os.listdir('/tmp/ray/session_latest/logs'):
-                    filename = os.path.join('/tmp/ray/session_latest/logs', f)
-                    if not os.path.isfile(filename):
-                        print(filename)
-                        continue
-                    with open(filename, 'r') as file:
-                        print("FILE:", f)
-                        for line in file.readlines():
-                            print(line)
+                filename = os.path.join('/tmp/ray/session_latest/logs', f)
+                if not os.path.isfile(filename):
+                    print(filename)
+                    continue
+                with open(filename, 'r') as file:
+                    print("FILE:", f)
+                    for line in file.readlines():
+                        print(line)
             except:
                 pass
-            assert False
+        assert False
 
 
 @pytest.mark.skipif(

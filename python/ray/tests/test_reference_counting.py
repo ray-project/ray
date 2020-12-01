@@ -167,6 +167,7 @@ def test_dependency_refcounts(ray_start_regular):
 
 
 def test_actor_creation_task(ray_start_regular):
+    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     @ray.remote
     def large_object():
         # This will be spilled to plasma.
@@ -189,8 +190,8 @@ def test_actor_creation_task(ray_start_regular):
     try:
         ray.get(ping, timeout=10)
     except:
-        try:
-            for f in os.listdir('/tmp/ray/session_latest/logs'):
+        for f in os.listdir('/tmp/ray/session_latest/logs'):
+            try:
                 filename = os.path.join('/tmp/ray/session_latest/logs', f)
                 if not os.path.isfile(filename):
                     print(filename)
@@ -199,8 +200,8 @@ def test_actor_creation_task(ray_start_regular):
                     print("FILE:", f)
                     for line in file.readlines():
                         print(line)
-        except:
-            pass
+            except:
+                pass
         assert False
 
 
