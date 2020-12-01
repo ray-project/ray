@@ -1,6 +1,6 @@
 import os
-import time
 import subprocess
+import time
 import unittest
 
 import pytest
