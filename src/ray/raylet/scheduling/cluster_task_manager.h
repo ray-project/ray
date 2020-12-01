@@ -176,7 +176,6 @@ class ClusterTaskManager {
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   NodeInfoGetter get_node_info_;
 
-  // TODO (Alex): Implement fair queuing for these queues
   /// Queue of lease requests that are waiting for resources to become available.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 

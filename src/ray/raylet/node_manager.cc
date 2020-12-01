@@ -1717,6 +1717,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
+  // Prestart optimization is only needed when multi-tenancy is on.
+  if (RayConfig::instance().enable_multi_tenancy() &&
+      RayConfig::instance().enable_worker_prestart()) {
+    auto task_spec = task.GetTaskSpecification();
+    worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
+  }
+
   if (new_scheduler_enabled_) {
     auto task_spec = task.GetTaskSpecification();
     cluster_task_manager_->QueueTask(task, reply, [send_reply_callback]() {
@@ -1797,10 +1804,10 @@ void NodeManager::HandlePrepareBundleResources(
                  << bundle_spec.DebugString();
 
   if (new_scheduler_enabled_) {
-    auto prepared = cluster_task_manager_->PreparePGBundle(bundle_spec);
-    reply->set_success(prepared);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    // We don't need to schedule and dispatch because all we've done so far is allocate resources.
+    cluster_task_manager_->PreparePGBundle(bundle_spec);
+    // We must ScheduleAndDispatch here because a lease request which uses the placement
+    // group could've arrived before the placement group creation itself.
+    ScheduleAndDispatch();
   } else {
     auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
     reply->set_success(prepared);
@@ -1814,25 +1821,17 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
+  RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
 
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
                  << bundle_spec.DebugString();
+  CommitBundle(cluster_resource_map_, bundle_spec);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 
-  if (new_scheduler_enabled_) {
-    cluster_task_manager_->CommitPGBundle(bundle_spec);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    // Schedule in case a lease request for this placement group arrived before the commit message.
-    ScheduleAndDispatch();
-  } else {
-    CommitBundle(cluster_resource_map_, bundle_spec);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-
-    // Call task dispatch to assign work to the new group.
-    TryLocalInfeasibleTaskScheduling();
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
+  // Call task dispatch to assign work to the new group.
+  TryLocalInfeasibleTaskScheduling();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleCancelResourceReserve(
