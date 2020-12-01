@@ -48,7 +48,8 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
-from ray.utils import _random_string, check_oversized_pickle, is_cython
+from ray.utils import _random_string, check_oversized_pickle
+from ray.util.inspect import is_cython
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
