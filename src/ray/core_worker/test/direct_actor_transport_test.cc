@@ -106,14 +106,13 @@ class DirectActorSubmitterTest : public ::testing::Test {
               num_clients_connected_++;
               return worker_client_;
             }),
-            store_, task_finisher_, io_service_) {}
+            store_, task_finisher_) {}
 
   int num_clients_connected_ = 0;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisher> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
-  boost::asio::io_service io_service_;
 };
 
 TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
@@ -365,8 +364,8 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
-  // All tasks will eventually finish. task3 will be finished twice.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(3 + 1);
+  // All tasks will eventually finish.
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(3);
 
   // Tasks 2 will be retried
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _))
@@ -384,9 +383,10 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   submitter_.ConnectActor(actor_id, addr, 1);
   // Upon re-connect, task 2 (failed) and 3 (completed) should be both retried.
   // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
   // Retry task 3 should happen via event loop
-  io_service_.poll();
+  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+
+  // Both task2 and task3 should be submitted.
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   // Finishes all task

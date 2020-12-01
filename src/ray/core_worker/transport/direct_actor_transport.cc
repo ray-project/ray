@@ -167,8 +167,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                 << queue->second.next_task_reply_position;
   queue->second.caller_starts_at = queue->second.next_task_reply_position;
 
-  SendPendingTasks(actor_id);
   ResendOutOfOrderTasks(actor_id);
+  SendPendingTasks(actor_id);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
@@ -261,21 +261,14 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
     return;
   }
   auto &client_queue = it->second;
+  RAY_CHECK(!client_queue.worker_id.empty());
 
   for (const auto &completed_task : client_queue.out_of_order_completed_tasks) {
     // Making a copy here because we are flipping a flag and the original value is
-    // const. NOTE(simon): we have to do this extra copy due to C++11. In C++14, we can
-    // use the init-capture feature:
-    // https://stackoverflow.com/questions/24221061/lambda-capture-list-capturing-objects-member-field-by-value-not-possible-witho
+    // const.
     auto task_spec = completed_task.second;
-    // Calling SubmitTask in event loop to avoid deadlock condition. SubmitTask holds
-    // the mu_ and calls this method, we can't call SubmitTask recursively.
-    io_service_.post([this, task_spec]() mutable {
-      task_spec.GetMutableMessage().set_skip_execution(true);
-      // Call SubmitTask instead of PushActorTask here because we need to re-add the
-      // task to the task queue.
-      RAY_CHECK_OK(SubmitTask(task_spec));
-    });
+    task_spec.GetMutableMessage().set_skip_execution(true);
+    PushActorTask(client_queue, task_spec, /*skip_queue=*/true);
   }
   client_queue.out_of_order_completed_tasks.clear();
 }
@@ -308,10 +301,12 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           Status status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
 
-        // NOTE(simon):Increment the task counter regardless of the status because the
-        // reply for a previously completed task. We are not calling CompletePendingTask
-        // because
-        if (status.ok() || task_skipped) {
+        if (task_skipped) {
+          // NOTE(simon):Increment the task counter regardless of the status because the
+          // reply for a previously completed task. We are not calling CompletePendingTask
+          // because the tasks are pushed directly to the actor, not placed on any queues
+          // in task_finisher_.
+        } else if (status.ok()) {
           task_finisher_->CompletePendingTask(task_id, reply, addr);
         } else {
           bool will_retry = task_finisher_->PendingTaskFailed(
