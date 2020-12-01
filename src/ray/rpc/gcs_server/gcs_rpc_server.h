@@ -200,6 +200,14 @@ class NodeInfoGcsServiceHandler {
                                      GetAllHeartbeatReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
+                                         ReportResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGetResources(const GetResourcesRequest &request,
                                   GetResourcesReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -247,6 +255,8 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllHeartbeat);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
     NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);

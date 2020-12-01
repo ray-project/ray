@@ -299,8 +299,8 @@ class Node:
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
                 env_resources = json.loads(env_string)
-                logger.info(
-                    f"Autosaler overriding resources: {env_resources}.")
+                logger.debug(
+                    f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
@@ -602,38 +602,17 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "log_monitor", unique=True)
         process_info = ray._private.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_file=subprocess.DEVNULL,
+            stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
         ]
-
-    def start_reporter(self):
-        """Start the reporter."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "reporter", unique=True)
-
-        process_info = ray._private.services.start_reporter(
-            self.redis_address,
-            self._ray_params.metrics_agent_port,
-            self._metrics_export_port,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
-        assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
-        if process_info is not None:
-            self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
-                process_info,
-            ]
 
     def start_dashboard(self, require_dashboard):
         """Start the dashboard.
@@ -761,12 +740,11 @@ class Node:
 
     def start_monitor(self):
         """Start the monitor."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            self._logs_dir,
+            stdout_file=subprocess.DEVNULL,
+            stderr_file=subprocess.DEVNULL,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)

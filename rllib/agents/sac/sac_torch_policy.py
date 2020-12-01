@@ -23,6 +23,7 @@ from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.torch_ops import huber_loss
 from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
     TrainerConfigDict
 
@@ -267,11 +268,11 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        0.5 * torch.mean(torch.pow(q_t_selected_target - q_t_selected, 2.0))
+        torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
     ]
     if policy.config["twin_q"]:
-        critic_loss.append(0.5 * torch.mean(
-            torch.pow(q_t_selected_target - twin_q_t_selected, 2.0)))
+        critic_loss.append(
+            torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -488,7 +489,7 @@ SACTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=optimizer_fn,
     validate_spaces=validate_spaces,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,

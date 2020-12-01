@@ -1,4 +1,4 @@
-from typing import Dict, TYPE_CHECKING
+from typing import Dict, Optional, TYPE_CHECKING
 
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
@@ -7,6 +7,7 @@ from ray.rllib.evaluation import MultiAgentEpisode
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import AgentID, PolicyID
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import RolloutWorker
@@ -30,9 +31,13 @@ class DefaultCallbacks:
                 "a class extending rllib.agents.callbacks.DefaultCallbacks")
         self.legacy_callbacks = legacy_callbacks_dict or {}
 
-    def on_episode_start(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_start(self,
+                         *,
+                         worker: "RolloutWorker",
+                         base_env: BaseEnv,
                          policies: Dict[PolicyID, Policy],
-                         episode: MultiAgentEpisode, env_index: int,
+                         episode: MultiAgentEpisode,
+                         env_index: Optional[int] = None,
                          **kwargs) -> None:
         """Callback run on the rollout worker before each episode starts.
 
@@ -46,10 +51,14 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (int): The index of the (vectorized) env, which the
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
                 episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
+
+        if env_index is not None:
+            if log_once("callbacks_env_index_deprecated"):
+                deprecation_warning("env_index", "episode.env_id", error=False)
 
         if self.legacy_callbacks.get("on_episode_start"):
             self.legacy_callbacks["on_episode_start"]({
@@ -58,8 +67,12 @@ class DefaultCallbacks:
                 "episode": episode,
             })
 
-    def on_episode_step(self, *, worker: "RolloutWorker", base_env: BaseEnv,
-                        episode: MultiAgentEpisode, env_index: int,
+    def on_episode_step(self,
+                        *,
+                        worker: "RolloutWorker",
+                        base_env: BaseEnv,
+                        episode: MultiAgentEpisode,
+                        env_index: Optional[int] = None,
                         **kwargs) -> None:
         """Runs on each episode step.
 
@@ -71,10 +84,14 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (int): The index of the (vectorized) env, which the
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
                 episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
+
+        if env_index is not None:
+            if log_once("callbacks_env_index_deprecated"):
+                deprecation_warning("env_index", "episode.env_id", error=False)
 
         if self.legacy_callbacks.get("on_episode_step"):
             self.legacy_callbacks["on_episode_step"]({
@@ -82,9 +99,13 @@ class DefaultCallbacks:
                 "episode": episode
             })
 
-    def on_episode_end(self, *, worker: "RolloutWorker", base_env: BaseEnv,
+    def on_episode_end(self,
+                       *,
+                       worker: "RolloutWorker",
+                       base_env: BaseEnv,
                        policies: Dict[PolicyID, Policy],
-                       episode: MultiAgentEpisode, env_index: int,
+                       episode: MultiAgentEpisode,
+                       env_index: Optional[int] = None,
                        **kwargs) -> None:
         """Runs when an episode is done.
 
@@ -98,10 +119,14 @@ class DefaultCallbacks:
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
                 metrics for the episode.
-            env_index (int): The index of the (vectorized) env, which the
+            env_index (EnvID): Obsoleted: The ID of the environment, which the
                 episode belongs to.
             kwargs: Forward compatibility placeholder.
         """
+
+        if env_index is not None:
+            if log_once("callbacks_env_index_deprecated"):
+                deprecation_warning("env_index", "episode.env_id", error=False)
 
         if self.legacy_callbacks.get("on_episode_end"):
             self.legacy_callbacks["on_episode_end"]({

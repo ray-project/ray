@@ -20,6 +20,7 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/client_connection.h"
@@ -99,9 +100,10 @@ struct NodeManagerConfig {
   std::string session_dir;
   /// The raylet config list of this node.
   std::unordered_map<std::string, std::string> raylet_config;
+  // The time between record metrics in milliseconds, or -1 to disable.
+  uint64_t record_metrics_period_ms;
 };
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
 struct pair_hash {
   template <class T1, class T2>
   std::size_t operator()(const std::pair<T1, T2> &pair) const {
@@ -174,7 +176,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
 
  private:
-  /// Methods for handling clients.
+  /// Methods for handling nodes.
 
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
@@ -193,21 +195,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void NodeRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
-  /// \param client_id ID of the node that created or updated resources.
+  /// \param node_id ID of the node that created or updated resources.
   /// \param createUpdatedResources Created or updated resources.
   /// \return Void.
-  void ResourceCreateUpdated(const NodeID &client_id,
+  void ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceSet &createUpdatedResources);
 
   /// Handler for the deletion of a resource in the GCS
-  /// \param client_id ID of the node that deleted resources.
+  /// \param node_id ID of the node that deleted resources.
   /// \param resource_names Names of deleted resources.
   /// \return Void.
-  void ResourceDeleted(const NodeID &client_id,
+  void ResourceDeleted(const NodeID &node_id,
                        const std::vector<std::string> &resource_names);
 
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
-  /// This is called whenever there's an update to the resources on the local client.
+  /// This is called whenever there's an update to the resources on the local node.
   /// \return Void.
   void TryLocalInfeasibleTaskScheduling();
 
@@ -422,6 +424,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker to kill.
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
+
+  /// Destroy a worker.
+  /// We will disconnect the worker connection first and then kill the worker.
+  ///
+  /// \param worker The worker to destroy.
+  /// \return Void.
+  void DestroyWorker(std::shared_ptr<WorkerInterface> worker);
 
   /// The callback for handling an actor state transition (e.g., from ALIVE to
   /// DEAD), whether as a notification from the actor table or as a handler for
@@ -717,9 +726,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t last_heartbeat_at_ms_;
   /// Only the changed part will be included in heartbeat if this is true.
   const bool light_heartbeat_enabled_;
-  /// Cache which stores resources in last heartbeat used to check if they are changed.
-  /// Used by light heartbeat.
-  SchedulingResources last_heartbeat_resources_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -808,7 +814,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerTable in the GCS.
   absl::flat_hash_set<WorkerID> failed_workers_cache_;
-  /// Cache for the ClientTable in the GCS.
+  /// Cache for the NodeTable in the GCS.
   absl::flat_hash_set<NodeID> failed_nodes_cache_;
 
   /// Concurrency for the following map
@@ -826,6 +832,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
       bundle_spec_map_;
+
+  /// Fields that are used to report metrics.
+  /// The period between debug state dumps.
+  int64_t record_metrics_period_;
+
+  /// Last time metrics are recorded.
+  uint64_t metrics_last_recorded_time_ms_;
+
+  /// Number of tasks that are received and scheduled.
+  uint64_t metrics_num_task_scheduled_;
+
+  /// Number of tasks that are executed at this node.
+  uint64_t metrics_num_task_executed_;
+
+  /// Number of tasks that are spilled back to other nodes.
+  uint64_t metrics_num_task_spilled_back_;
 };
 
 }  // namespace raylet
