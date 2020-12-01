@@ -186,7 +186,7 @@ def inspect_serializability(base_obj,
     if top_level:
         print("=" * min(len(declaration), 80))
         if not _failure_set:
-            print("Nothing failed the diagnostic test, though "
+            print("Nothing failed the inspect_serialization test, though "
                   "serialization did not succeed.")
         else:
             fail_vars = f"\n\n\t{colorama.Style.BRIGHT}" + "\n".join(
