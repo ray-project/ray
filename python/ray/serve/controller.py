@@ -154,6 +154,12 @@ class ActorStateReconciler:
     backends_to_remove: List[BackendTag] = field(default_factory=list)
     endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
 
+    currently_starting_replicas: Dict[Any, Tuple[
+        BackendTag, ReplicaTag, ActorHandle]] = field(default_factory=dict)
+
+    currently_stopping_replicas: Dict[Any, Tuple[
+        BackendTag, ReplicaTag]] = field(default_factory=dict)
+
     # TODO(edoakes): consider removing this and just using the names.
 
     def router_handles(self) -> List[ActorHandle]:
@@ -172,42 +178,6 @@ class ActorStateReconciler:
                 replica_dict.keys()
                 for replica_dict in self.backend_replicas.values()
             ]))
-
-    async def _start_pending_backend_replicas(
-            self, current_state: SystemState) -> None:
-        """Starts the pending backend replicas in self.backend_replicas_to_start.
-
-        Waits for replicas to start up, then removes them from
-        self.backend_replicas_to_start.
-        """
-        fut_to_replica_info = {}
-        for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
-                items():
-            for replica_tag in replicas_to_create:
-                replica_handle = await self._start_backend_replica(
-                    current_state, backend_tag, replica_tag)
-                ready_future = replica_handle.ready.remote().as_future()
-                fut_to_replica_info[ready_future] = (backend_tag, replica_tag,
-                                                     replica_handle)
-
-        start = time.time()
-        prev_warning = start
-        while fut_to_replica_info:
-            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
-                prev_warning = time.time()
-                logger.warning("Waited {:.2f}s for replicas to start up. Make "
-                               "sure there are enough resources to create the "
-                               "replicas.".format(time.time() - start))
-
-            done, pending = await asyncio.wait(
-                list(fut_to_replica_info.keys()), timeout=1)
-            for fut in done:
-                (backend_tag, replica_tag,
-                 replica_handle) = fut_to_replica_info.pop(fut)
-                self.backend_replicas[backend_tag][
-                    replica_tag] = replica_handle
-
-        self.backend_replicas_to_start.clear()
 
     async def _start_backend_replica(self, current_state: SystemState,
                                      backend_tag: BackendTag,
@@ -253,6 +223,7 @@ class ActorStateReconciler:
         intended replicas. This avoids inconsistencies with starting/stopping a
         replica and then crashing before writing a checkpoint.
         """
+
         logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
         assert (backend_tag in backends
@@ -299,32 +270,82 @@ class ActorStateReconciler:
 
                 self.backend_replicas_to_stop[backend_tag].append(replica_tag)
 
-    async def _stop_pending_backend_replicas(self) -> None:
-        """Stops the pending backend replicas in self.backend_replicas_to_stop.
+    async def _enqueue_pending_scale_changes_loop(self,
+                                                  current_state: SystemState):
+        for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
+                items():
+            for replica_tag in replicas_to_create:
+                replica_handle = await self._start_backend_replica(
+                    current_state, backend_tag, replica_tag)
+                ready_future = replica_handle.ready.remote().as_future()
+                self.currently_starting_replicas[ready_future] = (
+                    backend_tag, replica_tag, replica_handle)
 
-        Removes backend_replicas from the router, kills them, and clears
-        self.backend_replicas_to_stop.
-        """
-        for backend_tag, replicas_list in self.backend_replicas_to_stop.items(
-        ):
-            for replica_tag in replicas_list:
-                # NOTE(edoakes): the replicas may already be stopped if we
-                # failed after stopping them but before writing a checkpoint.
+        for backend_tag, replicas_to_stop in self.backend_replicas_to_stop.\
+                items():
+            for replica_tag in replicas_to_stop:
                 replica_name = format_actor_name(replica_tag,
                                                  self.controller_name)
+
+                async def kill_actor(replica_name_to_use):
+                    # NOTE: the replicas may already be stopped if we failed
+                    # after stopping them but before writing a checkpoint.
+                    try:
+                        replica = ray.get_actor(replica_name_to_use)
+                    except ValueError:
+                        return
+
+                    # TODO(edoakes): this logic isn't ideal because there may
+                    # be pending tasks still executing on the replica. However,
+                    # if we use replica.__ray_terminate__, we may send it while
+                    # the replica is being restarted and there's no way to tell
+                    # if it successfully killed the worker or not.
+                    ray.kill(replica, no_restart=True)
+
+                self.currently_stopping_replicas[asyncio.ensure_future(
+                    kill_actor(replica_name))] = tuple(
+                        [backend_tag, replica_tag])
+
+    async def _backend_control_loop(self):
+        start = time.time()
+        prev_warning = start
+        while self.currently_starting_replicas or \
+                self.currently_stopping_replicas:
+            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
+                prev_warning = time.time()
+                logger.warning("Waited {:.2f}s for replicas to start up. Make "
+                               "sure there are enough resources to create the "
+                               "replicas.".format(time.time() - start))
+
+            done, _ = await asyncio.wait(
+                list(self.currently_starting_replicas.keys()), timeout=0)
+            for fut in done:
+                (backend_tag, replica_tag,
+                 replica_handle) = self.currently_starting_replicas.pop(fut)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = replica_handle
                 try:
-                    replica = ray.get_actor(replica_name)
-                except ValueError:
-                    continue
+                    self.backend_replicas_to_start.get(backend_tag).remove(
+                        replica_tag)
+                    if len(self.backend_replicas_to_start[backend_tag]) == 0:
+                        del self.backend_replicas_to_start[backend_tag]
+                except Exception:
+                    pass
 
-                # TODO(edoakes): this logic isn't ideal because there may be
-                # pending tasks still executing on the replica. However, if we
-                # use replica.__ray_terminate__, we may send it while the
-                # replica is being restarted and there's no way to tell if it
-                # successfully killed the worker or not.
-                ray.kill(replica, no_restart=True)
+            done_stoppping, = await asyncio.wait(
+                list(self.currently_stopping_replicas.keys()), timeout=0)
+            for fut in done_stoppping:
+                (backend_tag,
+                 replica_tag) = self.currently_stopping_replicas.pop(fut)
+                try:
+                    self.backend_replicas_to_stop.get(backend_tag).remove(
+                        replica_tag)
+                    if len(self.backend_replicas_to_stop[backend_tag]) == 0:
+                        del self.backend_replicas_to_stop[backend_tag]
+                except Exception:
+                    pass
 
-        self.backend_replicas_to_stop.clear()
+            asyncio.sleep(1)
 
     def _start_routers_if_needed(self, http_host: str, http_port: str,
                                  http_middlewares: List[Any]) -> None:
@@ -411,8 +432,8 @@ class ActorStateReconciler:
                     backend, metadata.autoscaling_config)
 
         # Start/stop any pending backend replicas.
-        await self._start_pending_backend_replicas(current_state)
-        await self._stop_pending_backend_replicas()
+        await self._enqueue_pending_scale_changes_loop(current_state)
+        await self._backend_control_loop()
 
         return autoscaling_policies
 
@@ -615,6 +636,12 @@ class ServeController:
             if new_num_replicas > 0:
                 await self.update_backend_config(
                     backend, BackendConfig(num_replicas=new_num_replicas))
+
+    async def reconcile_current_and_goal_backends(self):
+        pass
+        # backends_to_delete = set(
+        #     self.current_state.backends.keys()).difference(
+        #         self.goal_state.backends.keys())
 
     async def run_control_loop(self) -> None:
         while True:
@@ -825,6 +852,7 @@ class ServeController:
                         backend_tag, metadata.autoscaling_config)
 
             try:
+                # This call should be to run control loop
                 self.actor_reconciler._scale_backend_replicas(
                     self.current_state.backends, backend_tag,
                     backend_config.num_replicas)
@@ -836,8 +864,9 @@ class ServeController:
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
             self._checkpoint()
-            await self.actor_reconciler._start_pending_backend_replicas(
+            await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.current_state)
+            await self.actor_reconciler._backend_control_loop()
 
             self.notify_replica_handles_changed()
 
@@ -865,6 +894,10 @@ class ServeController:
             # Scale its replicas down to 0. This will also remove the backend
             # from self.current_state.backends and
             # self.actor_reconciler.backend_replicas.
+
+            self.goal_state.backends[backend_tag] = None
+
+            # This should be a call to the control loop
             self.actor_reconciler._scale_backend_replicas(
                 self.current_state.backends, backend_tag, 0)
 
@@ -880,7 +913,9 @@ class ServeController:
             # backend from the router to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
-            await self.actor_reconciler._stop_pending_backend_replicas()
+            await self.actor_reconciler._enqueue_pending_scale_changes_loop(
+                self.current_state)
+            await self.actor_reconciler._backend_control_loop()
 
             self.notify_replica_handles_changed()
 
@@ -901,6 +936,8 @@ class ServeController:
                 backend_tag).backend_config = backend_config
 
             # Scale the replicas with the new configuration.
+
+            # This should be to run the control loop
             self.actor_reconciler._scale_backend_replicas(
                 self.current_state.backends, backend_tag,
                 backend_config.num_replicas)
@@ -913,9 +950,9 @@ class ServeController:
             # Inform the router about change in configuration
             # (particularly for setting max_batch_size).
 
-            await self.actor_reconciler._start_pending_backend_replicas(
+            await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.current_state)
-            await self.actor_reconciler._stop_pending_backend_replicas()
+            await self.actor_reconciler._backend_control_loop()
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
