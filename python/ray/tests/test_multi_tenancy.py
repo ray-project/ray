@@ -248,10 +248,6 @@ ray.shutdown()
     # we aren't enforcing FIFO order.
     wait_for_pid_to_exit(worker1.pid)
 
-    # Should just be 1 workers left. TODO(ekl) somehow the driver job pops two
-    # workers instead of 1 to execute 1 task, killing 2 previous workers.
-    wait_for_condition(lambda: len(get_workers()) == 1)
-
 
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
     info = ray.init(num_cpus=1)
