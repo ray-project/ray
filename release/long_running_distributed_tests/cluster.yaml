@@ -9,7 +9,7 @@ idle_timeout_minutes: 15
 docker:
     image: rayproject/ray-ml:nightly-gpu
     container_name: ray_container
-    pull_before_run: False
+    pull_before_run: True
 
 provider:
     type: aws
@@ -22,11 +22,9 @@ auth:
 
 head_node:
     InstanceType: g3.8xlarge
-    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
 worker_nodes:
   InstanceType: g3.8xlarge
-  ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
   InstanceMarketOptions:
     MarketType: spot
 

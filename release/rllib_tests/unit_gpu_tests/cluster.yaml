@@ -6,7 +6,7 @@ max_workers: 0
 docker:
     image: rayproject/ray-ml:nightly-gpu
     container_name: ray_container
-    pull_before_run: False
+    pull_before_run: True
 
 # Cloud-provider specific configuration.
 provider:
@@ -21,7 +21,6 @@ auth:
 
 head_node:
     InstanceType: p2.xlarge  # Cheaper 1GPU K80 instance
-    ImageId: ami-0a2363a9cff180a64 # Deep Learning AMI (Ubuntu) Version 30
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
