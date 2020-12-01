@@ -4,7 +4,6 @@ import threading
 from typing import Any, Coroutine, Dict, Optional, Union
 
 import ray
-from ray.serve.context import TaskContext
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import get_random_letters
 
@@ -30,10 +29,10 @@ class RayServeHandle:
     an HTTP endpoint.
 
     Example:
-       >>> handle = serve.get_handle("my_endpoint")
+       >>> handle = client.get_handle("my_endpoint")
        >>> handle
        RayServeHandle(
-            Endpoint="my_endpoint",
+            endpoint_name="my_endpoint",
             Traffic=...
        )
        >>> handle.remote(my_request_content)
@@ -65,7 +64,7 @@ class RayServeHandle:
 
         self.router = Router(self.controller_handle)
         self.sync = sync
-        # In the synchrounous mode, we create a new event loop in a separate
+        # In the synchronous mode, we create a new event loop in a separate
         # thread and run the Router.setup in that loop. In the async mode, we
         # can just use the current loop we are in right now.
         if self.sync:
@@ -83,7 +82,6 @@ class RayServeHandle:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
             self.endpoint_name,
-            TaskContext.Python,
             call_method=self.method_name or "__call__",
             shard_key=self.shard_key,
             http_method=self.http_method or "GET",
@@ -95,7 +93,7 @@ class RayServeHandle:
 
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
-        """Issue an asynchrounous request to the endpoint.
+        """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
@@ -105,7 +103,9 @@ class RayServeHandle:
         Args:
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.data``.
+                If it's a flask.Request object, it will be passed in to the
+                backend directly, unmodified. Otherwise, the data will be
+                available in ``request.data``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """

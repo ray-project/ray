@@ -7,7 +7,6 @@ import random
 import string
 import time
 from typing import List, Dict
-import io
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
@@ -19,8 +18,6 @@ import flask
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.context import TaskContext
-from ray.serve.http_util import build_flask_request
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -85,23 +82,19 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    if request_item.metadata.request_context == TaskContext.Web:
-        asgi_scope, body_bytes = request_item.args
-        return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
-    else:
-        arg = request_item.args[0] if len(request_item.args) == 1 else None
+    arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-        # If the input data from handle is web request, we don't need to wrap
-        # it in ServeRequest.
-        if isinstance(arg, flask.Request):
-            return arg
+    # If the input data from handle is web request, we don't need to wrap
+    # it in ServeRequest.
+    if isinstance(arg, flask.Request):
+        return arg
 
-        return ServeRequest(
-            arg,
-            request_item.kwargs,
-            headers=request_item.metadata.http_headers,
-            method=request_item.metadata.http_method,
-        )
+    return ServeRequest(
+        arg,
+        request_item.kwargs,
+        headers=request_item.metadata.http_headers,
+        method=request_item.metadata.http_method,
+    )
 
 
 def _get_logger():

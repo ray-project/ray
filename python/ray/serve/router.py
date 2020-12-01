@@ -6,7 +6,6 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollerAsyncClient
 from ray.serve.utils import logger
@@ -19,7 +18,6 @@ REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
 class RequestMetadata:
     request_id: str
     endpoint: str
-    request_context: TaskContext
 
     call_method: str = "__call__"
     shard_key: Optional[str] = None
@@ -38,7 +36,6 @@ class RequestMetadata:
 class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
-    context: TaskContext
     metadata: RequestMetadata
 
     # Fields used by backend worker to perform timing measurement.
@@ -215,7 +212,6 @@ class Router:
         query = Query(
             args=list(request_args),
             kwargs=request_kwargs,
-            context=request_meta.request_context,
             metadata=request_meta,
         )
 

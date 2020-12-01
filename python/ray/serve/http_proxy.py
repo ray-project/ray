@@ -1,3 +1,4 @@
+import io
 import asyncio
 import socket
 from typing import List
@@ -6,11 +7,11 @@ import uvicorn
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.serve.context import TaskContext
 from ray.util import metrics
-from ray.serve.utils import _get_logger, get_random_letters
-from ray.serve.http_util import Response
-from ray.serve.router import Router, RequestMetadata
+from ray.serve.utils import _get_logger
+from ray.serve.http_util import Response, build_flask_request
+from ray.serve.router import Router
+from ray.serve.handle import RayServeHandle
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.
@@ -30,16 +31,17 @@ class HTTPProxy:
 
     async def fetch_config_from_controller(self, controller_name):
         assert ray.is_initialized()
-        controller = ray.get_actor(controller_name)
+        self.controller_handle = ray.get_actor(controller_name)
 
-        self.route_table = await controller.get_router_config.remote()
+        self.route_table = await self.controller_handle.get_router_config.remote(
+        )
 
         self.request_counter = metrics.Count(
             "num_http_requests",
             description="The number of HTTP requests processed",
             tag_keys=("route", ))
 
-        self.router = Router(controller)
+        self.router = Router(self.controller_handle)
         await self.router.setup_in_async_loop()
 
     def set_route_table(self, route_table):
@@ -110,18 +112,19 @@ class HTTPProxy:
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-        request_metadata = RequestMetadata(
-            get_random_letters(10),  # Used for debugging.
-            endpoint_name,
-            TaskContext.Web,
-            http_method=scope["method"].upper(),
-            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
-        )
 
-        ref = await self.router.assign_request(request_metadata, scope,
-                                               http_body_bytes)
-        result = await ref
+        handle = RayServeHandle(
+            self.controller_handle,
+            endpoint_name,
+            sync=True,
+            method_name=headers.get("X-SERVE-CALL-METHOD".lower(), None),
+            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
+            http_method=scope["method"].upper(),
+            http_headers=headers)
+
+        request = build_flask_request(scope, io.BytesIO(http_body_bytes))
+
+        result = await handle.remote(request)
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
