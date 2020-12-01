@@ -1505,6 +1505,9 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
         if isinstance(result, RayTaskError):
             ray.worker.last_task_error_raise_time = time.time()
             py_future.set_exception(result.as_instanceof_cause())
+        elif isinstance(result, RayError):
+            # Directly raise exception for RayActorError
+            py_future.set_exception(result)
         else:
             py_future.set_result(result)
 
