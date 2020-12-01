@@ -455,7 +455,7 @@ init() {
 }
 
 build() {
-  if [ "${LINT-}" != 1 ]; then
+  if [ "${LINT-}" != 1 ] || ! need_wheels; then
     _bazel_build_before_install
   fi
 

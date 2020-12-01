@@ -63,7 +63,6 @@ jobs:
           pip-${{ runner.os }}-
           pip-
     - name: Run CI script
-      shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
