@@ -769,10 +769,10 @@ void SchedulingResources::Acquire(const ResourceSet &resources) {
   resources_available_.SubtractResourcesStrict(resources);
 }
 
-// The reason we need this method is sometimes we may want add some convert resource 
-// label which is not exist in total resource to the available resource.
+// The reason we need this method is sometimes we may want add some converted
+// resource which is not exist in total resource to the available resource.
 // (e.g., placement group)
-void SchedulingResources::AddOrUpdateResource(const ResourceSet &resources) {
+void SchedulingResources::AddResource(const ResourceSet &resources) {
   resources_available_.AddResources(resources);
 }
 

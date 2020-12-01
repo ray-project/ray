@@ -91,11 +91,10 @@ void LocalPlacementGroupManager::CommitBundleResources(const BundleSpecification
   const auto &acquired_resources = bundle_state->acquired_resources;
 
   const auto &bundle_resource_labels = bundle_spec.GetFormattedResources();
-  for (const auto &resource: bundle_resource_labels) {
-    local_available_resources_.AddOrUpdateResource(resource.first, resource.second);
-  }
+  const auto &formatted_resource_set = ResourceSet(bundle_resource_labels);
+  local_available_resources_.Release(ResourceIdSet(formatted_resource_set));
 
-  cluster_resource_map_[self_node_id_].AddOrUpdateResource(ResourceSet(bundle_resource_labels));
+  cluster_resource_map_[self_node_id_].AddResource(ResourceSet(bundle_resource_labels));
 
   RAY_CHECK(acquired_resources.AvailableResources().size() > 0)
       << "Prepare should've been failed if there were no acquireable resources.";
@@ -118,7 +117,7 @@ void LocalPlacementGroupManager::ReturnBundleResources(const BundleSpecification
   const auto &resource_set = bundle_spec.GetRequiredResources();
   const auto &placement_group_resource_labels = bundle_spec.GetFormattedResources();
   
-  // Return resources to local_available_resources_.
+  // Return resources to ResourceIdSet.
   local_available_resources_.Release(ResourceIdSet(resource_set));
   local_available_resources_.Acquire(ResourceSet(placement_group_resource_labels));
 

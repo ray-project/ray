@@ -512,11 +512,11 @@ class SchedulingResources {
   /// \return Void.
   void Acquire(const ResourceSet &resources);
 
-  /// \brief Add or update the amount of resources specified.
+  /// \brief Add a new resource to available resource.
   ///
-  /// \param resources: the amount of resources to be added or updated.
+  /// \param resources: the amount of resources to be added.
   /// \return Void.
-  void AddOrUpdateResource(const ResourceSet &resources);
+  void AddResource(const ResourceSet &resources);
 
   /// Returns debug string for class.
   ///
