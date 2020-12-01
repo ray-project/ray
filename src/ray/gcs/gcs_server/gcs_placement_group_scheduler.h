@@ -365,7 +365,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
-            std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool));
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -521,7 +521,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// The cached raylet worker client used to communicate with raylet client worker.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-  
+
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 };

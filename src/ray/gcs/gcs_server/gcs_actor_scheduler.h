@@ -284,10 +284,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   bool report_worker_backlog_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
-  /// The cached core worker clients which are used to communicate with leased worker.
-  rpc::CoreWorkerClientPool core_worker_clients_;
   /// The cached raylet worker client used to communicate with raylet client worker.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// The cached core worker clients which are used to communicate with leased worker.
+  rpc::CoreWorkerClientPool core_worker_clients_;
 };
 
 }  // namespace gcs
