@@ -36,6 +36,7 @@ class FailureTuple:
         name: The variable name of the object.
         parent: The object that references the `obj`.
     """
+
     def __init__(self, obj: Any, name: str, parent: Any):
         self.obj = obj
         self.name = name
@@ -125,11 +126,12 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
     return found
 
 
-def inspect_serializability(base_obj: Any,
-                            name: Optional[str] = None,
-                            depth: int = 3,
-                            _parent: Optional[Any] = None,
-                            _failure_set: Optional[set] = None) -> Tuple[bool, Set[FailureTuple]]:
+def inspect_serializability(
+        base_obj: Any,
+        name: Optional[str] = None,
+        depth: int = 3,
+        _parent: Optional[Any] = None,
+        _failure_set: Optional[set] = None) -> Tuple[bool, Set[FailureTuple]]:
     """Identifies what objects are preventing serialization.
 
     Args:
