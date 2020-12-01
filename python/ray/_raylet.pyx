@@ -936,7 +936,7 @@ cdef class CoreWorker:
         return c_object_id.Binary()
 
     def wait(self, object_refs, int num_returns, int64_t timeout_ms,
-             TaskID current_task_id):
+             TaskID current_task_id, c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
@@ -945,7 +945,7 @@ cdef class CoreWorker:
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results))
+                wait_ids, num_returns, timeout_ms, &results, fetch_local))
 
         assert len(results) == len(object_refs)
 

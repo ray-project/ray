@@ -346,7 +346,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(raylet_client_->Wait(
-        id_vector, owner_addresses, num_objects, call_timeout, /*wait_local*/ true,
+        id_vector, owner_addresses, num_objects, call_timeout,
         /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(), ctx.GetCurrentTaskID(),
         &result_pair));
 

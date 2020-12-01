@@ -560,7 +560,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
-              const int64_t timeout_ms, std::vector<bool> *results);
+              const int64_t timeout_ms, std::vector<bool> *results, bool fetch_local);
 
   /// Delete a list of objects from the plasma object store.
   ///

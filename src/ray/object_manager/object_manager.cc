@@ -539,11 +539,11 @@ void ObjectManager::CancelPull(const ObjectID &object_id) {
 ray::Status ObjectManager::Wait(
     const std::vector<ObjectID> &object_ids,
     const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, bool wait_local, const WaitCallback &callback) {
+    uint64_t num_required_objects, const WaitCallback &callback) {
   UniqueID wait_id = UniqueID::FromRandom();
   RAY_LOG(DEBUG) << "Wait request " << wait_id << " on " << self_node_id_;
   RAY_RETURN_NOT_OK(AddWaitRequest(wait_id, object_ids, owner_addresses, timeout_ms,
-                                   num_required_objects, wait_local, callback));
+                                   num_required_objects, callback));
   RAY_RETURN_NOT_OK(LookupRemainingWaitObjects(wait_id));
   // LookupRemainingWaitObjects invokes SubscribeRemainingWaitObjects once lookup has
   // been performed on all remaining objects.
@@ -553,7 +553,7 @@ ray::Status ObjectManager::Wait(
 ray::Status ObjectManager::AddWaitRequest(
     const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
     const std::unordered_map<ObjectID, rpc::Address> &owner_addresses, int64_t timeout_ms,
-    uint64_t num_required_objects, bool wait_local, const WaitCallback &callback) {
+    uint64_t num_required_objects, const WaitCallback &callback) {
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size())
@@ -569,7 +569,6 @@ ray::Status ObjectManager::AddWaitRequest(
   wait_state.owner_addresses = owner_addresses;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
-  wait_state.wait_local = wait_local;
   for (const auto &object_id : object_ids) {
     if (local_objects_.count(object_id) > 0) {
       wait_state.found.insert(object_id);
@@ -603,9 +602,7 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
-            bool remote_object_ready = !node_ids.empty() || !spilled_url.empty();
-            if (local_objects_.count(lookup_object_id) > 0 ||
-                (!wait_state.wait_local && remote_object_ready)) {
+            if (local_objects_.count(lookup_object_id) > 0) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
@@ -654,9 +651,13 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             auto &wait_state = object_id_wait_state->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
+<<<<<<< Updated upstream
             bool remote_object_ready = !node_ids.empty() || !spilled_url.empty();
             if (local_objects_.count(subscribe_object_id) > 0 ||
                 (!wait_state.wait_local && remote_object_ready)) {
+=======
+            if (local_objects_.count(subscribe_object_id) > 0) {
+>>>>>>> Stashed changes
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
