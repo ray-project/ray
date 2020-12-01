@@ -340,12 +340,32 @@ py_test(
 )
 
 py_test(
+    name = "run_regression_tests_cartpole_continuous_pybullet_sac_tf",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_tf", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac"]
+)
+
+py_test(
     name = "run_regression_tests_cartpole_sac_torch",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_torch", "learning_tests_cartpole"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
+    args = ["--yaml-dir=tuned_examples/sac", "--torch"]
+)
+
+py_test(
+    name = "run_regression_tests_cartpole_continuous_pybullet_sac_torch",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_torch", "learning_tests_cartpole"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/sac/cartpole-continuous-pybullet-sac.yaml"],
     args = ["--yaml-dir=tuned_examples/sac", "--torch"]
 )
 

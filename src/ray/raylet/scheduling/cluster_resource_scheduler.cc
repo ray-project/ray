@@ -357,18 +357,18 @@ void ClusterResourceScheduler::AddLocalResource(
   }
 }
 
-void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
+void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
-  int64_t client_id = string_to_int_map_.Get(client_id_string);
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
 
-  auto it = nodes_.find(client_id);
+  auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
     node_resources.predefined_resources.resize(PredefinedResources_MAX);
-    client_id = string_to_int_map_.Insert(client_id_string);
-    RAY_CHECK(nodes_.emplace(client_id, node_resources).second);
-    it = nodes_.find(client_id);
+    node_id = string_to_int_map_.Insert(node_id_string);
+    RAY_CHECK(nodes_.emplace(node_id, node_resources).second);
+    it = nodes_.find(node_id);
     RAY_CHECK(it != nodes_.end());
   }
 
@@ -421,10 +421,10 @@ void ClusterResourceScheduler::DeleteLocalResource(
   DeleteResource(string_to_int_map_.Get(local_node_id_), resource_name);
 }
 
-void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
+void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
                                               const std::string &resource_name) {
-  int64_t client_id = string_to_int_map_.Get(client_id_string);
-  auto it = nodes_.find(client_id);
+  int64_t node_id = string_to_int_map_.Get(node_id_string);
+  auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return;
   }
@@ -442,7 +442,7 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
   if (idx != -1) {
     it->second.predefined_resources[idx].total = 0;
 
-    if (client_id == local_node_id_) {
+    if (node_id == local_node_id_) {
       local_resources_.predefined_resources[idx].total.clear();
       local_resources_.predefined_resources[idx].available.clear();
     }
@@ -454,7 +454,7 @@ void ClusterResourceScheduler::DeleteResource(const std::string &client_id_strin
       it->second.custom_resources.erase(itr);
     }
 
-    if (client_id == local_node_id_) {
+    if (node_id == local_node_id_) {
       local_resources_.custom_resources[resource_id].total.clear();
       local_resources_.custom_resources[resource_id].available.clear();
     }

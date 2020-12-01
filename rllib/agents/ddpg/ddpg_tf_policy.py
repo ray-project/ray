@@ -245,6 +245,8 @@ def make_ddpg_optimizers(policy, config):
             learning_rate=config["actor_lr"])
         policy._critic_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["critic_lr"])
+    # TODO: (sven) make this function return both optimizers and
+    #  TFPolicy handle optimizers vs loss terms correctly (like torch).
     return None
 
 
