@@ -603,23 +603,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
 
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return Status.
-  Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[in] checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return Status.
-  Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                          const ActorCheckpointID &checkpoint_id);
-
-  /// Sets a resource with the specified capacity and node id
+  /// Sets a resource with the specified capacity and client id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
   /// \param[in] node_id NodeID where the resource is to be set.
