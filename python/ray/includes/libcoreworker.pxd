@@ -13,7 +13,6 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorCheckpointID,
     CNodeID,
     CJobID,
     CTaskID,
@@ -194,10 +193,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
-        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
-                                          CActorCheckpointID *checkpoint_id)
-        CRayStatus NotifyActorResumedFromCheckpoint(
-            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CNodeID &client_Id)
@@ -232,8 +227,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
-        (c_vector[c_string](const c_vector[CObjectID]&) nogil) spill_objects
-        (void(const c_vector[c_string]&) nogil) restore_spilled_objects
+        (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
+        (void(
+            const c_vector[CObjectID] &,
+            const c_vector[c_string] &) nogil) restore_spilled_objects
+        (void(
+            const c_vector[c_string]&,
+            CWorkerType) nogil) delete_spilled_objects
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode

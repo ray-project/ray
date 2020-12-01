@@ -196,6 +196,10 @@ message TaskSpec {
   bool placement_group_capture_child_tasks = 20;
   // Environment variables to override for this task
   map<string, string> override_environment_variables = 21;
+  // Whether or not to skip the execution of this task. When it's true,
+  // the receiver will not execute the task. This field is used by async actors
+  // to guarantee task submission order after restart.
+  bool skip_execution = 22;
 }
 
 message Bundle {

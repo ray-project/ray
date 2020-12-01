@@ -35,6 +35,7 @@ GcsActorScheduler::GcsActorScheduler(
       gcs_pub_sub_(std::move(gcs_pub_sub)),
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       lease_client_factory_(std::move(lease_client_factory)),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
@@ -208,6 +209,9 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
   auto lease_client = GetOrConnectLeaseClient(remote_address);
+  // Actor leases should be sent to the raylet immediately, so we should never build up a
+  // backlog in GCS.
+  int backlog_size = report_worker_backlog_ ? 0 : -1;
   lease_client->RequestWorkerLease(
       actor->GetCreationTaskSpecification(),
       [this, node_id, actor, node](const Status &status,
@@ -247,7 +251,8 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
             RetryLeasingWorkerFromNode(actor, node);
           }
         }
-      });
+      },
+      backlog_size);
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
