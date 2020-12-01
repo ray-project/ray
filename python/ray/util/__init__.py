@@ -9,5 +9,5 @@ from ray.util import rpdb as pdb
 __all__ = [
     "ActorPool", "disable_log_once_globally", "enable_periodic_logging",
     "iter", "log_once", "pdb", "placement_group", "placement_group_table",
-    "remove_placement_group"
+    "remove_placement_group", "collective"
 ]
