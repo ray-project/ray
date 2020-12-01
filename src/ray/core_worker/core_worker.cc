@@ -1180,8 +1180,8 @@ Status CoreWorker::NotifyActorResumedFromCheckpoint(
 }
 
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const NodeID &client_id) {
-  return local_raylet_client_->SetResource(resource_name, capacity, client_id);
+                               const NodeID &node_id) {
+  return local_raylet_client_->SetResource(resource_name, capacity, node_id);
 }
 
 void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
@@ -2122,7 +2122,7 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                        NodeID::FromBinary(request.client_id()));
+                                        NodeID::FromBinary(request.node_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2135,7 +2135,7 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
     return;
   }
   reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                           NodeID::FromBinary(request.client_id()));
+                                           NodeID::FromBinary(request.node_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2147,10 +2147,10 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<NodeID> client_ids =
+  std::unordered_set<NodeID> node_ids =
       reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
-  for (const auto &client_id : client_ids) {
-    reply->add_client_ids(client_id.Binary());
+  for (const auto &node_id : node_ids) {
+    reply->add_node_ids(node_id.Binary());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2344,12 +2344,19 @@ void CoreWorker::HandleRestoreSpilledObjects(
     const rpc::RestoreSpilledObjectsRequest &request,
     rpc::RestoreSpilledObjectsReply *reply, rpc::SendReplyCallback send_reply_callback) {
   if (options_.restore_spilled_objects != nullptr) {
+    // Get a list of object ids.
+    std::vector<ObjectID> object_ids_to_restore;
+    object_ids_to_restore.reserve(request.object_ids_to_restore_size());
+    for (const auto &id_binary : request.object_ids_to_restore()) {
+      object_ids_to_restore.push_back(ObjectID::FromBinary(id_binary));
+    }
+    // Get a list of spilled_object_urls.
     std::vector<std::string> spilled_objects_url;
     spilled_objects_url.reserve(request.spilled_objects_url_size());
     for (const auto &url : request.spilled_objects_url()) {
       spilled_objects_url.push_back(url);
     }
-    options_.restore_spilled_objects(spilled_objects_url);
+    options_.restore_spilled_objects(object_ids_to_restore, spilled_objects_url);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(

@@ -77,9 +77,9 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                         node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
                             object_id, spilled_url, callback);
                       },
-                      [this](int64_t num_bytes_required) {
+                      [this](int64_t num_bytes_to_spill, int64_t min_bytes_to_spill) {
                         return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
-                            num_bytes_required);
+                            num_bytes_to_spill, min_bytes_to_spill);
                       },
                       [this]() {
                         // Post on the node manager's event loop since this
@@ -118,28 +118,32 @@ void Raylet::Stop() {
 }
 
 ray::Status Raylet::RegisterGcs() {
-  RAY_RETURN_NOT_OK(gcs_client_->Nodes().RegisterSelf(self_node_info_));
+  auto register_callback = [this](const Status &status) {
+    RAY_CHECK_OK(status);
+    RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
+                   << self_node_info_.node_manager_address() << ":"
+                   << self_node_info_.node_manager_port() << " object manager at "
+                   << self_node_info_.node_manager_address() << ":"
+                   << self_node_info_.object_manager_port() << ", hostname "
+                   << self_node_info_.node_manager_hostname();
 
-  RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
-                 << self_node_info_.node_manager_address() << ":"
-                 << self_node_info_.node_manager_port() << " object manager at "
-                 << self_node_info_.node_manager_address() << ":"
-                 << self_node_info_.object_manager_port() << ", hostname "
-                 << self_node_info_.node_manager_hostname();
+    // Add resource information.
+    const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
+    std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;
+    for (const auto &resource_pair :
+         node_manager_config.resource_config.GetResourceMap()) {
+      auto resource = std::make_shared<gcs::ResourceTableData>();
+      resource->set_resource_capacity(resource_pair.second);
+      resources.emplace(resource_pair.first, resource);
+    }
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
 
-  // Add resource information.
-  const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
-  std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;
-  for (const auto &resource_pair : node_manager_config.resource_config.GetResourceMap()) {
-    auto resource = std::make_shared<gcs::ResourceTableData>();
-    resource->set_resource_capacity(resource_pair.second);
-    resources.emplace(resource_pair.first, resource);
-  }
+    RAY_CHECK_OK(node_manager_.RegisterGcs());
+  };
+
   RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
-
-  RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
-
+      gcs_client_->Nodes().RegisterSelf(self_node_info_, register_callback));
   return Status::OK();
 }
 

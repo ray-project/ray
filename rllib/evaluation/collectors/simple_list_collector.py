@@ -131,12 +131,25 @@ class _AgentCollector:
             # -> skip.
             if data_col not in self.buffers:
                 continue
+            # OBS are already shifted by -1 (the initial obs starts one ts
+            # before all other data columns).
             shift = view_req.shift - \
                 (1 if data_col == SampleBatch.OBS else 0)
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
+            # Shift is exactly 0: Send trajectory as is.
             if shift == 0:
                 data = np_data[data_col][self.shift_before:]
+            # Shift is positive: We still need to 0-pad at the end here.
+            elif shift > 0:
+                data = to_float_np_array(
+                    self.buffers[data_col][self.shift_before + shift:] + [
+                        np.zeros(
+                            shape=view_req.space.shape,
+                            dtype=view_req.space.dtype) for _ in range(shift)
+                    ])
+            # Shift is negative: Shift into the already existing and 0-padded
+            # "before" area of our buffers.
             else:
                 data = np_data[data_col][self.shift_before + shift:shift]
             if len(data) > 0:
@@ -144,6 +157,10 @@ class _AgentCollector:
         batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
+            # TODO: (sven) Once we have the additional
+            #  model.preprocess_train_batch in place (attention net PR), we
+            #  should not even need UNROLL_ID anymore:
+            #  Add "if SampleBatch.UNROLL_ID in view_requirements:" here.
             batch.data[SampleBatch.UNROLL_ID] = np.repeat(
                 _AgentCollector._next_unroll_id, batch.count)
             _AgentCollector._next_unroll_id += 1
@@ -225,7 +242,7 @@ class _PolicyCollector:
         """
         for view_col, data in batch.items():
             # Skip columns that are not used for training.
-            if view_col in view_requirements and \
+            if view_col not in view_requirements or \
                     not view_requirements[view_col].used_for_training:
                 continue
             self.buffers[view_col].extend(data)
@@ -452,8 +469,7 @@ class _SimpleListCollector(_SampleCollector):
             pre_batch = collector.build(policy.view_requirements)
             pre_batches[agent_id] = (policy, pre_batch)
 
-        # Apply postprocessor.
-        post_batches = {}
+        # Apply reward clipping before calling postprocessing functions.
         if self.clip_rewards is True:
             for _, (_, pre_batch) in pre_batches.items():
                 pre_batch["rewards"] = np.sign(pre_batch["rewards"])
@@ -464,6 +480,7 @@ class _SimpleListCollector(_SampleCollector):
                     a_min=-self.clip_rewards,
                     a_max=self.clip_rewards)
 
+        post_batches = {}
         for agent_id, (_, pre_batch) in pre_batches.items():
             # Entire episode is said to be done.
             # Error if no DONE at end of this agent's trajectory.

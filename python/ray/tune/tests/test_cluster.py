@@ -76,6 +76,7 @@ class _PerTrialSyncerCallback(SyncerCallback):
 def start_connected_cluster():
     # Start the Ray processes.
     cluster = _start_new_cluster()
+    os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -98,6 +99,7 @@ def start_connected_emptyhead_cluster():
     _register_all()
     register_trainable("__fake_remote", MockRemoteTrainer)
     register_trainable("__fake_durable", MockDurableTrainer)
+    os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
