@@ -331,6 +331,36 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
     assert repr_orig == repr_ser
 
 
+def test_inspect_serialization(enable_pickle_debug):
+    import threading
+    from ray.cloudpickle import dumps_debug
+
+    lock = threading.Lock()
+
+    with pytest.raises(TypeError):
+        dumps_debug(lock)
+
+    def test_func():
+        print(lock)
+
+    with pytest.raises(TypeError):
+        dumps_debug(test_func)
+
+    class test_class:
+        def test(self):
+            self.lock = lock
+
+    from ray.util.check_serialize import inspect_serializability
+    results = inspect_serializability(lock)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_func)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_class)
+    assert list(results[1])[0].obj == lock, results
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True

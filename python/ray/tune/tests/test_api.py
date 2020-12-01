@@ -1020,8 +1020,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertLess(diff, 9)
 
     def testMetricCheckingEndToEnd(self):
-        from ray import tune
-
         def train(config):
             tune.report(val=4, second=8)
 
@@ -1110,6 +1108,46 @@ class TrainableFunctionApiTest(unittest.TestCase):
                     found = True
                     break
             self.assertFalse(found)
+
+
+class SerializabilityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True)
+
+    def tearDown(self):
+        if "RAY_PICKLE_VERBOSE_DEBUG" in os.environ:
+            del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
+
+    def testNotRaisesNonserializable(self):
+        import threading
+        lock = threading.Lock()
+
+        def train(config):
+            print(lock)
+            tune.report(val=4, second=8)
+
+        with self.assertRaisesRegex(TypeError, "RAY_PICKLE_VERBOSE_DEBUG"):
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+
+    def testRaisesNonserializable(self):
+        os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
+        import threading
+        lock = threading.Lock()
+
+        def train(config):
+            print(lock)
+            tune.report(val=4, second=8)
+
+        with self.assertRaises(TypeError) as cm:
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+        msg = cm.exception.args[0]
+        assert "RAY_PICKLE_VERBOSE_DEBUG" not in msg
+        assert "thread.lock" in msg
 
 
 class ShimCreationTest(unittest.TestCase):

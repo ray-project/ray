@@ -35,7 +35,7 @@ class FailureTuple:
         self.parent = parent
 
     def __repr__(self):
-        return f"{self.name} [obj={self.obj}, parent={self.parent}]"
+        return f"FailTuple({self.name} [obj={self.obj}, parent={self.parent}])"
 
 
 def _inspect_func_serialization(base_obj, depth, parent, failure_set):
