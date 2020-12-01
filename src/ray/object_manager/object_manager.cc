@@ -651,13 +651,7 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
             auto &wait_state = object_id_wait_state->second;
             // Note that the object is guaranteed to be added to local_objects_ before
             // the notification is triggered.
-<<<<<<< Updated upstream
-            bool remote_object_ready = !node_ids.empty() || !spilled_url.empty();
-            if (local_objects_.count(subscribe_object_id) > 0 ||
-                (!wait_state.wait_local && remote_object_ready)) {
-=======
             if (local_objects_.count(subscribe_object_id) > 0) {
->>>>>>> Stashed changes
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;

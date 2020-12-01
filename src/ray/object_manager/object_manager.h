@@ -332,8 +332,7 @@ class ObjectManager : public ObjectManagerInterface,
   ray::Status AddWaitRequest(
       const UniqueID &wait_id, const std::vector<ObjectID> &object_ids,
       const std::unordered_map<ObjectID, rpc::Address> &owner_addresses,
-      int64_t timeout_ms, uint64_t num_required_objects,
-      const WaitCallback &callback);
+      int64_t timeout_ms, uint64_t num_required_objects, const WaitCallback &callback);
 
   /// Lookup any remaining objects that are not local. This is invoked after
   /// the wait request is created and local objects are identified.
