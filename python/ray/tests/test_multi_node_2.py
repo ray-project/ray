@@ -144,7 +144,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(signal.send.remote())
     ray.get(work_handle)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class Actor:
         def work(self, signal):
             wait_signal = signal.wait.remote()
@@ -158,6 +158,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     test_actor = Actor.remote()
     work_handle = test_actor.work.remote(signal)
+    time.sleep(1)  # Time for actor to get placed and the method to start.
 
     verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
 
