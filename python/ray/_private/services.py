@@ -1020,7 +1020,7 @@ def _start_redis_instance(executable,
         if current_max_clients < ulimit_n - redis_client_buffer:
             redis_client.config_set("maxclients",
                                     ulimit_n - redis_client_buffer)
-                                    
+
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
