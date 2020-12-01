@@ -130,10 +130,9 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(JNIEn
  */
 JNIEXPORT jboolean JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeWaitPlacementGroupReady(JNIEnv *,
-                                                                          jobject,
-                                                                          jlong,
+                                                                          jobject, jlong,
                                                                           jbyteArray,
-                                                                          jlong);
+                                                                          jint);
 
 #ifdef __cplusplus
 }

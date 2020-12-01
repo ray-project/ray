@@ -409,10 +409,14 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
                  << placement_group_id;
 
-  // If the placement group is not exist, return directly.
-  if (!registered_placement_groups_.contains(placement_group_id)) {
+  // If the placement group does not exist or it has been successfully created, return
+  // directly.
+  const auto &iter = registered_placement_groups_.find(placement_group_id);
+  if (iter == registered_placement_groups_.end()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply,
                        Status::Invalid("Placement group is not exist."));
+  } else if (iter->GetState() == rpc::PlacementGroupTableData::CREATED) {
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   }
 
   auto callback = [placement_group_id, reply, send_reply_callback](const Status &status) {

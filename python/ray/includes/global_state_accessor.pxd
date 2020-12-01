@@ -33,4 +33,5 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         unique_ptr[c_string] GetPlacementGroupInfo(
             const CPlacementGroupID &placement_group_id)
         c_vector[c_string] GetAllPlacementGroupInfo()
-        c_bool WaitPlacementGroupReady(const CPlacementGroupID &placement_group_id, int timeout_ms)
+        c_bool WaitPlacementGroupReady(const CPlacementGroupID
+            &placement_group_id, c_int timeout_ms)

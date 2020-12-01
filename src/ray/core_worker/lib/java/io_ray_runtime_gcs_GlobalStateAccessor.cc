@@ -145,7 +145,7 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
 JNIEXPORT jboolean JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeWaitPlacementGroupReady(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray placement_group_id_bytes,
-    jlong timeout_ms) {
+    jint timeout_ms) {
   const auto placement_group_id =
       JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
   auto *gcs_accessor =

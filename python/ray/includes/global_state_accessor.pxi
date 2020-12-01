@@ -152,6 +152,8 @@ cdef class GlobalStateAccessor:
         cdef c_bool result
         cdef CPlacementGroupID cplacement_group_id = (
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        cdef c_int ctimeout_ms = timeout_ms
         with nogil:
-            result = self.inner.get().WaitPlacementGroupReady(cplacement_group_id, timeout_ms)
+            result = self.inner.get().WaitPlacementGroupReady(
+                cplacement_group_id, ctimeout_ms)
         return result
