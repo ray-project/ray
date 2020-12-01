@@ -155,7 +155,6 @@ def inspect_serializability(base_obj,
         _printer.print(f"Serializing '{name}' {base_obj}...")
     try:
         cp.dumps(base_obj)
-        # _printer.print("...pass...")
         return True, _failure_set
     except Exception as e:
         _printer.print(f"{colorama.Fore.RED}!!! FAIL{colorama.Fore.RESET} "
