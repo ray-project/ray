@@ -170,6 +170,51 @@ def test_basic_actor(ray_start_regular_shared):
         assert count == 2
 
 
+def test_pass_handles(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        @ray.remote
+        class ExecActor:
+            def exec(self, f, x):
+                return ray.get(f.remote(x))
+            def exec_exec(self, actor, f, x):
+                return ray.get(actor.exec.remote(f, x))
+
+        @ray.remote
+        def fact(x):
+            out = 1
+            while x > 0:
+                out = out * x
+                x -= 1
+            return out
+
+        @ray.remote
+        def func_exec(f, x):
+            return ray.get(f.remote(x))
+
+        @ray.remote
+        def func_actor_exec(actor, f, x):
+            return ray.get(actor.exec.remote(f, x))
+
+        @ray.remote
+        def sneaky_func_exec(obj, x):
+            return ray.get(obj["f"].remote(x))
+
+        @ray.remote
+        def sneaky_actor_exec(obj, x):
+            return ray.get(obj["actor"].exec.remote(obj["f"], x))
+
+        def local_fact(x):
+            if x <= 0:
+                return 1
+            return x * local_fact(x - 1)
+
+        assert ray.get(fact.remote(7)) == local_fact(7)
+        assert ray.get(func_exec.remote(fact, 8)) == local_fact(8)
+        test_obj = {}
+        test_obj["f"] = fact
+        assert ray.get(sneaky_func_exec.remote(test_obj, 5)) == local_fact(5)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
