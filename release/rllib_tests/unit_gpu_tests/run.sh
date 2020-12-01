@@ -63,11 +63,7 @@ pushd ray || true
 git checkout $cob
 
 bash ./ci/travis/install-bazel.sh
-
-sudo cp -f /root/bin/bazel .
-sudo chmod 755 ./bazel
-
-BAZEL_PATH=./bazel
+BAZEL_PATH=$HOME/bin/bazel
 
 # Run all test cases, but with a forced num_gpus=1.
 # TODO: (sven) chose correct dir and run over all RLlib tests and example scripts!
