@@ -149,17 +149,17 @@ class CoreWorkerDirectActorTaskSubmitter
     /// (0-5) so far, and have received a successful reply for 4 tasks (0-3).
     /// 0 1 2 3 4 5 6 7 8 9
     ///             ^ next_send_position
-    ///         ^ num_completed_tasks
+    ///         ^ next_task_reply_position
     /// ^ caller_starts_at
     ///
     /// Suppose the actor crashes and recovers. Then, caller_starts_at is reset
-    /// to the current num_completed_tasks. caller_starts_at is then subtracted
+    /// to the current next_task_reply_position. caller_starts_at is then subtracted
     /// from each task's counter, so the recovered actor will receive the
     /// sequence numbers 0, 1, 2 (and so on) for tasks 4, 5, 6, respectively.
     /// Therefore, the recovered actor will restart execution from task 4.
     /// 0 1 2 3 4 5 6 7 8 9
     ///             ^ next_send_position
-    ///         ^ num_completed_tasks
+    ///         ^ next_task_reply_position
     ///         ^ caller_starts_at
     ///
     /// New actor tasks will continue to be sent even while tasks are being
@@ -169,7 +169,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// received a successful reply for task 4.
     /// 0 1 2 3 4 5 6 7 8 9
     ///               ^ next_send_position
-    ///           ^ num_completed_tasks
+    ///           ^ next_task_reply_position
     ///         ^ caller_starts_at
     ///
     /// The send position of the next task to send to this actor. This sequence
@@ -185,11 +185,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// tasks that will not be sent again, to support automatic task retry on
     /// actor failure. This value only tracks consecutive tasks that are completed.
     /// Tasks completed out of order will be cached in out_of_completed_tasks first.
-    uint64_t num_completed_tasks = 0;
+    uint64_t next_task_reply_position = 0;
 
     /// The temporary container for tasks completed out of order. It can happen in
     /// async or threaded actor mode. This map is used to store the seqno and task
-    /// spec for (1) increment num_completed_tasks later when the in order tasks are
+    /// spec for (1) increment next_task_reply_position later when the in order tasks are
     /// returned (2) resend the tasks to restarted actor so retried tasks can maintain
     /// ordering.
     // NOTE(simon): consider absl::btree_set for performance, but it requires updating
@@ -214,8 +214,6 @@ class CoreWorkerDirectActorTaskSubmitter
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
-  /// Note that this function doesn't take lock, the caller is expected to hold
-  /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
@@ -223,8 +221,6 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Resend all previously-received, out-of-order, received tasks for an actor.
   /// When sending these tasks, the tasks will have the flag skip_execution=true.
-  /// Note that this function doesn't take lock, the caller is expected to hold
-  /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.

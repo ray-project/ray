@@ -164,8 +164,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // actor task, so we can ignore completed tasks from old epochs.
   RAY_LOG(INFO) << "Resetting caller starts at for actor " << actor_id << " from "
                 << queue->second.caller_starts_at << " to "
-                << queue->second.num_completed_tasks;
-  queue->second.caller_starts_at = queue->second.num_completed_tasks;
+                << queue->second.next_task_reply_position;
+  queue->second.caller_starts_at = queue->second.next_task_reply_position;
 
   SendPendingTasks(actor_id);
   ResendOutOfOrderTasks(actor_id);
@@ -263,9 +263,11 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
   auto &client_queue = it->second;
 
   for (const auto &completed_task : client_queue.out_of_order_completed_tasks) {
-    // Making an copy here because we are flipping a flag and the original value is
-    // const.
-    TaskSpecification task_spec = completed_task.second;
+    // Making a copy here because we are flipping a flag and the original value is
+    // const. NOTE(simon): we have to do this extra copy due to C++11. In C++14, we can
+    // use the init-capture feature:
+    // https://stackoverflow.com/questions/24221061/lambda-capture-list-capturing-objects-member-field-by-value-not-possible-witho
+    auto task_spec = completed_task.second;
     // Calling SubmitTask in event loop to avoid deadlock condition. SubmitTask holds
     // the mu_ and calls this method, we can't call SubmitTask recursively.
     io_service_.post([this, task_spec]() mutable {
@@ -306,18 +308,17 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           Status status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
 
-        if (task_skipped) {
-          // Increment the task counter regardless of the status this is the reply for
-          // a previously completed task.
-          increment_completed_tasks = true;
-        } else if (!status.ok()) {
+        // NOTE(simon):Increment the task counter regardless of the status because the
+        // reply for a previously completed task. We are not calling CompletePendingTask
+        // because
+        if (status.ok() || task_skipped) {
+          task_finisher_->CompletePendingTask(task_id, reply, addr);
+        } else {
           bool will_retry = task_finisher_->PendingTaskFailed(
               task_id, rpc::ErrorType::ACTOR_DIED, &status);
           if (will_retry) {
             increment_completed_tasks = false;
           }
-        } else {
-          task_finisher_->CompletePendingTask(task_id, reply, addr);
         }
 
         if (increment_completed_tasks) {
@@ -326,14 +327,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
           RAY_CHECK(queue_pair != client_queues_.end());
           auto &queue = queue_pair->second;
 
-          // Try to increment queue.num_completed_tasks consecutively until we cannot.
-          // In the case of tasks not received in order, the following block ensure
-          // queue.num_completed_tasks are incremented to the max possible value.
+          // Try to increment queue.next_task_reply_position consecutively until we
+          // cannot. In the case of tasks not received in order, the following block
+          // ensure queue.next_task_reply_position are incremented to the max possible
+          // value.
           queue.out_of_order_completed_tasks.insert({actor_counter, task_spec});
           auto min_completed_task = queue.out_of_order_completed_tasks.begin();
           while (min_completed_task != queue.out_of_order_completed_tasks.end()) {
-            if (min_completed_task->first == queue.num_completed_tasks) {
-              queue.num_completed_tasks++;
+            if (min_completed_task->first == queue.next_task_reply_position) {
+              queue.next_task_reply_position++;
               // increment the iterator and erase the old value
               queue.out_of_order_completed_tasks.erase(min_completed_task++);
             } else {
@@ -343,8 +345,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
 
           RAY_LOG(DEBUG) << "Got PushTaskReply for actor " << actor_id
                          << " with actor_counter " << actor_counter
-                         << " new queue.num_completed_tasks is "
-                         << queue.num_completed_tasks
+                         << " new queue.next_task_reply_position is "
+                         << queue.next_task_reply_position
                          << " and size of out_of_order_tasks set is "
                          << queue.out_of_order_completed_tasks.size();
         }
