@@ -390,8 +390,8 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncSubscribeBatchHeartbeat(
-        const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+    Status AsyncSubscribeBatchedResourceUsage(
+        const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }

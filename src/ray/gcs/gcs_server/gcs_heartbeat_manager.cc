@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -27,20 +27,20 @@ GcsHeartbeatManager::GcsHeartbeatManager(
       on_node_death_callback_(std::move(on_node_death_callback)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       detect_timer_(io_service) {
-            io_service_thread_.reset(new std::thread([this] {
-    /// The asio work to keep node_manager_io_service_ alive.
+  io_service_thread_.reset(new std::thread([this] {
+    /// The asio work to keep io_service_ alive.
     boost::asio::io_service::work io_service_work_(io_service_);
     io_service_.run();
   }));
-      }
+}
 
 void GcsHeartbeatManager::Start() {
-    io_service_.post([this] {
-  if (!is_started_) {
-    Tick();
-    is_started_ = true;
-  }
-    });
+  io_service_.post([this] {
+    if (!is_started_) {
+      Tick();
+      is_started_ = true;
+    }
+  });
 }
 
 void GcsHeartbeatManager::Stop() {
@@ -51,13 +51,14 @@ void GcsHeartbeatManager::Stop() {
 }
 
 void GcsHeartbeatManager::AddNode(const NodeID &node_id) {
-    io_service_.post(
-  [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); });
+  io_service_.post(
+      [this, node_id] { heartbeats_.emplace(node_id, num_heartbeats_timeout_); });
 }
 
-void GcsHeartbeatManager::HandleHeartbeat(const rpc::ReportHeartbeatRequest &request, rpc::ReportHeartbeatReply *reply,
+void GcsHeartbeatManager::HandleReportHeartbeat(
+    const rpc::ReportHeartbeatRequest &request, rpc::ReportHeartbeatReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-        NodeID node_id = NodeID::FromBinary(request.heartbeat().client_id());
+  NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
     // Ignore this heartbeat as the node is not registered.
@@ -108,4 +109,3 @@ void GcsHeartbeatManager::ScheduleTick() {
 
 }  // namespace gcs
 }  // namespace ray
-

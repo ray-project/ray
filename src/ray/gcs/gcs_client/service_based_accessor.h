@@ -193,16 +193,19 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
-  void AsyncReReportHeartbeat() override;
+  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+                                  const StatusCallback &callback) override;
 
-  /// Fill resource fields with cached resources. Used by light heartbeat.
-  void FillHeartbeatRequest(rpc::ReportHeartbeatRequest &heartbeat);
+  void AsyncReReportResourceUsage() override;
 
-  Status AsyncGetAllHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
+  /// Fill resource fields with cached resources. Used by light resource usage report.
+  void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
 
-  Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+  Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourcesData> &callback) override;
+
+  Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
       const StatusCallback &done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
@@ -219,18 +222,18 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// server restarts from a failure.
   SubscribeOperation subscribe_node_operation_;
   SubscribeOperation subscribe_resource_operation_;
-  SubscribeOperation subscribe_batch_heartbeat_operation_;
+  SubscribeOperation subscribe_batch_resource_usage_operation_;
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
 
-  // Mutex to protect the cached_heartbeat_ field.
+  // Mutex to protect the cached_resource_usage_ field.
   absl::Mutex mutex_;
 
-  /// Save the heartbeat data, so we can resend it again when GCS server restarts from a
-  /// failure.
-  rpc::ReportHeartbeatRequest cached_heartbeat_ GUARDED_BY(mutex_);
+  /// Save the resource usage data, so we can resend it again when GCS server restarts
+  /// from a failure.
+  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
 
   void HandleNotification(const GcsNodeInfo &node_info);
 

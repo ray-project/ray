@@ -106,9 +106,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_id Node id.
   /// \param request Request containing resource usage.
   void UpdateNodeResourceUsage(const NodeID node_id,
-                           const rpc::ReportResourceUsageRequest &request);
+                               const rpc::ReportResourceUsageRequest &request);
 
-                           void OnNodeFailure(const ClientID &node_id);
+  void OnNodeFailure(const NodeID &node_id);
 
   /// Add an alive node.
   ///
@@ -184,11 +184,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Send any buffered resource usage as a single publish.
   void SendBatchedResourceUsage();
 
-  /// The main event loop for node failure detector.
-  boost::asio::io_service &main_io_service_;
   /// A timer that ticks every raylet_report_resources_period_milliseconds.
   boost::asio::deadline_timer resource_timer_;
-    // Only the changed part will be reported if this is true.
+  // Only the changed part will be reported if this is true.
   const bool light_report_resource_usage_enabled_;
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
@@ -199,10 +197,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Cluster resources.
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
-  /// Newest heartbeat of all nodes.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> node_heartbeats_;
-  /// A buffer containing heartbeats received from node managers in the last tick.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> heartbeat_buffer_;
+  /// Newest resource usage of all nodes.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
+  /// A buffer containing resource usage received from node managers in the last tick.
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resources_buffer_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
@@ -223,9 +221,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     REGISTER_NODE_REQUEST = 0,
     UNREGISTER_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
-    REPORT_HEARTBEAT_REQUEST = 3,
+    REPORT_RESOURCE_USAGE_REQUEST = 3,
     GET_HEARTBEAT_REQUEST = 4,
-    GET_ALL_HEARTBEAT_REQUEST = 5,
+    GET_ALL_RESOURCE_USAGE_REQUEST = 5,
     GET_RESOURCES_REQUEST = 6,
     UPDATE_RESOURCES_REQUEST = 7,
     DELETE_RESOURCES_REQUEST = 8,

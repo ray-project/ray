@@ -686,11 +686,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
-  absl::MutexLock lock(&mutex_);
-  cached_heartbeat_.mutable_heartbeat()->CopyFrom(*data_ptr);
+  rpc::ReportHeartbeatRequest request;
+  request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
-      cached_heartbeat_,
-      [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
         if (callback) {
           callback(status);
         }
@@ -698,74 +697,94 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
   return Status::OK();
 }
 
-void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
-  absl::MutexLock lock(&mutex_);
-  if (cached_heartbeat_.has_heartbeat()) {
-    RAY_LOG(INFO) << "Rereport heartbeat.";
-    FillHeartbeatRequest(cached_heartbeat_);
-    client_impl_->GetGcsRpcClient().ReportHeartbeat(
-        cached_heartbeat_,
-        [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
-  }
-}
-
-void ServiceBasedNodeInfoAccessor::FillHeartbeatRequest(
-    rpc::ReportHeartbeatRequest &heartbeat) {
-  if (RayConfig::instance().light_heartbeat_enabled()) {
-    SchedulingResources cached_resources =
-        SchedulingResources(*GetLastHeartbeatResources());
-
-    auto heartbeat_data = heartbeat.mutable_heartbeat();
-    heartbeat_data->clear_resources_total();
-    for (const auto &resource_pair :
-         cached_resources.GetTotalResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    heartbeat_data->clear_resources_available();
-    heartbeat_data->set_resources_available_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetAvailableResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    heartbeat_data->clear_resource_load();
-    heartbeat_data->set_resource_load_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetLoadResources().GetResourceMap()) {
-      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
-    }
-  }
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncGetAllHeartbeat(
-    const ItemCallback<rpc::HeartbeatBatchTableData> &callback) {
-  rpc::GetAllHeartbeatRequest request;
-  client_impl_->GetGcsRpcClient().GetAllHeartbeat(
-      request, [callback](const Status &status, const rpc::GetAllHeartbeatReply &reply) {
-        callback(reply.heartbeat_data());
-        RAY_LOG(DEBUG) << "Finished getting heartbeat of all nodes, status = " << status;
+Status ServiceBasedNodeInfoAccessor::AsyncReportResourceUsage(
+    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
+  rpc::ReportResourceUsageRequest request;
+  request.mutable_resources()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportResourceUsage(
+      request,
+      [callback](const Status &status, const rpc::ReportResourceUsageReply &reply) {
+        if (callback) {
+          callback(status);
+        }
       });
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
-    const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+void ServiceBasedNodeInfoAccessor::AsyncReReportResourceUsage() {
+  absl::MutexLock lock(&mutex_);
+  if (cached_resource_usage_.has_resources()) {
+    RAY_LOG(INFO) << "Rereport resource usage.";
+    FillResourceUsageRequest(cached_resource_usage_);
+    client_impl_->GetGcsRpcClient().ReportResourceUsage(
+        cached_resource_usage_,
+        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
+  }
+}
+
+void ServiceBasedNodeInfoAccessor::FillResourceUsageRequest(
+    rpc::ReportResourceUsageRequest &resources) {
+  if (RayConfig::instance().light_report_resource_usage_enabled()) {
+    SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+
+    auto resources_data = resources.mutable_resources();
+    resources_data->clear_resources_total();
+    for (const auto &resource_pair :
+         cached_resources.GetTotalResources().GetResourceMap()) {
+      (*resources_data->mutable_resources_total())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    resources_data->clear_resources_available();
+    resources_data->set_resources_available_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetAvailableResources().GetResourceMap()) {
+      (*resources_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    resources_data->clear_resource_load();
+    resources_data->set_resource_load_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetLoadResources().GetResourceMap()) {
+      (*resources_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
+    }
+  }
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetAllResourceUsage(
+    const ItemCallback<rpc::ResourcesData> &callback) {
+  rpc::GetAllResourceUsageRequest request;
+  client_impl_->GetGcsRpcClient().GetAllResourceUsage(
+      request,
+      [callback](const Status &status, const rpc::GetAllResourceUsageReply &reply) {
+        std::vector<rpc::ResourcesData> result;
+        result.reserve((reply.resource_usage_data().batch_size()));
+        for (int index = 0; index < reply.resource_usage_data().batch_size(); ++index) {
+          result.emplace_back(reply.resource_usage_data().batch(index));
+        }
+        RAY_LOG(DEBUG) << "Finished getting resource usage of all nodes, status = "
+                       << status;
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchedResourceUsage(
+    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  subscribe_batch_heartbeat_operation_ = [this, subscribe](const StatusCallback &done) {
+  subscribe_batch_resource_usage_operation_ = [this,
+                                               subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::HeartbeatBatchTableData heartbeat_batch_table_data;
-      heartbeat_batch_table_data.ParseFromString(data);
-      subscribe(heartbeat_batch_table_data);
+      rpc::ResourceUsageBatchData resources_batch_data;
+      resources_batch_data.ParseFromString(data);
+      subscribe(resources_batch_data);
     };
     return client_impl_->GetGcsPubSub().Subscribe(RESOURCES_BATCH_CHANNEL, "",
                                                   on_subscribe, done);
   };
-  return subscribe_batch_heartbeat_operation_(done);
+  return subscribe_batch_resource_usage_operation_(done);
 }
 
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
@@ -829,8 +848,8 @@ void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restar
     if (subscribe_resource_operation_ != nullptr) {
       RAY_CHECK_OK(subscribe_resource_operation_(nullptr));
     }
-    if (subscribe_batch_heartbeat_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_batch_heartbeat_operation_(nullptr));
+    if (subscribe_batch_resource_usage_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_batch_resource_usage_operation_(nullptr));
     }
   } else {
     if (fetch_node_data_operation_ != nullptr) {

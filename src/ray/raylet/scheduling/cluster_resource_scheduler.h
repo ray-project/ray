@@ -381,10 +381,11 @@ class ClusterResourceScheduler {
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void Heartbeat(bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> data);
+  void FillResourceUsage(bool light_report_resource_usage_enabled,
+                         std::shared_ptr<rpc::ResourcesData> resources_data);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

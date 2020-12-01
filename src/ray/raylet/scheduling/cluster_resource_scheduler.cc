@@ -803,15 +803,16 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::Heartbeat(
-    bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> heartbeat_data) {
+void ClusterResourceScheduler::FillResourceUsage(
+    bool light_report_resource_usage_enabled,
+    std::shared_ptr<rpc::ResourcesData> resources_data) {
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
 
-  if (light_heartbeat_enabled && last_report_resources_ &&
+  if (light_report_resource_usage_enabled && last_report_resources_ &&
       resources == *last_report_resources_.get()) {
     return;
   } else {
@@ -819,11 +820,11 @@ void ClusterResourceScheduler::Heartbeat(
       const auto &label = ResourceEnumToString((PredefinedResources)i);
       const auto &capacity = resources.predefined_resources[i];
       if (capacity.available != 0) {
-        (*heartbeat_data->mutable_resources_available())[label] =
+        (*resources_data->mutable_resources_available())[label] =
             capacity.available.Double();
       }
       if (capacity.total != 0) {
-        (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
       }
     }
     for (auto it = resources.custom_resources.begin();
@@ -832,15 +833,15 @@ void ClusterResourceScheduler::Heartbeat(
       const auto &capacity = it->second;
       const auto &label = string_to_int_map_.Get(custom_id);
       if (capacity.available != 0) {
-        (*heartbeat_data->mutable_resources_available())[label] =
+        (*resources_data->mutable_resources_available())[label] =
             capacity.available.Double();
       }
       if (capacity.total != 0) {
-        (*heartbeat_data->mutable_resources_total())[label] = capacity.total.Double();
+        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
       }
     }
-    heartbeat_data->set_resources_available_changed(true);
-    if (light_heartbeat_enabled) {
+    resources_data->set_resources_available_changed(true);
+    if (light_report_resource_usage_enabled) {
       last_report_resources_.reset(new NodeResources(resources));
     }
   }

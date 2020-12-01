@@ -195,10 +195,6 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
-                                     ReportHeartbeatReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
                                          ReportResourceUsageReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;

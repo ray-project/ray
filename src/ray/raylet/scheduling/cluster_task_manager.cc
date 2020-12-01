@@ -270,8 +270,9 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   return false;
 }
 
-void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
-                                   std::shared_ptr<HeartbeatTableData> data) const {
+void ClusterTaskManager::FillResourceUsage(
+    bool light_report_resource_usage_enabled,
+    std::shared_ptr<rpc::ResourcesData> data) const {
   // TODO (WangTao): Find a way to check if load changed and combine it with light
   // heartbeat. Now we just report it every time.
   data->set_resource_load_changed(true);

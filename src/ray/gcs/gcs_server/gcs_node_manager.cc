@@ -24,13 +24,12 @@ namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 GcsNodeManager::GcsNodeManager(
-    boost::asio::io_service &main_io_service,
-    boost::asio::io_service &node_failure_detector_io_service,
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager)
-    : main_io_service_(main_io_service),
-      resources_timer_(main_io_service),
+    : resource_timer_(main_io_service),
+      light_report_resource_usage_enabled_(
+          RayConfig::instance().light_report_resource_usage_enabled()),
       gcs_pub_sub_(gcs_pub_sub),
       gcs_table_storage_(gcs_table_storage),
       gcs_resource_manager_(gcs_resource_manager) {
@@ -98,34 +97,27 @@ void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &requ
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
-                                           rpc::ReportResourceUsageReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
+void GcsNodeManager::HandleReportResourceUsage(
+    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.resources().node_id());
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(request.resources());
 
-  UpdateNodeHeartbeat(node_id, request);
+  UpdateNodeResourceUsage(node_id, request);
 
   // Update node realtime resources.
   UpdateNodeRealtimeResources(node_id, *resources_data);
 
-  if (!RayConfig::instance().light_report_resource_usage_enabled_() ||
-      resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
+  if (!light_report_resource_usage_enabled_ || resources_data->should_global_gc() ||
+      resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
       resources_data->resource_load_changed()) {
     resources_buffer_[node_id] = *resources_data;
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::REPORT_HEARTBEAT_REQUEST];
-}
-
-// TODO(WangTao): Implement this. Basically copy from `HandleGetAllHeartbeat`.
-void GcsNodeManager::HandleGetAllResourceUsage(
-    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
 void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -261,12 +253,12 @@ void GcsNodeManager::HandleGetAllAvailableResources(
 void GcsNodeManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (!node_heartbeats_.empty()) {
-    auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
+  if (!node_resource_usages_.empty()) {
+    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
     absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
-    for (const auto &heartbeat : node_heartbeats_) {
+    for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.
-      auto load = heartbeat.second.resource_load_by_shape();
+      auto load = usage.second.resource_load_by_shape();
       for (const auto &demand : load.resource_demands()) {
         auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
         auto &aggregate_demand = aggregate_load[scheduling_key];
@@ -282,7 +274,7 @@ void GcsNodeManager::HandleGetAllResourceUsage(
         }
       }
 
-      batch->add_batch()->CopyFrom(heartbeat.second);
+      batch->add_batch()->CopyFrom(usage.second);
     }
 
     for (const auto &demand : aggregate_load) {
@@ -300,21 +292,20 @@ void GcsNodeManager::HandleGetAllResourceUsage(
       auto placement_group_load_proto = batch->mutable_placement_group_load();
       placement_group_load_proto->CopyFrom(*placement_group_load.get());
     }
-    reply->mutable_resources_data()->CopyFrom(*batch);
+    reply->mutable_resource_usage_data()->CopyFrom(*batch);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_ALL_HEARTBEAT_REQUEST];
+  ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsNodeManager::UpdateNodeHeartbeat(const NodeID node_id,
-                                         const rpc::ReportResourceUsageRequest &request) {
-  auto iter = node_heartbeats_.find(node_id);
-  if (!RayConfig::instance().light_report_resource_usage_enabled_() ||
-      iter == node_heartbeats_.end()) {
+void GcsNodeManager::UpdateNodeResourceUsage(
+    const NodeID node_id, const rpc::ReportResourceUsageRequest &request) {
+  auto iter = node_resource_usages_.find(node_id);
+  if (!light_report_resource_usage_enabled_ || iter == node_resource_usages_.end()) {
     auto resources_data = std::make_shared<rpc::ResourcesData>();
     resources_data->CopyFrom(request.resources());
-    node_heartbeats_[node_id] = *resources_data;
+    node_resource_usages_[node_id] = *resources_data;
   } else {
     if (request.resources().resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = request.resources().resources_total();
@@ -394,6 +385,22 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   return removed_node;
 }
 
+void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
+  if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
+    node->set_state(rpc::GcsNodeInfo::DEAD);
+    node->set_timestamp(current_sys_time_ms());
+    AddDeadNodeToCache(node);
+    auto on_done = [this, node_id, node](const Status &status) {
+      auto on_done = [this, node_id, node](const Status &status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                           node->SerializeAsString(), nullptr));
+      };
+      RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
+    };
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+  }
+}
+
 void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
@@ -416,7 +423,7 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsNodeManager::UpdateNodeRealtimeResources(
     const NodeID &node_id, const rpc::ResourcesData &resource_data) {
-  if (!RayConfig::instance().light_report_resource_usage_enabled_() ||
+  if (!light_report_resource_usage_enabled_ ||
       gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
       resource_data.resources_available_changed()) {
     gcs_resource_manager_->UpdateResources(
@@ -456,10 +463,10 @@ void GcsNodeManager::SendBatchedResourceUsage() {
 
   auto resources_period = boost::posix_time::milliseconds(
       RayConfig::instance().raylet_report_resources_period_milliseconds());
-  resources_timer_.expires_from_now(resources_period);
-  resources_timer_.async_wait([this](const boost::system::error_code &error) {
+  resource_timer_.expires_from_now(resources_period);
+  resource_timer_.async_wait([this](const boost::system::error_code &error) {
     if (error == boost::asio::error::operation_aborted) {
-      // `operation_aborted` is set when `resources_timer_` is canceled or destroyed.
+      // `operation_aborted` is set when `resource_timer_` is canceled or destroyed.
       // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
       return;
     }
@@ -478,10 +485,10 @@ std::string GcsNodeManager::DebugString() const {
          << ", GetAllNodeInfo request count: "
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
          << ", ReportResourceUsage request count: "
-         << counts_[CountType::REPORT_HEARTBEAT_REQUEST]
+         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
          << ", GetHeartbeat request count: " << counts_[CountType::GET_HEARTBEAT_REQUEST]
-         << ", GetAllHeartbeat request count: "
-         << counts_[CountType::GET_ALL_HEARTBEAT_REQUEST]
+         << ", GetAllResourceUsage request count: "
+         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST]
          << ", GetResources request count: " << counts_[CountType::GET_RESOURCES_REQUEST]
          << ", UpdateResources request count: "
          << counts_[CountType::UPDATE_RESOURCES_REQUEST]

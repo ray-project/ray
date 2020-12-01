@@ -95,7 +95,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Implements the Nodes() interface.
   NodeTable &node_table();
   HeartbeatTable &heartbeat_table();
-  HeartbeatBatchTable &heartbeat_batch_table();
+  ResourceUsageBatchTable &resource_usage_batch_table();
   DynamicResourceTable &resource_table();
   /// Implements the Tasks() interface.
   virtual raylet::TaskTable &raylet_task_table();
@@ -120,7 +120,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
-  std::unique_ptr<HeartbeatBatchTable> heartbeat_batch_table_;
+  std::unique_ptr<ResourceUsageBatchTable> resource_usage_batch_table_;
   std::unique_ptr<ProfileTable> profile_table_;
   std::unique_ptr<NodeTable> node_table_;
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;

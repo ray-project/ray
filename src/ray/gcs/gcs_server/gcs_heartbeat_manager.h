@@ -16,13 +16,9 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
-#include "ray/gcs/gcs_server/gcs_resources_manager.h"
-#include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -49,6 +45,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
 
   /// Start node failure detect loop.
   void Start();
+
   /// Stop node failure detect loop.
   void Stop();
 
@@ -71,7 +68,7 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
   /// Schedule another tick after a short time.
   void ScheduleTick();
 
- protected:
+ private:
   /// The main event loop for node failure detector.
   boost::asio::io_service &io_service_;
   std::unique_ptr<std::thread> io_service_thread_;

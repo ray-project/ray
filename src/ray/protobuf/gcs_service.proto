@@ -211,7 +211,7 @@ message GetAllResourceUsageRequest {
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
-  repeated ResourcesData resources_list = 2;
+  ResourceUsageBatchData resource_usage_data = 2;
 }
 
 message GetResourcesRequest {
