@@ -1,5 +1,5 @@
 """A utility for debugging serialization issues."""
-
+from typing import Any, Tuple, Set, Optional
 import inspect
 import ray.cloudpickle as cp
 import colorama
@@ -29,7 +29,14 @@ _printer = _Printer()
 
 
 class FailureTuple:
-    def __init__(self, obj, name, parent):
+    """Represents the serialization 'frame'.
+
+    Attributes:
+        obj: The object that fails serialization.
+        name: The variable name of the object.
+        parent: The object that references the `obj`.
+    """
+    def __init__(self, obj: Any, name: str, parent: Any):
         self.obj = obj
         self.name = name
         self.parent = parent
@@ -51,8 +58,8 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
                 serializable, _ = inspect_serializability(
                     obj,
                     name=name,
-                    parent=parent,
                     depth=depth - 1,
+                    _parent=parent,
                     _failure_set=failure_set)
                 found = found or not serializable
                 if found:
@@ -67,8 +74,8 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
                 serializable, _ = inspect_serializability(
                     obj,
                     name=name,
-                    parent=parent,
                     depth=depth - 1,
+                    _parent=parent,
                     _failure_set=failure_set)
                 found = found or not serializable
                 if found:
@@ -89,8 +96,8 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
             serializable, _ = inspect_serializability(
                 obj,
                 name=name,
-                parent=parent,
                 depth=depth - 1,
+                _parent=parent,
                 _failure_set=failure_set)
             found = found or not serializable
             if found:
@@ -105,8 +112,8 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
             serializable, _ = inspect_serializability(
                 obj,
                 name=name,
-                parent=parent,
                 depth=depth - 1,
+                _parent=parent,
                 _failure_set=failure_set)
             found = found or not serializable
             if found:
@@ -118,21 +125,21 @@ def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
     return found
 
 
-def inspect_serializability(base_obj,
-                            name=None,
-                            parent=None,
-                            depth=3,
-                            _failure_set=None):
+def inspect_serializability(base_obj: Any,
+                            name: Optional[str] = None,
+                            depth: int = 3,
+                            _parent: Optional[Any] = None,
+                            _failure_set: Optional[set] = None) -> Tuple[bool, Set[FailureTuple]]:
     """Identifies what objects are preventing serialization.
 
     Args:
         base_obj: Object to be serialized.
-        name (str): Optional name of string.
-        depth (int): Depth of the scope stack to walk through. Defaults to 3.
+        name: Optional name of string.
+        depth: Depth of the scope stack to walk through. Defaults to 3.
 
     Returns:
         bool: True if serializable.
-        set: Set of objects that cloudpickle is unable to serialize.
+        set[FailureTuple]: Set of objects that cloudpickle is unable to serialize.
 
     .. versionadded:: 1.1.0
 
@@ -162,7 +169,7 @@ def inspect_serializability(base_obj,
         found = True
         try:
             if depth == 0:
-                _failure_set.add(FailureTuple(base_obj, name, parent))
+                _failure_set.add(FailureTuple(base_obj, name, _parent))
         # Some objects may not be hashable, so we skip adding this to the set.
         except Exception:
             pass
@@ -181,7 +188,7 @@ def inspect_serializability(base_obj,
             base_obj, depth=depth, parent=base_obj, failure_set=_failure_set)
 
     if not _failure_set:
-        _failure_set.add(FailureTuple(base_obj, name, parent))
+        _failure_set.add(FailureTuple(base_obj, name, _parent))
 
     if top_level:
         print("=" * min(len(declaration), 80))
