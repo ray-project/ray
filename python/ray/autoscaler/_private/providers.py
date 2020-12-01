@@ -57,7 +57,8 @@ def _load_local_defaults_config():
 
 def _load_kubernetes_defaults_config():
     import ray.autoscaler.kubernetes as ray_kubernetes
-    return Path(ray_kubernetes.__file__).parent.joinpath("defaults.yaml").__str__()
+    return Path(
+        ray_kubernetes.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _load_aws_defaults_config():
@@ -77,7 +78,8 @@ def _load_azure_defaults_config():
 
 def _load_staroid_defaults_config():
     import ray.autoscaler.staroid as ray_staroid
-    return Path(ray_staroid.__file__).parent.joinpath("defaults.yaml").__str__()
+    return Path(
+        ray_staroid.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _import_external(provider_config):

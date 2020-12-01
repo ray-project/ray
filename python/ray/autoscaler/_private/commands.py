@@ -696,12 +696,13 @@ def get_or_create_head_node(config: Dict[str, Any],
         printable_config_file = Path(printable_config_file).resolve()
         cli_logger.print("Monitor autoscaling with")
         cli_logger.print(
-            cf.bold("  ray exec {}{} {}"), str(printable_config_file), modifiers,
-            quote(monitor_str))
+            cf.bold("  ray exec {}{} {}"), str(printable_config_file),
+            modifiers, quote(monitor_str))
 
         cli_logger.print("Connect to a terminal on the cluster head:")
         cli_logger.print(
-            cf.bold("  ray attach {}{}"), str(printable_config_file), modifiers)
+            cf.bold("  ray attach {}{}"), str(printable_config_file),
+            modifiers)
 
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
