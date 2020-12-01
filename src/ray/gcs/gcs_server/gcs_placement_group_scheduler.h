@@ -22,6 +22,7 @@
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
@@ -344,7 +345,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager,
-      ReserveResourceClientFactoryFn lease_client_factory = nullptr);
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
 
@@ -461,13 +462,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
 
-  /// The cached node clients which are used to communicate with raylet to lease workers.
-  absl::flat_hash_map<NodeID, std::shared_ptr<ResourceReserveInterface>>
-      remote_lease_clients_;
-
-  /// Factory for producing new clients to request leases from remote nodes.
-  ReserveResourceClientFactoryFn lease_client_factory_;
-
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;
 
@@ -477,6 +471,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Set of placement group that have lease requests in flight to nodes.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
+
+  /// The cached raylet worker client used to communicate with raylet client worker.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 };
 
 }  // namespace gcs

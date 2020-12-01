@@ -35,7 +35,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       main_service_(main_service),
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
-      client_call_manager_(main_service) {}
+      client_call_manager_(main_service),
+      raylet_client_pool_(std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)) {}
 
 GcsServer::~GcsServer() { Stop(); }
 
@@ -183,13 +184,7 @@ void GcsServer::InitGcsActorManager() {
       [this](std::shared_ptr<GcsActor> actor) {
         gcs_actor_manager_->OnActorCreationSuccess(std::move(actor));
       },
-      /*lease_client_factory=*/
-      [this](const rpc::Address &address) {
-        auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
-            address.ip_address(), address.port(), client_call_manager_);
-        return std::make_shared<ray::raylet::RayletClient>(
-            std::move(node_manager_worker_client));
-      },
+      raylet_client_pool_,
       /*client_factory=*/
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
@@ -217,6 +212,7 @@ void GcsServer::InitGcsActorManager() {
         // node is removed from the GCS.
         gcs_placement_group_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
         gcs_actor_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
+        raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
       });
 
   auto on_subscribe = [this](const std::string &id, const std::string &data) {
@@ -243,14 +239,7 @@ void GcsServer::InitGcsJobManager() {
 void GcsServer::InitGcsPlacementGroupManager() {
   RAY_CHECK(gcs_table_storage_ != nullptr && gcs_node_manager_ != nullptr);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
-      main_service_, gcs_table_storage_, *gcs_node_manager_,
-      /*lease_client_factory=*/
-      [this](const rpc::Address &address) {
-        auto node_manager_worker_client = rpc::NodeManagerWorkerClient::make(
-            address.ip_address(), address.port(), client_call_manager_);
-        return std::make_shared<ray::raylet::RayletClient>(
-            std::move(node_manager_worker_client));
-      });
+      main_service_, gcs_table_storage_, *gcs_node_manager_, raylet_client_pool_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_node_manager_);

@@ -33,6 +33,7 @@ cc_library(
     ]),
     hdrs = glob([
         "src/ray/rpc/*.h",
+        "src/ray/raylet_client/*.h",
     ]),
     copts = COPTS,
     strip_include_prefix = "src",
@@ -57,6 +58,9 @@ cc_library(
     name = "node_manager_rpc",
     hdrs = glob([
         "src/ray/rpc/node_manager/*.h",
+    ]),
+     srcs = glob([
+        "src/ray/rpc/node_manager/*.cc",
     ]),
     copts = COPTS,
     strip_include_prefix = "src",
