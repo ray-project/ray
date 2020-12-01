@@ -433,11 +433,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
-    auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
-    return status == std::future_status::ready;
-  }
-
  protected:
   // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -449,7 +444,7 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   // Timeout waiting for gcs server reply, default is 5s
-  const uint64_t timeout_ms_ = 5000;
+  const std::chrono::milliseconds timeout_ms_{5000};
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
@@ -590,7 +585,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
   // Report heartbeat
   rpc::ReportHeartbeatRequest report_heartbeat_request;
-  report_heartbeat_request.mutable_heartbeat()->set_client_id(gcs_node_info->node_id());
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
 
   // Update node resources

@@ -1,4 +1,5 @@
 import gym
+from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
@@ -66,6 +67,17 @@ def huber_loss(x, delta=1.0):
         tf.math.square(x) * 0.5, delta * (tf.abs(x) - 0.5 * delta))
 
 
+def one_hot(x, space):
+    if isinstance(space, Discrete):
+        return tf.one_hot(x, space.n)
+    elif isinstance(space, MultiDiscrete):
+        return tf.concat(
+            [tf.one_hot(x[:, i], n) for i, n in enumerate(space.nvec)],
+            axis=-1)
+    else:
+        raise ValueError("Unsupported space for `one_hot`: {}".format(space))
+
+
 def reduce_mean_ignore_inf(x, axis):
     """Same as tf.reduce_mean() but ignores -inf values."""
     mask = tf.not_equal(x, tf.float32.min)
@@ -120,7 +132,10 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
         assert session_or_none is not None
 
     def make_wrapper(fn):
-        if session_or_none:
+        # Static-graph mode: Create placeholders and make a session call each
+        # time the wrapped function is called. Return this session call's
+        # outputs.
+        if session_or_none is not None:
             args_placeholders = []
             kwargs_placeholders = {}
             symbolic_out = [None]
@@ -171,6 +186,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                 return ret
 
             return call
+        # Eager mode (call function as is).
         else:
             return fn
 
