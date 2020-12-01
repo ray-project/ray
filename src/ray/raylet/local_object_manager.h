@@ -39,8 +39,7 @@ class LocalObjectManager {
                      gcs::ObjectInfoAccessor &object_info_accessor,
                      rpc::CoreWorkerClientPool &owner_client_pool,
                      bool object_pinning_enabled, bool automatic_object_deletion_enabled,
-                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
-                     SpaceReleasedCallback on_objects_spilled)
+                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed)
       : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
