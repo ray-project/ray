@@ -564,6 +564,84 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
     wait_for_condition(is_dir_empty, timeout=1000)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    cluster = ray_start_cluster
+    # Head node.
+    cluster.add_node(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 2,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+        })
+    # Add 2 worker nodes.
+    for _ in range(2):
+        cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
+    ray.init(address=cluster.address)
+
+    arr = np.random.rand(1024 * 1024)  # 8 MB data
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.replay_buffer = []
+
+        def ping(self):
+            return
+
+        def create_objects(self):
+            for _ in range(80):
+                ref = None
+                while ref is None:
+                    ref = ray.put(arr)
+                    self.replay_buffer.append(ref)
+                # Remove the replay buffer with 60% probability.
+                if random.randint(0, 9) < 6:
+                    self.replay_buffer.pop()
+
+            # Do random sampling.
+            for _ in range(200):
+                ref = random.choice(self.replay_buffer)
+                sample = ray.get(ref, timeout=0)
+                assert np.array_equal(sample, arr)
+
+    actors = [Actor.remote() for _ in range(3)]
+    ray.get([actor.create_objects.remote() for actor in actors])
+
+    def wait_until_actor_dead(actor):
+        try:
+            ray.get(actor.ping.remote())
+        except ray.exceptions.RayActorError:
+            return True
+        return False
+
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
+
+    # Kill actors to remove all references.
+    for actor in actors:
+        ray.kill(actor)
+        wait_for_condition(lambda: wait_until_actor_dead(actor))
+    # The multi node deletion should work.
+    wait_for_condition(is_dir_empty)
+
+
 def test_fusion_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"

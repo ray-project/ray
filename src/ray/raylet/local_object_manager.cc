@@ -60,10 +60,11 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 }
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
+  // object_pinning_enabled_ flag is off when the --lru-evict flag is on.
   if (object_pinning_enabled_) {
     absl::MutexLock lock(&mutex_);
     RAY_LOG(DEBUG) << "Unpinning object " << object_id;
-    // The object should be in one of these stats; pinned, spilling, or spilled.
+    // The object should be in one of these stats. pinned, spilling, or spilled.
     RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
               (spilled_objects_url_.count(object_id) > 0) ||
               (objects_pending_spill_.count(object_id) > 0));
@@ -89,6 +90,10 @@ void LocalObjectManager::FlushFreeObjects() {
     on_objects_freed_(objects_to_free_);
     objects_to_free_.clear();
   }
+  if (object_pinning_enabled_ && automatic_object_deletion_enabled_) {
+    // Deletion wouldn't work when the object pinning is not enabled.
+    ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
+  }
   last_free_objects_at_ms_ = current_time_ms();
 }
 
@@ -101,7 +106,6 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 
 int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
                                                int64_t min_bytes_to_spill) {
-  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   RAY_CHECK(num_bytes_to_spill >= min_bytes_to_spill);
 
   if (RayConfig::instance().object_spilling_config().empty() ||
@@ -143,7 +147,6 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
-  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   absl::MutexLock lock(&mutex_);
   SpillObjectsInternal(object_ids, callback);
 }
@@ -268,7 +271,6 @@ void LocalObjectManager::AddSpilledUrls(
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
-  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
@@ -296,7 +298,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
 }
 
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
-  RAY_CHECK(object_pinning_enabled_) << "Not Implemented";
   absl::MutexLock lock(&mutex_);
   std::vector<std::string> object_urls_to_delete;
 
@@ -361,18 +362,6 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
               }
             });
       });
-}
-
-void LocalObjectManager::DoPeriodicOperations() {
-  if (!object_pinning_enabled_ || !automatic_object_deletion_enabled_) {
-    return;
-  }
-  execute_after(io_context_,
-                [this]() {
-                  ProcessSpilledObjectsDeleteQueue(delete_batch_size_);
-                  DoPeriodicOperations();
-                },
-                delete_interval_ms_);
 }
 
 };  // namespace raylet

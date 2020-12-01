@@ -526,9 +526,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
     ASSERT_TRUE(freed.empty());
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
   }
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
-    manager.DeleteSpilledObjectIfNecessary(object_ids[i]);
-  }
 
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -573,9 +570,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
   // All objects are out of scope now.
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
-  }
-  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
-    manager.DeleteSpilledObjectIfNecessary(object_ids_to_spill[i]);
   }
 
   // // Make sure all spilled objects are deleted.
@@ -629,9 +623,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
   for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
   }
-  for (size_t i = 0; i < free_objects_batch_size - 1; i++) {
-    manager.DeleteSpilledObjectIfNecessary(object_ids_to_spill[i]);
-  }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Nothing is deleted yet because the ref count is > 0.
@@ -639,8 +630,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
 
   // The last reference is deleted.
   ASSERT_TRUE(owner_client->ReplyObjectEviction());
-  manager.DeleteSpilledObjectIfNecessary(
-      object_ids_to_spill[free_objects_batch_size - 1]);
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Now the object is deleted.
@@ -688,9 +677,6 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
   }
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
-    manager.DeleteSpilledObjectIfNecessary(object_ids_to_spill[i]);
-  }
   // // Now, deletion queue would process only the first object. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -721,7 +707,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   std::vector<std::unique_ptr<RayObject>> objects;
 
   // Make sure when there is no spilled object, nothing is deleted.
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
+  for (size_t i = 0; i < free_objects_batch_size + 1; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
@@ -754,15 +740,11 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(owner_client->ReplyObjectEviction());
   }
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
-    manager.DeleteSpilledObjectIfNecessary(object_ids_to_spill[i]);
-  }
 
-  // Deletion queue shouldn't delete more than a given argument.
-  uint32_t max_batch_size = object_ids_to_spill.size() - 1;
-  manager.ProcessSpilledObjectsDeleteQueue(max_batch_size);
+  // The spilled objects should be deleted as number of spilled urls exceeds the batch
+  // size.
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
-  ASSERT_EQ(deleted_urls_size, max_batch_size);
+  ASSERT_EQ(deleted_urls_size, free_objects_batch_size);
 }
 
 TEST_F(LocalObjectManagerTest,

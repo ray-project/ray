@@ -41,8 +41,7 @@ class LocalObjectManager {
                      bool object_pinning_enabled, bool automatic_object_deletion_enabled,
                      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
                      SpaceReleasedCallback on_objects_spilled)
-      : io_context_(io_context),
-        free_objects_period_ms_(free_objects_period_ms),
+      : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
@@ -51,9 +50,7 @@ class LocalObjectManager {
         automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         on_objects_spilled_(on_objects_spilled),
-        last_free_objects_at_ms_(current_time_ms()) {
-    DoPeriodicOperations();
-  }
+        last_free_objects_at_ms_(current_time_ms()) {}
 
   /// Pin objects.
   ///
@@ -143,11 +140,6 @@ class LocalObjectManager {
   /// \param urls_to_delete List of urls to delete from external storages.
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
 
-  /// Run periodic operations such as processing the deletion queue or spilling objects.
-  void DoPeriodicOperations();
-
-  boost::asio::io_service &io_context_;
-
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
 
@@ -222,11 +214,6 @@ class LocalObjectManager {
   /// within a single spilled file. We need to ref count to avoid deleting the file
   /// before all objects within that file are out of scope.
   absl::flat_hash_map<std::string, uint64_t> url_ref_count_ GUARDED_BY(mutex_);
-
-  /// The interval to process deletion queue.
-  uint32_t delete_interval_ms_ = 100;
-
-  uint32_t delete_batch_size_ = 30;
 };
 
 };  // namespace raylet
