@@ -115,6 +115,12 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                    << "--- Tip: Use the `ray memory` command to list active objects "
                       "in the cluster."
                    << "\n---\n";
+
+    // Replace the status with a more helpful error message.
+    std::ostringstream message;
+    message << "Failed to put object " << object_id << " in object store because it "
+            << "is full. Object size is " << data_size << " bytes.";
+    status = Status::ObjectStoreFull(message.str());
   } else if (status.IsObjectExists()) {
     RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
                      << object_id << ".";
