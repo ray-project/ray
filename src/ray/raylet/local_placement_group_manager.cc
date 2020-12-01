@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License
 
-#include "ray/raylet/node_placement_group_manager.h"
+#include "ray/raylet/local_placement_group_manager.h"
 
 #include <cctype>
 #include <fstream>
@@ -22,14 +22,14 @@ namespace ray {
 
 namespace raylet {
 
-NodePlacementGroupManager::NodePlacementGroupManager(ResourceIdSet &local_available_resources_,
+LocalPlacementGroupManager::LocalPlacementGroupManager(ResourceIdSet &local_available_resources_,
                             std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
                             const NodeID &self_node_id_)
                             :local_available_resources_(local_available_resources_),
                             cluster_resource_map_(cluster_resource_map_),
                             self_node_id_(self_node_id_) {}
 
-bool NodePlacementGroupManager::PrepareBundleResources(const BundleSpecification &bundle_spec) {
+bool LocalPlacementGroupManager::PrepareBundleResources(const BundleSpecification &bundle_spec) {
   // We will first delete the existing bundle to ensure idempotent.
   // The reason why we do this is: after GCS restarts, placement group can be rescheduled
   // directly without rolling back the operations performed before the restart.
@@ -73,7 +73,7 @@ bool NodePlacementGroupManager::PrepareBundleResources(const BundleSpecification
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
 
-void NodePlacementGroupManager::CommitBundleResources(const BundleSpecification &bundle_spec) {
+void LocalPlacementGroupManager::CommitBundleResources(const BundleSpecification &bundle_spec) {
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
   // once retry is implemented.
   const auto &bundle_id = bundle_spec.BundleId();
@@ -90,7 +90,7 @@ void NodePlacementGroupManager::CommitBundleResources(const BundleSpecification 
   bundle_state->state = CommitState::COMMITTED;
   const auto &acquired_resources = bundle_state->acquired_resources;
 
-  const auto &bundle_resource_labels = bundle_spec.GetAllPlacementGroupResourceLabels();
+  const auto &bundle_resource_labels = bundle_spec.GetFormattedResources();
   for (const auto &resource: bundle_resource_labels) {
     local_available_resources_.AddOrUpdateResource(resource.first, resource.second);
   }
@@ -101,7 +101,7 @@ void NodePlacementGroupManager::CommitBundleResources(const BundleSpecification 
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
-void NodePlacementGroupManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {
+void LocalPlacementGroupManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
@@ -115,9 +115,8 @@ void NodePlacementGroupManager::ReturnBundleResources(const BundleSpecification 
   }
   bundle_state_map_.erase(it);
 
-  // Return resources.
   const auto &resource_set = bundle_spec.GetRequiredResources();
-  const auto &placement_group_resource_labels = bundle_spec.GetAllPlacementGroupResourceLabels();
+  const auto &placement_group_resource_labels = bundle_spec.GetFormattedResources();
   
   // Return resources to local_available_resources_.
   local_available_resources_.Release(ResourceIdSet(resource_set));
@@ -128,7 +127,7 @@ void NodePlacementGroupManager::ReturnBundleResources(const BundleSpecification 
   cluster_resource_map_[self_node_id_].Acquire(ResourceSet(placement_group_resource_labels));
 }
 
-void NodePlacementGroupManager::ReturnUnusedBundleResources(const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
+void LocalPlacementGroupManager::ReturnUnusedBundleResources(const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
       ReturnBundleResources(*iter->second);

@@ -41,7 +41,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/raylet/node_placement_group_manager.h"
+#include "ray/raylet/local_placement_group_manager.h"
 // clang-format on
 
 namespace ray {
@@ -820,8 +820,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
 
-  /// Placement group manager in node level.
-  NodePlacementGroupManager placement_group_manager_;
+  /// Managers all bundle-related operations.
+  LocalPlacementGroupManager local_placement_group_manager_;
 };
 
 }  // namespace raylet

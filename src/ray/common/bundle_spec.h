@@ -73,7 +73,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   }
 
   /// Get all placement group bundle resource labels.
-  const std::unordered_map<std::string, double> &GetAllPlacementGroupResourceLabels() const { return bundle_resource_labels_; }
+  const std::unordered_map<std::string, double> &GetFormattedResources() const { return bundle_resource_labels_; }
 
   /// Returns the schedule bundle callback, or nullptr.
   const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
@@ -92,7 +92,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> unit_resource_;
 
-  /// Store all bundle resource labels, e.g., CPU -> CPU_group_i, CPU_group_YYY_i, PlacementGroup_implicit_i_YYY.
+  /// Store all bundle resource labels, e.g., CPU -> CPU_group_i, CPU_group_YYY_i.
   std::unordered_map<std::string, double> bundle_resource_labels_;
 
   mutable ScheduleBundleCallback on_schedule_ = nullptr;

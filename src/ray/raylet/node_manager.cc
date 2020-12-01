@@ -169,7 +169,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       record_metrics_period_(config.record_metrics_period_ms),
-      placement_group_manager_(local_available_resources_, cluster_resource_map_, self_node_id_) {
+      local_placement_group_manager_(local_available_resources_, cluster_resource_map_, self_node_id_) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -602,7 +602,7 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Return unused bundle resources.
-  placement_group_manager_.ReturnUnusedBundleResources(in_use_bundles);  
+  local_placement_group_manager_.ReturnUnusedBundleResources(in_use_bundles);  
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1796,7 +1796,7 @@ void NodeManager::HandlePrepareBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
                  << bundle_spec.DebugString();
-  auto prepared = placement_group_manager_.PrepareBundleResources(bundle_spec);
+  auto prepared = local_placement_group_manager_.PrepareBundleResources(bundle_spec);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
   // Call task dispatch to assign work to the new group.
@@ -1812,7 +1812,7 @@ void NodeManager::HandleCommitBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
                  << bundle_spec.DebugString();
-  placement_group_manager_.CommitBundleResources(bundle_spec);
+  local_placement_group_manager_.CommitBundleResources(bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Call task dispatch to assign work to the new group.
@@ -1851,7 +1851,7 @@ void NodeManager::HandleCancelResourceReserve(
   }
 
   // Return bundle resources.
-  placement_group_manager_.ReturnBundleResources(bundle_spec);
+  local_placement_group_manager_.ReturnBundleResources(bundle_spec);
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 
