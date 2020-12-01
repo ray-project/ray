@@ -8,7 +8,6 @@ import warnings
 import ray
 from ray.cluster_utils import Cluster
 from ray.exceptions import GetTimeoutError
-from ray.test_utils import wait_for_condition
 
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):

@@ -11,6 +11,7 @@ import psutil
 import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
+from ray.test_utils import new_scheduler_enabled
 
 bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
@@ -332,6 +333,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_spill_during_get(object_spilling_config, shutdown_only):
     ray.init(
         num_cpus=4,
