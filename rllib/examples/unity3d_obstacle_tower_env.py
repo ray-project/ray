@@ -4,12 +4,31 @@ environment.
 """
 
 import argparse
+from gym import ObservationWrapper
+from gym.spaces import Tuple
+import numpy as np
 from obstacle_tower_env import ObstacleTowerEnv
 import os
 
 import ray
 from ray import tune
+from ray.rllib.examples.models.cnn_plus_fc_concat_model import \
+    CNNPlusFCConcatModel
 from ray.rllib.utils.test_utils import check_learning_achieved
+
+
+class ObstacleTowerObservationWrapper(ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        # Override observation space.
+        self.observation_space = Tuple(self.observation_space.spaces[:3])
+
+    def observation(self, observation):
+        # 0=image; 1=number of keys held; 2=time remaining; 3=?
+        # Filter out last component and make sure that time remaining is a
+        # Box((1,)), not Box(()) as returned by the env.
+        return tuple([observation[0], observation[1], np.array([observation[2]])])
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -26,11 +45,14 @@ parser.add_argument("--stop-timesteps", type=int, default=10000000)
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)#TODO
+    ray.init()#local_mode=True)#TODO
 
     args = parser.parse_args()
 
-    tune.register_env("obstacle_tower", lambda c: ObstacleTowerEnv(**c))
+    tune.register_env(
+        "obstacle_tower",
+        lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(
+            "d:\\games\\obstacletower\\obstacletower.exe", **c)))
 
     config = {
         "env": "obstacle_tower",
@@ -56,6 +78,8 @@ if __name__ == "__main__":
         "rollout_fragment_length": 200,
         "clip_param": 0.1,
         "model": {
+            "custom_model": CNNPlusFCConcatModel,
+            "custom_model_config": {},
             "max_seq_len": 100,
             "use_lstm": True,
             "lstm_use_prev_action": True,

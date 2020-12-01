@@ -42,7 +42,7 @@ class SACTorchModel(TorchModelV2, nn.Module):
                  initial_alpha: float = 1.0,
                  target_entropy: Optional[float] = None):
         """Initializes a SACTorchModel instance.
-7
+
         Args:
             actor_hidden_activation (str): Activation for the actor network.
             actor_hiddens (list): Hidden layers sizes for the actor network.
