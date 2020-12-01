@@ -289,6 +289,8 @@ build_wheels() {
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
       )
 
+      echo $PATH
+
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
       docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \

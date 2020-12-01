@@ -69,10 +69,7 @@ jobs:
         LINUX_WHEELS: 1
         RAY_DEFAULT_BUILD: 1
       run: |
-        # python -u ci/remote-watch.py --skip_repo=ray-project/ray &
-        which docker
-        docker image ls
-        echo $PATH
-        . ./ci/travis/ci.sh init
-        . ./ci/travis/ci.sh build
+        python -u ci/remote-watch.py --skip_repo=ray-project/ray &
+        ./ci/travis/ci.sh init
+        ./ci/travis/ci.sh build
         python ci/travis/build-docker-images.py || true
