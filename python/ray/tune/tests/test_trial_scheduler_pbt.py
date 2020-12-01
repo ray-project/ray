@@ -12,6 +12,8 @@ from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 
+MB = 1024**2
+
 
 class MockParam(object):
     def __init__(self, params):
@@ -26,7 +28,7 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=1)
+        ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
         ray.shutdown()
@@ -36,7 +38,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             def setup(self, config):
                 # Make sure this is large enough so ray uses object store
                 # instead of in-process store.
-                self.large_object = random.getrandbits(int(10e7))
+                self.large_object = random.getrandbits(int(10e6))
                 self.iter = 0
                 self.a = config["a"]
 
@@ -58,7 +60,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.objects()) <= 10
+                assert len(ray.objects()) <= 12
                 return checkpoint
 
         param_a = MockParam([1, -1])

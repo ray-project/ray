@@ -27,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
                         TrainerOptimizersMixin):
+    """A subclass of TrainingOperator created from a PTL ``LightningModule``.
+
+    This class is returned by `TrainingOperator.from_ptl` and it's training
+    state is defined by the Pytorch Lightning ``LightningModule`` that is
+    passed into `from_ptl`. Training and validation functionality have
+    already been implemented according to
+    Pytorch Lightning's Trainer. But if you need to modify training,
+    you should subclass this class and override the appropriate methods
+    before passing in the subclass to `TorchTrainer`.
+
+    .. code-block:: python
+
+            MyLightningOperator = TrainingOperator.from_ptl(
+                MyLightningModule)
+            trainer = TorchTrainer(training_operator_cls=MyLightningOperator,
+                ...)
+    """
+
     def _configure_amp(self, amp, models, optimizers, apex_args=None):
         assert len(models) == 1
         model = models[0]
@@ -356,11 +374,7 @@ class LightningOperator(TrainingOperator, TrainerModelHooksMixin,
             model.on_after_backward()
 
         with self.timers.record("apply"):
-            model.optimizer_step(
-                epoch=epoch_idx,
-                batch_idx=batch_idx,
-                optimizer=optimizer,
-                optimizer_idx=0)
+            optimizer.step()
 
         model.on_before_zero_grad(optimizer)
 

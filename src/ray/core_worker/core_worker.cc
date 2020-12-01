@@ -436,6 +436,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
+      /* retry_task_callback= */
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -1171,19 +1172,9 @@ Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-Status CoreWorker::PrepareActorCheckpoint(const ActorID &actor_id,
-                                          ActorCheckpointID *checkpoint_id) {
-  return local_raylet_client_->PrepareActorCheckpoint(actor_id, checkpoint_id);
-}
-
-Status CoreWorker::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
-  return local_raylet_client_->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
-}
-
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const NodeID &client_id) {
-  return local_raylet_client_->SetResource(resource_name, capacity, client_id);
+                               const NodeID &node_id) {
+  return local_raylet_client_->SetResource(resource_name, capacity, node_id);
 }
 
 void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
@@ -2124,7 +2115,7 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                        NodeID::FromBinary(request.client_id()));
+                                        NodeID::FromBinary(request.node_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2137,7 +2128,7 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
     return;
   }
   reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                           NodeID::FromBinary(request.client_id()));
+                                           NodeID::FromBinary(request.node_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2149,10 +2140,10 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<NodeID> client_ids =
+  std::unordered_set<NodeID> node_ids =
       reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
-  for (const auto &client_id : client_ids) {
-    reply->add_client_ids(client_id.Binary());
+  for (const auto &node_id : node_ids) {
+    reply->add_node_ids(node_id.Binary());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
