@@ -63,7 +63,7 @@ class LongPollerAsyncClient:
 
     async def _do_long_poll(self):
         while True:
-          try:
+            try:
                 updates: Dict[str, UpdatedObject] = await self._poll_once()
                 self._update(updates)
                 logger.debug(f"LongPollerClient received udpates: {updates}")
