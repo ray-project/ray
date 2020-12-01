@@ -334,16 +334,27 @@ void ClusterResourceScheduler::AddLocalResource(
                                                       double resource_total) {
   string_to_int_map_.Insert(resource_name);
   int64_t resource_id = string_to_int_map_.Get(resource_name);
-  ResourceInstanceCapacities capacity;
-  capacity.total.resize(1);
-  capacity.total[0] = resource_total;
-  capacity.available.resize(1);
-  capacity.available[0] = resource_total;
-  local_resources_.custom_resources[resource_id] = capacity;
-  std::string client_id_string = string_to_int_map_.Get(local_node_id_);
-  RAY_CHECK(string_to_int_map_.Get(client_id_string) == local_node_id_);
-  UpdateResourceCapacity(string_to_int_map_.Get(local_node_id_), resource_name, resource_total);
-  UpdateLocalAvailableResourcesFromResourceInstances();
+
+  if (local_resources_.custom_resources.find(resource_id) != local_resources_.custom_resources.end()) {
+    FixedPoint total(resource_total);
+    auto &instances = local_resources_.custom_resources[resource_id];
+    instances.total[0] += total;
+    instances.available[0] += total;
+    auto &capacity = nodes_[local_node_id_].custom_resources[resource_id];
+    capacity.available += total;
+    capacity.total += total;
+  } else {
+    ResourceInstanceCapacities capacity;
+    capacity.total.resize(1);
+    capacity.total[0] = resource_total;
+    capacity.available.resize(1);
+    capacity.available[0] = resource_total;
+    local_resources_.custom_resources[resource_id] = capacity;
+    std::string client_id_string = string_to_int_map_.Get(local_node_id_);
+    RAY_CHECK(string_to_int_map_.Get(client_id_string) == local_node_id_);
+    UpdateResourceCapacity(string_to_int_map_.Get(local_node_id_), resource_name, resource_total);
+    UpdateLocalAvailableResourcesFromResourceInstances();
+  }
 }
 
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,

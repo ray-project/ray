@@ -50,6 +50,9 @@ def test_placement_group_pack(ray_start_cluster):
                 "CPU": 2
             }
         ])
+    import time
+    time.sleep(1)
+    print(ray.cluster_resources())
     ray.get(placement_group.ready())
     print("PG ready")
     actor_1 = Actor.options(

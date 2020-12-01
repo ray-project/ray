@@ -1702,6 +1702,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     backlog_size = request.backlog_size();
   }
   Task task(task_message, backlog_size);
+  RAY_LOG(ERROR) << "Lease request received: " << task.DebugString();
   bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;

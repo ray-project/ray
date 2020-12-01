@@ -1072,6 +1072,15 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
   ASSERT_FALSE(result.empty());
 
+  task_request["custom123"] = 6;
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_TRUE(result.empty());
+
+
+  cluster_resources.AddLocalResource("custom123", 5);
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_FALSE(result.empty());
+
   cluster_resources.DeleteLocalResource("custom123");
   result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
   ASSERT_TRUE(result.empty());
