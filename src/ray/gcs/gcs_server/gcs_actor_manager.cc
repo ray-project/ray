@@ -271,116 +271,6 @@ void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &r
   ++counts_[CountType::UPDATE_ACTOR_INFO_REQUEST];
 }
 
-void GcsActorManager::HandleAddActorCheckpoint(
-    const rpc::AddActorCheckpointRequest &request, rpc::AddActorCheckpointReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.checkpoint_data().actor_id());
-  ActorCheckpointID checkpoint_id =
-      ActorCheckpointID::FromBinary(request.checkpoint_data().checkpoint_id());
-  RAY_LOG(DEBUG) << "Adding actor checkpoint, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id << ", checkpoint id = " << checkpoint_id;
-  auto on_done = [this, actor_id, checkpoint_id, reply,
-                  send_reply_callback](const Status &status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to add actor checkpoint: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id
-                     << ", checkpoint id = " << checkpoint_id;
-    } else {
-      auto on_get_done = [this, actor_id, checkpoint_id, reply, send_reply_callback](
-                             const Status &status,
-                             const boost::optional<ActorCheckpointIdData> &result) {
-        ActorCheckpointIdData actor_checkpoint_id;
-        if (result) {
-          actor_checkpoint_id.CopyFrom(*result);
-        } else {
-          actor_checkpoint_id.set_actor_id(actor_id.Binary());
-        }
-        actor_checkpoint_id.add_checkpoint_ids(checkpoint_id.Binary());
-        actor_checkpoint_id.add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
-        auto on_put_done = [actor_id, checkpoint_id, reply,
-                            send_reply_callback](const Status &status) {
-          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, job id = "
-                         << actor_id.JobId() << ", actor id = " << actor_id
-                         << ", checkpoint id = " << checkpoint_id;
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-        };
-        RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().Put(
-            actor_id, actor_checkpoint_id, on_put_done));
-      };
-      RAY_CHECK_OK(
-          gcs_table_storage_->ActorCheckpointIdTable().Get(actor_id, on_get_done));
-    }
-  };
-
-  Status status = gcs_table_storage_->ActorCheckpointTable().Put(
-      checkpoint_id, request.checkpoint_data(), on_done);
-  if (!status.ok()) {
-    on_done(status);
-  }
-  ++counts_[CountType::ADD_ACTOR_CHECKPOINT_REQUEST];
-}
-
-void GcsActorManager::HandleGetActorCheckpoint(
-    const rpc::GetActorCheckpointRequest &request, rpc::GetActorCheckpointReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  ActorCheckpointID checkpoint_id =
-      ActorCheckpointID::FromBinary(request.checkpoint_id());
-  RAY_LOG(DEBUG) << "Getting actor checkpoint, job id = " << actor_id.JobId()
-                 << ", checkpoint id = " << checkpoint_id;
-  auto on_done = [actor_id, checkpoint_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorCheckpointData> &result) {
-    if (status.ok()) {
-      if (result) {
-        reply->mutable_checkpoint_data()->CopyFrom(*result);
-      }
-      RAY_LOG(DEBUG) << "Finished getting actor checkpoint, job id = " << actor_id.JobId()
-                     << ", checkpoint id = " << checkpoint_id;
-    } else {
-      RAY_LOG(ERROR) << "Failed to get actor checkpoint: " << status.ToString()
-                     << ", job id = " << actor_id.JobId()
-                     << ", checkpoint id = " << checkpoint_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_table_storage_->ActorCheckpointTable().Get(checkpoint_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
-  }
-  ++counts_[CountType::GET_ACTOR_CHECKPOINT_REQUEST];
-}
-
-void GcsActorManager::HandleGetActorCheckpointID(
-    const rpc::GetActorCheckpointIDRequest &request,
-    rpc::GetActorCheckpointIDReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  RAY_LOG(DEBUG) << "Getting actor checkpoint id, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id;
-  auto on_done = [actor_id, reply, send_reply_callback](
-                     const Status &status,
-                     const boost::optional<ActorCheckpointIdData> &result) {
-    if (status.ok()) {
-      if (result) {
-        reply->mutable_checkpoint_id_data()->CopyFrom(*result);
-      }
-      RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, job id = "
-                     << actor_id.JobId() << ", actor id = " << actor_id;
-    } else {
-      RAY_LOG(ERROR) << "Failed to get actor checkpoint id: " << status.ToString()
-                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-
-  Status status = gcs_table_storage_->ActorCheckpointIdTable().Get(actor_id, on_done);
-  if (!status.ok()) {
-    on_done(status, boost::none);
-  }
-  ++counts_[CountType::GET_ACTOR_CHECKPOINT_ID_REQUEST];
-}
-
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       RegisterActorCallback success_callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
@@ -1033,32 +923,7 @@ void GcsActorManager::OnJobFinished(const JobID &job_id) {
         } else {
           iter++;
         }
-      }
-
-      // Get checkpoint id first from checkpoint id table and delete all checkpoints
-      // related to this job
-      RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().GetByJobId(
-          job_id, [this, non_detached_actors_set](
-                      const std::unordered_map<ActorID, ActorCheckpointIdData> &result) {
-            if (!result.empty()) {
-              std::vector<ActorID> checkpoints;
-              std::vector<ActorCheckpointID> checkpoint_ids;
-              for (auto &item : result) {
-                if (non_detached_actors_set.find(item.first) !=
-                    non_detached_actors_set.end()) {
-                  checkpoints.push_back(item.first);
-                  for (auto &id : item.second.checkpoint_ids()) {
-                    checkpoint_ids.push_back(ActorCheckpointID::FromBinary(id));
-                  }
-                }
-              }
-
-              RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointIdTable().BatchDelete(
-                  checkpoints, nullptr));
-              RAY_CHECK_OK(gcs_table_storage_->ActorCheckpointTable().BatchDelete(
-                  checkpoint_ids, nullptr));
-            }
-          }));
+      };
     }
   };
 
@@ -1154,12 +1019,6 @@ std::string GcsActorManager::DebugString() const {
          << counts_[CountType::REGISTER_ACTOR_INFO_REQUEST]
          << ", UpdateActorInfo request count: "
          << counts_[CountType::UPDATE_ACTOR_INFO_REQUEST]
-         << ", AddActorCheckpoint request count: "
-         << counts_[CountType::ADD_ACTOR_CHECKPOINT_REQUEST]
-         << ", GetActorCheckpoint request count: "
-         << counts_[CountType::GET_ACTOR_CHECKPOINT_REQUEST]
-         << ", GetActorCheckpointID request count: "
-         << counts_[CountType::GET_ACTOR_CHECKPOINT_ID_REQUEST]
          << ", Registered actors count: " << registered_actors_.size()
          << ", Destroyed actors count: " << destroyed_actors_.size()
          << ", Named actors count: " << named_actors_.size()
