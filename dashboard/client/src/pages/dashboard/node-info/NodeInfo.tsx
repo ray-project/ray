@@ -88,7 +88,7 @@ const makeGroupedTableContents = (
     );
     return (
       <NodeRowGroup
-        key={node.ip}
+        key={node.raylet.nodeId}
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
