@@ -40,8 +40,10 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
+    gcs_node_manager_ =
+        std::make_shared<gcs::GcsNodeManager>(io_service_, io_service_, gcs_pub_sub_,
+                                              gcs_table_storage_, gcs_resource_manager_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
@@ -50,7 +52,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
       }
     );
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
-        io_service_, gcs_table_storage_, *gcs_node_manager_, raylet_client_pool_);
+        io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
+        raylet_client_pool_);
   }
 
   void TearDown() override {
@@ -101,6 +104,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
     gcs_node_manager_->AddNode(node);
     rpc::HeartbeatTableData heartbeat;
+    heartbeat.set_node_id(node->node_id());
     (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
     gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
                                                    heartbeat);
@@ -205,6 +209,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::StoreClient> store_client_;
 
   std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
@@ -1016,6 +1021,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   // Make sure the placement group creation has failed.
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestReleaseUnusedBundles) {
+  SchedulePlacementGroupSuccessTest(rpc::PlacementStrategy::SPREAD);
+  std::unordered_map<NodeID, std::vector<rpc::Bundle>> node_to_bundle;
+  scheduler_->ReleaseUnusedBundles(node_to_bundle);
+  ASSERT_EQ(1, raylet_clients_[0]->num_release_unused_bundles_requested);
 }
 
 }  // namespace ray

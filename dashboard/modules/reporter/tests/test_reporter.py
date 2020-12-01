@@ -14,8 +14,6 @@ from ray.test_utils import (
     wait_for_condition,
 )
 
-os.environ["RAY_USE_NEW_DASHBOARD"] = "1"
-
 logger = logging.getLogger(__name__)
 
 

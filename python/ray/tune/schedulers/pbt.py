@@ -10,7 +10,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.tune import trial_runner
 from ray.tune import trial_executor
 from ray.tune.error import TuneError
-from ray.tune.result import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -141,7 +141,8 @@ class PopulationBasedTraining(FIFOScheduler):
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
+            procedures will use this attribute. If None but a mode was passed,
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         perturbation_interval (float): Models will be considered for
@@ -309,6 +310,10 @@ class PopulationBasedTraining(FIFOScheduler):
             self._metric_op = 1.
         elif self._mode == "min":
             self._metric_op = -1.
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         return True
 
@@ -557,8 +562,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 raise TuneError("Trials should be paused here only if in "
                                 "synchronous mode. If you encounter this error"
                                 " please raise an issue on Ray Github.")
-            trial.config = new_config
-            trial.experiment_tag = new_tag
+            trial.set_experiment_tag(new_tag)
+            trial.set_config(new_config)
             trial.on_checkpoint(new_state.last_checkpoint)
         else:
             # If trial is running, we first try to reset it.
@@ -575,8 +580,8 @@ class PopulationBasedTraining(FIFOScheduler):
                     trial, new_state.last_checkpoint, block=True)
             else:
                 trial_executor.stop_trial(trial)
-                trial.config = new_config
-                trial.experiment_tag = new_tag
+                trial.set_experiment_tag(new_tag)
+                trial.set_config(new_config)
                 trial_executor.start_trial(
                     trial, new_state.last_checkpoint, train=False)
 
@@ -761,7 +766,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "No replay policy found and trial initialized without a "
                 "valid config. Either pass a `config` argument to `tune.run()`"
                 "or consider not using PBT replay for this run.")
-        self._trial.config = self.config
+        self._trial.set_config(self.config)
 
     def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
                         trial: Trial, result: Dict) -> str:
@@ -800,8 +805,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             trial_executor.restore(trial, checkpoint, block=True)
         else:
             trial_executor.stop_trial(trial, stop_logger=False)
-            trial.config = new_config
-            trial.experiment_tag = new_tag
+            trial.set_experiment_tag(new_tag)
+            trial.set_config(new_config)
             trial_executor.start_trial(trial, checkpoint, train=False)
 
         self.current_config = new_config

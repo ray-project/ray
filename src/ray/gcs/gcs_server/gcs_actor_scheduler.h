@@ -280,6 +280,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
+  /// Whether or not to report the backlog of actors waiting to be scheduled.
+  bool report_worker_backlog_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached core worker clients which are used to communicate with leased worker.

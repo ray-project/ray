@@ -14,8 +14,10 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -72,36 +74,37 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
  protected:
-  /// Initialize the backend storage client.
-  /// The gcs server is just the proxy between the gcs client and reliable storage
-  /// for the time being, so we need a backend client to connect to the storage.
-  virtual void InitBackendClient();
+  void DoStart(const GcsInitData &gcs_init_data);
 
-  /// Initialize the gcs node manager.
-  /// The gcs node manager is responsible for managing and monitoring all nodes in the
-  /// cluster.
-  virtual void InitGcsNodeManager();
+  /// Initialize gcs node manager.
+  void InitGcsNodeManager(const GcsInitData &gcs_init_data);
 
-  /// Initialize the gcs actor manager.
-  virtual void InitGcsActorManager();
+  /// Initialize gcs resource manager.
+  void InitGcsResourceManager();
 
-  /// Initialize the gcs job manager.
-  virtual void InitGcsJobManager();
+  /// Initialize gcs job manager.
+  void InitGcsJobManager();
 
-  /// Initialize the gcs placement group manager.
-  virtual void InitGcsPlacementGroupManager();
+  /// Initialize gcs actor manager.
+  void InitGcsActorManager(const GcsInitData &gcs_init_data);
 
-  /// The object manager
-  virtual std::unique_ptr<GcsObjectManager> InitObjectManager();
+  /// Initialize gcs placement group manager.
+  void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
-  /// The task info handler
-  virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
+  /// Initialize gcs object manager.
+  void InitObjectManager(const GcsInitData &gcs_init_data);
 
-  /// The stats handler
-  virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
+  /// Initialize gcs worker manager.
+  void InitGcsWorkerManager();
 
-  /// The worker manager
-  virtual std::unique_ptr<GcsWorkerManager> InitGcsWorkerManager();
+  /// Initialize task info handler.
+  void InitTaskInfoHandler();
+
+  /// Initialize stats handler.
+  void InitStatsHandler();
+
+  /// Install event listeners.
+  void InstallEventListeners();
 
  private:
   /// Store the address of GCS server in Redis.
@@ -131,6 +134,8 @@ class GcsServer {
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// The gcs resource manager.
+  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The gcs redis failure detector.

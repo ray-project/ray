@@ -138,7 +138,8 @@ struct CoreWorkerOptions {
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
   /// Application-language callback to restore objects from external storage.
-  std::function<void(const std::vector<std::string> &)> restore_spilled_objects;
+  std::function<void(const std::vector<ObjectID> &, const std::vector<std::string> &)>
+      restore_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -618,13 +619,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
                                           const ActorCheckpointID &checkpoint_id);
 
-  /// Sets a resource with the specified capacity and client id
+  /// Sets a resource with the specified capacity and node id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
-  /// \param[in] client_Id NodeID where the resource is to be set.
+  /// \param[in] node_id NodeID where the resource is to be set.
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &client_id);
+                     const NodeID &node_id);
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
@@ -647,7 +648,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                  int max_retries, PlacementOptions placement_options,
+                  int max_retries, BundleID placement_options,
                   bool placement_group_capture_child_tasks);
 
   /// Create an actor.
@@ -714,8 +715,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] object_id of the task to kill (must be a Non-Actor task)
   /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  /// \param[in] recursive Whether to cancel tasks submitted by the task to cancel.
   /// \param[out] Status
-  Status CancelTask(const ObjectID &object_id, bool force_kill);
+  Status CancelTask(const ObjectID &object_id, bool force_kill, bool recursive);
+
   /// Decrease the reference count for this actor. Should be called by the
   /// language frontend when a reference to the ActorHandle destroyed.
   ///
@@ -945,6 +948,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void AddLocalReference(const ObjectID &object_id, std::string call_site) {
     reference_counter_->AddLocalReference(object_id, call_site);
   }
+
+  /// Stops the children tasks from the given TaskID
+  ///
+  /// \param[in] task_id of the parent task
+  /// \param[in] force_kill Whether to force kill a task by killing the worker.
+  Status CancelChildren(const TaskID &task_id, bool force_kill);
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.

@@ -309,10 +309,10 @@ Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
 }
 
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity, const NodeID &client_Id) {
+                                         const double capacity, const NodeID &node_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
-                                                    capacity, to_flatbuf(fbb, client_Id));
+                                                    capacity, to_flatbuf(fbb, node_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
@@ -400,6 +400,25 @@ void raylet::RayletClient::CancelResourceReserve(
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
   grpc_client_->CancelResourceReserve(request, callback);
+}
+
+void raylet::RayletClient::ReleaseUnusedBundles(
+    const std::vector<rpc::Bundle> &bundles_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) {
+  rpc::ReleaseUnusedBundlesRequest request;
+  for (auto &bundle : bundles_in_use) {
+    request.add_bundles_in_use()->CopyFrom(bundle);
+  }
+  grpc_client_->ReleaseUnusedBundles(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing bundles from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
 }
 
 void raylet::RayletClient::PinObjectIDs(

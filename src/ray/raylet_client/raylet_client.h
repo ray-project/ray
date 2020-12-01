@@ -118,6 +118,10 @@ class ResourceReserveInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
+  virtual void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
+
   virtual ~ResourceReserveInterface(){};
 };
 
@@ -335,10 +339,10 @@ class RayletClient : public RayletClientInterface {
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id NodeID where the resource is to be set
+  /// \param node_id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &client_Id);
+                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
@@ -384,6 +388,11 @@ class RayletClient : public RayletClientInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
+
+  /// Implements ReleaseUnusedBundlesInterface.
+  void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,

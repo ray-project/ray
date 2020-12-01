@@ -5,7 +5,7 @@ file_mounts:
     ~/tests: .
 head_node:
     ImageId: latest_dlami
-    InstanceType: t1.micro 
+    InstanceType: t1.micro
 head_setup_commands:
     - echo head
 head_start_ray_commands:

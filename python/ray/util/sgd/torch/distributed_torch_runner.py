@@ -74,16 +74,16 @@ class DistributedTorchRunner(TorchRunner):
         This helps avoid timeouts due to creator functions (perhaps
         downloading data or models).
         """
-        device_ids = None
+        device = torch.device("cpu")
         if self.use_gpu and torch.cuda.is_available():
-            device_ids = self.get_device_ids()
+            device = self.get_device()
 
         self.training_operator = self.training_operator_cls(
             self.config,
             world_rank=self.world_rank,
             local_rank=self.local_rank,
             is_distributed=True,
-            device_ids=device_ids,
+            device=device,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
@@ -91,9 +91,9 @@ class DistributedTorchRunner(TorchRunner):
             add_dist_sampler=self.add_dist_sampler,
             scheduler_step_freq=self.scheduler_step_freq)
 
-    def get_device_ids(self):
+    def get_device(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
-        return [0]
+        return torch.device("cuda:0")
 
     def train_epoch(self,
                     num_steps=None,
@@ -296,8 +296,9 @@ class LocalDistributedRunner(DistributedTorchRunner):
             logger.error("Failed to set local CUDA device.")
             raise
 
-    def get_device_ids(self):
-        return [int(self.local_cuda_device)]
+    def get_device(self):
+        device_str = "cuda:" + self.local_cuda_device
+        return torch.device(device_str)
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()

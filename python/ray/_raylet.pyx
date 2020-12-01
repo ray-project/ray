@@ -292,13 +292,14 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
+            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
-                if metadata not in [
+                if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
-                        metadata, language))
+                        metadata_fields[0], language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectRefs are spilled to
@@ -324,19 +325,6 @@ cdef prepare_args(
                     new CTaskArgByReference(CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)),
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
-
-
-def switch_worker_log_if_needed(worker, next_job_id):
-    if worker.mode != ray.WORKER_MODE:
-        return
-    if (worker.current_logging_job_id is None) or \
-            (worker.current_logging_job_id != next_job_id):
-        job_stdout_path, job_stderr_path = (
-            worker.node.get_job_redirected_log_file(
-                worker.worker_id, next_job_id.binary())
-        )
-        ray.worker.set_log_file(job_stdout_path, job_stderr_path)
-        worker.current_logging_job_id = next_job_id
 
 
 cdef execute_task(
@@ -472,7 +460,6 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
@@ -625,17 +612,19 @@ cdef c_vector[c_string] spill_objects_handler(
 
 
 cdef void restore_spilled_objects_handler(
+        const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
     with gil:
         urls = []
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
+        object_refs = VectorToObjectRefs(object_ids_to_restore)
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
-                external_storage.restore_spilled_objects(urls)
+                external_storage.restore_spilled_objects(object_refs, urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -902,7 +891,7 @@ cdef class CoreWorker:
             # can't track their lifecycle, so we don't pin the object
             # in this case.
             check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                         c_object_id, pin_object=object_ref is None))
+                         c_object_id, pin_object=False))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -1184,13 +1173,14 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
                   c_actor_id, True, no_restart))
 
-    def cancel_task(self, ObjectRef object_ref, c_bool force_kill):
+    def cancel_task(self, ObjectRef object_ref, c_bool force_kill,
+                    c_bool recursive):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CRayStatus status = CRayStatus.OK()
 
         status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
-                                            c_object_id, force_kill)
+                                            c_object_id, force_kill, recursive)
 
         if not status.ok():
             raise TypeError(status.message().decode())
