@@ -333,8 +333,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// \param[out] spilled Whether this object has been spilled.
   /// pinned. Set to nil if the object is not pinned.
   /// \return True if the reference exists, false otherwise.
-  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, bool *owned_by_us, NodeID *pinned_at,
-                                     bool *spilled) const LOCKS_EXCLUDED(mutex_);
+  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, bool *owned_by_us,
+                                     NodeID *pinned_at, bool *spilled) const
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
   /// method should be called upon a node failure, to determine which plasma

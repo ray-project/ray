@@ -1202,8 +1202,8 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   NodeID pinned_at;
   bool spilled;
   bool owned_by_us;
-  RAY_CHECK(
-      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us, &pinned_at, &spilled));
+  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us,
+                                                              &pinned_at, &spilled));
   RAY_CHECK(owned_by_us);
   if (spilled) {
     // The object has already been spilled.

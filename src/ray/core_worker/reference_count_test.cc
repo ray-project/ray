@@ -1989,7 +1989,8 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   bool owned_by_us;
   NodeID pinned_at;
   bool spilled;
-  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_TRUE(
+      rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_FALSE(owned_by_us);
 
   ObjectID id = ObjectID::FromRandom();

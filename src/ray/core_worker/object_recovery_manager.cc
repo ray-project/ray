@@ -23,15 +23,16 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   bool owned_by_us;
   NodeID pinned_at;
   bool spilled;
-  bool ref_exists =
-      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us, &pinned_at, &spilled);
+  bool ref_exists = reference_counter_->IsPlasmaObjectPinnedOrSpilled(
+      object_id, &owned_by_us, &pinned_at, &spilled);
   if (!ref_exists) {
     // References that have gone out of scope cannot be recovered.
     return false;
   }
 
   if (!owned_by_us) {
-    RAY_LOG(INFO) << "Reconstruction for borrowed objects (" << object_id << ") is not supported";
+    RAY_LOG(INFO) << "Reconstruction for borrowed objects (" << object_id
+                  << ") is not supported";
     reconstruction_failure_callback_(object_id, /*pin_object=*/false);
     return true;
   }
