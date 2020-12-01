@@ -199,18 +199,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::UpdateActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleAddActorCheckpoint(const rpc::AddActorCheckpointRequest &request,
-                                rpc::AddActorCheckpointReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleGetActorCheckpoint(const rpc::GetActorCheckpointRequest &request,
-                                rpc::GetActorCheckpointReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleGetActorCheckpointID(const rpc::GetActorCheckpointIDRequest &request,
-                                  rpc::GetActorCheckpointIDReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
-
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -426,9 +414,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_ALL_ACTOR_INFO_REQUEST = 4,
     REGISTER_ACTOR_INFO_REQUEST = 5,
     UPDATE_ACTOR_INFO_REQUEST = 6,
-    ADD_ACTOR_CHECKPOINT_REQUEST = 7,
-    GET_ACTOR_CHECKPOINT_REQUEST = 8,
-    GET_ACTOR_CHECKPOINT_ID_REQUEST = 9,
     CountType_MAX = 10,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
