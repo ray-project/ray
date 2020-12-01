@@ -1171,16 +1171,6 @@ Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-Status CoreWorker::PrepareActorCheckpoint(const ActorID &actor_id,
-                                          ActorCheckpointID *checkpoint_id) {
-  return local_raylet_client_->PrepareActorCheckpoint(actor_id, checkpoint_id);
-}
-
-Status CoreWorker::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
-  return local_raylet_client_->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
-}
-
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
                                const NodeID &node_id) {
   return local_raylet_client_->SetResource(resource_name, capacity, node_id);

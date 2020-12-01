@@ -64,25 +64,6 @@ ERROR_KEY_PREFIX = b"Error:"
 logger = logging.getLogger(__name__)
 
 
-class ActorCheckpointInfo:
-    """Information used to maintain actor checkpoints."""
-
-    __slots__ = [
-        # Number of tasks executed since last checkpoint.
-        "num_tasks_since_last_checkpoint",
-        # Timestamp of the last checkpoint, in milliseconds.
-        "last_checkpoint_timestamp",
-        # IDs of the previous checkpoints.
-        "checkpoint_ids",
-    ]
-
-    def __init__(self, num_tasks_since_last_checkpoint,
-                 last_checkpoint_timestamp, checkpoint_ids):
-        self.num_tasks_since_last_checkpoint = num_tasks_since_last_checkpoint
-        self.last_checkpoint_timestamp = last_checkpoint_timestamp
-        self.checkpoint_ids = checkpoint_ids
-
-
 class Worker:
     """A class used to define the control flow of a worker process.
 
@@ -106,8 +87,6 @@ class Worker:
         self.cached_functions_to_run = []
         self.actor_init_error = None
         self.actors = {}
-        # Information used to maintain actor checkpoints.
-        self.actor_checkpoint_info = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
