@@ -2,19 +2,19 @@
 import logging
 
 import ray
-from python.ray.util.collective import types
+from ray.util.collective import types
 
 # Get the availability information first by importing information
 _MPI_AVAILABLE = True
 _NCCL_AVAILABLE = True
 
 try:
-    from collective.collectivegoup.mpi_collective_group import MPIGroup
+    from ray.util.collective.collective_group.mpi_collective_group import MPIGroup
 except ImportError:
     _MPI_AVAILABLE = False
 
 try:
-    from collective.collectivegoup.nccl_collective_group import NCCLGroup
+    from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 except ImportError:
     _NCCL_AVAILABLE = False
 
@@ -82,11 +82,10 @@ class GroupManager(object):
                 import cupy.cuda.nccl as nccl
                 group_uid = nccl.get_unique_id()
                 store_name = group_name + types.named_actor_suffix
-                store = NCCLUniqueIDStore\
-                    .options(name=store_name, lifetime="detached")\
-                    .remote()
+                store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote()
                 ray.wait([store.set_id.remote(group_uid)])
 
+            logging.info('creating NCCL group: {}'.format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -230,8 +229,8 @@ def init_collective_group(backend,
         raise RuntimeError('Trying to initialize a group twice.')
 
     assert(world_size > 0)
-    assert(rank >= 0 and rank < world_size)
-
+    assert(rank >= 0 )
+    assert(rank < world_size)
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 

@@ -2,9 +2,9 @@ import logging
 import ray
 import cupy
 
-from python.ray.util.collective.collective_group import nccl_util
-from python.ray.util.collective.collective_group.base_collective_group import BaseGroup
-from python.ray.util.collective.types import AllReduceOptions, BarrierOptions, named_actor_suffix
+from ray.util.collective.collective_group import nccl_util
+from ray.util.collective.collective_group.base_collective_group import BaseGroup
+from ray.util.collective.types import AllReduceOptions, BarrierOptions, named_actor_suffix
 
 
 # TODO(Hao):
@@ -15,7 +15,7 @@ from python.ray.util.collective.types import AllReduceOptions, BarrierOptions, n
 class NCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
-        super(NCCLGroup, self).__init__(self, world_size, rank, group_name)
+        super(NCCLGroup, self).__init__(world_size, rank, group_name)
         self._nccl_uid_store = None
         self._nccl_uid = None
 
@@ -42,7 +42,9 @@ class NCCLGroup(BaseGroup):
         unique_actor_name = self.group_name + named_actor_suffix
 
         # Assuming this named actor has been created.
+        print('reach here...1')
         self._nccl_uid_store = ray.get_actor(unique_actor_name)
+        print('reach here...1')
         self._nccl_uid = ray.get(self._nccl_uid_store.get_id.remote())
 
     @property
