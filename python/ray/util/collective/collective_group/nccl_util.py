@@ -79,7 +79,7 @@ def get_nccl_reduce_op(reduce_op):
 def get_nccl_tensor_dtype(tensor):
     """Return the corresponded NCCL dtype given a tensor."""
     if isinstance(tensor, cupy.ndarray):
-        return NUMPY_NCCL_DTYPE_MAP[tensor.dtype]
+        return NUMPY_NCCL_DTYPE_MAP[tensor.dtype.type]
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return TORCH_NCCL_DTYPE_MAP[tensor.dtype]
@@ -88,8 +88,6 @@ def get_nccl_tensor_dtype(tensor):
 
 def get_tensor_ptr(tensor):
     """Return the pointer to the underlying memory storage of a tensor."""
-    if not tensor:
-        raise RuntimeError('None Tensor.')
     if isinstance(tensor, cupy.ndarray):
         return tensor.data.ptr
     if isinstance(tensor, numpy.ndarray):
@@ -102,8 +100,6 @@ def get_tensor_ptr(tensor):
 
 def get_tensor_n_elements(tensor):
     """Return the number of elements in a tensor."""
-    if not tensor:
-        raise RuntimeError('None Tensor.')
     if isinstance(tensor, cupy.ndarray) or isinstance(tensor, numpy.ndarray):
         return tensor.size
     if torch_available():
