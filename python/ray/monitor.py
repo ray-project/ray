@@ -4,7 +4,6 @@ import logging
 import logging.handlers
 import os
 import time
-import threading
 import traceback
 import json
 
@@ -119,9 +118,6 @@ class Monitor:
         else:
             self.autoscaler = None
             self.autoscaling_config = None
-
-        self._stop_trigger = threading.Event()
-        self._stopped = threading.Event()
 
     def __del__(self):
         """Destruct the monitor object."""
@@ -270,21 +266,9 @@ class Monitor:
             # Process a round of messages.
             self.process_messages()
 
-            # Break if stop method has been invoked.
-            if self._stop_trigger.is_set():
-                break
-
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
-
-        self._stopped.set()
-
-    def stop(self):
-        """Stop monitoring loop."""
-        logger.info("Monitor: Stopped monitoring loop.")
-        self._stop_trigger.set()
-        self._stopped.wait()
 
     def destroy_autoscaler_workers(self):
         """Cleanup the autoscaler, in case of an exception in the run() method.
