@@ -71,7 +71,9 @@ jobs:
       run: |
         python -u ci/remote-watch.py --skip_repo=ray-project/ray &
         ./ci/travis/ci.sh init
-        echo $PATH
-        which docker
         ./ci/travis/ci.sh build
-        python ci/travis/build-docker-images.py || true
+
+        echo $PATH
+        which python
+        which python3
+        python3 ci/travis/build-docker-images.py || true
