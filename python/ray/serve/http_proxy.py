@@ -33,8 +33,8 @@ class HTTPProxy:
         assert ray.is_initialized()
         self.controller_handle = ray.get_actor(controller_name)
 
-        self.route_table = await self.controller_handle.get_router_config.remote(
-        )
+        self.route_table = \
+            await self.controller_handle.get_router_config.remote()
 
         self.request_counter = metrics.Count(
             "num_http_requests",
