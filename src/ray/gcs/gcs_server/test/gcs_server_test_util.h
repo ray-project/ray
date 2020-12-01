@@ -150,7 +150,7 @@ struct GcsServerMocker {
       }
     }
 
-    /// PrepareBundleResources
+    /// ResourceReserveInterface
     void PrepareBundleResources(
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
@@ -159,7 +159,7 @@ struct GcsServerMocker {
       lease_callbacks.push_back(callback);
     }
 
-    /// PrepareBundleResources
+    /// ResourceReserveInterface
     void CommitBundleResources(
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
@@ -168,7 +168,7 @@ struct GcsServerMocker {
       commit_callbacks.push_back(callback);
     }
 
-    /// PrepareBundleResources
+    /// ResourceReserveInterface
     void CancelResourceReserve(
         BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
@@ -253,7 +253,6 @@ struct GcsServerMocker {
     int num_commit_requested = 0;
 
     int num_release_unused_bundles_requested = 0;
-    NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
