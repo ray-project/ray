@@ -91,6 +91,8 @@ struct NodeManagerConfig {
   bool fair_queueing_enabled;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled;
+  /// Whether to enable automatic object deletion for object spilling.
+  bool automatic_object_deletion_enabled;
   /// The store socket name.
   std::string store_socket_name;
   /// The path to the ray temp dir.

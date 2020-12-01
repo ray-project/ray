@@ -157,9 +157,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(RayConfig::instance().free_objects_batch_size(),
+      local_object_manager_(io_service_, RayConfig::instance().free_objects_batch_size(),
                             RayConfig::instance().free_objects_period_milliseconds(),
                             worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
+                            /* object_pinning_enabled */ config.object_pinning_enabled,
+                            /* automatic_object_deletion_enabled */
+                            config.automatic_object_deletion_enabled,
                             [this](const std::vector<ObjectID> &object_ids) {
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
