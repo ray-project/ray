@@ -163,6 +163,7 @@ def inspect_serializability(base_obj,
         try:
             if depth == 0:
                 _failure_set.add(FailureTuple(base_obj, name, parent))
+        # Some objects may not be hashable, so we skip adding this to the set.
         except Exception:
             pass
 
