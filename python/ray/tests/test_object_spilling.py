@@ -380,6 +380,9 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
                         print(line)
             except:
                 pass
+
+        node = ray.worker._global_node
+        assert node.remaining_processes_alive(), node.dead_processes()
         assert False
 
 
