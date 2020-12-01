@@ -29,7 +29,6 @@ message Arg {
   Type type = 4;
 }
 
-
 message ClientTask {
   enum RemoteExecType {
     FUNCTION = 0;
