@@ -11,7 +11,7 @@ Here are some use cases:
 - **Maximizing data locality**: You'd like to place or schedule your tasks and actors close to your data to avoid object transfer overheads.
 - **Load balancing**: To improve application availability and avoid resource overload, you'd like to place your actors or tasks into different physical machines as much as possible.
 
-If you are interested in learning real world use cases, please check the :ref:`examples <ray-placement-group-examples-ref>`.
+To learn more about production use cases, check out the :ref:`examples <ray-placement-group-examples-ref>`.
 
 Key Concepts
 ------------
@@ -251,8 +251,8 @@ Note that you can anytime remove the placement group to clean up resources.
 
   ray.shutdown()
 
-Tips for Using Placement Group
-------------------------------
+Tips for Using Placement Groups
+-------------------------------
 - Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
 - Learn the :ref:`fault tolerance <ray-placement-group-ft-ref>` of placement groups.
 - See more :ref:`examples <ray-placement-group-examples-ref>` to learn real world use cases of placement group APIs.
@@ -262,7 +262,7 @@ Lifecycle
 
 .. _ray-placement-group-lifecycle-ref:
 
-**Creation**: When placement group is first created, the request is sent to the GCS. The GCS sends resource reservation requests to nodes based on its scheduling strategy. Ray guarantees the atomic creation of placement group.
+**Creation**: When placement groups are first created, the request is sent to the GCS. The GCS sends resource reservation requests to nodes based on its scheduling strategy. Ray guarantees placement groups are placed atomically.
 
 **Autoscaling**: Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
