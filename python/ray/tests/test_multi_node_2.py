@@ -6,8 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor, \
-    new_scheduler_enabled
+from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
