@@ -16,8 +16,8 @@ from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_WORKER, NODE_TYPE_LEGACY_HEAD
 
 REQUIRED, OPTIONAL = True, False
-RAY_SCHEMA_PATH = Path(
-    ray.autoscaler.__file__).parent.joinpath("ray-schema.json")
+RAY_SCHEMA_PATH = Path(ray.autoscaler.__file__) \
+    .parent.joinpath("ray-schema.json").__str__()
 
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
@@ -229,9 +229,9 @@ def hash_runtime_conf(file_mounts,
                 for name in filenames:
                     contents_hasher.update(name.encode("utf-8"))
                     fpath = Path(dirpath).joinpath(name)
-                    add_hash_of_file(fpath)
+                    add_hash_of_file(str(fpath))
         else:
-            add_hash_of_file(path)
+            add_hash_of_file(str(path))
 
     conf_str = (json.dumps(file_mounts, sort_keys=True).encode("utf-8") +
                 json.dumps(extra_objs, sort_keys=True).encode("utf-8"))

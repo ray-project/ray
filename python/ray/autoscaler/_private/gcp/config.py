@@ -344,7 +344,7 @@ def _configure_key_pair(config, compute):
                 "Private key not specified in config, using"
                 "{}".format(private_key_path))
 
-    config["auth"]["ssh_private_key"] = private_key_path
+    config["auth"]["ssh_private_key"] = str(private_key_path)
 
     return config
 

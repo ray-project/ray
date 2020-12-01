@@ -52,32 +52,32 @@ def _import_staroid(provider_config):
 
 def _load_local_defaults_config():
     import ray.autoscaler.local as ray_local
-    return Path(ray_local.__file__).parent.joinpath("defaults.yaml")
+    return Path(ray_local.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _load_kubernetes_defaults_config():
     import ray.autoscaler.kubernetes as ray_kubernetes
-    return Path(ray_kubernetes.__file__).parent.joinpath("defaults.yaml")
+    return Path(ray_kubernetes.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _load_aws_defaults_config():
     import ray.autoscaler.aws as ray_aws
-    return Path(ray_aws.__file__).parent.joinpath("defaults.yaml")
+    return Path(ray_aws.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _load_gcp_defaults_config():
     import ray.autoscaler.gcp as ray_gcp
-    return Path(ray_gcp.__file__).parent.joinpath("defaults.yaml")
+    return Path(ray_gcp.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _load_azure_defaults_config():
     import ray.autoscaler.azure as ray_azure
-    return Path(ray_azure.__file__).parent.joinpath("defaults.yaml")
+    return Path(ray_azure.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _load_staroid_defaults_config():
     import ray.autoscaler.staroid as ray_staroid
-    return Path(ray_staroid.__file__).parent.joinpath("defaults.yaml")
+    return Path(ray_staroid.__file__).parent.joinpath("defaults.yaml").__str__()
 
 
 def _import_external(provider_config):

@@ -37,7 +37,7 @@ KUBECTL_RSYNC = Path(__file__).resolve() \
                     .parent \
                     .joinpath(
                         "kubernetes/kubectl-rsync.sh") \
-                    .name
+                    .__str__()
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -599,7 +599,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         host_destination = Path(
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name)).joinpath(
-                    target.lstrip("/")).name
+                    target.lstrip("/")).__str__()
 
         self.ssh_command_runner.run(
             f"mkdir -p {Path(host_destination.rstrip('/')).parent}")
@@ -621,7 +621,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         host_source = Path(
             self._get_docker_host_mount_location(
                 self.ssh_command_runner.cluster_name)).joinpath(
-                    source.lstrip("/"))
+                    source.lstrip("/")).__str__()
         self.ssh_command_runner.run(
             f"mkdir -p {Path(host_source.rstrip('/')).parent}")
         if source[-1] == "/":
@@ -764,7 +764,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                         src=Path(
                             self._get_docker_host_mount_location(
                                 self.ssh_command_runner.cluster_name))
-                        .joinpath(mount).name,
+                        .joinpath(mount).__str__(),
                         container=self.container_name,
                         dst=self._docker_expand_user(mount)))
         self.initialized = True

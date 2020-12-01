@@ -66,12 +66,12 @@ def key_pair(i, region, key_name):
         key_pair_name = ("{}_{}".format(RAY, region)
                          if key_name is None else key_name)
         return (key_pair_name,
-                Path("~/.ssh/{}.pem".format(key_pair_name)).expanduser().name)
+                Path("~/.ssh/{}.pem".format(key_pair_name)).expanduser())
 
     key_pair_name = ("{}_{}_{}".format(RAY, i, region)
                      if key_name is None else key_name + "_key-{}".format(i))
     return (key_pair_name,
-            Path("~/.ssh/{}.pem".format(key_pair_name)).expanduser().name)
+            Path("~/.ssh/{}.pem".format(key_pair_name)).expanduser())
 
 
 # Suppress excessive connection dropped logs from boto
