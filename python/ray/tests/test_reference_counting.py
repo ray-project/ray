@@ -167,7 +167,6 @@ def test_dependency_refcounts(ray_start_regular):
 
 
 def test_actor_creation_task(ray_start_regular):
-    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     @ray.remote
     def large_object():
         # This will be spilled to plasma.
@@ -187,25 +186,7 @@ def test_actor_creation_task(ray_start_regular):
     assert not ready
 
     ray.experimental.set_resource("init", 1)
-    try:
-        ray.get(ping, timeout=10)
-    except:
-        for f in os.listdir('/tmp/ray/session_latest/logs'):
-            try:
-                filename = os.path.join('/tmp/ray/session_latest/logs', f)
-                if not os.path.isfile(filename):
-                    print(filename)
-                    continue
-                with open(filename, 'r') as file:
-                    print("FILE:", f)
-                    for line in file.readlines():
-                        print(line)
-            except:
-                pass
-
-        node = ray.worker._global_node
-        assert node.remaining_processes_alive(), node.dead_processes()
-        assert False
+    ray.get(ping)
 
 
 def test_basic_pinning(one_worker_100MiB):

@@ -4,7 +4,6 @@ import random
 import platform
 import sys
 import time
-import os
 
 import numpy as np
 import pytest
@@ -334,7 +333,6 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_spill_during_get(object_spilling_config, shutdown_only):
-    os.environ["RAY_BACKEND_LOG_LEVEL"] = "debug"
     ray.init(
         num_cpus=4,
         object_store_memory=100 * 1024 * 1024,
@@ -363,27 +361,8 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
 
     # Concurrent gets, which require restoring from external storage, while
     # objects are being created.
-    try:
-        for x in ids:
-            print(x)
-            ray.get(x, timeout=10)
-    except:
-        for f in os.listdir('/tmp/ray/session_latest/logs'):
-            try:
-                filename = os.path.join('/tmp/ray/session_latest/logs', f)
-                if not os.path.isfile(filename):
-                    print(filename)
-                    continue
-                with open(filename, 'r') as file:
-                    print("FILE:", f)
-                    for line in file.readlines():
-                        print(line)
-            except:
-                pass
-
-        node = ray.worker._global_node
-        assert node.remaining_processes_alive(), node.dead_processes()
-        assert False
+    for x in ids:
+        print(ray.get(x).shape)
 
 
 @pytest.mark.skipif(
