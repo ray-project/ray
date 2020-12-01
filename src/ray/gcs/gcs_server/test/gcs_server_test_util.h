@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/util/asio_util.h"
 
 namespace ray {
@@ -183,6 +184,12 @@ struct GcsServerMocker {
       return_callbacks.push_back(callback);
     }
 
+    void ReleaseUnusedBundles(
+        const std::vector<rpc::Bundle> &bundles_in_use,
+        const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override {
+      ++num_release_unused_bundles_requested;
+    }
+
     // Trigger reply to PrepareBundleResources.
     bool GrantPrepareBundleResources(bool success = true) {
       Status status = Status::OK();
@@ -231,6 +238,7 @@ struct GcsServerMocker {
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
+    int num_release_unused_bundles_requested = 0;
     NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
@@ -298,7 +306,8 @@ struct GcsServerMocker {
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {
    public:
-    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) override {
+    Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+                        const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
 

@@ -1,4 +1,5 @@
 import gym
+import numpy as np
 import random
 import unittest
 
@@ -12,19 +13,17 @@ from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
 from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
-
-
-def one_hot(i, n):
-    out = [0.0] * n
-    out[i] = 1.0
-    return out
+from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.test_utils import check
 
 
 class TestMultiAgentEnv(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_basic_mock(self):
@@ -268,20 +267,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         # since we round robin introduce agents into the env, some of the env
         # steps don't count as proper transitions
         self.assertEqual(batch.policy_batches["p0"].count, 42)
-        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10], [
-            one_hot(0, 10),
-            one_hot(1, 10),
-            one_hot(2, 10),
-            one_hot(3, 10),
-            one_hot(4, 10),
-        ] * 2)
-        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10], [
-            one_hot(1, 10),
-            one_hot(2, 10),
-            one_hot(3, 10),
-            one_hot(4, 10),
-            one_hot(5, 10),
-        ] * 2)
+        check(batch.policy_batches["p0"]["obs"][:10],
+              one_hot(np.array([0, 1, 2, 3, 4] * 2), 10))
+        check(batch.policy_batches["p0"]["new_obs"][:10],
+              one_hot(np.array([1, 2, 3, 4, 5] * 2), 10))
         self.assertEqual(batch.policy_batches["p0"]["rewards"].tolist()[:10],
                          [100, 100, 100, 100, 0] * 2)
         self.assertEqual(batch.policy_batches["p0"]["dones"].tolist()[:10],
@@ -327,24 +316,27 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 prev_reward_batch=None,
                                 episodes=None,
                                 **kwargs):
-                # Pretend we did a model-based rollout and want to return
-                # the extra trajectory.
-                builder = episodes[0].new_batch_builder()
-                rollout_id = random.randint(0, 10000)
-                for t in range(5):
-                    builder.add_values(
-                        agent_id="extra_0",
-                        policy_id="p1",  # use p1 so we can easily check it
-                        t=t,
-                        eps_id=rollout_id,  # new id for each rollout
-                        obs=obs_batch[0],
-                        actions=0,
-                        rewards=0,
-                        dones=t == 4,
-                        infos={},
-                        new_obs=obs_batch[0])
-                batch = builder.build_and_reset(episode=None)
-                episodes[0].add_extra_batch(batch)
+                # In policy loss initialization phase, no episodes are passed
+                # in.
+                if episodes is not None:
+                    # Pretend we did a model-based rollout and want to return
+                    # the extra trajectory.
+                    builder = episodes[0].new_batch_builder()
+                    rollout_id = random.randint(0, 10000)
+                    for t in range(5):
+                        builder.add_values(
+                            agent_id="extra_0",
+                            policy_id="p1",  # use p1 so we can easily check it
+                            t=t,
+                            eps_id=rollout_id,  # new id for each rollout
+                            obs=obs_batch[0],
+                            actions=0,
+                            rewards=0,
+                            dones=t == 4,
+                            infos={},
+                            new_obs=obs_batch[0])
+                    batch = builder.build_and_reset(episode=None)
+                    episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
                 return [0] * len(obs_batch), [], {}

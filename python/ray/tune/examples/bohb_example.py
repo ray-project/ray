@@ -63,24 +63,22 @@ if __name__ == "__main__":
     #     CS.CategoricalHyperparameter(
     #         "activation", choices=["relu", "tanh"]))
 
-    experiment_metrics = dict(metric="episode_reward_mean", mode="max")
-
     bohb_hyperband = HyperBandForBOHB(
-        time_attr="training_iteration",
-        max_t=100,
-        reduction_factor=4,
-        **experiment_metrics)
+        time_attr="training_iteration", max_t=100, reduction_factor=4)
 
     bohb_search = TuneBOHB(
         # space=config_space,  # If you want to set the space manually
-        max_concurrent=4,
-        **experiment_metrics)
+        max_concurrent=4)
 
-    tune.run(
+    analysis = tune.run(
         MyTrainableClass,
         name="bohb_test",
         config=config,
         scheduler=bohb_hyperband,
         search_alg=bohb_search,
         num_samples=10,
-        stop={"training_iteration": 100})
+        stop={"training_iteration": 100},
+        metric="episode_reward_mean",
+        mode="max")
+
+    print("Best hyperparameters found were: ", analysis.best_config)

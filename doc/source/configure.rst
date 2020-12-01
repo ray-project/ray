@@ -63,6 +63,8 @@ If using the command line, connect to the Ray cluster as follow:
     per worker to avoid contention.
 
 
+.. _temp-dir-log-files:
+
 Logging and Debugging
 ---------------------
 
@@ -125,10 +127,16 @@ All Nodes
 - ``--node-manager-port``: Raylet port for node manager. Default: Random value.
 - ``--object-manager-port``: Raylet port for object manager. Default: Random value.
 
+The node manager and object manager run as separate processes with their own ports for communication.
+
 The following options specify the range of ports used by worker processes across machines. All ports in the range should be open.
 
 - ``--min-worker-port``: Minimum port number worker can be bound to. Default: 10000.
 - ``--max-worker-port``: Maximum port number worker can be bound to. Default: 10999.
+
+Port numbers are how Ray disambiguates input and output to and from multiple workers on a single node. Each worker will take input and give output on a single port number. Thus, for example, by default, there is a maximum of 1,000 workers on each node, irrespective of number of CPUs.
+
+In general, it is recommended to give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging it is useful to explicitly specify a short list of worker ports such as ``--worker-port-list=10000,10001,10002,10003,10004`` (note that this will limit the number of workers, just like specifying a narrow range).
 
 Head Node
 ~~~~~~~~~

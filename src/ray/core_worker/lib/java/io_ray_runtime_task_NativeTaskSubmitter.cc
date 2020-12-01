@@ -283,6 +283,16 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreatePlacementGroup(
   return IdToJavaByteArray<ray::PlacementGroupID>(env, placement_group_id);
 }
 
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(
+    JNIEnv *env, jclass p, jbyteArray placement_group_id_bytes) {
+  const auto placement_group_id =
+      JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
+  auto status =
+      ray::CoreWorkerProcess::GetCoreWorker().RemovePlacementGroup(placement_group_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -13,6 +13,10 @@ import time
 import warnings
 
 from ray.autoscaler.command_runner import CommandRunnerInterface
+from ray.autoscaler._private.constants import \
+                                     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
+                                     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION, \
+                                     NODE_START_WAIT_S
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -31,7 +35,6 @@ from ray.autoscaler._private.constants import RAY_HOME
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
-NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = Path(__file__).resolve() \
                     .parent \
@@ -432,7 +435,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             run_env="auto",  # Unused argument.
             ssh_options_override_ssh_key="",
             shutdown_after_run=False,
-    ):
+            silent=False):
         if shutdown_after_run:
             cmd += "; sudo shutdown -h now"
         if ssh_options_override_ssh_key:
@@ -484,9 +487,11 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         if cli_logger.verbosity > 0:
             with cli_logger.indented():
-                return self._run_helper(final_cmd, with_output, exit_on_fail)
+                return self._run_helper(
+                    final_cmd, with_output, exit_on_fail, silent=silent)
         else:
-            return self._run_helper(final_cmd, with_output, exit_on_fail)
+            return self._run_helper(
+                final_cmd, with_output, exit_on_fail, silent=silent)
 
     def _create_rsync_filter_args(self, options):
         rsync_excludes = options.get("rsync_exclude") or []
@@ -575,11 +580,12 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         if run_env == "docker":
             cmd = self._docker_expand_user(cmd, any_char=True)
-            cmd = " ".join(_with_interactive(cmd))
+            if is_using_login_shells():
+                cmd = " ".join(_with_interactive(cmd))
             cmd = with_docker_exec(
                 [cmd],
                 container_name=self.container_name,
-                with_interactive=True)[0]
+                with_interactive=is_using_login_shells())[0]
 
         if shutdown_after_run:
             # sudo shutdown should run after `with_docker_exec` command above
@@ -602,7 +608,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     target.lstrip("/")).__str__()
 
         self.ssh_command_runner.run(
-            f"mkdir -p {Path(host_destination.rstrip('/')).parent}")
+            f"mkdir -p {Path(host_destination.rstrip('/')).parent}",
+            silent=is_rsync_silent())
 
         self.ssh_command_runner.run_rsync_up(
             source, host_destination, options=options)
@@ -612,9 +619,11 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Adding a "." means that docker copies the *contents*
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
-            self.ssh_command_runner.run("docker cp {} {}:{}".format(
-                host_destination, self.container_name,
-                self._docker_expand_user(target)))
+            self.ssh_command_runner.run(
+                "docker cp {} {}:{}".format(host_destination,
+                                            self.container_name,
+                                            self._docker_expand_user(target)),
+                silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
@@ -623,15 +632,18 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.ssh_command_runner.cluster_name)).joinpath(
                     source.lstrip("/")).__str__()
         self.ssh_command_runner.run(
-            f"mkdir -p {Path(host_source.rstrip('/')).parent}")
+            f"mkdir -p {Path(host_source.rstrip('/')).parent}",
+            silent=is_rsync_silent())
         if source[-1] == "/":
             source += "."
             # Adding a "." means that docker copies the *contents*
             # Without it, docker copies the source *into* the target
         if not options.get("docker_mount_if_possible", False):
-            self.ssh_command_runner.run("docker cp {}:{} {}".format(
-                self.container_name, self._docker_expand_user(source),
-                host_source))
+            self.ssh_command_runner.run(
+                "docker cp {}:{} {}".format(self.container_name,
+                                            self._docker_expand_user(source),
+                                            host_source),
+                silent=is_rsync_silent())
         self.ssh_command_runner.run_rsync_down(
             host_source, target, options=options)
 
@@ -672,8 +684,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         if user_pos > -1:
             if self.home_dir is None:
                 self.home_dir = self.ssh_command_runner.run(
-                    "docker exec {} env | grep HOME | cut -d'=' -f2".format(
-                        self.container_name),
+                    f"docker exec {self.container_name} printenv HOME",
                     with_output=True).decode("utf-8").strip()
 
             if any_char:
@@ -722,8 +733,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.container_name,
                 self.docker_config.get(
                     "run_options", []) + self.docker_config.get(
-                        f"{'head' if as_head else 'worker'}_run_options",
-                        []) + self._configure_runtime(),
+                        f"{'head' if as_head else 'worker'}_run_options", []) +
+                self._configure_runtime() + self._auto_configure_shm(),
                 self.ssh_command_runner.cluster_name, home_directory)
             self.run(start_command, run_env="host")
         else:
@@ -787,6 +798,27 @@ class DockerCommandRunner(CommandRunnerInterface):
                 return []
 
         return []
+
+    def _auto_configure_shm(self):
+        if self.docker_config.get("disable_shm_size_detection"):
+            return []
+        try:
+            shm_output = self.ssh_command_runner.run(
+                "cat /proc/meminfo || true",
+                with_output=True).decode().strip()
+            available_memory = int([
+                ln for ln in shm_output.split("\n") if "MemAvailable" in ln
+            ][0].split()[1])
+            available_memory_bytes = available_memory * 1024
+            # Overestimate SHM size by 10%
+            shm_size = min((available_memory_bytes *
+                            DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1),
+                           DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+            return [f"--shm-size='{shm_size}b'"]
+        except Exception as e:
+            logger.warning(
+                f"Received error while trying to auto-compute SHM size {e}")
+            return []
 
     def _get_docker_host_mount_location(self, cluster_name: str) -> str:
         """Return the docker host mount directory location."""

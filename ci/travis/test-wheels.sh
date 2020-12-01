@@ -72,7 +72,7 @@ if [[ "$platform" == "linux" ]]; then
     "$PYTHON_EXE" -u -c "import ray; print(ray.__commit__)" | grep "$TRAVIS_COMMIT" || (echo "ray.__commit__ not set properly!" && exit 1)
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp google grpcio pytest==5.4.3 requests
+    "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
@@ -111,7 +111,7 @@ elif [[ "$platform" == "macosx" ]]; then
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
 
     # Install the dependencies to run the tests.
-    "$PIP_CMD" install -q aiohttp google grpcio pytest==5.4.3 requests
+    "$PIP_CMD" install -q aiohttp grpcio pytest==5.4.3 requests
 
     # Run a simple test script to make sure that the wheel works.
     for SCRIPT in "${TEST_SCRIPTS[@]}"; do
