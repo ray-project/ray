@@ -118,7 +118,6 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         "num_cpus": 2,
     }],
     indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="fails in travis?")
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
