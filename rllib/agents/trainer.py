@@ -222,7 +222,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Experimental flag to speed up sampling and use "trajectory views" as
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
-    # NOTE: Only supported for PyTorch so far.
     "_use_trajectory_view_api": False,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
