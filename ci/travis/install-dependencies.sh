@@ -312,7 +312,7 @@ install_dependencies() {
   if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
     case "${TORCH_VERSION-1.6}" in
       1.5) TORCHVISION_VERSION=0.6.0;;
-      *) TORCHVISION_VERSION=0.5.0;;
+      *) TORCHVISION_VERSION=0.7.0;;
     esac
 
     pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \

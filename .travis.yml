@@ -400,7 +400,7 @@ matrix:
         - TUNE_TESTING=1
         - PYTHON=3.6
         - TF_VERSION=2.2.0
-        - TFP_VERSION=0.8
+        - TFP_VERSION=0.10
         - TORCH_VERSION=1.6
         - PYTHONWARNINGS=ignore
       install:
