@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #include "ray/raylet/local_placement_group_manager.h"
-#include "ray/common/task/scheduling_resources.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 #include <memory>
@@ -27,8 +27,8 @@ namespace ray {
 class LocalPlacementGroupManagerTest : public ::testing::Test {
  public:
   LocalPlacementGroupManagerTest() {
-   local_placement_group_manager_.reset(
-        new raylet::LocalPlacementGroupManager(local_available_resources_, cluster_resource_map_, self_node_id_));
+    local_placement_group_manager_.reset(new raylet::LocalPlacementGroupManager(
+        local_available_resources_, cluster_resource_map_, self_node_id_));
   }
 
   std::unique_ptr<raylet::LocalPlacementGroupManager> local_placement_group_manager_;
@@ -55,8 +55,12 @@ TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleResource) {
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
   ResourceSet result_resource;
   ASSERT_EQ(0, local_available_resources_.AvailableResources().size());
-  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource)) << remaining_resource.GetAvailableResources().ToString() << " vs " << result_resource.ToString();
-  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource)) << local_available_resources_.ToResourceSet().ToString() << " vs " << result_resource.ToString();
+  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
 }
 
 TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleWithInsufficientResource) {
@@ -90,12 +94,17 @@ TEST_F(LocalPlacementGroupManagerTest, TestCommitBundleResource) {
   local_placement_group_manager_->CommitBundleResources(bundle_spec);
   /// 4. check remaining resources is correct.
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
-  std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(), "CPU_group_1_" + group_id.Hex()};
+  std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
+                                              "CPU_group_1_" + group_id.Hex()};
   std::vector<double> resource_capacity = {1.0, 1.0};
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(2, local_available_resources_.AvailableResources().size());
-  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource)) << remaining_resource.GetAvailableResources().ToString() << " vs " << result_resource.ToString();
-  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource)) << local_available_resources_.ToResourceSet().ToString() << " vs " << result_resource.ToString();
+  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
 }
 
 TEST_F(LocalPlacementGroupManagerTest, TestReturnBundleResource) {
@@ -117,8 +126,12 @@ TEST_F(LocalPlacementGroupManagerTest, TestReturnBundleResource) {
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
   ResourceSet result_resource(unit_resource);
   ASSERT_EQ(1, local_available_resources_.AvailableResources().size());
-  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource)) << remaining_resource.GetAvailableResources().ToString() << " vs " << result_resource.ToString();
-  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource)) << local_available_resources_.ToResourceSet().ToString() << " vs " << result_resource.ToString();
+  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
 }
 
 TEST_F(LocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
@@ -133,34 +146,49 @@ TEST_F(LocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
   init_unit_resource.insert({"CPU", 2.0});
   ResourceSet init_resourece(init_unit_resource);
   cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
-  local_available_resources_ = ResourceIdSet(init_resourece); 
+  local_available_resources_ = ResourceIdSet(init_resourece);
   /// 3. prepare and commit two bundle resource.
   local_placement_group_manager_->PrepareBundleResources(first_bundle_spec);
   local_placement_group_manager_->PrepareBundleResources(second_bundle_spec);
-  local_placement_group_manager_->CommitBundleResources(first_bundle_spec); 
-  local_placement_group_manager_->CommitBundleResources(second_bundle_spec); 
+  local_placement_group_manager_->CommitBundleResources(first_bundle_spec);
+  local_placement_group_manager_->CommitBundleResources(second_bundle_spec);
   /// 4. check remaining resources is correct after commit phase.
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
-  std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(), "CPU_group_1_" + group_id.Hex(), "CPU_group_2_" + group_id.Hex()};
+  std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
+                                              "CPU_group_1_" + group_id.Hex(),
+                                              "CPU_group_2_" + group_id.Hex()};
   std::vector<double> resource_capacity = {2.0, 1.0, 1.0};
   ResourceSet result_resource(resource_labels, resource_capacity);
   ASSERT_EQ(3, local_available_resources_.AvailableResources().size());
-  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource)) << remaining_resource.GetAvailableResources().ToString() << " vs " << result_resource.ToString();
-  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource)) << local_available_resources_.ToResourceSet().ToString() << " vs " << result_resource.ToString();
+  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
   /// 5. return second bundle.
-  local_placement_group_manager_->ReturnBundleResources(second_bundle_spec); 
+  local_placement_group_manager_->ReturnBundleResources(second_bundle_spec);
   /// 6. check remaining resources is correct after return second bundle.
-  resource_labels = {"CPU", "CPU_group_" + group_id.Hex(), "CPU_group_1_" + group_id.Hex()};
+  resource_labels = {"CPU", "CPU_group_" + group_id.Hex(),
+                     "CPU_group_1_" + group_id.Hex()};
   resource_capacity = {1.0, 1.0, 1.0};
   result_resource = ResourceSet(resource_labels, resource_capacity);
-  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource)) << remaining_resource.GetAvailableResources().ToString() << " vs " << result_resource.ToString();
-  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource)) << local_available_resources_.ToResourceSet().ToString() << " vs " << result_resource.ToString();
+  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
   /// 7. return first bundel.
   local_placement_group_manager_->ReturnBundleResources(first_bundle_spec);
   /// 8. check remaining resources is correct after all bundle returned.
   result_resource = ResourceSet(init_unit_resource);
-  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource)) << remaining_resource.GetAvailableResources().ToString() << " vs " << result_resource.ToString();
-  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource)) << local_available_resources_.ToResourceSet().ToString() << " vs " << result_resource.ToString();
+  ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+  ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
 }
 
 }  // namespace ray

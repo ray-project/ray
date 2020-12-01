@@ -169,7 +169,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       record_metrics_period_(config.record_metrics_period_ms),
-      local_placement_group_manager_(local_available_resources_, cluster_resource_map_, self_node_id_) {
+      local_placement_group_manager_(local_available_resources_, cluster_resource_map_,
+                                     self_node_id_) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -602,7 +603,7 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Return unused bundle resources.
-  local_placement_group_manager_.ReturnUnusedBundleResources(in_use_bundles);  
+  local_placement_group_manager_.ReturnUnusedBundleResources(in_use_bundles);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

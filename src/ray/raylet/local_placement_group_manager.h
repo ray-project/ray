@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include "absl/container/flat_hash_map.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/common/bundle_spec.h"
-#include "absl/container/flat_hash_map.h"
 
 namespace ray {
 
@@ -45,25 +45,26 @@ struct pair_hash {
 };
 
 class LocalPlacementGroupManager {
-
  public:
   /// Create a local placement group manager.
-  /// 
-  /// \param local_available_resources_: The resources (IDs specificed) that are currently available.
-  /// \param cluster_resource_map_: The resources (without IDs specificed) that are currently available.
-  /// \param self_node_id_: The related raylet with current placement group manager.
-  LocalPlacementGroupManager(ResourceIdSet &local_available_resources_,
-                            std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
-                            const NodeID &self_node_id_);
+  ///
+  /// \param local_available_resources_: The resources (IDs specificed) that are currently
+  /// available. \param cluster_resource_map_: The resources (without IDs specificed) that
+  /// are currently available. \param self_node_id_: The related raylet with current
+  /// placement group manager.
+  LocalPlacementGroupManager(
+      ResourceIdSet &local_available_resources_,
+      std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
+      const NodeID &self_node_id_);
 
-  /// Lock the required resources from local available resources. Note that this is phase one of 2PC, 
-  /// it will not convert placement group resource(like CPU -> CPU_group_i).
-  /// 
+  /// Lock the required resources from local available resources. Note that this is phase
+  /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
+  ///
   /// \param bundle_spec: Specification of bundle whose resources will be prepared.
   bool PrepareBundleResources(const BundleSpecification &bundle_spec);
 
-  /// Convert the required resources to placement group resources(like CPU -> CPU_group_i).
-  /// This is phase two of 2PC.
+  /// Convert the required resources to placement group resources(like CPU ->
+  /// CPU_group_i). This is phase two of 2PC.
   ///
   /// \param bundle_spec: Specification of bundle whose resources will be commited.
   void CommitBundleResources(const BundleSpecification &bundle_spec);
@@ -76,22 +77,25 @@ class LocalPlacementGroupManager {
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec: A set of bundles which in use.
-  void ReturnUnusedBundleResources(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
+  void ReturnUnusedBundleResources(
+      const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
   /// Get all local available resource(IDs specificed).
   const ResourceIdSet &GetAllResourceIdSet() const { return local_available_resources_; };
 
   /// Get all local available resource(without IDs specificed).
-  const SchedulingResources &GetAllResourceSetWithoutId() const { return cluster_resource_map_[self_node_id_]; }
+  const SchedulingResources &GetAllResourceSetWithoutId() const {
+    return cluster_resource_map_[self_node_id_];
+  }
 
  private:
   /// The resources (and specific resource IDs) that are currently available.
   ResourceIdSet &local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_;
-  
+
   /// Related raylet with current placement group manager.
   NodeID self_node_id_;
-  
+
   /// This map represents the commit state of 2PC protocol for atomic placement group
   /// creation.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>

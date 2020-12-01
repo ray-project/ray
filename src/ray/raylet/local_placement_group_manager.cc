@@ -22,14 +22,16 @@ namespace ray {
 
 namespace raylet {
 
-LocalPlacementGroupManager::LocalPlacementGroupManager(ResourceIdSet &local_available_resources_,
-                            std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
-                            const NodeID &self_node_id_)
-                            :local_available_resources_(local_available_resources_),
-                            cluster_resource_map_(cluster_resource_map_),
-                            self_node_id_(self_node_id_) {}
+LocalPlacementGroupManager::LocalPlacementGroupManager(
+    ResourceIdSet &local_available_resources_,
+    std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
+    const NodeID &self_node_id_)
+    : local_available_resources_(local_available_resources_),
+      cluster_resource_map_(cluster_resource_map_),
+      self_node_id_(self_node_id_) {}
 
-bool LocalPlacementGroupManager::PrepareBundleResources(const BundleSpecification &bundle_spec) {
+bool LocalPlacementGroupManager::PrepareBundleResources(
+    const BundleSpecification &bundle_spec) {
   // We will first delete the existing bundle to ensure idempotent.
   // The reason why we do this is: after GCS restarts, placement group can be rescheduled
   // directly without rolling back the operations performed before the restart.
@@ -50,7 +52,8 @@ bool LocalPlacementGroupManager::PrepareBundleResources(const BundleSpecificatio
 
   auto &local_resource_set = cluster_resource_map_[self_node_id_];
   auto bundle_state = std::make_shared<BundleState>();
-  bool local_resource_enough = bundle_spec.GetRequiredResources().IsSubset(local_resource_set.GetAvailableResources());
+  bool local_resource_enough = bundle_spec.GetRequiredResources().IsSubset(
+      local_resource_set.GetAvailableResources());
 
   if (local_resource_enough) {
     // Register states.
@@ -73,7 +76,8 @@ bool LocalPlacementGroupManager::PrepareBundleResources(const BundleSpecificatio
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
 
-void LocalPlacementGroupManager::CommitBundleResources(const BundleSpecification &bundle_spec) {
+void LocalPlacementGroupManager::CommitBundleResources(
+    const BundleSpecification &bundle_spec) {
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
   // once retry is implemented.
   const auto &bundle_id = bundle_spec.BundleId();
@@ -100,7 +104,8 @@ void LocalPlacementGroupManager::CommitBundleResources(const BundleSpecification
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
-void LocalPlacementGroupManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {
+void LocalPlacementGroupManager::ReturnBundleResources(
+    const BundleSpecification &bundle_spec) {
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
@@ -116,17 +121,19 @@ void LocalPlacementGroupManager::ReturnBundleResources(const BundleSpecification
 
   const auto &resource_set = bundle_spec.GetRequiredResources();
   const auto &placement_group_resource_labels = bundle_spec.GetFormattedResources();
-  
+
   // Return resources to ResourceIdSet.
   local_available_resources_.Release(ResourceIdSet(resource_set));
   local_available_resources_.Acquire(ResourceSet(placement_group_resource_labels));
 
   // Return resources to SchedulingResources.
   cluster_resource_map_[self_node_id_].Release(resource_set);
-  cluster_resource_map_[self_node_id_].Acquire(ResourceSet(placement_group_resource_labels));
+  cluster_resource_map_[self_node_id_].Acquire(
+      ResourceSet(placement_group_resource_labels));
 }
 
-void LocalPlacementGroupManager::ReturnUnusedBundleResources(const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
+void LocalPlacementGroupManager::ReturnUnusedBundleResources(
+    const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
       ReturnBundleResources(*iter->second);

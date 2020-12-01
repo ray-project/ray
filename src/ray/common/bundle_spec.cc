@@ -33,7 +33,7 @@ void BundleSpecification::ComputeResources() {
 void BundleSpecification::ComputeBundleResourceLabels() {
   RAY_CHECK(unit_resource_);
 
-  for (const auto &resource_pair: unit_resource_->GetResourceMap()) {
+  for (const auto &resource_pair : unit_resource_->GetResourceMap()) {
     double resource_value = resource_pair.second;
 
     /// With bundle index (e.g., CPU_group_i_zzz).

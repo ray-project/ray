@@ -73,7 +73,9 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   }
 
   /// Get all placement group bundle resource labels.
-  const std::unordered_map<std::string, double> &GetFormattedResources() const { return bundle_resource_labels_; }
+  const std::unordered_map<std::string, double> &GetFormattedResources() const {
+    return bundle_resource_labels_;
+  }
 
   /// Returns the schedule bundle callback, or nullptr.
   const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
