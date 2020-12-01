@@ -179,6 +179,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
   gpu_actors = [GPUActor.options(
           placement_group=pg,
           # This is the index from the original list.
+          # The index can be set to -1 to specify any available bundle.
           placement_group_bundle_index=0) # Index of gpu_bundle is 0.
       .remote() for _ in range(2)]
 
