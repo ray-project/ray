@@ -37,9 +37,9 @@ install_base() {
       sudo apt-get update -qq
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
-      if [ "${LINUX_WHEELS-}" = 1 ]; then
-        pkg_install_helper docker
-        if [ -n "${TRAVIS-}" ]; then
+      if [ -n "${TRAVIS-}" ]; then
+        if [ "${LINUX_WHEELS-}" = 1 ]; then
+          pkg_install_helper docker
           sudo usermod -a -G docker travis
         fi
       fi
