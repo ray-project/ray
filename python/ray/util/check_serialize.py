@@ -47,6 +47,7 @@ class FailureTuple:
 
 
 def _inspect_func_serialization(base_obj, depth, parent, failure_set):
+    """Adds the first-found non-serializable element to the failure_set."""
     assert inspect.isfunction(base_obj)
     closure = inspect.getclosurevars(base_obj)
     found = False
@@ -89,6 +90,7 @@ def _inspect_func_serialization(base_obj, depth, parent, failure_set):
 
 
 def _inspect_generic_serialization(base_obj, depth, parent, failure_set):
+    """Adds the first-found non-serializable element to the failure_set."""
     assert not inspect.isfunction(base_obj)
     functions = inspect.getmembers(base_obj, predicate=inspect.isfunction)
     found = False
