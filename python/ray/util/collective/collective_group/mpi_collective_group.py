@@ -3,5 +3,3 @@ try:
     import mpi4py
 except ImportError:
     raise
-
-raise NotImplementedError()

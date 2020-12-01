@@ -1,1 +1,1 @@
-from collective.collective_group.base_collective_group import *
+from .collective import init_collective_group, allreduce, barrier

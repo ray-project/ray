@@ -3,7 +3,7 @@ from abc import ABCMeta
 from abc import abstractmethod
 import six
 
-from python.ray.util.collective.types import AllReduceOptions, BarrierOptions
+from ray.util.collective.types import AllReduceOptions, BarrierOptions
 
 
 class BaseGroup(six.with_metaclass(ABCMeta)):
@@ -30,11 +30,15 @@ class BaseGroup(six.with_metaclass(ABCMeta)):
         """Return the number of processes in this group."""
         return self._world_size
 
+    @property
+    def group_name(self):
+        """Return the group name of this group."""
+        return self._group_name
+
     def destroy_group(self):
         """GC the communicators."""
         pass
 
-    @abstractmethod
     @classmethod
     def backend(cls):
         """The backend of this collective group."""

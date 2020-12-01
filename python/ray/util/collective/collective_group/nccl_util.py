@@ -11,7 +11,7 @@ try:
 except ImportError:
     raise ImportError('NCCL in Ray requires Cupy being available!')
 
-from python.ray.util.collective.types import ReduceOp, torch_available
+from ray.util.collective.types import ReduceOp, torch_available
 
 
 NCCL_REDUCE_OP_MAP = {
