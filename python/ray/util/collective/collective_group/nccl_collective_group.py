@@ -1,4 +1,7 @@
 import logging
+import datetime
+import time
+
 import ray
 import cupy
 
@@ -11,24 +14,65 @@ from ray.util.collective.types import AllReduceOptions, BarrierOptions, named_ac
 # (1) stream management, instead of using the default stream, using a dedicate stream
 # (2) communicator management, adding a caching mechanism to enable
 
+class Rendezvous:
+    def __init__(self, group_name):
+        if not group_name:
+            raise ValueError('Empty meeting point.')
+        self._group_name = group_name
+        self._store_name = None
+        self._store = None
+
+    def meet_at_store(self, timeout=180):
+        """Meet at the named actor store."""
+        if timeout is not None and timeout < 0:
+            raise ValueError("The 'timeout' argument must be nonnegative. "
+                             f"Received {timeout}")
+        self._store_name = self._group_name + named_actor_suffix
+        timeout_delta = datetime.timedelta(seconds=timeout)
+        elapsed = datetime.timedelta(seconds=0)
+        start_time = datetime.datetime.now()
+        while elapsed < timeout_delta:
+            try:
+                logging.debug("Trying to meet at the store '{}'".format(self._store_name))
+                self._store = ray.get_actor(self._store_name)
+            except ValueError:
+                logging.debug("Failed to meet at the store '{}'."
+                              "Trying again...".format(self._store_name))
+                time.sleep(1)
+                elapsed = datetime.datetime.now() - start_time
+                continue
+            break
+        if not self._store:
+            raise RuntimeError("Unable to meet other processes "
+                               "at the rendezvous store.")
+
+    @property
+    def store(self):
+        return self._store
+
+    def get_nccl_id(self):
+        if not self._store:
+            raise ValueError("Rendezvous store is not setup.")
+        uid = ray.get(self._store.get_id.remote())
+        return uid
 
 class NCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
-        self._nccl_uid_store = None
         self._nccl_uid = None
 
         # TODO(Hao): change this to a be a cache
         self._nccl_comm = None
 
-        # Check NCCL version
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError('NCCL in Ray requires NCCL>=2.0.')
-
         # TODO(Hao): check version here
         if nccl_util.get_nccl_runtime_version() < 2704:
             logging.warning('NCCL send/recv calls requires NCCL>=2.7.4')
+
+        self._rendezvous = Rendezvous(self.group_name)
+        self._rendezvous.meet_at_store()
 
         # Setup the nccl uid using the store
         self._init_nccl_unique_id()
@@ -38,20 +82,14 @@ class NCCLGroup(BaseGroup):
 
     def _init_nccl_unique_id(self):
         """Init the NCCL unique ID required for setting up NCCL communicator."""
-        # using group_name to query the UniqueIDActor
-        unique_actor_name = self.group_name + named_actor_suffix
+        self._nccl_uid = self._rendezvous.get_nccl_id()
 
-        # Assuming this named actor has been created.
-        print('reach here...1')
-        self._nccl_uid_store = ray.get_actor(unique_actor_name)
-        print('reach here...1')
-        self._nccl_uid = ray.get(self._nccl_uid_store.get_id.remote())
 
     @property
     def nccl_uid(self):
         return self._nccl_uid
 
-    def destory_group(self):
+    def destroy_group(self):
         """Destroy the group and release the NCCL communicators safely."""
         if self._nccl_comm is not None:
             self.barrier()
@@ -59,7 +97,7 @@ class NCCLGroup(BaseGroup):
             stream = self._get_cuda_stream()
             stream.synchronize()
             # destroy the communicator
-            self._nccl_comm.destory()
+            self._nccl_comm.destroy()
             self._nccl_comm = None
         super(NCCLGroup, self).destroy_group()
 

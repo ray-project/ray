@@ -18,6 +18,7 @@ try:
 except ImportError:
     _NCCL_AVAILABLE = False
 
+logging.getLogger().setLevel(logging.DEBUG)
 
 def nccl_available():
     return _NCCL_AVAILABLE
@@ -82,10 +83,11 @@ class GroupManager(object):
                 import cupy.cuda.nccl as nccl
                 group_uid = nccl.get_unique_id()
                 store_name = group_name + types.named_actor_suffix
-                store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote()
+
+                store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(store_name)
                 ray.wait([store.set_id.remote(group_uid)])
 
-            logging.info('creating NCCL group: {}'.format(group_name))
+            logging.debug('creating NCCL group: {}'.format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -199,8 +201,9 @@ class GroupManager_2(object):
                 ray.kill(store)
         g.destroy()
 
+
 _group_mgr = GroupManager()
-_group_mgr2 = GroupMagager_2()
+_group_mgr2 = GroupManager_2()
 
 def init_collective_group(backend,
                           world_size,
@@ -264,6 +267,7 @@ def declare_collective_group(actors, group_options):
 
     _group_mgr_2.create_collective_group(backend, world_size, rank, group_name, actors)
 
+
 def allreduce(tensor,
               group_name,
               op=types.ReduceOp.SUM):
@@ -306,5 +310,3 @@ def _check_and_get_group(group_name):
     # TODO(Hao): check if this rank is in the group.
     g = _group_mgr.get_group_by_name(group_name)
     return g
-
-
