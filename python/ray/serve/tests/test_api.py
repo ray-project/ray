@@ -185,7 +185,10 @@ def test_no_http(serve_instance):
 
     assert len(ray.get(client._controller.get_routers.remote())) == 0
 
-    client.create_backend("backend", lambda: "hello")
+    def hello(*args):
+        return "hello"
+
+    client.create_backend("backend", hello)
     client.create_endpoint("endpoint", backend="backend")
 
     assert ray.get(client.get_handle("endpoint").remote()) == "hello"
