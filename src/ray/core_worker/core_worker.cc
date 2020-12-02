@@ -431,7 +431,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
     io_service_.post([this, object_id]() {
-      RAY_CHECK(object_recovery_manager_->RecoverObject(object_id));
+      RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
     });
   };
   task_manager_.reset(new TaskManager(
@@ -656,11 +656,8 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
-    // NOTE(swang): There is a race condition where this can return false if
-    // the reference went out of scope since the call to the ref counter to get
-    // the lost objects. It's okay to not mark the object as failed or recover
-    // the object since there are no reference holders.
-    static_cast<void>(object_recovery_manager_->RecoverObject(object_id));
+    // The lost object must have been owned by us.
+    RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
   }
 }
 
@@ -1192,10 +1189,8 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   // Find the raylet that hosts the primary copy of the object.
   NodeID pinned_at;
   bool spilled;
-  bool owned_by_us;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us,
-                                                              &pinned_at, &spilled));
-  RAY_CHECK(owned_by_us);
+  RAY_CHECK(
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
   if (spilled) {
     // The object has already been spilled.
     return;
