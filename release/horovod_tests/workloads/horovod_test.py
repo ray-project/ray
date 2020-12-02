@@ -81,7 +81,6 @@ def train(config, checkpoint_dir=None):
             running_loss += loss.item()
             epoch_steps += 1
             tune.report(loss=running_loss / epoch_steps)
-            break
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1,
                                                 running_loss / epoch_steps))
