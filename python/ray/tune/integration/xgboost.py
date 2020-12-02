@@ -3,6 +3,20 @@ from ray import tune
 
 import os
 
+try:
+    from xgboost_ray.session import is_xgboost_ray_actor, get_actor_rank, \
+        put_queue
+except ImportError:
+
+    def is_xgboost_ray_actor():
+        return False
+
+    def get_actor_rank():
+        return 0
+
+    def put_queue(_):
+        return False
+
 
 class TuneCallback:
     """Base class for Tune's XGBoost callbacks."""
@@ -55,6 +69,10 @@ class TuneReportCallback(TuneCallback):
         self._metrics = metrics
 
     def __call__(self, env):
+        # Only one worker should report to Tune
+        if is_xgboost_ray_actor() and get_actor_rank() != 0:
+            return
+
         result_dict = dict(env.evaluation_result_list)
         if not self._metrics:
             report_dict = result_dict
@@ -66,7 +84,11 @@ class TuneReportCallback(TuneCallback):
                 else:
                     metric = key
                 report_dict[key] = result_dict[metric]
-        tune.report(**report_dict)
+
+        if is_xgboost_ray_actor():
+            put_queue(lambda: tune.report(**report_dict))
+        else:
+            tune.report(**report_dict)
 
 
 class _TuneCheckpointCallback(TuneCallback):
@@ -88,8 +110,15 @@ class _TuneCheckpointCallback(TuneCallback):
         self._filename = filename
 
     def __call__(self, env):
-        with tune.checkpoint_dir(step=env.iteration) as checkpoint_dir:
-            env.model.save_model(os.path.join(checkpoint_dir, self._filename))
+        def _create_checkpoint():
+            with tune.checkpoint_dir(step=env.iteration) as checkpoint_dir:
+                env.model.save_model(
+                    os.path.join(checkpoint_dir, self._filename))
+
+        if not is_xgboost_ray_actor():
+            _create_checkpoint()
+        elif get_actor_rank() == 0:
+            put_queue(lambda: _create_checkpoint())
 
 
 class TuneReportCheckpointCallback(TuneCallback):
