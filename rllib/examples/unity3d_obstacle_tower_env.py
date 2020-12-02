@@ -122,8 +122,7 @@ if __name__ == "__main__":
 
     tune.register_env(
         "obstacle_tower",
-        lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(
-            "d:\\games\\obstacletower\\obstacletower.exe", **c)))
+        lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(**c)))
 
     config = {
         "env": "obstacle_tower",
