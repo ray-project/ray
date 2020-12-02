@@ -559,7 +559,9 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def get_initial_state(self):
-            return self.model.get_initial_state()
+            if hasattr(self, "model"):
+                return self.model.get_initial_state()
+            return []
 
         def get_session(self):
             return None  # None implies eager
