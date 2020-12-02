@@ -140,19 +140,25 @@ class ClusterResourceScheduler {
 
   ///  Find a node in the cluster on which we can schedule a given task request.
   ///
-  ///  First, this function checks whether the local node can schedule
-  ///  the request without violating any constraints. If yes, it returns the
-  ///  ID of the local node.
+  ///  Ignoring soft constraints, this policy prioritizes nodes in the
+  ///  following order:
   ///
-  ///  If not, this function checks whether there is another node in the cluster
-  ///  that satisfies all request's constraints (both soft and hard).
+  ///  1. Local node if resources available.
+  ///  2. Any remote node if resources available.
+  ///  3. If the local node is not feasible, any remote node if feasible.
   ///
-  ///  If no such node exists, the function checks whether there are nodes
-  ///  that satisfy all the request's hard constraints, but might violate some
-  ///  soft constraints. Among these nodes, it returns a node which violates
-  ///  the least number of soft constraints.
+  ///  If soft constraints are specified, then this policy will prioritize:
+  ///  1. Local node if resources available and does not violate soft
+  ///     constraints.
+  ///  2. Any remote node if resources available and does not violate soft
+  ///     constraints.
+  ///  3. Out of all the nodes, including the local node, pick the one that
+  ///     has resources available and violates the fewest soft constraints.
+  ///  4. If the local node is not feasible, any remote node if feasible.
   ///
-  ///  Finally, if no such node exists, return -1.
+  ///  If no node can meet any of these, returns -1, in which case the caller
+  ///  should queue the task and try again once resource availability has been
+  ///  updated.
   ///
   ///  \param task_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
