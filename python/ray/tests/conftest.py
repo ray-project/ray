@@ -1,7 +1,7 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
-
+import os
 from contextlib import contextmanager
 import pytest
 import subprocess
@@ -202,6 +202,13 @@ def call_ray_start(request):
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
+
+
+@pytest.fixture
+def enable_pickle_debug():
+    os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
+    yield
+    del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
 
 
 @pytest.fixture()

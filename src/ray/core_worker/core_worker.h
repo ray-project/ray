@@ -81,6 +81,7 @@ struct CoreWorkerOptions {
         gc_collect(nullptr),
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
+        delete_spilled_objects(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -140,6 +141,9 @@ struct CoreWorkerOptions {
   /// Application-language callback to restore objects from external storage.
   std::function<void(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
+  /// Application-language callback to delete objects from external storage.
+  std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
+      delete_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -603,23 +607,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
 
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return Status.
-  Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[in] checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return Status.
-  Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                          const ActorCheckpointID &checkpoint_id);
-
-  /// Sets a resource with the specified capacity and node id
+  /// Sets a resource with the specified capacity and client id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
   /// \param[in] node_id NodeID where the resource is to be set.
@@ -889,6 +877,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  // Delete objects from external storage.
+  void HandleDeleteSpilledObjects(const rpc::DeleteSpilledObjectsRequest &request,
+                                  rpc::DeleteSpilledObjectsReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,

@@ -116,6 +116,16 @@ std::string EndpointToUrl(
 boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol>
 ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 
+/// Parse the url and return a pair of base_url and query string map.
+/// EX) http://abc?num_objects=9&offset=8388878
+/// will be returned as
+/// {
+///   url: http://abc,
+///   num_objects: 9,
+///   offset: 8388878
+/// }
+std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url);
+
 class InitShutdownRAII {
  public:
   /// Type of the Shutdown function.
