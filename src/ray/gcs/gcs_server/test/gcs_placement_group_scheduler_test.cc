@@ -35,8 +35,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }));
 
     for (int index = 0; index < 3; ++index) {
-      raylet_clients_.push_back(
-          std::make_shared<GcsServerMocker::MockRayletClient>());
+      raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
@@ -47,10 +46,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
-      [this](const rpc::Address &addr) {
-        return raylet_clients_[addr.port()];
-      }
-    );
+        [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
         raylet_client_pool_);

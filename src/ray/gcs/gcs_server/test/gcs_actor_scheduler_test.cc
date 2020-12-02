@@ -35,10 +35,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
-      [this](const rpc::Address &addr) {
-        return raylet_client_;
-        }
-    );
+        [this](const rpc::Address &addr) { return raylet_client_; });
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_, *gcs_actor_table_, *gcs_node_manager_, gcs_pub_sub_,
         /*schedule_failure_handler=*/

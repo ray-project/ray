@@ -3,7 +3,8 @@
 namespace ray {
 namespace rpc {
 
-shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddress(const rpc::Address &address) {
+shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddress(
+    const rpc::Address &address) {
   RAY_CHECK(address.raylet_id() != "");
   absl::MutexLock lock(&mu_);
   auto raylet_id = NodeID::FromBinary(address.raylet_id());
@@ -12,15 +13,17 @@ shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddr
     return it->second;
   }
   auto connection = client_factory_(address);
-  // std::shared_ptr<NodeManagerWorkerClient>(NodeManagerWorkerClient::make(address.ip_address(), address.port(), client_call_manager_));
+  // std::shared_ptr<NodeManagerWorkerClient>(NodeManagerWorkerClient::make(address.ip_address(),
+  // address.port(), client_call_manager_));
   client_map_[raylet_id] = connection;
 
   RAY_LOG(DEBUG) << "Connected to " << address.ip_address() << ":" << address.port();
   return connection;
 }
 
-shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByID(ray::NodeID id) {
- absl::MutexLock lock(&mu_);
+shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByID(
+    ray::NodeID id) {
+  absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {
     return {};
@@ -37,5 +40,5 @@ void NodeManagerClientPool::Disconnect(ray::NodeID id) {
   client_map_.erase(it);
 }
 
-} // namespace rpc
-} // namespace ray
+}  // namespace rpc
+}  // namespace ray

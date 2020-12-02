@@ -36,7 +36,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.grpc_server_thread_num),
       client_call_manager_(main_service),
-      raylet_client_pool_(std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)) {}
+      raylet_client_pool_(
+          std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)) {}
 
 GcsServer::~GcsServer() { Stop(); }
 

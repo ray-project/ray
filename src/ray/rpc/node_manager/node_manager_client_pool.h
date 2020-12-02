@@ -15,8 +15,8 @@
 #pragma once
 
 #include "absl/base/thread_annotations.h"
-#include "absl/strings/str_cat.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -28,18 +28,20 @@ using std::shared_ptr;
 namespace ray {
 namespace rpc {
 
-using RayletClientFactoryFn = std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
+using RayletClientFactoryFn =
+    std::function<std::shared_ptr<ray::RayletClientInterface>(const rpc::Address &)>;
 class NodeManagerClientPool {
  public:
   NodeManagerClientPool() = delete;
 
-  /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does not.
-  /// The returned pointer is borrowed, and expected to be used briefly.
+  /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
+  /// not. The returned pointer is borrowed, and expected to be used briefly.
   shared_ptr<ray::RayletClientInterface> GetOrConnectByID(ray::NodeID id);
 
-  /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does not.
-  /// The returned pointer is borrowed, and expected to be used briefly.
-  shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(const rpc::Address &address);
+  /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
+  /// not. The returned pointer is borrowed, and expected to be used briefly.
+  shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(
+      const rpc::Address &address);
 
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
@@ -51,8 +53,8 @@ class NodeManagerClientPool {
 
   NodeManagerClientPool(RayletClientFactoryFn client_factory)
       : client_factory_(client_factory){};
- private:
 
+ private:
   /// Provides the default client factory function. Providing this function to the
   /// construtor aids migration but is ultimately a thing that should be
   /// deprecated and brought internal to the pool, so this is our bridge.
@@ -60,7 +62,7 @@ class NodeManagerClientPool {
     return [&](const rpc::Address &addr) {
       auto nm_client = NodeManagerWorkerClient::make(addr.ip_address(), addr.port(), ccm);
       std::shared_ptr<ray::RayletClientInterface> raylet_client =
-        std::make_shared<ray::raylet::RayletClient>(nm_client);
+          std::make_shared<ray::raylet::RayletClient>(nm_client);
       return raylet_client;
     };
   };
@@ -76,8 +78,7 @@ class NodeManagerClientPool {
   /// objects in this pool by requesting them
   absl::flat_hash_map<ray::NodeID, shared_ptr<ray::RayletClientInterface>> client_map_
       GUARDED_BY(mu_);
-
 };
 
-} // namespace rpc
-} // namespace ray
+}  // namespace rpc
+}  // namespace ray

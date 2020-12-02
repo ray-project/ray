@@ -140,10 +140,10 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
-class RayletClientInterface: public PinObjectsInterface,
-                             public WorkerLeaseInterface,
-                             public DependencyWaiterInterface,
-                             public ResourceReserveInterface {
+class RayletClientInterface : public PinObjectsInterface,
+                              public WorkerLeaseInterface,
+                              public DependencyWaiterInterface,
+                              public ResourceReserveInterface {
  public:
   virtual ~RayletClientInterface(){};
 };

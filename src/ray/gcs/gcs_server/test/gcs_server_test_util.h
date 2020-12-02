@@ -228,14 +228,14 @@ struct GcsServerMocker {
 
     /// PinObjectsInterface
     void PinObjectIDs(
-      const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
-      const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
+        const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+        const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
     /// DependencyWaiterInterface
     ray::Status WaitForDirectActorCallArgs(
-      const std::vector<rpc::ObjectReference> &references, int64_t tag) override {
-        return ray::Status::OK();
-      }
+        const std::vector<rpc::ObjectReference> &references, int64_t tag) override {
+      return ray::Status::OK();
+    }
 
     ~MockRayletClient() {}
 
