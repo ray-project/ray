@@ -1,7 +1,7 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-from ray.util.xgboost import RayDMatrix, train
+from ray.util.xgboost import RayDMatrix, RayParams, train
 
 
 # __xgboost_begin__
@@ -31,8 +31,7 @@ def main():
         train_set,
         evals=[(test_set, "eval")],
         evals_result=evals_result,
-        max_actor_restarts=1,
-        checkpoint_path="/tmp/checkpoint/",
+        ray_params=RayParams(max_actor_restarts=1),
         verbose_eval=False)
 
     bst.save_model("simple.xgb")
