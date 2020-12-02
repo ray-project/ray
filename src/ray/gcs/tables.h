@@ -34,8 +34,6 @@ namespace ray {
 
 namespace gcs {
 
-using rpc::ActorCheckpointData;
-using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsChangeMode;
@@ -808,35 +806,6 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
   /// In this way TaskLeaseTable() can also reuse class SubscriptionExecutor.
   Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
                    const SubscriptionCallback &done);
-};
-
-class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
- public:
-  ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                       RedisGcsClient *client)
-      : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT;
-  };
-};
-
-class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
- public:
-  ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                         RedisGcsClient *client)
-      : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT_ID;
-  };
-
-  /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
-  /// total number of checkpoints in GCS exceeds the max allowed value.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint.
-  /// \return Status.
-  Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
-                         const ActorCheckpointID &checkpoint_id,
-                         const WriteCallback &done);
 };
 
 namespace raylet {

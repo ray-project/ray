@@ -23,8 +23,6 @@
 namespace ray {
 namespace gcs {
 
-using rpc::ActorCheckpointData;
-using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
@@ -180,26 +178,6 @@ class GcsPlacementGroupTable
   }
 };
 
-class GcsActorCheckpointTable : public GcsTable<ActorCheckpointID, ActorCheckpointData> {
- public:
-  explicit GcsActorCheckpointTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTable(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT);
-  }
-};
-
-class GcsActorCheckpointIdTable
-    : public GcsTableWithJobId<ActorID, ActorCheckpointIdData> {
- public:
-  explicit GcsActorCheckpointIdTable(std::shared_ptr<StoreClient> &store_client)
-      : GcsTableWithJobId(store_client) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR_CHECKPOINT_ID);
-  }
-
- private:
-  JobID GetJobIdFromKey(const ActorID &key) override { return key.JobId(); }
-};
-
 class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
  public:
   explicit GcsTaskTable(std::shared_ptr<StoreClient> &store_client)
@@ -330,16 +308,6 @@ class GcsTableStorage {
     return *placement_group_table_;
   }
 
-  GcsActorCheckpointTable &ActorCheckpointTable() {
-    RAY_CHECK(actor_checkpoint_table_ != nullptr);
-    return *actor_checkpoint_table_;
-  }
-
-  GcsActorCheckpointIdTable &ActorCheckpointIdTable() {
-    RAY_CHECK(actor_checkpoint_id_table_ != nullptr);
-    return *actor_checkpoint_id_table_;
-  }
-
   GcsTaskTable &TaskTable() {
     RAY_CHECK(task_table_ != nullptr);
     return *task_table_;
@@ -405,8 +373,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsJobTable> job_table_;
   std::unique_ptr<GcsActorTable> actor_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
-  std::unique_ptr<GcsActorCheckpointTable> actor_checkpoint_table_;
-  std::unique_ptr<GcsActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<GcsTaskTable> task_table_;
   std::unique_ptr<GcsTaskLeaseTable> task_lease_table_;
   std::unique_ptr<GcsTaskReconstructionTable> task_reconstruction_table_;
@@ -431,8 +397,6 @@ class RedisGcsTableStorage : public GcsTableStorage {
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
     placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
-    actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
     task_table_.reset(new GcsTaskTable(store_client_));
     task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
     task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
@@ -461,8 +425,6 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
     job_table_.reset(new GcsJobTable(store_client_));
     actor_table_.reset(new GcsActorTable(store_client_));
     placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    actor_checkpoint_table_.reset(new GcsActorCheckpointTable(store_client_));
-    actor_checkpoint_id_table_.reset(new GcsActorCheckpointIdTable(store_client_));
     task_table_.reset(new GcsTaskTable(store_client_));
     task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
     task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));

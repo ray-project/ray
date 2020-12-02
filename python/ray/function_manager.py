@@ -19,14 +19,16 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray.utils import (
-    is_function_or_method,
-    is_class_method,
-    is_static_method,
     check_oversized_pickle,
     decode,
     ensure_str,
     format_error_message,
     push_error_to_driver,
+)
+from ray.util.inspect import (
+    is_function_or_method,
+    is_class_method,
+    is_static_method,
 )
 
 FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
