@@ -1,4 +1,5 @@
 """Autoscaler monitoring loop daemon."""
+
 import argparse
 import logging
 import logging.handlers
@@ -251,6 +252,7 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
+
         self.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
 
         # Handle messages from the subscription channels.
