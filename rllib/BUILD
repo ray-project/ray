@@ -462,7 +462,7 @@ py_test(
 py_test(
     name = "test_ddpg",
     tags = ["agents_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/ddpg/tests/test_ddpg.py"]
 )
 
@@ -531,7 +531,6 @@ py_test(
 )
 
 # MBMPOTrainer
-# Removed due to Higher API conflicts with Pytorch-Import tests
 #py_test(
 #    name = "test_mbmpo",
 #    tags = ["agents_dir"],
