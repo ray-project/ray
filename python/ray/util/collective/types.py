@@ -34,6 +34,22 @@ def torch_available():
     return _TORCH_AVAILABLE
 
 
+class Backend(object):
+    """A class to represent different backends, in case the user string is too error-prone."""
+    NCCL = 'nccl'
+    MPI = 'mpi'
+    UNRECOGNIZED = 'unrecognized'
+
+    def __new__(cls, name: str):
+        backend = getattr(Backend, name.upper(), Backend.UNRECOGNIZED)
+        if backend == Backend.UNRECOGNIZED:
+            raise ValueError("Unrecognized backend: '{}'"
+                             "Only NCCL is supported".format(name))
+        if backend == Backend.MPI:
+            raise NotImplementedError()
+        return backend
+
+
 # TODO(Hao): extend this to support more MPI types
 class ReduceOp(Enum):
     SUM = 0

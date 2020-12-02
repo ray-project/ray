@@ -7,7 +7,7 @@ import cupy
 
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
-from ray.util.collective.types import AllReduceOptions, BarrierOptions
+from ray.util.collective.types import AllReduceOptions, BarrierOptions, Backend
 from ray.util.collective.const import NAMED_ACTOR_STORE_SUFFIX
 
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # TODO(Hao):
 # (1) stream management, instead of using the default stream, using a dedicate stream
 # (2) communicator management, adding a caching mechanism to enable
+
 
 class Rendezvous:
     def __init__(self, group_name):
@@ -108,7 +109,7 @@ class NCCLGroup(BaseGroup):
 
     @classmethod
     def backend(cls):
-        return 'nccl'
+        return Backend.NCCL
 
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
         """
@@ -159,7 +160,8 @@ class NCCLGroup(BaseGroup):
                 self.world_size, self.nccl_uid, self.rank)
         return self._nccl_comm
 
-    def _get_cuda_stream(self):
+    @staticmethod
+    def _get_cuda_stream():
         """Obtain an idle stream from a stream pool for the collective task."""
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
