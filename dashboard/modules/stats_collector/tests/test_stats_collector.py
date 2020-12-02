@@ -219,7 +219,7 @@ def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
             logger.info(ex)
             return False
 
-    wait_for_condition(_check_nodes, timeout=10)
+    wait_for_condition(_check_nodes, timeout=15)
 
 
 @pytest.mark.parametrize(
