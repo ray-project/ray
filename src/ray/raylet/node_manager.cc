@@ -578,7 +578,7 @@ void NodeManager::HandleReleaseUnusedBundles(
     auto &worker = worker_it.second;
     const auto &bundle_id = worker->GetBundleId();
     // We need to filter out the workers used by placement group.
-    if (!bundle_id.first.IsNil() && 0 == in_use_bundles.count(worker->GetBundleId())) {
+    if (!bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id)) {
       workers_associated_with_unused_bundles.emplace_back(worker);
     }
   }
