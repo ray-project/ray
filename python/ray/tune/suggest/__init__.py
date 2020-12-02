@@ -1,5 +1,3 @@
-import inspect
-
 from ray.utils import get_function_args
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
