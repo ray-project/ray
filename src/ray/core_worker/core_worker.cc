@@ -431,11 +431,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   auto reconstruct_object_callback = [this](const ObjectID &object_id) {
     io_service_.post([this, object_id]() {
-      RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
+      RAY_CHECK(object_recovery_manager_->RecoverObject(object_id));
     });
   };
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_,
+      /* retry_task_callback= */
       [this](TaskSpecification &spec, bool delay) {
         if (delay) {
           // Retry after a delay to emulate the existing Raylet reconstruction
@@ -655,8 +656,11 @@ void CoreWorker::OnNodeRemoved(const rpc::GcsNodeInfo &node_info) {
   memory_store_->Delete(lost_objects);
   for (const auto &object_id : lost_objects) {
     RAY_LOG(INFO) << "Object " << object_id << " lost due to node failure " << node_id;
-    // The lost object must have been owned by us.
-    RAY_CHECK_OK(object_recovery_manager_->RecoverObject(object_id));
+    // NOTE(swang): There is a race condition where this can return false if
+    // the reference went out of scope since the call to the ref counter to get
+    // the lost objects. It's okay to not mark the object as failed or recover
+    // the object since there are no reference holders.
+    static_cast<void>(object_recovery_manager_->RecoverObject(object_id));
   }
 }
 
@@ -1171,19 +1175,9 @@ Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-Status CoreWorker::PrepareActorCheckpoint(const ActorID &actor_id,
-                                          ActorCheckpointID *checkpoint_id) {
-  return local_raylet_client_->PrepareActorCheckpoint(actor_id, checkpoint_id);
-}
-
-Status CoreWorker::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
-  return local_raylet_client_->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
-}
-
 Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
-                               const NodeID &client_id) {
-  return local_raylet_client_->SetResource(resource_name, capacity, client_id);
+                               const NodeID &node_id) {
+  return local_raylet_client_->SetResource(resource_name, capacity, node_id);
 }
 
 void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
@@ -1198,8 +1192,10 @@ void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
   // Find the raylet that hosts the primary copy of the object.
   NodeID pinned_at;
   bool spilled;
-  RAY_CHECK(
-      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled));
+  bool owned_by_us;
+  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us,
+                                                              &pinned_at, &spilled));
+  RAY_CHECK(owned_by_us);
   if (spilled) {
     // The object has already been spilled.
     return;
@@ -2124,7 +2120,7 @@ void CoreWorker::HandleAddObjectLocationOwner(
     return;
   }
   reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                        NodeID::FromBinary(request.client_id()));
+                                        NodeID::FromBinary(request.node_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2137,7 +2133,7 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
     return;
   }
   reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                           NodeID::FromBinary(request.client_id()));
+                                           NodeID::FromBinary(request.node_id()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2149,10 +2145,10 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<NodeID> client_ids =
+  std::unordered_set<NodeID> node_ids =
       reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
-  for (const auto &client_id : client_ids) {
-    reply->add_client_ids(client_id.Binary());
+  for (const auto &node_id : node_ids) {
+    reply->add_node_ids(node_id.Binary());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -2363,6 +2359,24 @@ void CoreWorker::HandleRestoreSpilledObjects(
   } else {
     send_reply_callback(
         Status::NotImplemented("Restore spilled objects callback not defined"), nullptr,
+        nullptr);
+  }
+}
+
+void CoreWorker::HandleDeleteSpilledObjects(
+    const rpc::DeleteSpilledObjectsRequest &request,
+    rpc::DeleteSpilledObjectsReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (options_.delete_spilled_objects != nullptr) {
+    std::vector<std::string> spilled_objects_url;
+    spilled_objects_url.reserve(request.spilled_objects_url_size());
+    for (const auto &url : request.spilled_objects_url()) {
+      spilled_objects_url.push_back(url);
+    }
+    options_.delete_spilled_objects(spilled_objects_url, worker_context_.GetWorkerType());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  } else {
+    send_reply_callback(
+        Status::NotImplemented("Delete spilled objects callback not defined"), nullptr,
         nullptr);
   }
 }
