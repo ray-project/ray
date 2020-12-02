@@ -78,52 +78,12 @@ def get_node_types(pod_types: List[Dict[str, Any]]) -> Dict[str, Any]:
         pod_type_copy.pop("name")
         node_types[name] = translate(
             pod_type_copy, dictionary=NODE_TYPE_FIELDS)
-        pod_config = pod_type_copy["podConfig"]
-        node_types[name]["resources"] = get_node_type_resources(pod_config)
     return node_types
 
 
 def translate(configuration: Dict[str, Any],
               dictionary: Dict[str, str]) -> Dict[str, Any]:
     return {dictionary[field]: configuration[field] for field in configuration}
-
-
-def get_node_type_resources(pod_config: Dict[str, Any]) -> Dict[str, int]:
-    pod_resources = pod_config["spec"]["containers"][0].get("resources", None)
-    if pod_resources is None:
-        return {"CPU": 0, "GPU": 0}
-
-    node_type_resources = {
-        resource_name.upper(): get_resource(pod_resources, resource_name)
-        for resource_name in ["cpu", "gpu"]
-    }
-
-    return node_type_resources
-
-
-def get_resource(pod_resources, resource_name) -> int:
-    request = _get_resource(
-        pod_resources, resource_name, field_name="requests")
-    limit = _get_resource(pod_resources, resource_name, field_name="limits")
-    resource = min(request, limit)
-    return 0 if resource == float("inf") else int(resource)
-
-
-def _get_resource(pod_resources, resource_name,
-                  field_name) -> Union[int, float]:
-    if (field_name in pod_resources
-            and resource_name in pod_resources[field_name]):
-        return _parse_resource(pod_resources[field_name][resource_name])
-    else:
-        return float("inf")
-
-
-def _parse_resource(resource):
-    resource_str = str(resource)
-    if resource_str[-1] == "m":
-        return math.ceil(int(resource_str[:-1]) / 1000)
-    else:
-        return int(resource_str)
 
 
 def get_ray_head_pod_ip(config: Dict[str, Any]) -> str:
