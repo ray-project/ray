@@ -351,8 +351,8 @@ void ClusterResourceScheduler::AddLocalResource(
     capacity.available[0] = resource_total;
     local_resources_.custom_resources.emplace(resource_id, capacity);
     std::string node_id_string = string_to_int_map_.Get(local_node_id_);
-    RAY_CHECK(string_to_int_map_.Get(client_id_string) == local_node_id_);
-    UpdateResourceCapacity(client_id_string, resource_name, resource_total);
+    RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
+    UpdateResourceCapacity(node_id_string, resource_name, resource_total);
     UpdateLocalAvailableResourcesFromResourceInstances();
   }
 }

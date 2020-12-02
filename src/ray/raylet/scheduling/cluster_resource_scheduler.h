@@ -201,7 +201,7 @@ class ClusterResourceScheduler {
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
 
-  /// Add an (unused) local resource.
+  /// Add a local resource that is available.
   ///
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
