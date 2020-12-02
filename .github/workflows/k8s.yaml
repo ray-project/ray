@@ -78,4 +78,6 @@ jobs:
         which python3
         source /home/runner/.bashrc
         conda activate base
-        python3 ci/travis/build-docker-images.py || true
+        RUN_ALWAYS=1 python3 ci/travis/build-docker-images.py
+        docker ps
+

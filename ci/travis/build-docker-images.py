@@ -62,6 +62,9 @@ def _get_wheel_name():
 
 
 def _docker_affected():
+    if os.environ.get("RUN_ALWAYS", ""):
+        return True
+
     result = StringIO()
     with redirect_stdout(result):
         runpy.run_path(
