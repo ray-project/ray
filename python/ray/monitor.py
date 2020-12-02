@@ -121,7 +121,6 @@ class Monitor:
 
     def __del__(self):
         """Destruct the monitor object."""
-        logger.debug("Monitor: Destructor accessed.")
         # We close the pubsub client to avoid leaking file descriptors.
         try:
             primary_subscribe_client = self.primary_subscribe_client
