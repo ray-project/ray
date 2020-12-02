@@ -379,9 +379,7 @@ def view_requirements_fn(policy):
     # This is for value calculation at the very end of a trajectory
     # (index=-1). It's only used if the trajectory is not finished yet and we
     # have to rely on the last value function output as a reward estimation.
-    return {
-        "_value_input_dict": ViewRequirement(is_input_dict=True, index=-1)
-    }
+    return {"_value_input_dict": ViewRequirement(is_input_dict=True, index=-1)}
 
 
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
