@@ -16,14 +16,23 @@ class Queue:
     cases are similar to those of the asyncio.Queue class.
 
     Features both sync and async put and get methods.  Provides the option to
-    block until space or items are available when calling put on a full queue
-    or get on an empty queue.  
+    block until space is available when calling put on a full queue,
+    or to block until items are available when calling get on an empty queue.
     
-    Optionally supports for batched put and get operations to minimize
+    Optionally supports batched put and get operations to minimize
     serialization overhead.
 
     Args:
-        maxsize (int): maximum size of the queue. If zero, size is unbounded.
+        maxsize (optional, int): maximum size of the queue. If zero, size is
+            unbounded.
+    
+    Examples:
+        >>> q = Queue()
+        >>> items = list(range(10))
+        >>> for item in items:
+        >>>     q.put(item)
+        >>> for item in items:
+        >>>     assert item == q.get()
     """
 
     def __init__(self, maxsize=0):
@@ -71,6 +80,29 @@ class Queue:
                 raise ValueError("'timeout' must be a non-negative number")
             else:
                 ray.get(self.actor.put.remote(item, timeout))
+
+    async def put_async(self, item, block=True, timeout=None):
+        """Adds an item to the queue.  If block is True and the queue is full,
+        blocks until the queue is no longer full or until timeout.
+
+        There is no guarantee of order if multiple producers put to the same
+        full queue.
+
+        Raises:
+            Full: if the queue is full and blocking is False.
+            Full: if the queue is full, blocking is True, and it timed out.
+            ValueError: if timeout is negative.
+        """
+        if not block:
+            try:
+                await self.actor.put_nowait.remote(item)
+            except asyncio.QueueFull:
+                raise Full
+        else:
+            if timeout is not None and timeout < 0:
+                raise ValueError("'timeout' must be a non-negative number")
+            else:
+                await self.actor.put.remote(item, timeout)
 
     def get(self, block=True, timeout=None):
         """Gets an item from the queue.  If block is True and the queue is
@@ -138,7 +170,7 @@ class Queue:
         """
         if not isinstance(items, list):
             raise TypeError("Argument 'items' must be a list")
-        if len(items) + self.qsize() > self.maxsize:
+        if self.maxsize > 0 and len(items) + self.qsize() > self.maxsize:
             raise Full("Cannot add " + str(len(items)) +
                        " items to queue of size " + str(self.qsize()) +
                        " and maxsize " + str(self.maxsize))
@@ -204,4 +236,4 @@ class _QueueActor:
         return self.queue.get_nowait()
 
     def get_nowait_batch(self, num_items):
-        return [self.queue.get_nowait(item) for _ in range(num_items)]
+        return [self.queue.get_nowait() for _ in range(num_items)]
