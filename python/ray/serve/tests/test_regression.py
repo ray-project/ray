@@ -1,3 +1,6 @@
+import gc
+from typing import List
+
 import numpy as np
 import requests
 
@@ -33,6 +36,26 @@ def test_np_in_composed_model(serve_instance):
     result = requests.get("http://127.0.0.1:8000/model")
     assert result.status_code == 200
     assert result.json() == 100.0
+
+
+def test_backend_worker_memory_growth(serve_instance):
+    # https://github.com/ray-project/ray/issues/12395
+    client = serve_instance
+
+    def gc_tracked_objects(flask_request):
+        return len(gc.get_objects())
+
+    client.create_backend("model", gc_tracked_objects)
+    client.create_endpoint("model", backend="model", route="/model")
+
+    tracked_objects: List[int] = []
+    for _ in range(10):
+        result = requests.get("http://127.0.0.1:8000/model")
+        assert result.status_code == 200
+        tracked_objects.append(result.json())
+
+    # gc tracked object shouldn't grow
+    assert tracked_objects[5] == tracked_objects[-1]
 
 
 if __name__ == "__main__":
