@@ -108,7 +108,14 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-    "Trainer state.")
+         "Trainer state.")
+parser.add_argument(
+    "--file-name",
+    type=str,
+    default=None,
+    help="The Unity3d ObstacleTower binary (compiled) game, e.g. "
+         "'/home/ubuntu/ObstacleTower.x86_64'. Use `None` for finding this "
+         "automatically.")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=9999)
@@ -124,7 +131,10 @@ if __name__ == "__main__":
     tune.register_env(
         "obstacle_tower",
         lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(
-            "d:\\games\\obstacletower\\obstacletower.exe", **c)))
+            environment_filename=args.file_name,
+            worker_id=c.worker_index,
+            **c)),
+    )
 
     config = {
         "env": "obstacle_tower",
@@ -158,7 +168,7 @@ if __name__ == "__main__":
             "lstm_use_prev_reward": True,
             "lstm_cell_size": 256,
         },
-        "framework": "torch" if args.torch else "tf2",#TODO
+        "framework": "torch" if args.torch else "tf",
     }
 
     stop = {
