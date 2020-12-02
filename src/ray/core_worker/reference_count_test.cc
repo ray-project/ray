@@ -1986,23 +1986,28 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID borrowed_id = ObjectID::FromRandom();
   rc->AddLocalReference(borrowed_id, "");
+  bool owned_by_us;
   NodeID pinned_at;
   bool spilled;
-  ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &pinned_at, &spilled));
+  ASSERT_TRUE(
+      rc->IsPlasmaObjectPinnedOrSpilled(borrowed_id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_FALSE(owned_by_us);
 
   ObjectID id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
   rc->AddLocalReference(id, "");
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
-  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
-  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_TRUE(owned_by_us);
   ASSERT_FALSE(pinned_at.IsNil());
 
   rc->RemoveLocalReference(id, nullptr);
-  ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
+  ASSERT_FALSE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(deleted->count(id) > 0);
   deleted->clear();
 
@@ -2013,7 +2018,8 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   auto objects = rc->ResetObjectsOnRemovedNode(node_id);
   ASSERT_EQ(objects.size(), 1);
   ASSERT_EQ(objects[0], id);
-  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
   ASSERT_TRUE(deleted->count(id) > 0);
   deleted->clear();
@@ -2035,9 +2041,11 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
   ASSERT_EQ(deleted->count(id), 0);
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
+  bool owned_by_us;
   NodeID pinned_at;
   bool spilled;
-  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   rc->RemoveLocalReference(id, nullptr);
@@ -2052,7 +2060,8 @@ TEST_F(ReferenceCountTest, TestFree) {
   rc->FreePlasmaObjects({id});
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
   ASSERT_TRUE(deleted->count(id) > 0);
-  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &pinned_at, &spilled));
+  ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
+  ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
