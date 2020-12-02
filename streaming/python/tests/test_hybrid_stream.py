@@ -34,8 +34,7 @@ def test_hybrid_stream():
     print("java_worker_options", java_worker_options)
     assert not ray.is_initialized()
     ray.init(
-        _load_code_from_local=True,
-        _java_worker_options=java_worker_options)
+        _load_code_from_local=True, _java_worker_options=java_worker_options)
 
     sink_file = "/tmp/ray_streaming_test_hybrid_stream.txt"
     if os.path.exists(sink_file):

@@ -36,8 +36,8 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0,
-                   0, {}, nullptr, worker_commands, {}, []() {}),
+      : WorkerPool(io_service, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
+                   {}, nullptr, worker_commands, {}, []() {}),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
         NUM_WORKERS_PER_PROCESS_JAVA;
@@ -301,23 +301,23 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 }
 
 TEST_F(WorkerPoolTest, TestPrestartingWorkers) {
-    const auto task_spec = ExampleTaskSpec();
-    // Prestarts 2 workers.
-    worker_pool_->PrestartWorkers(task_spec, 2);
-    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
-    // Prestarts 1 more worker.
-    worker_pool_->PrestartWorkers(task_spec, 3);
-    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
-    // No more needed.
-    worker_pool_->PrestartWorkers(task_spec, 1);
-    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
-    // Capped by soft limit of 5.
-    worker_pool_->PrestartWorkers(task_spec, 20);
-    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
-    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
+  const auto task_spec = ExampleTaskSpec();
+  // Prestarts 2 workers.
+  worker_pool_->PrestartWorkers(task_spec, 2);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
+  // Prestarts 1 more worker.
+  worker_pool_->PrestartWorkers(task_spec, 3);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
+  // No more needed.
+  worker_pool_->PrestartWorkers(task_spec, 1);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
+  // Capped by soft limit of 5.
+  worker_pool_->PrestartWorkers(task_spec, 20);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
+  ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
