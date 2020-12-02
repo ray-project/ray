@@ -113,7 +113,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
   std::list<rpc::ClientCallback<rpc::SpillObjectsReply>> callbacks;
   std::list<rpc::ClientCallback<rpc::DeleteSpilledObjectsReply>> delete_callbacks;
-  std::list<rpc::DeleteSpilledObjectsRequest const> delete_requests;
+  std::list<rpc::DeleteSpilledObjectsRequest> delete_requests;
 };
 
 class MockIOWorker : public MockWorker {
