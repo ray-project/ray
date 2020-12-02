@@ -115,12 +115,11 @@ void Raylet::Stop() {
 ray::Status Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
-    RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.node_manager_port() << " object manager at "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.object_manager_port() << ", hostname "
-                   << self_node_info_.node_manager_hostname();
+    RAY_LOG(INFO) << "Node manager " << self_node_id_ << " started on "
+                  << self_node_info_.node_manager_address() << ":"
+                  << self_node_info_.node_manager_port() << " object manager at "
+                  << self_node_info_.node_manager_address() << ":"
+                  << self_node_info_.object_manager_port();
 
     // Add resource information.
     const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
