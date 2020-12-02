@@ -142,7 +142,9 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
 // Dead node payloads don't contain the full information needed to render
 // so we filter them out here.
 const liveNodesSelector = (state: StoreState) =>
-  state.dashboard?.nodeInfo?.clients.filter(node => node.raylet.state === "ALIVE");
+  state.dashboard?.nodeInfo?.clients.filter(
+    (node) => node.raylet.state === "ALIVE",
+  );
 
 type DialogState = {
   nodeIp: string;
