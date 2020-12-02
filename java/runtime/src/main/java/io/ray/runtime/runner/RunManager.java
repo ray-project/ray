@@ -326,7 +326,7 @@ public class RunManager {
             ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
         String.format("--config_list=%s", rayConfig.rayletConfigParameters.entrySet().stream()
             .map(entry -> entry.getKey() + "," + entry.getValue())
-            .collect(Collectors.joining(","))),
+            .collect(Collectors.joining(";"))),
         String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
         String.format("--java_worker_command=%s", buildWorkerCommand()),
         String.format("--redis_password=%s", redisPasswordOption),

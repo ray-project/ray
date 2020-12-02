@@ -82,8 +82,7 @@ public abstract class BaseMultiLanguageTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters),
-        "--code-search-path=" + String.join(":", classpath)
+        "--system-config=" + new Gson().toJson(RayConfig.create().rayletConfigParameters)
     );
 
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
@@ -96,6 +95,7 @@ public abstract class BaseMultiLanguageTest {
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
     System.setProperty("ray.raylet.node-manager-port", nodeManagerPort);
+    System.setProperty("ray.job.code-search-path", String.join(":", classpath));
     Ray.init();
   }
 
@@ -114,6 +114,7 @@ public abstract class BaseMultiLanguageTest {
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
     System.clearProperty("ray.raylet.node-manager-port");
+    System.clearProperty("ray.job.code-search-path");
 
     // Stop ray cluster.
     final List<String> stopCommand = ImmutableList.of(
