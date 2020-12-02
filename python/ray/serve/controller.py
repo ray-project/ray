@@ -44,6 +44,7 @@ EndpointTag = str
 ReplicaTag = str
 NodeId = str
 GoalId = int
+ResultId = str
 
 
 class TrafficPolicy:
@@ -425,6 +426,21 @@ class Checkpoint:
     # TODO(ilr) Rename reconciler to PendingState
 
 
+@dataclass
+class FutureResult:
+    # Whether API call is successful
+    success: bool
+    # Goal requested when this future was created
+    requested_goal: Dict[str, Any]
+    # Goal state that supercedes (cancels) the requested goal
+    successor_goal: Optional[Dict[str, Any]] = field(
+        default_factory=lambda: None)
+
+
+class WrappedResult(asyncio.Event):
+    future_result: FutureResult
+
+
 @ray.remote
 class ServeController:
     """Responsible for managing the state of the serving system.
@@ -487,6 +503,9 @@ class ServeController:
         self.actor_reconciler._start_routers_if_needed(
             self.http_host, self.http_port, self.http_middlewares)
 
+        # Map of awaiting results
+        self.inflight_results: Dict[ResultId, WrappedResult] = dict()
+
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
         # other actors to start up, and those actors fetch soft state from
@@ -518,6 +537,28 @@ class ServeController:
         self.notify_traffic_policies_changed()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    async def wait_for_event(self, uuid: ResultId) -> FutureResult:
+        future = self.inflight_results[uuid]
+        await future.wait()
+        # NOTE(ilr) We have to delete this *after* we return to avoid a
+        # situation where the controller crashes *after* deleting and before
+        # returning to the API (and user).
+        asyncio.get_event_loop().call_soon_threadsafe(
+            lambda: self.inflight_results.pop(uuid))
+        return future.future_result
+
+    def _create_and_set_result(self, result: bool,
+                               goal_state: Dict[str, any]) -> ResultId:
+        fut = WrappedResult()
+        fut.future_result = FutureResult(result, goal_state)
+        uuid = get_random_letters(length=20)
+        self.inflight_results[uuid] = fut
+        fut.set()
+        return uuid
+
+    async def _num_inflight_results(self) -> int:
+        return len(self.inflight_results)
 
     def notify_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
@@ -657,7 +698,7 @@ class ServeController:
         return self.current_state.get_endpoints()
 
     async def _set_traffic(self, endpoint_name: str,
-                           traffic_dict: Dict[str, float]) -> None:
+                           traffic_dict: Dict[str, float]) -> TrafficPolicy:
         if endpoint_name not in self.current_state.get_endpoints():
             raise ValueError("Attempted to assign traffic for an endpoint '{}'"
                              " that is not registered.".format(endpoint_name))
@@ -680,6 +721,7 @@ class ServeController:
         self._checkpoint()
 
         self.notify_traffic_policies_changed()
+        return traffic_policy
 
     async def set_traffic(self, endpoint_name: str,
                           traffic_dict: Dict[str, float]) -> None:
@@ -713,7 +755,7 @@ class ServeController:
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
                               traffic_dict: Dict[str, float], route,
-                              methods) -> None:
+                              methods) -> ResultId:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -752,13 +794,17 @@ class ServeController:
             self.current_state.routes[route] = (endpoint, methods)
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
-            await self._set_traffic(endpoint, traffic_dict)
+            traffic_policy = await self._set_traffic(endpoint, traffic_dict)
             await asyncio.gather(*[
                 router.set_route_table.remote(self.current_state.routes)
                 for router in self.actor_reconciler.router_handles()
             ])
+            return self._create_and_set_result(True, {
+                route: (endpoint, methods),
+                endpoint: traffic_policy
+            })
 
-    async def delete_endpoint(self, endpoint: str) -> None:
+    async def delete_endpoint(self, endpoint: str) -> ResultId:
         """Delete the specified endpoint.
 
         Does not modify any corresponding backends.
@@ -794,6 +840,10 @@ class ServeController:
                 router.set_route_table.remote(self.current_state.routes)
                 for router in self.actor_reconciler.router_handles()
             ])
+            return self._create_and_set_result(True, {
+                route_to_delete: None,
+                endpoint: None
+            })
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,

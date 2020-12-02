@@ -5,7 +5,7 @@ import os
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController
+from ray.serve.controller import ServeController, FutureResult
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters, logger, get_conda_env_dir)
@@ -84,6 +84,13 @@ class Client:
             self._shutdown = True
 
     @_ensure_connected
+    def get_result(self, result_object_id: Any) -> FutureResult:
+        result_id: str = ray.get(result_object_id)
+        result = ray.get(self._controller.wait_for_event.remote(result_id))
+        logger.debug(f"Getting result_id ({result_id}) with result: {result}")
+        return result
+
+    @_ensure_connected
     def create_endpoint(self,
                         endpoint_name: str,
                         *,
@@ -137,7 +144,7 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        ray.get(
+        self.get_result(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
 
@@ -149,7 +156,7 @@ class Client:
         """
         if endpoint in self._handle_cache:
             del self._handle_cache[endpoint]
-        ray.get(self._controller.delete_endpoint.remote(endpoint))
+        self.get_result(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
