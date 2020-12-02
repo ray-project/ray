@@ -1133,6 +1133,10 @@ class SerializabilityTest(unittest.TestCase):
     def setUpClass(cls):
         ray.init(local_mode=True)
 
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def tearDown(self):
         if "RAY_PICKLE_VERBOSE_DEBUG" in os.environ:
             del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
