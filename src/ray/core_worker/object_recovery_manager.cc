@@ -20,9 +20,9 @@ namespace ray {
 
 bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
-  bool owned_by_us;
+  bool owned_by_us = false;
   NodeID pinned_at;
-  bool spilled;
+  bool spilled = false;
   bool ref_exists = reference_counter_->IsPlasmaObjectPinnedOrSpilled(
       object_id, &owned_by_us, &pinned_at, &spilled);
   if (!ref_exists) {
