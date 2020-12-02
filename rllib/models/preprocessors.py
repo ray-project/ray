@@ -205,7 +205,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        array = np.zeros(self.shape)
+        array = np.zeros(self.shape, dtype=np.float32)
         self.write(observation, array, 0)
         return array
 
@@ -239,7 +239,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        array = np.zeros(self.shape)
+        array = np.zeros(self.shape, dtype=np.float32)
         self.write(observation, array, 0)
         return array
 

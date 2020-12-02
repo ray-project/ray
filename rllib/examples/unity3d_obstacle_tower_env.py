@@ -98,7 +98,8 @@ class ObstacleTowerObservationWrapper(ObservationWrapper):
         # 0=image; 1=number of keys held; 2=time remaining; 3=?
         # Filter out last component and make sure that time remaining is a
         # Box((1,)), not Box(()) as returned by the env.
-        return tuple([observation[0], observation[1], np.array([observation[2]])])
+        return tuple([observation[0], observation[1],
+                      np.array([observation[2]], dtype=np.float32)])
 
 
 parser = argparse.ArgumentParser()
@@ -116,13 +117,14 @@ parser.add_argument("--stop-timesteps", type=int, default=10000000)
 parser.add_argument("--torch", action="store_true")
 
 if __name__ == "__main__":
-    ray.init()#local_mode=True)#TODO
+    ray.init(local_mode=True)#TODO
 
     args = parser.parse_args()
 
     tune.register_env(
         "obstacle_tower",
-        lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(**c)))
+        lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(
+            "d:\\games\\obstacletower\\obstacletower.exe", **c)))
 
     config = {
         "env": "obstacle_tower",
@@ -156,7 +158,7 @@ if __name__ == "__main__":
             "lstm_use_prev_reward": True,
             "lstm_cell_size": 256,
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": "torch" if args.torch else "tf2",#TODO
     }
 
     stop = {
