@@ -172,6 +172,5 @@ class _ParameterRegistry:
         self.to_flush.clear()
 
 
-
 parameter_registry = _ParameterRegistry()
 ray.worker._post_init_hooks.append(parameter_registry.flush)

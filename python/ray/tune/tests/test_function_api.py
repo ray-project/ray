@@ -474,7 +474,7 @@ class FunctionApiTest(unittest.TestCase):
         class Data:
             def __init__(self):
                 import numpy as np
-                self.data = np.random.rand((2*1024*1024))
+                self.data = np.random.rand((2 * 1024 * 1024))
 
         def train(config, data=None):
             tune.report(metric=len(data.data))
@@ -482,7 +482,6 @@ class FunctionApiTest(unittest.TestCase):
         trainable = tune.with_parameters(train, data=Data())
         dumped = cloudpickle.dumps(trainable)
         assert sys.getsizeof(dumped) < 100 * 1024
-
 
     def testReturnAnonymous(self):
         def train(config):
