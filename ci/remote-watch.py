@@ -249,7 +249,6 @@ def main(program, *args):
     skipped_repos = parsed_args.skip_repo or []
     repo_slug = get_repo_slug()
     event_name = get_ci_event_name()
-    result = None
     if repo_slug not in skipped_repos or event_name == "pull_request":
         result = monitor()
     else:
