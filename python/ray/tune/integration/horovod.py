@@ -271,4 +271,10 @@ def _train_simple(config: Dict):
     for i in range(config.get("epochs", 2)):
         import time
         time.sleep(1)
+        if config.get("enable_checkpoint", True):
+            with distributed_checkpoint_dir(step=i) as checkpoint_dir:
+                path = os.path.join(checkpoint_dir, "checkpoint")
+                import pickle
+                with open(path, "wb") as f:
+                    pickle.dump("hi", f)
         tune.report(test=1, rank=hvd.rank())

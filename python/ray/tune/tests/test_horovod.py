@@ -72,6 +72,7 @@ def test_set_global(ray_start_2_cpus):
     trainable.stop()
     assert result["rank"] == 0
 
+
 @pytest.mark.parametrize("enabled_checkpoint", [True, False])
 def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
     trainable_cls = DistributedTrainableCreator(_train_simple, num_slots=2)

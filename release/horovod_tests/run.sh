@@ -49,7 +49,7 @@ pip install -U pip
 pip install terminado
 pip install -U "$wheel"
 pip install "ray[rllib]"
-pip install -q -U ipdb ray[rllib] torch torchvision
+pip install -q -U ipdb torch torchvision
 HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1  pip install -U git+https://github.com/horovod/horovod.git
 
 echo set-window-option -g mouse on > ~/.tmux.conf
