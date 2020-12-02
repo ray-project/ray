@@ -11,6 +11,7 @@ import ray
 
 from ray.experimental.client.api import APIImpl
 from ray.experimental.client.common import ClientRemoteFunc
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 
 class CoreRayAPI(APIImpl):
@@ -26,10 +27,10 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
-    def call_remote(self, f: ClientRemoteFunc, kind: int, *args, **kwargs):
-        if f._raylet_remote_func is None:
-            f._raylet_remote_func = ray.remote(f._func)
-        return f._raylet_remote_func.remote(*args, **kwargs)
+    def call_remote(self, instance, kind: int, *args, **kwargs):
+        if instance._raylet_remote_func is None:
+            instance._raylet_remote_func = ray.remote(instance._func)
+        return instance._raylet_remote_func.remote(*args, **kwargs)
 
     def close(self, *args, **kwargs):
         return None
@@ -39,3 +40,14 @@ class CoreRayAPI(APIImpl):
     # doesn't currently support them.
     def __getattr__(self, key: str):
         return getattr(ray, key)
+
+
+class CoreRayServerAPI(CoreRayAPI):
+    def __init__(self, server_instance):
+        self.server = server_instance
+
+    def call_remote(self, instance, kind: int, *args, **kwargs):
+        task = instance._prepare_client_task()
+        ticket = self.server.Schedule(task, prepared_args = args)
+
+

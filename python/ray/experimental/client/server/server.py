@@ -70,35 +70,35 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
+    def Schedule(self, task, context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         logger.info("schedule: %s %s" %
                     (task.name,
                      ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
         if task.type == ray_client_pb2.ClientTask.FUNCTION:
-            return self._schedule_function(task, context)
+            return self._schedule_function(task, context, prepared_args)
         elif task.type == ray_client_pb2.ClientTask.ACTOR:
-            return self._schedule_actor(task, context)
+            return self._schedule_actor(task, context, prepared_args)
         elif task.type == ray_client_pb2.ClientTask.METHOD:
-            return self._schedule_method(task, context)
+            return self._schedule_method(task, context, prepared_args)
         else:
             raise NotImplementedError(
                 "Unimplemented Schedule task type: %s" %
                 ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
 
     def _schedule_method(self, task: ray_client_pb2.ClientTask,
-                         context=None) -> ray_client_pb2.ClientTaskTicket:
+                         context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
                 "Can't run an actor the server doesn't have a handle for")
-        arglist = _convert_args(task.args)
+        arglist = _convert_args(task.args, prepared_args)
         with stash_api_for_tests(self._test_mode):
             output = getattr(actor_handle, task.name).remote(*arglist)
             self.object_refs[output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
     def _schedule_actor(self, task: ray_client_pb2.ClientTask,
-                        context=None) -> ray_client_pb2.ClientTaskTicket:
+                        context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         with stash_api_for_tests(self._test_mode):
             if task.payload_id not in self.registered_actor_classes:
                 actor_class_ref = self.object_refs[task.payload_id]
@@ -109,14 +109,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 reg_class = ray.remote(actor_class)
                 self.registered_actor_classes[task.payload_id] = reg_class
             remote_class = self.registered_actor_classes[task.payload_id]
-            arglist = _convert_args(task.args)
+            arglist = _convert_args(task.args, prepared_args)
             actor = remote_class.remote(*arglist)
             actor_ref = actor._actor_id
             self.actor_refs[actor_ref.binary()] = actor
         return ray_client_pb2.ClientTaskTicket(return_id=actor_ref.binary())
 
     def _schedule_function(self, task: ray_client_pb2.ClientTask,
-                           context=None) -> ray_client_pb2.ClientTaskTicket:
+                           context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         if task.payload_id not in self.function_refs:
             funcref = self.object_refs[task.payload_id]
             func = ray.get(funcref)
@@ -125,7 +125,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                 "isn't a ClientRemoteFunc.")
             self.function_refs[task.payload_id] = func
         remote_func = self.function_refs[task.payload_id]
-        arglist = _convert_args(task.args)
+        arglist = _convert_args(task.args, prepared_args)
         # Prepare call if we're in a test
         with stash_api_for_tests(self._test_mode):
             output = remote_func.remote(*arglist)
@@ -133,7 +133,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
 
-def _convert_args(arg_list):
+def _convert_args(arg_list, prepared_args=None):
+    if prepared_args is not None:
+        return prepared_args
     out = []
     for arg in arg_list:
         t = convert_from_arg(arg)

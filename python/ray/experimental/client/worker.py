@@ -131,49 +131,12 @@ class Worker:
                             "either a function or to a class.")
 
     def call_remote(self, instance, kind, *args, **kwargs):
-        ticket = None
-        if kind == ray_client_pb2.ClientTask.FUNCTION:
-            ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
-        elif kind == ray_client_pb2.ClientTask.ACTOR:
-            ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
-            return ClientActorRef(ticket.return_id)
-        elif kind == ray_client_pb2.ClientTask.METHOD:
-            ticket = self._call_method(instance, *args, **kwargs)
-
-        if ticket is None:
-            raise Exception(
-                "Couldn't call_remote on %s for type %s" % (instance, kind))
+        task = instance._prepare_client_task()
+        for arg in args:
+            pb_arg = convert_to_arg(arg)
+            task.args.append(pb_arg)
+        ticket = self.server.Schedule(task, metadata=self.metadata)
         return ClientObjectRef(ticket.return_id)
-
-    def _call_method(self, instance: ClientRemoteMethod, *args, **kwargs):
-        if not isinstance(instance, ClientRemoteMethod):
-            raise TypeError("Client not passing a ClientRemoteMethod stub")
-        task = ray_client_pb2.ClientTask()
-        task.type = ray_client_pb2.ClientTask.METHOD
-        task.name = instance.method_name
-        task.payload_id = instance.actor_handle.actor_id.id
-        for arg in args:
-            pb_arg = convert_to_arg(arg)
-            task.args.append(pb_arg)
-        ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ticket
-
-    def _put_and_schedule(self, item, task_type, *args, **kwargs):
-        if isinstance(item, ClientRemoteFunc):
-            ref = self._put(item)
-        elif isinstance(item, ClientActorClass):
-            ref = self._put(item.actor_cls)
-        else:
-            raise TypeError("Client not passing a ClientRemoteFunc stub")
-        task = ray_client_pb2.ClientTask()
-        task.type = task_type
-        task.name = item._name
-        task.payload_id = ref.id
-        for arg in args:
-            pb_arg = convert_to_arg(arg)
-            task.args.append(pb_arg)
-        ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ticket
 
     def close(self):
         self.channel.close()
