@@ -724,13 +724,16 @@ class ServeController:
         return traffic_policy
 
     async def set_traffic(self, endpoint_name: str,
-                          traffic_dict: Dict[str, float]) -> None:
+                          traffic_dict: Dict[str, float]) -> ResultId:
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
-            await self._set_traffic(endpoint_name, traffic_dict)
+            traffic_policy = await self._set_traffic(endpoint_name,
+                                                     traffic_dict)
+        return self._create_and_set_result(True,
+                                           {endpoint_name: traffic_policy})
 
     async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
-                             proportion: float) -> None:
+                             proportion: float) -> ResultId:
         """Shadow traffic from the endpoint to the backend."""
         async with self.write_lock:
             if endpoint_name not in self.current_state.get_endpoints():
@@ -746,11 +749,15 @@ class ServeController:
             self.current_state.traffic_policies[endpoint_name].set_shadow(
                 backend_tag, proportion)
 
+            traffic_policy = self.current_state.traffic_policies[endpoint_name]
+
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
             self.notify_traffic_policies_changed()
+            return self._create_and_set_result(True,
+                                               {endpoint_name: traffic_policy})
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
@@ -847,7 +854,7 @@ class ServeController:
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
-                             replica_config: ReplicaConfig) -> None:
+                             replica_config: ReplicaConfig) -> ResultId:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             # Ensures this method is idempotent.
@@ -862,12 +869,11 @@ class ServeController:
 
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
-            self.current_state.add_backend(
-                backend_tag,
-                BackendInfo(
-                    worker_class=backend_replica,
-                    backend_config=backend_config,
-                    replica_config=replica_config))
+            backend_info = BackendInfo(
+                worker_class=backend_replica,
+                backend_config=backend_config,
+                replica_config=replica_config)
+            self.current_state.add_backend(backend_tag, backend_info)
             metadata = backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
@@ -894,8 +900,10 @@ class ServeController:
             # Set the backend config inside the router
             # (particularly for max_concurrent_queries).
             self.notify_backend_configs_changed()
+            return self._create_and_set_result(True,
+                                               {backend_tag: backend_info})
 
-    async def delete_backend(self, backend_tag: BackendTag) -> None:
+    async def delete_backend(self, backend_tag: BackendTag) -> ResultId:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
@@ -933,9 +941,10 @@ class ServeController:
             await self.actor_reconciler._stop_pending_backend_replicas()
 
             self.notify_replica_handles_changed()
+            return self._create_and_set_result(True, {backend_tag: None})
 
     async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_options: BackendConfig) -> None:
+                                    config_options: BackendConfig) -> ResultId:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (self.current_state.get_backend(backend_tag)
@@ -949,6 +958,7 @@ class ServeController:
             backend_config._validate_complete()
             self.current_state.get_backend(
                 backend_tag).backend_config = backend_config
+            backend_info = self.current_state.get_backend(backend_tag)
 
             # Scale the replicas with the new configuration.
             self.actor_reconciler._scale_backend_replicas(
@@ -969,6 +979,8 @@ class ServeController:
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
+            return self._create_and_set_result(True,
+                                               {backend_tag: backend_info})
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
