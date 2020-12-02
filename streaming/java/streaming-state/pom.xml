@@ -5,7 +5,7 @@
   <parent>
     <artifactId>ray-streaming</artifactId>
     <groupId>io.ray</groupId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>1.1.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -85,11 +85,6 @@
       <groupId>org.apache.commons</groupId>
       <artifactId>commons-lang3</artifactId>
       <version>3.3.2</version>
-    </dependency>
-    <dependency>
-      <groupId>com.beust</groupId>
-      <artifactId>jcommander</artifactId>
-      <version>1.27</version>
     </dependency>
   </dependencies>
 

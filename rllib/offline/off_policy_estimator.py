@@ -25,7 +25,7 @@ class OffPolicyEstimator:
     def __init__(self, policy: Policy, gamma: float):
         """Creates an off-policy estimator.
 
-        Arguments:
+        Args:
             policy (Policy): Policy to evaluate.
             gamma (float): Discount of the MDP.
         """
@@ -70,7 +70,8 @@ class OffPolicyEstimator:
             state_batches=[batch[k] for k in state_keys],
             prev_action_batch=batch.data.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=batch.data.get(SampleBatch.PREV_REWARDS))
-        return convert_to_numpy(log_likelihoods)
+        log_likelihoods = convert_to_numpy(log_likelihoods)
+        return np.exp(log_likelihoods)
 
     @DeveloperAPI
     def process(self, batch: SampleBatchType):

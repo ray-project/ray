@@ -12,9 +12,41 @@ import ray
 from ray import serve
 from ray.cluster_utils import Cluster
 from ray.serve.constants import SERVE_PROXY_NAME
-from ray.serve.utils import block_until_http_ready
+from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
+                             format_actor_name)
 from ray.test_utils import wait_for_condition
-from ray.services import new_port
+from ray._private.services import new_port
+
+
+def test_detached_deployment():
+    # https://github.com/ray-project/ray/issues/11437
+
+    cluster = Cluster()
+    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+
+    # Create first job, check we can run a simple serve endpoint
+    ray.init(head_node.address)
+    first_job_id = ray.get_runtime_context().job_id
+    client = serve.start(detached=True)
+    client.create_backend("f", lambda _: "hello")
+    client.create_endpoint("f", backend="f")
+    assert ray.get(client.get_handle("f").remote()) == "hello"
+
+    ray.shutdown()
+
+    # Create the second job, make sure we can still create new backends.
+    ray.init(head_node.address)
+    assert ray.get_runtime_context().job_id != first_job_id
+
+    client = serve.connect()
+    client.create_backend("g", lambda _: "world")
+    client.create_endpoint("g", backend="g")
+    assert ray.get(client.get_handle("g").remote()) == "world"
+
+    # Test passed, clean up.
+    client.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(
@@ -29,16 +61,24 @@ def test_multiple_routers():
     ray.init(head_node.address)
     node_ids = ray.state.node_ids()
     assert len(node_ids) == 2
-    serve.init(http_port=8005)
+    client = serve.start(http_port=8005)  # noqa: F841
 
-    def actor_name(index):
-        return SERVE_PROXY_NAME + "-{}-{}".format(node_ids[0], index)
+    def get_proxy_names():
+        proxy_names = []
+        for node_id, _ in get_all_node_ids():
+            proxy_names.append(
+                format_actor_name(SERVE_PROXY_NAME, client._controller_name,
+                                  node_id))
+        return proxy_names
+
+    wait_for_condition(lambda: len(get_proxy_names()) == 2)
+    proxy_names = get_proxy_names()
 
     # Two actors should be started.
     def get_first_two_actors():
         try:
-            ray.get_actor(actor_name(0))
-            ray.get_actor(actor_name(1))
+            ray.get_actor(proxy_names[0])
+            ray.get_actor(proxy_names[1])
             return True
         except ValueError:
             return False
@@ -49,18 +89,22 @@ def test_multiple_routers():
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Kill one of the servers, the HTTP server should still function.
-    ray.kill(ray.get_actor(actor_name(0)), no_restart=True)
+    ray.kill(ray.get_actor(get_proxy_names()[0]), no_restart=True)
     ray.get(block_until_http_ready.remote("http://127.0.0.1:8005/-/routes"))
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
     new_node = cluster.add_node()
 
+    wait_for_condition(lambda: len(get_proxy_names()) == 3)
+    third_proxy = get_proxy_names()[2]
+
     def get_third_actor():
         try:
-            ray.get_actor(actor_name(2))
+            ray.get_actor(third_proxy)
             return True
-        except ValueError:
+        # IndexErrors covers when cluster resources aren't updated yet.
+        except (IndexError, ValueError):
             return False
 
     wait_for_condition(get_third_actor)
@@ -71,7 +115,7 @@ def test_multiple_routers():
 
     def third_actor_removed():
         try:
-            ray.get_actor(actor_name(2))
+            ray.get_actor(third_proxy)
             return False
         except ValueError:
             return True
@@ -90,7 +134,7 @@ def test_middleware():
     from starlette.middleware.cors import CORSMiddleware
 
     port = new_port()
-    serve.init(
+    serve.start(
         http_port=port,
         http_middlewares=[
             Middleware(
@@ -111,6 +155,8 @@ def test_middleware():
 
     resp = requests.get(f"{root}/-/routes", headers=headers)
     assert resp.headers["access-control-allow-origin"] == "*"
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

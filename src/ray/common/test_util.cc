@@ -164,6 +164,11 @@ void TestSetupUtil::StopRaylet(const std::string &raylet_socket_name) {
   KillProcessBySocketName(raylet_socket_name);
 }
 
+bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
+  auto status = future.wait_for(timeout_ms);
+  return status == std::future_status::ready && future.get();
+}
+
 bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
   int wait_time = 0;
   while (true) {

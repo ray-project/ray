@@ -63,9 +63,6 @@ Summary
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
 
-
-.. note::Search algorithms will require a different search space declaration than the default Tune format - meaning that you will not be able to combine ``tune.grid_search`` with the below integrations.
-
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
 **Want to use your own algorithm?** The interface is easy to implement. :ref:`Read instructions here <byo-algo>`.
@@ -75,6 +72,7 @@ Tune also provides helpful utilities to use with Search Algorithms:
 
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
 Saving and Restoring
 --------------------
@@ -191,7 +189,7 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 .. _tune-optuna:
 
 Optuna (tune.suggest.optuna.OptunaSearch)
---------------------------------------------------
+-----------------------------------------
 
 .. autoclass:: ray.tune.suggest.optuna.OptunaSearch
 
@@ -264,3 +262,11 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :members:
     :private-members:
     :show-inheritance:
+
+.. _shim:
+
+Shim Instantiation (tune.create_searcher)
+-----------------------------------------
+There is also a shim function that constructs the search algorithm based on the provided string. This can be useful if the search algorithm you want to use changes often (e.g., specifying the search algorithm via a CLI option or config file).
+
+.. automethod:: ray.tune.create_searcher

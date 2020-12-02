@@ -1,6 +1,7 @@
 """Example of using a custom ModelV2 Keras-style model."""
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -119,11 +120,12 @@ if __name__ == "__main__":
         args.run,
         stop={"episode_reward_mean": args.stop},
         config=dict(
-            extra_config, **{
-                "log_level": "INFO",
+            extra_config,
+            **{
                 "env": "BreakoutNoFrameskip-v4"
                 if args.use_vision_network else "CartPole-v0",
-                "num_gpus": 0,
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
                 "callbacks": {
                     "on_train_result": check_has_custom_metric,
                 },

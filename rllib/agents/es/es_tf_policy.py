@@ -8,7 +8,9 @@ import tree
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
@@ -44,8 +46,9 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     t = 0
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
-        ac = policy.compute_actions(
-            observation, add_noise=add_noise, update=True)[0]
+        ac, _, _ = policy.compute_actions(
+            [observation], add_noise=add_noise, update=True)
+        ac = ac[0]
         observation, r, done, _ = env.step(ac)
         if offset != 0.0:
             r -= np.abs(offset)
@@ -65,17 +68,16 @@ def make_session(single_threaded):
             inter_op_parallelism_threads=1, intra_op_parallelism_threads=1))
 
 
-class ESTFPolicy:
+class ESTFPolicy(Policy):
     def __init__(self, obs_space, action_space, config):
-        self.observation_space = obs_space
-        self.action_space = action_space
+        super().__init__(obs_space, action_space, config)
         self.action_space_struct = get_base_struct_from_space(action_space)
-        self.action_noise_std = config["action_noise_std"]
+        self.action_noise_std = self.config["action_noise_std"]
         self.preprocessor = ModelCatalog.get_preprocessor_for_space(obs_space)
-        self.observation_filter = get_filter(config["observation_filter"],
+        self.observation_filter = get_filter(self.config["observation_filter"],
                                              self.preprocessor.shape)
-        self.single_threaded = config.get("single_threaded", False)
-        if config["framework"] == "tf":
+        self.single_threaded = self.config.get("single_threaded", False)
+        if self.config["framework"] == "tf":
             self.sess = make_session(single_threaded=self.single_threaded)
             self.inputs = tf1.placeholder(
                 tf.float32, [None] + list(self.preprocessor.shape))
@@ -86,13 +88,13 @@ class ESTFPolicy:
 
         # Policy network.
         self.dist_class, dist_dim = ModelCatalog.get_action_dist(
-            self.action_space, config["model"], dist_type="deterministic")
+            self.action_space, self.config["model"], dist_type="deterministic")
 
         self.model = ModelCatalog.get_model_v2(
             obs_space=self.preprocessor.observation_space,
             action_space=action_space,
             num_outputs=dist_dim,
-            model_config=config["model"])
+            model_config=self.config["model"])
 
         self.sampler = None
         if self.sess:
@@ -110,14 +112,15 @@ class ESTFPolicy:
             np.prod(variable.shape.as_list())
             for _, variable in self.variables.variables.items())
 
+    @override(Policy)
     def compute_actions(self,
                         observation,
                         add_noise=False,
                         update=True,
                         **kwargs):
-        # Batch is given as list of one.
-        if isinstance(observation, list) and len(observation) == 1:
-            observation = observation[0]
+        # Squeeze batch dimension (we always calculate actions for only a
+        # single obs).
+        observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         # `actions` is a list of (component) batches.
@@ -138,16 +141,16 @@ class ESTFPolicy:
         # Convert `flat_actions` to a list of lists of action components
         # (list of single actions).
         actions = unbatch(actions)
-        return actions
+        return actions, [], {}
 
     def compute_single_action(self,
                               observation,
                               add_noise=False,
                               update=True,
                               **kwargs):
-        action = self.compute_actions(
+        action, state_outs, extra_fetches = self.compute_actions(
             [observation], add_noise=add_noise, update=update, **kwargs)
-        return action[0], [], {}
+        return action[0], state_outs, extra_fetches
 
     def _add_noise(self, single_action, single_action_space):
         if isinstance(single_action_space, gym.spaces.Box):

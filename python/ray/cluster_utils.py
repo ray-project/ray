@@ -13,7 +13,7 @@ class Cluster:
                  connect=False,
                  head_node_args=None,
                  shutdown_at_exit=True):
-        """Initializes the cluster.
+        """Initializes all services of a Ray cluster.
 
         Args:
             initialize_head (bool): Automatically start a Ray cluster

@@ -18,7 +18,7 @@ def averaged(kv, axis=None):
 
     For non-scalar values, we simply pick the first value.
 
-    Arguments:
+    Args:
         kv (dict): dictionary with values that are lists of floats.
 
     Returns:
@@ -36,7 +36,7 @@ def averaged(kv, axis=None):
 def standardized(array):
     """Normalize the values in an array.
 
-    Arguments:
+    Args:
         array (np.ndarray): Array of values to normalize.
 
     Returns:
@@ -48,7 +48,7 @@ def standardized(array):
 def minibatches(samples, sgd_minibatch_size):
     """Return a generator yielding minibatches from a sample batch.
 
-    Arguments:
+    Args:
         samples (SampleBatch): batch of samples to split up.
         sgd_minibatch_size (int): size of minibatches to return.
 
@@ -66,7 +66,7 @@ def minibatches(samples, sgd_minibatch_size):
     # Replace with `if samples.seq_lens` check.
     if "state_in_0" in samples.data or "state_out_0" in samples.data:
         if log_once("not_shuffling_rnn_data_in_simple_mode"):
-            logger.warning("Not shuffling RNN data for SGD in simple mode")
+            logger.warning("Not time-shuffling RNN data for SGD.")
     else:
         samples.shuffle()
 
@@ -98,7 +98,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                      sgd_minibatch_size, standardize_fields):
     """Execute minibatch SGD.
 
-    Arguments:
+    Args:
         samples (SampleBatch): batch of samples to optimize.
         policies (dict): dictionary of policies to optimize.
         local_worker (RolloutWorker): master rollout worker instance.

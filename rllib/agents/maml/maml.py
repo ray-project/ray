@@ -28,6 +28,8 @@ DEFAULT_CONFIG = with_common_config({
     "kl_coeff": 0.0005,
     # Size of batches collected from each worker
     "rollout_fragment_length": 200,
+    # Do create an actual env on the local worker (worker-idx=0).
+    "create_env_on_driver": True,
     # Stepsize of SGD
     "lr": 1e-3,
     # Share layers for value function
@@ -55,25 +57,29 @@ DEFAULT_CONFIG = with_common_config({
     "maml_optimizer_steps": 5,
     # Inner Adaptation Step size
     "inner_lr": 0.1,
+    # Use Meta Env Template
+    "use_meta_env": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
 # @mluo: TODO
-def set_worker_tasks(workers):
-    n_tasks = len(workers.remote_workers())
-    tasks = workers.local_worker().foreach_env(lambda x: x)[0].sample_tasks(
-        n_tasks)
-    for i, worker in enumerate(workers.remote_workers()):
-        worker.foreach_env.remote(lambda env: env.set_task(tasks[i]))
+def set_worker_tasks(workers, use_meta_env):
+    if use_meta_env:
+        n_tasks = len(workers.remote_workers())
+        tasks = workers.local_worker().foreach_env(lambda x: x)[
+            0].sample_tasks(n_tasks)
+        for i, worker in enumerate(workers.remote_workers()):
+            worker.foreach_env.remote(lambda env: env.set_task(tasks[i]))
 
 
 class MetaUpdate:
-    def __init__(self, workers, maml_steps, metric_gen):
+    def __init__(self, workers, maml_steps, metric_gen, use_meta_env):
         self.workers = workers
         self.maml_optimizer_steps = maml_steps
         self.metric_gen = metric_gen
+        self.use_meta_env = use_meta_env
 
     def __call__(self, data_tuple):
         # Metaupdate Step
@@ -91,7 +97,7 @@ class MetaUpdate:
         self.workers.sync_weights()
 
         # Set worker tasks
-        set_worker_tasks(self.workers)
+        set_worker_tasks(self.workers, self.use_meta_env)
 
         # Update KLS
         def update(pi, pi_id):
@@ -141,7 +147,8 @@ def execution_plan(workers, config):
     workers.sync_weights()
 
     # Samples and sets worker tasks
-    set_worker_tasks(workers)
+    use_meta_env = config["use_meta_env"]
+    set_worker_tasks(workers, use_meta_env)
 
     # Metric Collector
     metric_collect = CollectMetrics(
@@ -191,7 +198,8 @@ def execution_plan(workers, config):
 
     # Metaupdate Step
     train_op = rollouts.for_each(
-        MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect))
+        MetaUpdate(workers, config["maml_optimizer_steps"], metric_collect,
+                   use_meta_env))
     return train_op
 
 
@@ -203,15 +211,18 @@ def get_policy_class(config):
 
 def validate_config(config):
     if config["inner_adaptation_steps"] <= 0:
-        raise ValueError("Inner Adaptation Steps must be >=1.")
+        raise ValueError("Inner Adaptation Steps must be >=1!")
     if config["maml_optimizer_steps"] <= 0:
-        raise ValueError("PPO steps for meta-update needs to be >=0")
+        raise ValueError("PPO steps for meta-update needs to be >=0!")
     if config["entropy_coeff"] < 0:
-        raise ValueError("entropy_coeff must be >=0")
+        raise ValueError("`entropy_coeff` must be >=0.0!")
     if config["batch_mode"] != "complete_episodes":
-        raise ValueError("truncate_episodes not supported")
+        raise ValueError("`batch_mode`=truncate_episodes not supported!")
     if config["num_workers"] <= 0:
-        raise ValueError("Must have at least 1 worker/task.")
+        raise ValueError("Must have at least 1 worker/task!")
+    if config["create_env_on_driver"] is False:
+        raise ValueError("Must have an actual Env created on the driver "
+                         "(local) worker! Set `create_env_on_driver` to True.")
 
 
 MAMLTrainer = build_trainer(

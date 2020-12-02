@@ -1,0 +1,13 @@
+diff --git src/logging.cc src/logging.cc
+--- src/logging.cc
++++ src/logging.cc
+@@ -1135,7 +1135,8 @@ void LogFileObject::Write(bool force_flush,
+                     << setw(2) << tm_time.tm_min
+                     << setw(2) << tm_time.tm_sec
+                     << '.'
+-                    << GetMainThreadPid();
++                    << GetMainThreadPid()
++                    << ".log";
+     const string& time_pid_string = time_pid_stream.str();
+ 
+     if (base_filename_selected_) {

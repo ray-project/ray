@@ -6,7 +6,8 @@ import os
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run
+from ray import tune
+from ray.tune import Trainable
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.suggest.bohb import TuneBOHB
 
@@ -42,28 +43,42 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
-    import ConfigSpace as CS
+    import ConfigSpace as CS  # noqa: F401
     ray.init(num_cpus=8)
 
-    # BOHB uses ConfigSpace for their hyperparameter search space
-    config_space = CS.ConfigurationSpace()
-    config_space.add_hyperparameter(
-        CS.UniformFloatHyperparameter("height", lower=10, upper=100))
-    config_space.add_hyperparameter(
-        CS.UniformFloatHyperparameter("width", lower=0, upper=100))
+    config = {
+        "iterations": 100,
+        "width": tune.uniform(0, 20),
+        "height": tune.uniform(-100, 100),
+        "activation": tune.choice(["relu", "tanh"])
+    }
 
-    experiment_metrics = dict(metric="episode_reward_mean", mode="max")
+    # Optional: Pass the parameter space yourself
+    # config_space = CS.ConfigurationSpace()
+    # config_space.add_hyperparameter(
+    #     CS.UniformFloatHyperparameter("width", lower=0, upper=20))
+    # config_space.add_hyperparameter(
+    #     CS.UniformFloatHyperparameter("height", lower=-100, upper=100))
+    # config_space.add_hyperparameter(
+    #     CS.CategoricalHyperparameter(
+    #         "activation", choices=["relu", "tanh"]))
+
     bohb_hyperband = HyperBandForBOHB(
-        time_attr="training_iteration",
-        max_t=100,
-        reduction_factor=4,
-        **experiment_metrics)
-    bohb_search = TuneBOHB(
-        config_space, max_concurrent=4, **experiment_metrics)
+        time_attr="training_iteration", max_t=100, reduction_factor=4)
 
-    run(MyTrainableClass,
+    bohb_search = TuneBOHB(
+        # space=config_space,  # If you want to set the space manually
+        max_concurrent=4)
+
+    analysis = tune.run(
+        MyTrainableClass,
         name="bohb_test",
+        config=config,
         scheduler=bohb_hyperband,
         search_alg=bohb_search,
         num_samples=10,
-        stop={"training_iteration": 100})
+        stop={"training_iteration": 100},
+        metric="episode_reward_mean",
+        mode="max")
+
+    print("Best hyperparameters found were: ", analysis.best_config)

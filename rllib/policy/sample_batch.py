@@ -7,7 +7,6 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Union
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import TensorType
 
 # Default policy id for single agent environments
@@ -82,14 +81,14 @@ class SampleBatch:
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = len(self.data[k])
+            self.count = len(next(iter(self.data.values())))
 
         # Keeps track of new columns added after initial ones.
         self.new_columns = []
 
     @staticmethod
     @PublicAPI
-    def concat_samples(samples: List[Dict[str, TensorType]]) -> \
+    def concat_samples(samples: List["SampleBatch"]) -> \
             Union["SampleBatch", "MultiAgentBatch"]:
         """Concatenates n data dicts or MultiAgentBatches.
 
@@ -314,7 +313,7 @@ class SampleBatch:
         Returns:
             int: The overall size in bytes of the data buffer (all columns).
         """
-        return sum(sys.getsizeof(d) for d in self.data)
+        return sum(sys.getsizeof(d) for d in self.data.values())
 
     @PublicAPI
     def __getitem__(self, key: str) -> TensorType:
@@ -611,8 +610,3 @@ class MultiAgentBatch:
     def __repr__(self):
         return "MultiAgentBatch({}, env_steps={})".format(
             str(self.policy_batches), self.count)
-
-    # Deprecated.
-    def total(self):
-        deprecation_warning("batch.total()", "batch.agent_steps()")
-        return self.agent_steps()

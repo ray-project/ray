@@ -137,7 +137,18 @@ class TFPolicy(Policy):
         """
         self.framework = "tf"
         super().__init__(observation_space, action_space, config)
+        # Disable env-info placeholder.
+        if SampleBatch.INFOS in self.view_requirements:
+            self.view_requirements[SampleBatch.INFOS].used_for_training = False
+
+        assert model is None or isinstance(model, ModelV2), \
+            "Model classes for TFPolicy other than `ModelV2` not allowed! " \
+            "You passed in {}.".format(model)
         self.model = model
+        # Auto-update model's inference view requirements, if recurrent.
+        if self.model is not None:
+            self._update_model_inference_view_requirements_from_init_state()
+
         self.exploration = self._create_exploration()
         self._sess = sess
         self._obs_input = obs_input
@@ -177,7 +188,7 @@ class TFPolicy(Policy):
         self._apply_op = None
         self._stats_fetches = {}
         self._timestep = timestep if timestep is not None else \
-            tf1.placeholder(tf.int32, (), name="timestep")
+            tf1.placeholder(tf.int64, (), name="timestep")
 
         self._optimizer = None
         self._grads_and_vars = None
@@ -192,7 +203,7 @@ class TFPolicy(Policy):
         # The loss tf-op.
         self._loss = None
         # A batch dict passed into loss function as input.
-        self._loss_input_dict = None
+        self._loss_input_dict = {}
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
 
@@ -228,8 +239,9 @@ class TFPolicy(Policy):
         elif name == SampleBatch.PREV_REWARDS:
             return self._prev_reward_input
 
-        assert self._loss_input_dict is not None, \
-            "Should have set this before get_placeholder can be called"
+        assert self._loss_input_dict, \
+            "You need to populate `self._loss_input_dict` before " \
+            "`get_placeholder()` can be called"
         return self._loss_input_dict[name]
 
     def get_session(self) -> "tf1.Session":
@@ -249,8 +261,7 @@ class TFPolicy(Policy):
             loss_inputs (List[Tuple[str, TensorType]]): The list of Tuples:
                 (name, tf1.placeholders) needed for calculating the loss.
         """
-        self._loss_inputs = loss_inputs
-        self._loss_input_dict = dict(self._loss_inputs)
+        self._loss_input_dict = dict(loss_inputs)
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 
@@ -270,13 +281,9 @@ class TFPolicy(Policy):
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
 
-        # TODO(sven/ekl): Deprecate support for v1 models.
-        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+        if self.model:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
-        else:
-            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -329,6 +336,10 @@ class TFPolicy(Policy):
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
+
+        # Update our global timestep by the batch size.
+        self.global_timestep += len(obs_batch) if isinstance(obs_batch, list) \
+            else obs_batch.shape[0]
 
         return fetched
 
@@ -736,7 +747,6 @@ class TFPolicy(Policy):
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
-        builder.add_feed_dict({self._is_training: True})
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
         fetches = builder.add_fetches(
@@ -755,10 +765,14 @@ class TFPolicy(Policy):
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         self._debug_vars()
+
+        # Callback handling.
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch)
+
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
-        builder.add_feed_dict({self._is_training: True})
         fetches = builder.add_fetches([
             self._apply_op,
             self._get_grad_and_stats_fetches(),
@@ -794,18 +808,22 @@ class TFPolicy(Policy):
             shuffle=shuffle,
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=[k for k, v in self._loss_inputs])
+            feature_keys=[
+                k for k in self._loss_input_dict.keys() if k != "seq_lens"
+            ],
+        )
+        batch["is_training"] = True
 
         # Build the feed dict from the batch.
         feed_dict = {}
-        for k, ph in self._loss_inputs:
-            feed_dict[ph] = batch[k]
+        for key, placeholder in self._loss_input_dict.items():
+            feed_dict[placeholder] = batch[key]
 
         state_keys = [
             "state_in_{}".format(i) for i in range(len(self._state_inputs))
         ]
-        for k in state_keys:
-            feed_dict[self._loss_input_dict[k]] = batch[k]
+        for key in state_keys:
+            feed_dict[self._loss_input_dict[key]] = batch[key]
         if state_keys:
             feed_dict[self._seq_lens] = batch["seq_lens"]
 
@@ -869,6 +887,9 @@ class EntropyCoeffSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff.load(
+        op_or_none = self.entropy_coeff.assign(
             self.entropy_coeff_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+            read_value=False,  # return tf op (None in eager mode).
+        )
+        if self._sess is not None:
+            self._sess.run(op_or_none)

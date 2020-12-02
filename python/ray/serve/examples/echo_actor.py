@@ -36,9 +36,9 @@ class MagicCounter:
         return base_number + self.increment
 
 
-serve.init()
-serve.create_backend("counter:v1", MagicCounter, 42)  # increment=42
-serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
+client = serve.start()
+client.create_backend("counter:v1", MagicCounter, 42)  # increment=42
+client.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
 print("Sending ten queries via HTTP")
 for i in range(10):
@@ -50,7 +50,7 @@ for i in range(10):
     time.sleep(0.2)
 
 print("Sending ten queries via Python")
-handle = serve.get_handle("magic_counter")
+handle = client.get_handle("magic_counter")
 for i in range(10):
     print("> Pinging handle.remote(base_number={})".format(i))
     result = ray.get(handle.remote(base_number=i))

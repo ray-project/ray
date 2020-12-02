@@ -1,91 +1,114 @@
-import logging
+"""
+Model-Based Meta Policy Optimization (MB-MPO)
+=============================================
 
+This file defines the distributed Trainer class for model-based meta policy
+optimization.
+See `mbmpo_[tf|torch]_policy.py` for the definition of the policy loss.
+
+Detailed documentation:
+ttps://docs.ray.io/en/master/rllib-algorithms.html#mbmpo
+"""
+import logging
 import numpy as np
+from typing import List
+
 import ray
-from ray.rllib.utils.sgd import standardized
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.mbmpo.mbmpo_torch_policy import MBMPOTorchPolicy
+from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
+from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
+    MBMPOExploration
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.model_vector_env import model_vector_env
+from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
+    get_learner_stats
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.metric_ops import CollectMetrics
-from ray.util.iter import from_actors
-from ray.rllib.agents.mbmpo.model_ensemble import DynamicsEnsembleCustomModel
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_ops import convert_to_torch_tensor
-from ray.rllib.evaluation.metrics import collect_episodes
-from ray.rllib.agents.mbmpo.model_vector_env import custom_model_vector_env
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages
+from ray.rllib.utils.typing import EnvType, TrainerConfigDict
+from ray.util.iter import from_actors, LocalIterator
 
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
+
+# Adds the following updates to the (base) `Trainer` config in
+# rllib/agents/trainer.py (`COMMON_CONFIG` dict).
 DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
-    # GAE(lambda) parameter
+    # GAE(lambda) parameter.
     "lambda": 1.0,
-    # Initial coefficient for KL divergence
+    # Initial coefficient for KL divergence.
     "kl_coeff": 0.0005,
-    # Size of batches collected from each worker
+    # Size of batches collected from each worker.
     "rollout_fragment_length": 200,
-    # Stepsize of SGD
+    # Do create an actual env on the local worker (worker-idx=0).
+    "create_env_on_driver": True,
+    # Step size of SGD.
     "lr": 1e-3,
-    # Share layers for value function
+    # Share layers for value function.
     "vf_share_layers": False,
-    # Coefficient of the value function loss
+    # Coefficient of the value function loss.
     "vf_loss_coeff": 0.5,
-    # Coefficient of the entropy regularizer
+    # Coefficient of the entropy regularizer.
     "entropy_coeff": 0.0,
-    # PPO clip parameter
+    # PPO clip parameter.
     "clip_param": 0.5,
     # Clip param for the value function. Note that this is sensitive to the
     # scale of the rewards. If your expected V is large, increase this.
     "vf_clip_param": 10.0,
-    # If specified, clip the global norm of gradients by this amount
+    # If specified, clip the global norm of gradients by this amount.
     "grad_clip": None,
-    # Target value for KL divergence
+    # Target value for KL divergence.
     "kl_target": 0.01,
-    # Whether to rollout "complete_episodes" or "truncate_episodes"
+    # Whether to rollout "complete_episodes" or "truncate_episodes".
     "batch_mode": "complete_episodes",
-    # Which observation filter to apply to the observation
+    # Which observation filter to apply to the observation.
     "observation_filter": "NoFilter",
-    # Number of Inner adaptation steps for the MAML algorithm
+    # Number of Inner adaptation steps for the MAML algorithm.
     "inner_adaptation_steps": 1,
-    # Number of MAML steps per meta-update iteration (PPO steps)
+    # Number of MAML steps per meta-update iteration (PPO steps).
     "maml_optimizer_steps": 8,
-    # Inner Adaptation Step size
+    # Inner adaptation step size.
     "inner_lr": 1e-3,
-    # Horizon of Environment (200 in MB-MPO paper)
+    # Horizon of the environment (200 in MB-MPO paper).
     "horizon": 200,
-    # Dynamics Ensemble Hyperparameters
+    # Dynamics ensemble hyperparameters.
     "dynamics_model": {
         "custom_model": DynamicsEnsembleCustomModel,
-        # Number of Transition-Dynamics Models for Ensemble
+        # Number of Transition-Dynamics (TD) models in the ensemble.
         "ensemble_size": 5,
-        # Hidden Layers for Model Ensemble
-        "fcnet_hiddens": [512, 512],
-        # Model Learning Rate
+        # Hidden layers for each model in the TD-model ensemble.
+        "fcnet_hiddens": [512, 512, 512],
+        # Model learning rate.
         "lr": 1e-3,
-        # Max number of training epochs per MBMPO iter
+        # Max number of training epochs per MBMPO iter.
         "train_epochs": 500,
-        # Model Batch Size
+        # Model batch size.
         "batch_size": 500,
-        # Training/Validation Split
+        # Training/validation split.
         "valid_split_ratio": 0.2,
-        # Normalize Data (obs, action, and deltas)
+        # Normalize data (obs, action, and deltas).
         "normalize_data": True,
     },
-    # Workers sample from dynamics models
-    "custom_vector_env": custom_model_vector_env,
-    # How many enviornments there are per worker (vectorized)
-    "num_worker_envs": 20,
-    # How many iterations through MAML per MBMPO iteration
+    # Exploration for MB-MPO is based on StochasticSampling, but uses 8000
+    # random timesteps up-front for worker=0.
+    "exploration_config": {
+        "type": MBMPOExploration,
+        "random_timesteps": 8000,
+    },
+    # Workers sample from dynamics models, not from actual envs.
+    "custom_vector_env": model_vector_env,
+    # How many iterations through MAML per MBMPO iteration.
     "num_maml_steps": 10,
 })
 # __sphinx_doc_end__
@@ -99,17 +122,18 @@ METRICS_KEYS = [
 
 class MetaUpdate:
     def __init__(self, workers, num_steps, maml_steps, metric_gen):
-        """Computes the MetaUpdate step in MAML, adapted for MBMPO
-        for multiple MAML Iterations
+        """Computes the MetaUpdate step in MAML.
 
-        Arguments:
+        Adapted for MBMPO for multiple MAML Iterations.
+
+        Args:
             workers (WorkerSet): Set of Workers
             num_steps (int): Number of meta-update steps per MAML Iteration
             maml_steps (int): MAML Iterations per MBMPO Iteration
             metric_gen (Iterator): Generates metrics dictionary
 
         Returns:
-            metrics (dict): MBMPO metrics for logging
+            metrics (dict): MBMPO metrics for logging.
         """
         self.workers = workers
         self.num_steps = num_steps
@@ -119,23 +143,23 @@ class MetaUpdate:
         self.metrics = {}
 
     def __call__(self, data_tuple):
-        """Arguments:
+        """Args:
             data_tuple (tuple): 1st element is samples collected from MAML
             Inner adaptation steps and 2nd element is accumulated metrics
         """
-        # Metaupdate Step
+        # Metaupdate Step.
         print("Meta-Update Step")
         samples = data_tuple[0]
         adapt_metrics_dict = data_tuple[1]
         self.postprocess_metrics(
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
 
-        # MAML Meta-update
+        # MAML Meta-update.
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
         fetches = get_learner_stats(fetches)
 
-        # Update KLS
+        # Update KLs.
         def update(pi, pi_id):
             assert "inner_kl" not in fetches, (
                 "inner_kl should be nested under policy id key", fetches)
@@ -147,26 +171,26 @@ class MetaUpdate:
 
         self.workers.local_worker().foreach_trainable_policy(update)
 
-        # Modify Reporting Metrics
+        # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
-        if self.step_counter == self.num_steps:
+        if self.step_counter == self.num_steps - 1:
             td_metric = self.workers.local_worker().foreach_policy(
                 fit_dynamics)[0]
 
-            # Sync workers with meta policy
+            # Sync workers with meta policy.
             self.workers.sync_weights()
 
-            # Sync TD Models with workers
+            # Sync TD Models with workers.
             sync_ensemble(self.workers)
             sync_stats(self.workers)
 
             metrics.counters[STEPS_SAMPLED_COUNTER] = td_metric[
                 STEPS_SAMPLED_COUNTER]
 
-            # Modify to CollectMetrics
+            # Modify to CollectMetrics.
             res = self.metric_gen.__call__(None)
             res.update(self.metrics)
             self.step_counter = 0
@@ -184,7 +208,7 @@ class MetaUpdate:
     def postprocess_metrics(self, metrics, prefix=""):
         """Appends prefix to current metrics
 
-        Arguments:
+        Args:
             metrics (dict): Dictionary of current metrics
             prefix (str): Prefix string to be appended
         """
@@ -193,9 +217,9 @@ class MetaUpdate:
 
 
 def post_process_metrics(prefix, workers, metrics):
-    """Update Current Dataset Metrics and filter out specific keys
+    """Update current dataset metrics and filter out specific keys.
 
-    Arguments:
+    Args:
         prefix (str): Prefix string to be appended
         workers (WorkerSet): Set of workers
         metrics (dict): Current metrics dictionary
@@ -206,8 +230,15 @@ def post_process_metrics(prefix, workers, metrics):
     return metrics
 
 
-def inner_adaptation(workers, samples):
-    # Each worker performs one gradient descent
+def inner_adaptation(workers: WorkerSet, samples: List[SampleBatch]):
+    """Performs one gradient descend step on each remote worker.
+
+    Args:
+        workers (WorkerSet): The WorkerSet of the Trainer.
+        samples (List[SampleBatch]): The list of SampleBatches to perform
+            a training step on (one for each remote worker).
+    """
+
     for i, e in enumerate(workers.remote_workers()):
         e.learn_on_batch.remote(samples[i])
 
@@ -216,11 +247,11 @@ def fit_dynamics(policy, pid):
     return policy.dynamics_model.fit()
 
 
-def sync_ensemble(workers):
-    """Syncs dynamics ensemble weights from main to workers
+def sync_ensemble(workers: WorkerSet) -> None:
+    """Syncs dynamics ensemble weights from driver (main) to workers.
 
-    Arguments:
-        workers (WorkerSet): Set of workers, including main
+    Args:
+        workers (WorkerSet): Set of workers, including driver (main).
     """
 
     def get_ensemble_weights(worker):
@@ -252,7 +283,7 @@ def sync_ensemble(workers):
             e.foreach_policy.remote(set_func, weights=weights)
 
 
-def sync_stats(workers):
+def sync_stats(workers: WorkerSet) -> None:
     def get_normalizations(worker):
         policy = worker.policy_map[DEFAULT_POLICY_ID]
         return policy.dynamics_model.normalizations
@@ -269,7 +300,7 @@ def sync_stats(workers):
                 set_func, normalizations=normalization_dict)
 
 
-def post_process_samples(samples, config):
+def post_process_samples(samples, config: TrainerConfigDict):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
@@ -295,12 +326,23 @@ def post_process_samples(samples, config):
     return samples, split_lst
 
 
-# Similar to MAML Execution Plan
-def execution_plan(workers, config):
-    # Train TD Models
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the PPO algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: The Policy class to use with PPOTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
+    # Train TD Models on the driver.
     workers.local_worker().foreach_policy(fit_dynamics)
 
-    # Sync workers policy with workers
+    # Sync driver's policy with workers.
     workers.sync_weights()
 
     # Sync TD Models and normalization stats with workers
@@ -308,18 +350,18 @@ def execution_plan(workers, config):
     sync_stats(workers)
 
     # Dropping metrics from the first iteration
-    episodes, to_be_collected = collect_episodes(
+    _, _ = collect_episodes(
         workers.local_worker(),
         workers.remote_workers(), [],
         timeout_seconds=9999)
 
-    # Metrics Collector
+    # Metrics Collector.
     metric_collect = CollectMetrics(
         workers,
         min_history=0,
         timeout_seconds=config["collect_metrics_timeout"])
 
-    inner_steps = config["inner_adaptation_steps"]
+    num_inner_steps = config["inner_adaptation_steps"]
 
     def inner_adaptation_steps(itr):
         buf = []
@@ -337,7 +379,7 @@ def execution_plan(workers, config):
             prefix = "DynaTrajInner_" + str(adapt_iter)
             metrics = post_process_metrics(prefix, workers, metrics)
 
-            if len(split) > inner_steps:
+            if len(split) > num_inner_steps:
                 out = SampleBatch.concat_samples(buf)
                 out["split"] = np.array(split)
                 buf = []
@@ -348,42 +390,69 @@ def execution_plan(workers, config):
             else:
                 inner_adaptation(workers, samples)
 
-    # Iterator for Inner Adaptation Data gathering (from pre->post adaptation)
+    # Iterator for Inner Adaptation Data gathering (from pre->post adaptation).
     rollouts = from_actors(workers.remote_workers())
     rollouts = rollouts.batch_across_shards()
     rollouts = rollouts.transform(inner_adaptation_steps)
 
-    # Metaupdate Step with outer combine loop for multiple MAML iterations
+    # Meta update step with outer combine loop for multiple MAML iterations.
     train_op = rollouts.combine(
         MetaUpdate(workers, config["num_maml_steps"],
                    config["maml_optimizer_steps"], metric_collect))
     return train_op
 
 
-def get_policy_class(config):
-    return MBMPOTorchPolicy
-
-
 def validate_config(config):
-    config["framework"] = "torch"
+    """Validates the Trainer's config dict.
+
+    Args:
+        config (TrainerConfigDict): The Trainer's config to check.
+
+    Raises:
+        ValueError: In case something is wrong with the config.
+    """
     if config["framework"] != "torch":
-        raise ValueError("MB-MPO not supported in Tensorflow yet!")
+        logger.warning("MB-MPO only supported in PyTorch so far! Switching to "
+                       "`framework=torch`.")
+        config["framework"] = "torch"
     if config["inner_adaptation_steps"] <= 0:
-        raise ValueError("Inner Adaptation Steps must be >=1.")
+        raise ValueError("Inner adaptation steps must be >=1!")
     if config["maml_optimizer_steps"] <= 0:
-        raise ValueError("PPO steps for meta-update needs to be >=0")
+        raise ValueError("PPO steps for meta-update needs to be >=0!")
     if config["entropy_coeff"] < 0:
-        raise ValueError("entropy_coeff must be >=0")
+        raise ValueError("`entropy_coeff` must be >=0.0!")
     if config["batch_mode"] != "complete_episodes":
-        raise ValueError("truncate_episodes not supported")
+        raise ValueError("`batch_mode=truncate_episodes` not supported!")
     if config["num_workers"] <= 0:
         raise ValueError("Must have at least 1 worker/task.")
+    if config["create_env_on_driver"] is False:
+        raise ValueError("Must have an actual Env created on the driver "
+                         "(local) worker! Set `create_env_on_driver` to True.")
 
 
+def validate_env(env: EnvType, env_context: EnvContext):
+    """Validates the local_worker's env object (after creation).
+
+    Args:
+        env (EnvType): The env object to check (for worker=0 only).
+        env_context (EnvContext): The env context used for the instantiation of
+            the local worker's env (worker=0).
+
+    Raises:
+        ValueError: In case something is wrong with the config.
+    """
+    if not hasattr(env, "reward") or not callable(env.reward):
+        raise ValueError("Env {} doest not have a `reward()` method, needed "
+                         "for MB-MPO!".format(env))
+
+
+# Build a child class of `Trainer`, which uses the default policy,
+# MBMPOTorchPolicy. A TensorFlow version is not available yet.
 MBMPOTrainer = build_trainer(
     name="MBMPO",
     default_config=DEFAULT_CONFIG,
     default_policy=MBMPOTorchPolicy,
-    get_policy_class=get_policy_class,
     execution_plan=execution_plan,
-    validate_config=validate_config)
+    validate_config=validate_config,
+    validate_env=validate_env,
+)

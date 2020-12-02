@@ -3,8 +3,6 @@ import logging
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_tf_policy import DDPGTFPolicy
-from ray.rllib.utils.deprecation import deprecation_warning, \
-    DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -147,9 +145,6 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-
-    # Deprecated keys.
-    "grad_norm_clipping": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -161,10 +156,6 @@ def validate_config(config):
             "Setting use_state_preprocessor=True since a custom model "
             "was specified.")
         config["use_state_preprocessor"] = True
-
-    if config.get("grad_norm_clipping", DEPRECATED_VALUE) != DEPRECATED_VALUE:
-        deprecation_warning("grad_norm_clipping", "grad_clip")
-        config["grad_clip"] = config.pop("grad_norm_clipping")
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")

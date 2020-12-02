@@ -3,7 +3,7 @@ load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test"
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
-COPTS = ["-DRAY_USE_GLOG"] + select({
+COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
@@ -21,6 +21,8 @@ COPTS = ["-DRAY_USE_GLOG"] + select({
     "//conditions:default": [
     ],
 })
+
+COPTS = ["-DRAY_USE_SPDLOG"] + COPTS_WITHOUT_LOG
 
 PYX_COPTS = select({
     "//:msvc-cl": [

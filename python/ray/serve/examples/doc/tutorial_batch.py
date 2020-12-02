@@ -28,11 +28,11 @@ def batch_adder_v0(flask_requests: List):
 
 # __doc_define_servable_v0_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
-ray.init(num_cpus=10)
-serve.init()
-serve.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
-serve.create_endpoint(
+client = serve.start()
+client.create_backend("adder:v0", batch_adder_v0, config={"max_batch_size": 4})
+client.create_endpoint(
     "adder", backend="adder:v0", route="/adder", methods=["GET"])
 # __doc_deploy_end__
 
@@ -57,17 +57,8 @@ print("Result returned:", results)
 
 # __doc_define_servable_v1_begin__
 @serve.accept_batch
-def batch_adder_v1(flask_requests: List, *, numbers: List = []):
-    # Depending on request context, we process the input data differently.
-    print("Current context is", "web" if serve.context.web else "python")
-    if serve.context.web:
-        # If the requests come from web request, we parse the flask request
-        # to numbers
-        numbers = [int(request.args["number"]) for request in flask_requests]
-    else:
-        # Otherwise, we are processing requests invoked directly from Python.
-        numbers = numbers
-
+def batch_adder_v1(requests: List):
+    numbers = [int(request.args["number"]) for request in requests]
     input_array = np.array(numbers)
     print("Our input array has shape:", input_array.shape)
     # Sleep for 200ms, this could be performing CPU intensive computation
@@ -80,12 +71,12 @@ def batch_adder_v1(flask_requests: List, *, numbers: List = []):
 # __doc_define_servable_v1_end__
 
 # __doc_deploy_v1_begin__
-serve.create_backend("adder:v1", batch_adder_v1, config={"max_batch_size": 4})
-serve.set_traffic("adder", {"adder:v1": 1})
+client.create_backend("adder:v1", batch_adder_v1, config={"max_batch_size": 4})
+client.set_traffic("adder", {"adder:v1": 1})
 # __doc_deploy_v1_end__
 
 # __doc_query_handle_begin__
-handle = serve.get_handle("adder")
+handle = client.get_handle("adder")
 print(handle)
 # Output
 # RayServeHandle(
@@ -97,7 +88,7 @@ input_batch = list(range(9))
 print("Input batch is", input_batch)
 # Input batch is [0, 1, 2, 3, 4, 5, 6, 7, 8]
 
-result_batch = ray.get([handle.remote(numbers=i) for i in input_batch])
+result_batch = ray.get([handle.remote(number=i) for i in input_batch])
 # Output
 # (pid=...) Current context is python
 # (pid=...) Our input array has shape: (1,)

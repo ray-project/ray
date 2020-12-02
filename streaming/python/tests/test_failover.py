@@ -8,7 +8,7 @@ from ray.streaming import StreamingContext
 
 def test_word_count():
     try:
-        ray.init(_load_code_from_local=True, _include_java=True)
+        ray.init(_load_code_from_local=True)
         # time.sleep(10) # for gdb to attach
         ctx = StreamingContext.Builder() \
             .option("streaming.context-backend.type", "local_file") \

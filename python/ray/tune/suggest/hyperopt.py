@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import copy
@@ -6,9 +6,13 @@ import logging
 from functools import partial
 import pickle
 
-from ray.tune.sample import Categorical, Float, Integer, LogUniform, Normal, \
+from ray.tune.result import DEFAULT_METRIC
+from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
+    Normal, \
     Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import assign_value, parse_spec_vars
 
 try:
@@ -42,33 +46,14 @@ class HyperOptSearch(Searcher):
 
         pip install -U hyperopt
 
-    You will not be able to leverage Tune's default ``grid_search``
-    and random search primitives when using HyperOptSearch. You need to
-    use the `HyperOpt search space specification
-    <https://github.com/hyperopt/hyperopt/wiki/FMin>`_.
-
-    .. code-block:: python
-
-        space = {
-            'width': hp.uniform('width', 0, 20),
-            'height': hp.uniform('height', -100, 100),
-            'activation': hp.choice("activation", ["relu", "tanh"])
-        }
-        current_best_params = [{
-            'width': 10,
-            'height': 0,
-            'activation': 0, # The index of "relu"
-        }]
-        algo = HyperOptSearch(
-            space, metric="mean_loss", mode="min",
-            points_to_evaluate=current_best_params)
-
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
             from this configuration and will be used to override
             parameters generated in the variant generation process.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
@@ -88,22 +73,70 @@ class HyperOptSearch(Searcher):
         max_concurrent: Deprecated.
         use_early_stopped_trials: Deprecated.
 
+    Tune automatically converts search spaces to HyperOpt's format:
+
+    .. code-block:: python
+
+        config = {
+            'width': tune.uniform(0, 20),
+            'height': tune.uniform(-100, 100),
+            'activation': tune.choice(["relu", "tanh"])
+        }
+
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+
+        hyperopt_search = HyperOptSearch(
+            metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(trainable, config=config, search_alg=hyperopt_search)
+
+    If you would like to pass the search space manually, the code would
+    look like this:
+
+    .. code-block:: python
+
+        space = {
+            'width': hp.uniform('width', 0, 20),
+            'height': hp.uniform('height', -100, 100),
+            'activation': hp.choice("activation", ["relu", "tanh"])
+        }
+
+        current_best_params = [{
+            'width': 10,
+            'height': 0,
+            'activation': 0, # The index of "relu"
+        }]
+
+        hyperopt_search = HyperOptSearch(
+            space, metric="mean_loss", mode="min",
+            points_to_evaluate=current_best_params)
+
+        tune.run(trainable, search_alg=hyperopt_search)
+
+
     """
 
     def __init__(
             self,
-            space=None,
-            metric="episode_reward_mean",
-            mode="max",
-            points_to_evaluate=None,
-            n_initial_points=20,
-            random_state_seed=None,
-            gamma=0.25,
-            max_concurrent=None,
-            use_early_stopped_trials=None,
+            space: Optional[Dict] = None,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None,
+            points_to_evaluate: Optional[List[Dict]] = None,
+            n_initial_points: int = 20,
+            random_state_seed: Optional[int] = None,
+            gamma: float = 0.25,
+            max_concurrent: Optional[int] = None,
+            use_early_stopped_trials: Optional[bool] = None,
     ):
         assert hpo is not None, (
             "HyperOpt must be installed! Run `pip install hyperopt`.")
+        if mode:
+            assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         from hyperopt.fmin import generate_trials_to_calculate
         super(HyperOptSearch, self).__init__(
             metric=metric,
@@ -140,14 +173,29 @@ class HyperOptSearch(Searcher):
             self.rstate = np.random.RandomState(random_state_seed)
 
         self.domain = None
-        if space:
-            self.domain = hpo.Domain(lambda spc: spc, space)
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+            self._space = space
+            self._setup_hyperopt()
 
-    def set_search_properties(self, metric, mode, config):
+    def _setup_hyperopt(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
+        self.domain = hpo.Domain(lambda spc: spc, self._space)
+
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict) -> bool:
         if self.domain:
             return False
         space = self.convert_search_space(config)
-        self.domain = hpo.Domain(lambda spc: spc, space)
+        self._space = space
 
         if metric:
             self._metric = metric
@@ -159,15 +207,21 @@ class HyperOptSearch(Searcher):
         elif self._mode == "min":
             self.metric_op = 1.
 
+        self._setup_hyperopt()
         return True
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self.domain:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
+
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
@@ -199,7 +253,7 @@ class HyperOptSearch(Searcher):
             print_node_on_error=self.domain.rec_eval_print_node_on_error)
         return copy.deepcopy(suggested_config)
 
-    def on_trial_result(self, trial_id, result):
+    def on_trial_result(self, trial_id: str, result: Dict):
         ho_trial = self._get_hyperopt_trial(trial_id)
         if ho_trial is None:
             return
@@ -207,7 +261,10 @@ class HyperOptSearch(Searcher):
         ho_trial["book_time"] = now
         ho_trial["refresh_time"] = now
 
-    def on_trial_complete(self, trial_id, result=None, error=False):
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          error: bool = False):
         """Notification for the completion of trial.
 
         The result is internally negated when interacting with HyperOpt
@@ -225,7 +282,7 @@ class HyperOptSearch(Searcher):
             self._process_result(trial_id, result)
         del self._live_trial_mapping[trial_id]
 
-    def _process_result(self, trial_id, result):
+    def _process_result(self, trial_id: str, result: Dict):
         ho_trial = self._get_hyperopt_trial(trial_id)
         if not ho_trial:
             return
@@ -236,10 +293,10 @@ class HyperOptSearch(Searcher):
         ho_trial["result"] = hp_result
         self._hpopt_trials.refresh()
 
-    def _to_hyperopt_result(self, result):
+    def _to_hyperopt_result(self, result: Dict) -> Dict:
         return {"loss": self.metric_op * result[self.metric], "status": "ok"}
 
-    def _get_hyperopt_trial(self, trial_id):
+    def _get_hyperopt_trial(self, trial_id: str) -> Optional[Dict]:
         if trial_id not in self._live_trial_mapping:
             return
         hyperopt_tid = self._live_trial_mapping[trial_id][0]
@@ -247,21 +304,21 @@ class HyperOptSearch(Searcher):
             t for t in self._hpopt_trials.trials if t["tid"] == hyperopt_tid
         ][0]
 
-    def get_state(self):
+    def get_state(self) -> Dict:
         return {
             "hyperopt_trials": self._hpopt_trials,
             "rstate": self.rstate.get_state()
         }
 
-    def set_state(self, state):
+    def set_state(self, state: Dict):
         self._hpopt_trials = state["hyperopt_trials"]
         self.rstate.set_state(state["rstate"])
 
-    def save(self, checkpoint_path):
+    def save(self, checkpoint_path: str):
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(self.get_state(), outputFile)
 
-    def restore(self, checkpoint_path):
+    def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             trials_object = pickle.load(inputFile)
 
@@ -272,19 +329,19 @@ class HyperOptSearch(Searcher):
             self.set_state(trials_object)
 
     @staticmethod
-    def convert_search_space(spec: Dict):
+    def convert_search_space(spec: Dict, prefix: str = "") -> Dict:
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
-            return []
+            return {}
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a HyperOpt search space.")
 
-        def resolve_value(par, domain):
+        def resolve_value(par: str, domain: Domain) -> Any:
             quantize = None
 
             sampler = domain.get_sampler()
@@ -316,20 +373,20 @@ class HyperOptSearch(Searcher):
                         logger.warning(
                             "HyperOpt does not support quantization for "
                             "integer values. Reverting back to 'randint'.")
-                    if domain.lower != 0:
-                        raise ValueError(
-                            "HyperOpt only allows integer sampling with "
-                            f"lower bound 0. Got: {domain.lower}.")
-                    if domain.upper < 1:
-                        raise ValueError(
-                            "HyperOpt does not support integer sampling "
-                            "of values lower than 0. Set your maximum range "
-                            "to something above 0 (currently {})".format(
-                                domain.upper))
-                    return hpo.hp.randint(par, domain.upper)
+                    return hpo.hp.randint(par, domain.lower, high=domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
-                    return hpo.hp.choice(par, domain.categories)
+                    return hpo.hp.choice(par, [
+                        HyperOptSearch.convert_search_space(
+                            category, prefix=par)
+                        if isinstance(category, dict) else
+                        HyperOptSearch.convert_search_space(
+                            dict(enumerate(category)), prefix=f"{par}/{i}")
+                        if isinstance(category, list) else resolve_value(
+                            f"{par}/{i}", category)
+                        if isinstance(category, Domain) else category
+                        for i, category in enumerate(domain.categories)
+                    ])
 
             raise ValueError("HyperOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
@@ -337,7 +394,8 @@ class HyperOptSearch(Searcher):
                                  type(domain.sampler).__name__))
 
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(
+                [str(p) for p in ((prefix, ) + path if prefix else path)])
             value = resolve_value(par, domain)
             assign_value(spec, path, value)
 

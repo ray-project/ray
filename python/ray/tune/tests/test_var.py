@@ -15,7 +15,7 @@ from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
@@ -24,7 +24,14 @@ class VariantGeneratorTest(unittest.TestCase):
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
-        return suggester.next_trials()
+        trials = []
+        while not suggester.is_finished():
+            trial = suggester.next_trial()
+            if trial:
+                trials.append(trial)
+            else:
+                break
+        return trials
 
     def testParseToTrials(self):
         trials = self.generate_trials({

@@ -41,68 +41,10 @@ class ActorInfoAccessorTest : public AccessorTestBase<ActorID, ActorTableData> {
       actor->set_actor_id(actor_id.Binary());
       id_to_data_[actor_id] = actor;
     }
-    GenCheckpointData();
   }
 
-  void GenCheckpointData() {
-    for (const auto &item : id_to_data_) {
-      const ActorID &id = item.first;
-      ActorCheckpointList checkpoints;
-      for (size_t i = 0; i < checkpoint_number_; ++i) {
-        ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-        auto checkpoint = std::make_shared<ActorCheckpointData>();
-        checkpoint->set_actor_id(id.Binary());
-        checkpoint->set_checkpoint_id(checkpoint_id.Binary());
-        checkpoint->set_execution_dependency(checkpoint_id.Binary());
-        checkpoints.emplace_back(checkpoint);
-      }
-      id_to_checkpoints_[id] = std::move(checkpoints);
-    }
-  }
-
-  typedef std::vector<std::shared_ptr<ActorCheckpointData>> ActorCheckpointList;
-  std::unordered_map<ActorID, ActorCheckpointList> id_to_checkpoints_;
   size_t checkpoint_number_{2};
 };
-
-TEST_F(ActorInfoAccessorTest, RegisterAndGet) {
-  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
-  // register
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
-    ++pending_count_;
-    RAY_CHECK_OK(actor_accessor.AsyncRegister(actor, [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    }));
-  }
-
-  WaitPendingDone(wait_pending_timeout_);
-
-  // async get
-  for (const auto &elem : id_to_data_) {
-    ++pending_count_;
-    RAY_CHECK_OK(actor_accessor.AsyncGet(
-        elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
-          ASSERT_TRUE(data);
-          ActorID actor_id = ActorID::FromBinary(data->actor_id());
-          auto it = id_to_data_.find(actor_id);
-          ASSERT_TRUE(it != id_to_data_.end());
-          --pending_count_;
-        }));
-  }
-
-  WaitPendingDone(wait_pending_timeout_);
-
-  // sync get
-  std::vector<ActorTableData> actor_table_data_list;
-  RAY_CHECK_OK(actor_accessor.GetAll(&actor_table_data_list));
-  ASSERT_EQ(id_to_data_.size(), actor_table_data_list.size());
-  for (auto &data : actor_table_data_list) {
-    ActorID actor_id = ActorID::FromBinary(data.actor_id());
-    ASSERT_TRUE(id_to_data_.count(actor_id) != 0);
-  }
-}
 
 TEST_F(ActorInfoAccessorTest, Subscribe) {
   ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
@@ -124,85 +66,6 @@ TEST_F(ActorInfoAccessorTest, Subscribe) {
   RAY_CHECK_OK(actor_accessor.AsyncSubscribeAll(subscribe, done));
   // Wait until subscribe finishes.
   WaitPendingDone(do_sub_pending_count, wait_pending_timeout_);
-
-  // register
-  std::atomic<int> register_pending_count(0);
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
-    ++sub_pending_count;
-    ++register_pending_count;
-    RAY_CHECK_OK(
-        actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
-          RAY_CHECK_OK(status);
-          --register_pending_count;
-        }));
-  }
-  // Wait until register finishes.
-  WaitPendingDone(register_pending_count, wait_pending_timeout_);
-
-  // Wait for all subscribe notifications.
-  WaitPendingDone(sub_pending_count, wait_pending_timeout_);
-}
-
-TEST_F(ActorInfoAccessorTest, GetActorCheckpointTest) {
-  ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
-  auto on_add_done = [this](Status status) {
-    RAY_CHECK_OK(status);
-    --pending_count_;
-  };
-  for (size_t index = 0; index < checkpoint_number_; ++index) {
-    for (const auto &actor_checkpoints : id_to_checkpoints_) {
-      const ActorCheckpointList &checkpoints = actor_checkpoints.second;
-      const auto &checkpoint = checkpoints[index];
-      ++pending_count_;
-      Status status = actor_accessor.AsyncAddCheckpoint(checkpoint, on_add_done);
-      RAY_CHECK_OK(status);
-    }
-    WaitPendingDone(wait_pending_timeout_);
-  }
-
-  for (const auto &actor_checkpoints : id_to_checkpoints_) {
-    const ActorCheckpointList &checkpoints = actor_checkpoints.second;
-    for (const auto &checkpoint : checkpoints) {
-      ActorCheckpointID checkpoint_id =
-          ActorCheckpointID::FromBinary(checkpoint->checkpoint_id());
-      auto on_get_done = [this, checkpoint_id](
-                             Status status,
-                             const boost::optional<ActorCheckpointData> &result) {
-        RAY_CHECK(result);
-        ActorCheckpointID result_checkpoint_id =
-            ActorCheckpointID::FromBinary(result->checkpoint_id());
-        ASSERT_EQ(checkpoint_id, result_checkpoint_id);
-        --pending_count_;
-      };
-      ++pending_count_;
-      Status status = actor_accessor.AsyncGetCheckpoint(
-          checkpoint_id, ActorID::FromBinary(checkpoint->actor_id()), on_get_done);
-      RAY_CHECK_OK(status);
-    }
-  }
-  WaitPendingDone(wait_pending_timeout_);
-
-  for (const auto &actor_checkpoints : id_to_checkpoints_) {
-    const ActorID &actor_id = actor_checkpoints.first;
-    const ActorCheckpointList &checkpoints = actor_checkpoints.second;
-    auto on_get_done = [this, &checkpoints](
-                           Status status,
-                           const boost::optional<ActorCheckpointIdData> &result) {
-      RAY_CHECK(result);
-      ASSERT_EQ(checkpoints.size(), result->checkpoint_ids_size());
-      for (size_t i = 0; i < checkpoints.size(); ++i) {
-        const std::string checkpoint_id_str = checkpoints[i]->checkpoint_id();
-        const std::string &result_checkpoint_id_str = result->checkpoint_ids(i);
-        ASSERT_EQ(checkpoint_id_str, result_checkpoint_id_str);
-      }
-      --pending_count_;
-    };
-    ++pending_count_;
-    Status status = actor_accessor.AsyncGetCheckpointID(actor_id, on_get_done);
-    RAY_CHECK_OK(status);
-  }
-  WaitPendingDone(wait_pending_timeout_);
 }
 
 }  // namespace gcs

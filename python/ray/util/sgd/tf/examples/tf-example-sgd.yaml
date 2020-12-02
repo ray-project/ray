@@ -48,7 +48,7 @@ worker_nodes:
 
 setup_commands:
     - conda install setuptools=45.1.0=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
-    - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - pip install -U ray[tune]
     - pip install tensorflow-gpu==2.1.0
 
@@ -61,7 +61,7 @@ worker_setup_commands: []
 # # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
+    - ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:

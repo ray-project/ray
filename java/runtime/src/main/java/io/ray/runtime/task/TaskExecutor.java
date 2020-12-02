@@ -1,7 +1,6 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
@@ -63,6 +62,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       return;
     }
     this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
+  }
+
+  protected void removeActorContext(UniqueId workerId) {
+    this.actorContextMap.remove(workerId);
   }
 
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
@@ -146,16 +149,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       }
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        if (taskType == TaskType.ACTOR_TASK) {
-          // TODO (kfstorm): handle checkpoint in core worker.
-          maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
-        }
         if (rayFunction.hasReturn()) {
           returnObjects.add(ObjectSerializer.serialize(result));
         }
       } else {
-        // TODO (kfstorm): handle checkpoint in core worker.
-        maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());
         actorContext.currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", taskId);
@@ -191,7 +188,4 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         rayFunctionInfo.get(2));
   }
 
-  protected abstract void maybeSaveCheckpoint(Object actor, ActorId actorId);
-
-  protected abstract void maybeLoadCheckpoint(Object actor, ActorId actorId);
 }

@@ -34,7 +34,7 @@ class JsonReader(InputReader):
     def __init__(self, inputs: List[str], ioctx: IOContext = None):
         """Initialize a JsonReader.
 
-        Arguments:
+        Args:
             inputs (str|list): either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
@@ -93,7 +93,7 @@ class JsonReader(InputReader):
             return SampleBatch.concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
-            # trajectories in the episode are not available any more.
+            #  trajectories in the episode are not available any more.
             raise NotImplementedError(
                 "Postprocessing of multi-agent data not implemented yet.")
 

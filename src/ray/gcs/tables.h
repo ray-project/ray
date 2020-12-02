@@ -34,8 +34,6 @@ namespace ray {
 
 namespace gcs {
 
-using rpc::ActorCheckpointData;
-using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsChangeMode;
@@ -71,10 +69,10 @@ template <typename ID>
 class PubsubInterface {
  public:
   virtual Status RequestNotifications(const JobID &job_id, const ID &id,
-                                      const ClientID &client_id,
+                                      const NodeID &node_id,
                                       const StatusCallback &done) = 0;
   virtual Status CancelNotifications(const JobID &job_id, const ID &id,
-                                     const ClientID &client_id,
+                                     const NodeID &node_id,
                                      const StatusCallback &done) = 0;
   virtual ~PubsubInterface(){};
 };
@@ -100,7 +98,7 @@ class LogInterface {
 /// pubsub_channel_ member if pubsub is required.
 ///
 /// Example tables backed by Log:
-///   ClientTable: Stores a log of which GCS clients have been added or deleted
+///   NodeTable: Stores a log of which GCS clients have been added or deleted
 ///                from the system.
 template <typename ID, typename Data>
 class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
@@ -185,18 +183,18 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// requests notifications for. This may only be called once per Log
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const SubscriptionCallback &done);
 
   /// Request notifications about a key in this table.
   ///
@@ -205,26 +203,26 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// the current values at the key, if any, and a subsequent notification will
   /// be published for every following `Append` to the key. Before
   /// notifications can be requested, the caller must first call `Subscribe`,
-  /// with the same `client_id`.
+  /// with the same `node_id`.
   ///
   /// \param job_id The ID of the job.
   /// \param id The ID of the key to request notifications for.
-  /// \param client_id The client who is requesting notifications. Before
+  /// \param node_id The node who is requesting notifications.
   /// \param done Callback that is called when request notifications is complete.
   /// notifications can be requested, a call to `Subscribe` to this
-  /// table with the same `client_id` must complete successfully.
+  /// table with the same `node_id` must complete successfully.
   /// \return Status
-  Status RequestNotifications(const JobID &job_id, const ID &id,
-                              const ClientID &client_id, const StatusCallback &done);
+  Status RequestNotifications(const JobID &job_id, const ID &id, const NodeID &node_id,
+                              const StatusCallback &done);
 
   /// Cancel notifications about a key in this table.
   ///
   /// \param job_id The ID of the job.
   /// \param id The ID of the key to request notifications for.
-  /// \param client_id The client who originally requested notifications.
+  /// \param node_id The node who originally requested notifications.
   /// \param done Callback that is called when cancel notifications is complete.
   /// \return Status
-  Status CancelNotifications(const JobID &job_id, const ID &id, const ClientID &client_id,
+  Status CancelNotifications(const JobID &job_id, const ID &id, const NodeID &node_id,
                              const StatusCallback &done);
 
   /// Subscribe to any modifications to the key. The caller may choose
@@ -235,17 +233,17 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// function supports notifications of remove operations.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const JobID &job_id, const NodeID &node_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
@@ -368,10 +366,10 @@ class Table : private Log<ID, Data>,
   /// notifications for. This may only be called once per Table instance.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
@@ -380,27 +378,26 @@ class Table : private Log<ID, Data>,
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const FailureCallback &failure,
-                   const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const FailureCallback &failure, const SubscriptionCallback &done);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests
   /// notifications for. This may only be called once per Table instance.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message. If the
   /// callback is called with an empty vector, then there was no data at the key.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const SubscriptionCallback &done);
 
   void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
 
@@ -490,16 +487,16 @@ class Set : private Log<ID, Data>,
   /// Subscribe to any add or remove operations to this table.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each add or remove to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe Callback that is called on each received message.
   /// \param done Callback that is called when subscription is complete and we
   /// are ready to receive messages.
   /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const JobID &job_id, const NodeID &node_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
 
@@ -591,16 +588,16 @@ class HashInterface {
   /// Subscribe to any Update or Remove operations to this hash table.
   ///
   /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each Update to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
+  /// messages for the given node will be received. In the latter
+  /// case, the node may request notifications on specific keys in the
   /// table via `RequestNotifications`.
   /// \param subscribe HashNotificationCallback that is called on each received message.
   /// \param done SubscriptionCallback that is called when subscription is complete and
   /// we are ready to receive messages.
   /// \return Status
-  virtual Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  virtual Status Subscribe(const JobID &job_id, const NodeID &node_id,
                            const HashNotificationCallback &subscribe,
                            const SubscriptionCallback &done) = 0;
 
@@ -628,7 +625,7 @@ class Hash : private Log<ID, Data>,
   Status Update(const JobID &job_id, const ID &id, const DataMap &pairs,
                 const HashCallback &done) override;
 
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+  Status Subscribe(const JobID &job_id, const NodeID &node_id,
                    const HashNotificationCallback &subscribe,
                    const SubscriptionCallback &done) override;
 
@@ -656,7 +653,7 @@ class Hash : private Log<ID, Data>,
   using Log<ID, Data>::num_lookups_;
 };
 
-class DynamicResourceTable : public Hash<ClientID, ResourceTableData> {
+class DynamicResourceTable : public Hash<NodeID, ResourceTableData> {
  public:
   DynamicResourceTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                        RedisGcsClient *client)
@@ -680,7 +677,7 @@ class ObjectTable : public Set<ObjectID, ObjectTableData> {
   virtual ~ObjectTable(){};
 };
 
-class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
+class HeartbeatTable : public Table<NodeID, HeartbeatTableData> {
  public:
   HeartbeatTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                  RedisGcsClient *client)
@@ -691,7 +688,7 @@ class HeartbeatTable : public Table<ClientID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
-class HeartbeatBatchTable : public Table<ClientID, HeartbeatBatchTableData> {
+class HeartbeatBatchTable : public Table<NodeID, HeartbeatBatchTableData> {
  public:
   HeartbeatBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                       RedisGcsClient *client)
@@ -807,37 +804,8 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
 
   /// Implement this method for the subscription tools class SubscriptionExecutor.
   /// In this way TaskLeaseTable() can also reuse class SubscriptionExecutor.
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const Callback &subscribe, const SubscriptionCallback &done);
-};
-
-class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
- public:
-  ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                       RedisGcsClient *client)
-      : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT;
-  };
-};
-
-class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
- public:
-  ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                         RedisGcsClient *client)
-      : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT_ID;
-  };
-
-  /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
-  /// total number of checkpoints in GCS exceeds the max allowed value.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint.
-  /// \return Status.
-  Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
-                         const ActorCheckpointID &checkpoint_id,
-                         const WriteCallback &done);
+  Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
+                   const SubscriptionCallback &done);
 };
 
 namespace raylet {
@@ -874,33 +842,33 @@ class ProfileTable : public Log<UniqueID, ProfileTableData> {
   std::string DebugString() const;
 };
 
-/// \class ClientTable
+/// \class NodeTable
 ///
-/// The ClientTable stores information about active and inactive clients. It is
-/// structured as a single log stored at a key known to all clients. When a
-/// client connects, it appends an entry to the log indicating that it is
-/// alive. When a client disconnects, or if another client detects its failure,
-/// it should append an entry to the log indicating that it is dead. A client
+/// The NodeTable stores information about active and inactive nodes. It is
+/// structured as a single log stored at a key known to all nodes. When a
+/// node connects, it appends an entry to the log indicating that it is
+/// alive. When a node disconnects, or if another node detects its failure,
+/// it should append an entry to the log indicating that it is dead. A node
 /// that is marked as dead should never again be marked as alive; if it needs
-/// to reconnect, it must connect with a different ClientID.
-class ClientTable : public Log<ClientID, GcsNodeInfo> {
+/// to reconnect, it must connect with a different NodeID.
+class NodeTable : public Log<NodeID, GcsNodeInfo> {
  public:
-  ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-              RedisGcsClient *client)
+  NodeTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+            RedisGcsClient *client)
       : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::CLIENT_PUBSUB;
-    prefix_ = TablePrefix::CLIENT;
+    pubsub_channel_ = TablePubsub::NODE_PUBSUB;
+    prefix_ = TablePrefix::NODE;
   };
 
-  /// Connect as a client to the GCS. This registers us in the client table
-  /// and begins subscription to client table notifications.
+  /// Connect as a NODE to the GCS. This registers us in the NODE table
+  /// and begins subscription to NODE table notifications.
   ///
-  /// \param local_node_info Information about the connecting client. This must have the
-  /// same id as the one set in the client table.
+  /// \param local_node_info Information about the connecting NODE. This must have the
+  /// same id as the one set in the NODE table.
   /// \return Status
   ray::Status Connect(const GcsNodeInfo &local_node_info);
 
-  /// Disconnect the client from the GCS. The client ID assigned during
+  /// Disconnect the NODE from the GCS. The NODE ID assigned during
   /// registration should never be reused after disconnecting.
   ///
   /// \return Status
@@ -913,51 +881,51 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status MarkConnected(const GcsNodeInfo &node_info, const WriteCallback &done);
 
-  /// Mark a different node as disconnected. The client ID should never be
+  /// Mark a different node as disconnected. The NODE ID should never be
   /// reused for a new node.
   ///
   /// \param dead_node_id The ID of the node to mark as dead.
   /// \param done Callback that is called once the node has been marked to
   /// disconnected.
   /// \return Status
-  ray::Status MarkDisconnected(const ClientID &dead_node_id, const WriteCallback &done);
+  ray::Status MarkDisconnected(const NodeID &dead_node_id, const WriteCallback &done);
 
   ray::Status SubscribeToNodeChange(
-      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
       const StatusCallback &done);
 
-  /// Get a client's information from the cache. The cache only contains
-  /// information for clients that we've heard a notification for.
+  /// Get a node's information from the cache. The cache only contains
+  /// information for nodes that we've heard a notification for.
   ///
-  /// \param client The client to get information about.
-  /// \param node_info The client information will be copied here if
-  /// we have the client in the cache.
-  /// a nil client ID.
-  /// \return Whether teh client is in the cache.
-  bool GetClient(const ClientID &client, GcsNodeInfo *node_info) const;
+  /// \param node The node to get information about.
+  /// \param node_info The node information will be copied here if
+  /// we have the node in the cache.
+  /// a nil node ID.
+  /// \return Whether the node is in the cache.
+  bool GetNode(const NodeID &node, GcsNodeInfo *node_info) const;
 
-  /// Get the local client's ID.
+  /// Get the local node's ID.
   ///
-  /// \return The local client's ID.
-  const ClientID &GetLocalClientId() const;
+  /// \return The local node's ID.
+  const NodeID &GetLocalNodeId() const;
 
-  /// Get the local client's information.
+  /// Get the local node's information.
   ///
-  /// \return The local client's information.
-  const GcsNodeInfo &GetLocalClient() const;
+  /// \return The local node's information.
+  const GcsNodeInfo &GetLocalNode() const;
 
-  /// Check whether the given client is removed.
+  /// Check whether the given node is removed.
   ///
-  /// \param node_id The ID of the client to check.
-  /// \return Whether the client with ID client_id is removed.
-  bool IsRemoved(const ClientID &node_id) const;
+  /// \param node_id The ID of the node to check.
+  /// \return Whether the node with specified ID is removed.
+  bool IsRemoved(const NodeID &node_id) const;
 
-  /// Get the information of all clients.
+  /// Get the information of all nodes.
   ///
-  /// \return The client ID to client information map.
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAllClients() const;
+  /// \return The node ID to node information map.
+  const std::unordered_map<NodeID, GcsNodeInfo> &GetAllNodes() const;
 
-  /// Lookup the client data in the client table.
+  /// Lookup the node data in the node table.
   ///
   /// \param lookup Callback that is called after lookup. If the callback is
   /// called with an empty vector, then there was no data at the key.
@@ -969,40 +937,40 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return string.
   std::string DebugString() const;
 
-  /// The key at which the log of client information is stored. This key must
-  /// be kept the same across all instances of the ClientTable, so that all
-  /// clients append and read from the same key.
-  ClientID client_log_key_;
+  /// The key at which the log of node information is stored. This key must
+  /// be kept the same across all instances of the NodeTable, so that all
+  /// nodes append and read from the same key.
+  NodeID node_log_key_;
 
  private:
   using NodeChangeCallback =
-      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
+      std::function<void(const NodeID &id, const GcsNodeInfo &node_info)>;
 
   /// Register a callback to call when a new node is added or a node is removed.
   ///
   /// \param callback The callback to register.
   void RegisterNodeChangeCallback(const NodeChangeCallback &callback);
 
-  /// Handle a client table notification.
+  /// Handle a node table notification.
   void HandleNotification(RedisGcsClient *client, const GcsNodeInfo &node_info);
 
-  /// Whether this client has called Disconnect().
+  /// Whether this node has called Disconnect().
   bool disconnected_{false};
   /// This node's ID. It will be initialized when we call method `Connect(...)`.
-  ClientID local_node_id_;
+  NodeID local_node_id_;
   /// Information about this node.
   GcsNodeInfo local_node_info_;
   /// This ID is used in method `SubscribeToNodeChange(...)` to Subscribe and
   /// RequestNotification.
   /// The reason for not using `local_node_id_` is because it is only initialized
   /// for registered nodes.
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  NodeID subscribe_id_{NodeID::FromRandom()};
   /// The callback to call when a new node is added or a node is removed.
   NodeChangeCallback node_change_callback_{nullptr};
   /// A cache for information about all nodes.
-  std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
+  std::unordered_map<NodeID, GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
-  std::unordered_set<ClientID> removed_nodes_;
+  std::unordered_set<NodeID> removed_nodes_;
 };
 
 }  // namespace gcs

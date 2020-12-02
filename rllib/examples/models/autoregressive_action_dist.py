@@ -73,7 +73,7 @@ class BinaryAutoregressiveDistribution(ActionDistribution):
         return a2_dist
 
     @staticmethod
-    def required_model_output_shape(self, model_config):
+    def required_model_output_shape(action_space, model_config):
         return 16  # controls model output feature vector size
 
 
@@ -131,8 +131,8 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
 
     def _a1_distribution(self):
         BATCH = self.inputs.shape[0]
-        a1_logits, _ = self.model.action_module(self.inputs,
-                                                torch.zeros((BATCH, 1)))
+        zeros = torch.zeros((BATCH, 1)).to(self.inputs.device)
+        a1_logits, _ = self.model.action_module(self.inputs, zeros)
         a1_dist = TorchCategorical(a1_logits)
         return a1_dist
 
@@ -143,5 +143,5 @@ class TorchBinaryAutoregressiveDistribution(TorchDistributionWrapper):
         return a2_dist
 
     @staticmethod
-    def required_model_output_shape(self, model_config):
+    def required_model_output_shape(action_space, model_config):
         return 16  # controls model output feature vector size

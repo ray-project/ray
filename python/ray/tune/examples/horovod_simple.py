@@ -97,6 +97,9 @@ if __name__ == "__main__":
     parser.add_argument("--hosts-per-trial", type=int, default=1)
     parser.add_argument("--slots-per-host", type=int, default=2)
     args = parser.parse_args()
+    if args.smoke_test:
+        import ray
+        ray.init(num_cpus=2)
 
     # import ray
     # ray.init(address="auto")  # assumes ray is started with ray up
@@ -109,7 +112,9 @@ if __name__ == "__main__":
         replicate_pem=False)
     analysis = tune.run(
         horovod_trainable,
+        metric="loss",
+        mode="min",
         config={"lr": tune.uniform(0.1, 1)},
         num_samples=2 if args.smoke_test else 10,
         fail_fast=True)
-    config = analysis.get_best_config(metric="loss", mode="min")
+    print("Best hyperparameters found were: ", analysis.best_config)

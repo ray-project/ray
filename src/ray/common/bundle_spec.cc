@@ -31,7 +31,7 @@ const ResourceSet &BundleSpecification::GetRequiredResources() const {
   return *unit_resource_;
 }
 
-std::pair<PlacementGroupID, int64_t> BundleSpecification::BundleId() const {
+BundleID BundleSpecification::BundleId() const {
   if (message_->bundle_id()
           .placement_group_id()
           .empty() /* e.g., empty proto default */) {

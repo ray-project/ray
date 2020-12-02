@@ -1,4 +1,8 @@
+import time
+
 import numpy as np
+
+from ray import logger
 
 
 class Stopper:
@@ -36,6 +40,17 @@ class Stopper:
     def stop_all(self):
         """Returns true if the experiment should be terminated."""
         raise NotImplementedError
+
+
+class CombinedStopper(Stopper):
+    def __init__(self, *stoppers: Stopper):
+        self._stoppers = stoppers
+
+    def __call__(self, trial_id, result):
+        return any(s(trial_id, result) for s in self._stoppers)
+
+    def stop_all(self):
+        return any(s.stop_all() for s in self._stoppers)
 
 
 class NoopStopper(Stopper):
@@ -140,3 +155,42 @@ class EarlyStopping(Stopper):
     def stop_all(self):
         """Return whether to stop and prevent trials from starting."""
         return self.has_plateaued() and self._iterations >= self._patience
+
+
+class TimeoutStopper(Stopper):
+    """Stops all trials after a certain timeout.
+
+    Args:
+        timeout (int|float|datetime.timedelta): Either a number specifying
+            the timeout in seconds, or a `datetime.timedelta` object.
+    """
+
+    def __init__(self, timeout):
+        from datetime import timedelta
+        if isinstance(timeout, timedelta):
+            self._timeout_seconds = timeout.total_seconds()
+        elif isinstance(timeout, (int, float)):
+            self._timeout_seconds = timeout
+        else:
+            raise ValueError(
+                "`timeout` parameter has to be either a number or a "
+                "`datetime.timedelta` object. Found: {}".format(type(timeout)))
+
+        # To account for setup overhead, set the start time only after
+        # the first call to `stop_all()`.
+        self._start = None
+
+    def __call__(self, trial_id, result):
+        return False
+
+    def stop_all(self):
+        if not self._start:
+            self._start = time.time()
+            return False
+
+        now = time.time()
+        if now - self._start >= self._timeout_seconds:
+            logger.info(f"Reached timeout of {self._timeout_seconds} seconds. "
+                        f"Stopping all trials.")
+            return True
+        return False

@@ -43,8 +43,13 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
   return sched_cls_id;
 }
 
-const PlacementGroupID TaskSpecification::PlacementGroupId() const {
-  return PlacementGroupID::FromBinary(message_->placement_group_id());
+const BundleID TaskSpecification::PlacementGroupBundleId() const {
+  return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
+                        message_->placement_group_bundle_index());
+}
+
+bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
+  return message_->placement_group_capture_child_tasks();
 }
 
 void TaskSpecification::ComputeResources() {
@@ -120,7 +125,7 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).object_ref().object_id() != "";
+  return message_->args(arg_index).has_object_ref();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index) const {
@@ -186,6 +191,11 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
 
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
+}
+
+std::unordered_map<std::string, std::string>
+TaskSpecification::OverrideEnvironmentVariables() const {
+  return MapFromProtobuf(message_->override_environment_variables());
 }
 
 bool TaskSpecification::IsDriverTask() const {

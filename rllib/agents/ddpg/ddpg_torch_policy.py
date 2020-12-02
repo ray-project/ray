@@ -124,7 +124,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) \
                 + huber_loss(twin_td_error, huber_threshold)
@@ -275,7 +274,7 @@ DDPGTorchPolicy = build_torch_policy(
     optimizer_fn=make_ddpg_optimizers,
     validate_spaces=validate_spaces,
     before_init=before_init_fn,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     action_distribution_fn=get_distribution_inputs_and_class,
     make_model_and_action_dist=build_ddpg_models_and_action_dist,
     apply_gradients_fn=apply_gradients_fn,

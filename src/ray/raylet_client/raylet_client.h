@@ -26,10 +26,9 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using ray::ActorCheckpointID;
 using ray::ActorID;
-using ray::ClientID;
 using ray::JobID;
+using ray::NodeID;
 using ray::ObjectID;
 using ray::TaskID;
 using ray::WorkerID;
@@ -60,10 +59,12 @@ class WorkerLeaseInterface {
  public:
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param backlog_size The queue length for the given shape on the CoreWorker.
   /// \return ray::Status
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) = 0;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size = -1) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -115,6 +116,10 @@ class ResourceReserveInterface {
   virtual void CancelResourceReserve(
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
+
+  virtual void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
 
   virtual ~ResourceReserveInterface(){};
 };
@@ -178,10 +183,11 @@ class RayletClient : public PinObjectsInterface,
   /// \param worker_id A unique ID to represent the worker.
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
-  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \param job_id The job ID of the driver or worker.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
-  /// \param raylet_id This will be populated with the local raylet's ClientID.
+  /// \param status This will be populated with the result of connection attempt.
+  /// \param raylet_id This will be populated with the local raylet's NodeID.
   /// \param system_config This will be populated with internal config parameters
   /// provided by the raylet.
   /// \param port The port that the worker should listen on for gRPC requests. If
@@ -190,8 +196,8 @@ class RayletClient : public PinObjectsInterface,
                std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-               const std::string &ip_address, ClientID *raylet_id, int *port,
-               std::unordered_map<std::string, std::string> *system_config,
+               const std::string &ip_address, Status *status, NodeID *raylet_id,
+               int *port, std::unordered_map<std::string, std::string> *system_config,
                const std::string &job_config);
 
   /// Connect to the raylet via grpc only.
@@ -308,29 +314,13 @@ class RayletClient : public PinObjectsInterface,
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
                           bool deleteCreatingTasks);
 
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return ray::Status.
-  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return ray::Status.
-  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id);
-
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id ClientID where the resource is to be set
+  /// \param node_id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::ClientID &client_Id);
+                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
@@ -340,16 +330,11 @@ class RayletClient : public PinObjectsInterface,
       const ObjectID &object_id,
       const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback);
 
-  /// Restore spilled objects from external storage.
-  /// \param object_ids The IDs of objects to be restored.
-  /// \return ray::Status
-  ray::Status ForceRestoreSpilledObjects(const std::vector<ObjectID> &object_ids);
-
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
-      override;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
+      const int64_t backlog_size) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -382,6 +367,11 @@ class RayletClient : public PinObjectsInterface,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
 
+  /// Implements ReleaseUnusedBundlesInterface.
+  void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
+
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
       const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override;
@@ -389,7 +379,7 @@ class RayletClient : public PinObjectsInterface,
   void GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callback);
 
   // Subscribe to receive notification on plasma object
-  ray::Status SubscribeToPlasma(const ObjectID &object_id);
+  void SubscribeToPlasma(const ObjectID &object_id, const rpc::Address &owner_address);
 
   WorkerID GetWorkerID() const { return worker_id_; }
 

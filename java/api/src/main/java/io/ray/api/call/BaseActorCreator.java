@@ -89,7 +89,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    * Set the max number of concurrent calls to allow for this actor.
    * <p>
    * The max concurrency defaults to 1 for threaded execution.
-   * Note that the execution order is not guaranteed when max_concurrency > 1.
+   * Note that the execution order is not guaranteed when {@code max_concurrency > 1}.
    *
    * @param maxConcurrency The max number of concurrent calls to allow for this actor.
    * @return self

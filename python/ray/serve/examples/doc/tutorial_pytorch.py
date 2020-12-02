@@ -1,4 +1,5 @@
 # yapf: disable
+import ray
 # __doc_import_begin__
 from ray import serve
 
@@ -45,10 +46,11 @@ class ImageModel:
 
 # __doc_define_servable_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
-serve.init()
-serve.create_backend("resnet18:v0", ImageModel)
-serve.create_endpoint(
+client = serve.start()
+client.create_backend("resnet18:v0", ImageModel)
+client.create_endpoint(
     "predictor",
     backend="resnet18:v0",
     route="/image_predict",

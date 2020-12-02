@@ -29,7 +29,9 @@ enum Language {
 enum WorkerType {
   WORKER = 0;
   DRIVER = 1;
-  IO_WORKER = 2;
+  // IO worker types.
+  SPILL_WORKER = 2;
+  RESTORE_WORKER = 3;
 }
 
 // Type of a task.
@@ -188,6 +190,16 @@ message TaskSpec {
   int32 max_retries = 17;
   // Placement group that is associated with this task.
   bytes placement_group_id = 18;
+  // Placement group bundle that is associated with this task.
+  int64 placement_group_bundle_index = 19;
+  // Whether or not this task should capture parent's placement group automatically.
+  bool placement_group_capture_child_tasks = 20;
+  // Environment variables to override for this task
+  map<string, string> override_environment_variables = 21;
+  // Whether or not to skip the execution of this task. When it's true,
+  // the receiver will not execute the task. This field is used by async actors
+  // to guarantee task submission order after restart.
+  bool skip_execution = 22;
 }
 
 message Bundle {
@@ -210,6 +222,14 @@ message PlacementGroupSpec {
   repeated Bundle bundles = 3;
   // The schedule strategy of this Placement Group.
   PlacementStrategy strategy = 4;
+  // The job id that created this placement group.
+  bytes creator_job_id = 5;
+  // The actor id that created this placement group.
+  bytes creator_actor_id = 6;
+  // Whether or not if the creator job is dead.
+  bool creator_job_dead = 7;
+  // Whether or not if the creator actor is dead.
+  bool creator_actor_dead = 8;
 }
 
 message ObjectReference {
@@ -390,6 +410,14 @@ message CoreWorkerStats {
   repeated ObjectRefInfo object_refs = 18;
   // Job ID.
   bytes job_id = 19;
+  // Worker id of core worker.
+  bytes worker_id = 20;
+  // Language
+  Language language = 21;
+  // PID of the worker process.
+  uint32 pid = 22;
+  // The worker type.
+  WorkerType worker_type = 23;
 }
 
 message MetricPoint {

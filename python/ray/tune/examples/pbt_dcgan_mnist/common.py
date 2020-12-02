@@ -185,7 +185,8 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration, device,
         netD.zero_grad()
         real_cpu = data[0].to(device)
         b_size = real_cpu.size(0)
-        label = torch.full((b_size, ), real_label, device=device)
+        label = torch.full(
+            (b_size, ), real_label, dtype=torch.float, device=device)
         output = netD(real_cpu).view(-1)
         errD_real = criterion(output, label)
         errD_real.backward()

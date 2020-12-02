@@ -62,16 +62,21 @@ void DataWriter::Run() {
 uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
                                               uint32_t data_size,
                                               StreamingMessageType message_type) {
-  STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
-                       << " data_size: " << data_size
-                       << ", message_type=" << static_cast<uint32_t>(message_type)
-                       << ", data=" << Util::Byte2hex(data, data_size);
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   // Write message id stands for current lastest message id and differs from
   // channel.current_message_id if it's barrier message.
   uint64_t &write_message_id = channel_info.current_message_id;
-  write_message_id++;
+  if (message_type == StreamingMessageType::Message) {
+    write_message_id++;
+  }
+
+  STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
+                       << " data_size: " << data_size
+                       << ", message_type=" << static_cast<uint32_t>(message_type)
+                       << ", data=" << Util::Byte2hex(data, data_size)
+                       << ", current_message_id=" << write_message_id;
+
   auto &ring_buffer_ptr = channel_info.writer_ring_buffer;
   while (ring_buffer_ptr->IsFull() &&
          runtime_context_->GetRuntimeStatus() == RuntimeStatus::Running) {
@@ -91,7 +96,7 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
       STREAMING_LOG(DEBUG) << "user_event had been in event_queue";
     } else if (!channel_info.flow_control) {
       channel_info.in_event_queue = true;
-      Event event{&channel_info, EventType::UserEvent, false};
+      Event event(&channel_info, EventType::UserEvent, false);
       event_service_->Push(event);
       ++channel_info.user_event_cnt;
     }
@@ -191,8 +196,7 @@ void DataWriter::BroadcastBarrier(uint64_t barrier_id, const uint8_t *data,
                            << Util::join(barrier_id_vec.begin(), barrier_id_vec.end(),
                                          "|");
   }
-  StreamingBarrierHeader barrier_header = {
-      .barrier_type = StreamingBarrierType::GlobalBarrier, .barrier_id = barrier_id};
+  StreamingBarrierHeader barrier_header(StreamingBarrierType::GlobalBarrier, barrier_id);
 
   auto barrier_payload =
       StreamingMessage::MakeBarrierPayload(barrier_header, data, data_size);
@@ -346,8 +350,6 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
                            << static_cast<uint32_t>(message_ptr->GetMessageType());
       break;
     }
-    // ClassBytesSize = DataSize + MetaDataSize
-    // bundle_buffer_size += message_ptr->GetDataSize();
     bundle_buffer_size += message_total_size;
     message_list.push_back(message_ptr);
     buffer_ptr->Pop();
@@ -464,7 +466,7 @@ void DataWriter::EmptyMessageTimerCallback() {
       }
       if (current_ts - channel_info.message_pass_by_ts >=
           runtime_context_->GetConfig().GetEmptyMessageTimeInterval()) {
-        Event event{&channel_info, EventType::EmptyEvent, true};
+        Event event(&channel_info, EventType::EmptyEvent, true);
         event_service_->Push(event);
         ++channel_info.sent_empty_cnt;
         ++count;

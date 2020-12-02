@@ -1,0 +1,37 @@
+2020-10-07 09:20:47,110 INFO worker.py:634 -- Connecting to existing Ray cluster at address: 172.31.146.145:6379
+{'max_batch_size': 1, 'max_concurrent_queries': 1, 'num_replicas': 1}, intermediate_handles=False:
+        single client small data 94.94 +- 0.41 requests/s
+        8 clients small data 480.75 +- 28.58 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 10000, 'num_replicas': 1}, intermediate_handles=False:
+        single client small data 94.14 +- 1.89 requests/s
+        8 clients small data 457.8 +- 8.53 requests/s
+{'max_batch_size': 10000, 'max_concurrent_queries': 10000, 'num_replicas': 1}, intermediate_handles=False:
+        single client small data 95.34 +- 0.81 requests/s
+        8 clients small data 455.35 +- 2.0 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 1, 'num_replicas': 8}, intermediate_handles=False:
+        single client small data 77.61 +- 1.22 requests/s
+        8 clients small data 623.41 +- 5.7 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 10000, 'num_replicas': 8}, intermediate_handles=False:
+        single client small data 77.38 +- 0.73 requests/s
+        8 clients small data 642.45 +- 9.81 requests/s
+{'max_batch_size': 10000, 'max_concurrent_queries': 10000, 'num_replicas': 8}, intermediate_handles=False:
+        single client small data 77.99 +- 2.44 requests/s
+        8 clients small data 636.86 +- 10.21 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 1, 'num_replicas': 1}, intermediate_handles=True:
+        single client small data 52.91 +- 0.18 requests/s
+        8 clients small data 311.4 +- 1.87 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 10000, 'num_replicas': 1}, intermediate_handles=True:
+        single client small data 52.68 +- 0.45 requests/s
+        8 clients small data 311.67 +- 2.45 requests/s
+{'max_batch_size': 10000, 'max_concurrent_queries': 10000, 'num_replicas': 1}, intermediate_handles=True:
+        single client small data 52.79 +- 0.5 requests/s
+        8 clients small data 309.75 +- 3.03 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 1, 'num_replicas': 8}, intermediate_handles=True:
+        single client small data 49.92 +- 0.52 requests/s
+        8 clients small data 295.44 +- 2.01 requests/s
+{'max_batch_size': 1, 'max_concurrent_queries': 10000, 'num_replicas': 8}, intermediate_handles=True:
+        single client small data 49.74 +- 0.74 requests/s
+        8 clients small data 296.69 +- 1.84 requests/s
+{'max_batch_size': 10000, 'max_concurrent_queries': 10000, 'num_replicas': 8}, intermediate_handles=True:
+        single client small data 49.57 +- 0.36 requests/s
+        8 clients small data 293.47 +- 1.88 requests/s

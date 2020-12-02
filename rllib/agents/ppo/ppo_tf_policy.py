@@ -47,7 +47,12 @@ def ppo_surrogate_loss(
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"])
+        # Derive max_seq_len from the data itself, not from the seq_lens
+        # tensor. This is in case e.g. seq_lens=[2, 3], but the data is still
+        # 0-padded up to T=5 (as it's the case for attention nets).
+        B = tf.shape(train_batch["seq_lens"])[0]
+        max_seq_len = tf.shape(logits)[0] // B
+
         mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
 
@@ -251,7 +256,10 @@ class KLCoeffMixin:
         self.kl_coeff_val = config["kl_coeff"]
         # The current KL value (as tf Variable for in-graph operations).
         self.kl_coeff = get_variable(
-            float(self.kl_coeff_val), tf_name="kl_coeff", trainable=False)
+            float(self.kl_coeff_val),
+            tf_name="kl_coeff",
+            trainable=False,
+            framework=config["framework"])
         # Constant target value.
         self.kl_target = config["kl_target"]
 
@@ -326,7 +334,7 @@ def setup_config(policy: Policy, obs_space: gym.spaces.Space,
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
                  config: TrainerConfigDict) -> None:
-    """Call all mixin classes' constructors before PPOPolicy initialization.
+    """Call mixin classes' constructors before Policy's loss initialization.
 
     Args:
         policy (Policy): The Policy object.

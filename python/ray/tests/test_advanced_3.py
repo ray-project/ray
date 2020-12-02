@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import socket
+import tempfile
 import time
 
 import numpy as np
@@ -12,13 +13,16 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
+import ray.util.accelerators
 import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
+import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +94,7 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="flakes more often")
 def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
@@ -151,7 +156,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()  # noqa: F841
+    _ = Actor.options(name="test_actor").remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -160,6 +165,7 @@ def test_global_state_api(shutdown_only):
 
     actor_info, = actor_table.values()
     assert actor_info["JobID"] == job_id.hex()
+    assert actor_info["Name"] == "test_actor"
     assert "IPAddress" in actor_info["Address"]
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
@@ -255,9 +261,6 @@ def test_not_logging_to_driver(shutdown_only):
     assert len(err_lines) == 0
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
 def test_workers(shutdown_only):
     num_workers = 3
     ray.init(num_cpus=num_workers)
@@ -473,16 +476,6 @@ def test_decorated_function(ray_start_regular):
     assert ray.get(result_id) == (3, 2, 1, 5)
 
 
-def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_refs, values):
-        return [value for value in values if value > 0]
-
-    ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
-
-    assert ray.get(
-        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
-
-
 def test_export_after_shutdown(ray_start_regular):
     # This test checks that we can use actor and remote function definitions
     # across multiple Ray sessions.
@@ -523,6 +516,12 @@ def test_export_after_shutdown(ray_start_regular):
     ray.get(export_definitions_from_worker.remote(f, Actor))
 
 
+def test_ray_start_and_stop():
+    for i in range(10):
+        subprocess.check_call(["ray", "start", "--head"])
+        subprocess.check_call(["ray", "stop"])
+
+
 def test_invalid_unicode_in_worker_log(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -546,7 +545,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
     time.sleep(1.0)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 @pytest.mark.skip(reason="This test is too expensive to run.")
@@ -581,7 +580,7 @@ def test_move_log_files_to_old(shutdown_only):
             break
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 def test_lease_request_leak(shutdown_only):
@@ -685,6 +684,231 @@ Blacklisted:     No
     assert constraints_dict == expected_dict
 
     assert resource_spec._constraints_from_gpu_info(None) == {}
+
+
+def test_accelerator_type_api(shutdown_only):
+    v100 = ray.util.accelerators.NVIDIA_TESLA_V100
+    resource_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{v100}"
+    ray.init(num_cpus=4, resources={resource_name: 1})
+
+    quantity = 1
+
+    @ray.remote(accelerator_type=v100)
+    def decorated_func(quantity):
+        wait_for_condition(
+            lambda: ray.available_resources()[resource_name] < quantity)
+        return True
+
+    assert ray.get(decorated_func.remote(quantity))
+
+    def via_options_func(quantity):
+        wait_for_condition(
+            lambda: ray.available_resources()[resource_name] < quantity)
+        return True
+
+    assert ray.get(
+        ray.remote(via_options_func).options(
+            accelerator_type=v100).remote(quantity))
+
+    @ray.remote(accelerator_type=v100)
+    class DecoratedActor:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    class ActorWithOptions:
+        def __init__(self):
+            pass
+
+        def initialized(self):
+            pass
+
+    decorated_actor = DecoratedActor.remote()
+    # Avoid a race condition where the actor hasn't been initialized and
+    # claimed the resources yet.
+    ray.get(decorated_actor.initialized.remote())
+    wait_for_condition(
+        lambda: ray.available_resources()[resource_name] < quantity)
+
+    quantity = ray.available_resources()[resource_name]
+    with_options = ray.remote(ActorWithOptions).options(
+        accelerator_type=v100).remote()
+    ray.get(with_options.initialized.remote())
+    wait_for_condition(
+        lambda: ray.available_resources()[resource_name] < quantity)
+
+
+def test_detect_docker_cpus():
+    # No limits set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 64
+
+    # No cpuset used
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("-1")
+        period_file.write("100000")
+        cpuset_file.write("0-10,20,50-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 26
+
+    # Quota set
+    with tempfile.NamedTemporaryFile(
+            "w") as quota_file, tempfile.NamedTemporaryFile(
+                "w") as period_file, tempfile.NamedTemporaryFile(
+                    "w") as cpuset_file:
+        quota_file.write("42")
+        period_file.write("100")
+        cpuset_file.write("0-63")
+        quota_file.flush()
+        period_file.flush()
+        cpuset_file.flush()
+        assert ray.utils._get_docker_cpus(
+            cpu_quota_file_name=quota_file.name,
+            cpu_share_file_name=period_file.name,
+            cpuset_file_name=cpuset_file.name) == 0.42
+
+
+def test_override_environment_variables_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_actor(ray_start_regular):
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d"
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get.remote("c")) == "d")
+
+
+def test_override_environment_variables_nested_task(ray_start_regular):
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    def get_env_wrapper(key):
+        return ray.get(get_env.remote(key))
+
+    assert (ray.get(
+        get_env_wrapper.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+
+def test_override_environment_variables_multitenancy(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "foo1": "bar1",
+            "foo2": "bar2"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    assert ray.get(get_env.remote("foo1")) == "bar1"
+    assert ray.get(get_env.remote("foo2")) == "bar2"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo1")) == "baz1"
+    assert ray.get(
+        get_env.options(override_environment_variables={
+            "foo1": "baz1"
+        }).remote("foo2")) == "bar2"
+
+
+def test_override_environment_variables_complex(shutdown_only):
+    ray.init(
+        job_config=ray.job_config.JobConfig(worker_env={
+            "a": "job_a",
+            "b": "job_b",
+            "z": "job_z"
+        }))
+
+    @ray.remote
+    def get_env(key):
+        return os.environ.get(key)
+
+    @ray.remote
+    class NestedEnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+    @ray.remote
+    class EnvGetter:
+        def get(self, key):
+            return os.environ.get(key)
+
+        def get_task(self, key):
+            return ray.get(get_env.remote(key))
+
+        def nested_get(self, key):
+            aa = NestedEnvGetter.options(override_environment_variables={
+                "c": "e",
+                "d": "dd"
+            }).remote()
+            return ray.get(aa.get.remote(key))
+
+    a = EnvGetter.options(override_environment_variables={
+        "a": "b",
+        "c": "d"
+    }).remote()
+    assert (ray.get(a.get.remote("a")) == "b")
+    assert (ray.get(a.get_task.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("a")) == "b")
+    assert (ray.get(a.nested_get.remote("c")) == "e")
+    assert (ray.get(a.nested_get.remote("d")) == "dd")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("a")) == "b")
+
+    assert (ray.get(a.get.remote("z")) == "job_z")
+    assert (ray.get(a.get_task.remote("z")) == "job_z")
+    assert (ray.get(a.nested_get.remote("z")) == "job_z")
+    assert (ray.get(
+        get_env.options(override_environment_variables={
+            "a": "b"
+        }).remote("z")) == "job_z")
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ def stats(policy, train_batch):
 def setup_mixins(policy, obs_space, action_space, config):
     # Create a var.
     policy.ma_adv_norm = torch.tensor(
-        [100.0], dtype=torch.float32, requires_grad=False)
+        [100.0], dtype=torch.float32, requires_grad=False).to(policy.device)
     # Setup Value branch of our NN.
     ValueNetworkMixin.__init__(policy)
 
@@ -81,5 +81,5 @@ MARWILTorchPolicy = build_torch_policy(
     get_default_config=lambda: ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG,
     stats_fn=stats,
     postprocess_fn=postprocess_advantages,
-    after_init=setup_mixins,
+    before_loss_init=setup_mixins,
     mixins=[ValueNetworkMixin])

@@ -21,7 +21,7 @@ class ClusterStarter {
   private static final String RAYLET_SOCKET_NAME = "/tmp/ray/raylet_socket";
 
   static synchronized void startCluster(boolean isCrossLanguage, boolean isLocal) {
-    Preconditions.checkArgument(Ray.internal() == null);
+    Preconditions.checkArgument(!Ray.isInitialized());
     RayConfig.reset();
     if (!isLocal) {
       System.setProperty("ray.job.num-java-workers-per-process", "1");
@@ -59,12 +59,11 @@ class ClusterStarter {
         "ray",
         "start",
         "--head",
-        "--redis-port=6379",
+        "--port=6379",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--include-java",
         "--java-worker-options=" + workerOptions
     );
     if (!executeCommand(startCommand, 10)) {
@@ -72,7 +71,7 @@ class ClusterStarter {
     }
 
     // Connect to the cluster.
-    System.setProperty("ray.redis.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
     System.setProperty("ray.raylet.node-manager-port", nodeManagerPort);
@@ -82,7 +81,7 @@ class ClusterStarter {
   public static synchronized void stopCluster(boolean isCrossLanguage) {
     // Disconnect to the cluster.
     Ray.shutdown();
-    System.clearProperty("ray.redis.address");
+    System.clearProperty("ray.address");
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
     System.clearProperty("ray.raylet.node-manager-port");

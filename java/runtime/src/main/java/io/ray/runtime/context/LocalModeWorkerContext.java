@@ -5,6 +5,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
+import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.task.LocalModeTaskSubmitter;
@@ -66,6 +67,11 @@ public class LocalModeWorkerContext implements WorkerContext {
     TaskSpec taskSpec = currentTask.get();
     Preconditions.checkState(taskSpec != null);
     return TaskId.fromBytes(taskSpec.getTaskId().toByteArray());
+  }
+
+  @Override
+  public Address getRpcAddress() {
+    return Address.getDefaultInstance();
   }
 
   public void setCurrentTask(TaskSpec taskSpec) {
