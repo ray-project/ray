@@ -1,26 +1,26 @@
 from __future__ import print_function
 
+from typing import Dict, List, Optional, Union
+
 import collections
 import os
 import sys
-from typing import Dict, List, Optional
-
 import numpy as np
 import time
 
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
-from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
-                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
-                             AUTO_RESULT_KEYS)
-from ray.tune.trial import Trial
+from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
+                             MEAN_ACCURACY, MEAN_LOSS, TRAINING_ITERATION,
+                             TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
 
 try:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, MutableMapping
 except ImportError:
-    from collections import Mapping
+    from collections import Mapping, MutableMapping
 
 try:
     from tabulate import tabulate
@@ -38,7 +38,7 @@ class ProgressReporter:
     receiving training results, and so on.
     """
 
-    def should_report(self, trials, done=False):
+    def should_report(self, trials: List[Trial], done: bool = False):
         """Returns whether or not progress should be reported.
 
         Args:
@@ -47,7 +47,7 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
-    def report(self, trials, done, *sys_info):
+    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         """Reports progress across trials.
 
         Args:
@@ -104,16 +104,17 @@ class TuneReporterBase(ProgressReporter):
         type(None)
     }
 
-    def __init__(self,
-                 metric_columns=None,
-                 parameter_columns=None,
-                 total_samples=None,
-                 max_progress_rows=20,
-                 max_error_rows=20,
-                 max_report_frequency=5,
-                 infer_limit=3,
-                 metric=None,
-                 mode=None):
+    def __init__(
+            self,
+            metric_columns: Union[None, List[str], Dict[str, str]] = None,
+            parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+            total_samples: Optional[int] = None,
+            max_progress_rows: int = 20,
+            max_error_rows: int = 20,
+            max_report_frequency: int = 5,
+            infer_limit: int = 3,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None):
         self._total_samples = total_samples
         self._metrics_override = metric_columns is not None
         self._inferred_metrics = {}
@@ -129,7 +130,8 @@ class TuneReporterBase(ProgressReporter):
         self._metric = metric
         self._mode = mode
 
-    def set_search_properties(self, metric, mode):
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]):
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -146,16 +148,18 @@ class TuneReporterBase(ProgressReporter):
 
         return True
 
-    def set_total_samples(self, total_samples):
+    def set_total_samples(self, total_samples: int):
         self._total_samples = total_samples
 
-    def should_report(self, trials, done=False):
+    def should_report(self, trials: List[Trial], done: bool = False):
         if time.time() - self._last_report_time > self._max_report_freqency:
             self._last_report_time = time.time()
             return True
         return done
 
-    def add_metric_column(self, metric, representation=None):
+    def add_metric_column(self,
+                          metric: str,
+                          representation: Optional[str] = None):
         """Adds a metric to the existing columns.
 
         Args:
@@ -168,7 +172,7 @@ class TuneReporterBase(ProgressReporter):
         if metric in self._metric_columns:
             raise ValueError("Column {} already exists.".format(metric))
 
-        if isinstance(self._metric_columns, Mapping):
+        if isinstance(self._metric_columns, MutableMapping):
             representation = representation or metric
             self._metric_columns[metric] = representation
         else:
@@ -179,7 +183,9 @@ class TuneReporterBase(ProgressReporter):
                     "of metric columns.")
             self._metric_columns.append(metric)
 
-    def add_parameter_column(self, parameter, representation=None):
+    def add_parameter_column(self,
+                             parameter: str,
+                             representation: Optional[str] = None):
         """Adds a parameter to the existing columns.
 
         Args:
@@ -191,7 +197,7 @@ class TuneReporterBase(ProgressReporter):
         if parameter in self._parameter_columns:
             raise ValueError("Column {} already exists.".format(parameter))
 
-        if isinstance(self._parameter_columns, Mapping):
+        if isinstance(self._parameter_columns, MutableMapping):
             representation = representation or parameter
             self._parameter_columns[parameter] = representation
         else:
@@ -202,7 +208,12 @@ class TuneReporterBase(ProgressReporter):
                     "of metric columns.")
             self._parameter_columns.append(parameter)
 
-    def _progress_str(self, trials, done, *sys_info, fmt="psql", delim="\n"):
+    def _progress_str(self,
+                      trials: List[Trial],
+                      done: bool,
+                      *sys_info: Dict,
+                      fmt: str = "psql",
+                      delim: str = "\n"):
         """Returns full progress string.
 
         This string contains a progress table and error table. The progress
@@ -249,7 +260,7 @@ class TuneReporterBase(ProgressReporter):
 
         return delim.join(messages) + delim
 
-    def _infer_user_metrics(self, trials, limit=4):
+    def _infer_user_metrics(self, trials: List[Trial], limit: int = 4):
         """Try to infer the metrics to print out."""
         if len(self._inferred_metrics) >= limit:
             return self._inferred_metrics
@@ -267,7 +278,7 @@ class TuneReporterBase(ProgressReporter):
                     return self._inferred_metrics
         return self._inferred_metrics
 
-    def _current_best_trial(self, trials):
+    def _current_best_trial(self, trials: List[Trial]):
         if not trials:
             return None, None
 
@@ -320,24 +331,25 @@ class JupyterNotebookReporter(TuneReporterBase):
             Defaults to 5s.
     """
 
-    def __init__(self,
-                 overwrite,
-                 metric_columns=None,
-                 parameter_columns=None,
-                 total_samples=None,
-                 max_progress_rows=20,
-                 max_error_rows=20,
-                 max_report_frequency=5,
-                 infer_limit=3,
-                 metric=None,
-                 mode=None):
+    def __init__(
+            self,
+            overwrite: bool,
+            metric_columns: Union[None, List[str], Dict[str, str]] = None,
+            parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+            total_samples: Optional[int] = None,
+            max_progress_rows: int = 20,
+            max_error_rows: int = 20,
+            max_report_frequency: int = 5,
+            infer_limit: int = 3,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None):
         super(JupyterNotebookReporter,
               self).__init__(metric_columns, parameter_columns, total_samples,
                              max_progress_rows, max_error_rows,
                              max_report_frequency, infer_limit, metric, mode)
         self._overwrite = overwrite
 
-    def report(self, trials, done, *sys_info):
+    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
         if self._overwrite:
@@ -370,23 +382,24 @@ class CLIReporter(TuneReporterBase):
             Defaults to 5s.
     """
 
-    def __init__(self,
-                 metric_columns=None,
-                 parameter_columns=None,
-                 total_samples=None,
-                 max_progress_rows=20,
-                 max_error_rows=20,
-                 max_report_frequency=5,
-                 infer_limit=3,
-                 metric=None,
-                 mode=None):
+    def __init__(
+            self,
+            metric_columns: Union[None, List[str], Dict[str, str]] = None,
+            parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+            total_samples: Optional[int] = None,
+            max_progress_rows: int = 20,
+            max_error_rows: int = 20,
+            max_report_frequency: int = 5,
+            infer_limit: int = 3,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None):
 
         super(CLIReporter,
               self).__init__(metric_columns, parameter_columns, total_samples,
                              max_progress_rows, max_error_rows,
                              max_report_frequency, infer_limit, metric, mode)
 
-    def report(self, trials, done, *sys_info):
+    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         print(self._progress_str(trials, done, *sys_info))
 
 
@@ -412,20 +425,21 @@ def memory_debug_str():
                 "(or ray[debug]) to resolve)")
 
 
-def _get_trials_by_state(trials):
+def _get_trials_by_state(trials: List[Trial]):
     trials_by_state = collections.defaultdict(list)
     for t in trials:
         trials_by_state[t.status].append(t)
     return trials_by_state
 
 
-def trial_progress_str(trials,
-                       metric_columns,
-                       parameter_columns=None,
-                       total_samples=0,
-                       fmt="psql",
-                       max_rows=None,
-                       done=False):
+def trial_progress_str(
+        trials: List[Trial],
+        metric_columns: Union[List[str], Dict[str, str]],
+        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        total_samples: int = 0,
+        fmt: str = "psql",
+        max_rows: Optional[int] = None,
+        done: bool = False):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -446,6 +460,7 @@ def trial_progress_str(trials,
         fmt (str): Output format (see tablefmt in tabulate API).
         max_rows (int): Maximum number of rows in the trial table. Defaults to
             unlimited.
+        done (bool): True indicates that this trial finished.
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
@@ -478,11 +493,12 @@ def trial_progress_str(trials,
     return delim.join(messages)
 
 
-def trial_progress_table(trials,
-                         metric_columns,
-                         parameter_columns=None,
-                         fmt="psql",
-                         max_rows=None):
+def trial_progress_table(
+        trials: List[Trial],
+        metric_columns: Union[List[str], Dict[str, str]],
+        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        fmt: str = "psql",
+        max_rows: Optional[int] = None):
     messages = []
     num_trials = len(trials)
     trials_by_state = _get_trials_by_state(trials)
@@ -511,6 +527,7 @@ def trial_progress_table(trials,
         overflow_str = ", ".join(overflow_strs)
     else:
         overflow = False
+        overflow_str = ""
         trials = []
         for state in state_tbl_order:
             if state not in trials_by_state:
@@ -561,7 +578,9 @@ def trial_progress_table(trials,
     return messages
 
 
-def trial_errors_str(trials, fmt="psql", max_rows=None):
+def trial_errors_str(trials: List[Trial],
+                     fmt: str = "psql",
+                     max_rows: Optional[int] = None):
     """Returns a readable message regarding trial errors.
 
     Args:
@@ -590,7 +609,10 @@ def trial_errors_str(trials, fmt="psql", max_rows=None):
     return delim.join(messages)
 
 
-def best_trial_str(trial, metric, parameter_columns=None):
+def best_trial_str(
+        trial: Trial,
+        metric: str,
+        parameter_columns: Union[None, List[str], Dict[str, str]] = None):
     """Returns a readable message stating the current best trial."""
     val = trial.last_result[metric]
     config = trial.last_result.get("config", {})
@@ -602,7 +624,8 @@ def best_trial_str(trial, metric, parameter_columns=None):
            f"parameters={params}"
 
 
-def _fair_filter_trials(trials_by_state, max_trials):
+def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
+                        max_trials: int):
     """Filters trials such that each state is represented fairly.
 
     The oldest trials are truncated if necessary.
@@ -637,7 +660,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
     return filtered_trials
 
 
-def _get_trial_info(trial, parameters, metrics):
+def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     """Returns the following information about a trial:
 
     name | status | loc | params... | metrics...
