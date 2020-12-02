@@ -98,9 +98,34 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
+bool ClusterResourceScheduler::IsFeasible(const TaskRequest &task_req,
+                                          const NodeResources &resources) const {
+  // First, check predefined resources.
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    if (task_req.predefined_resources[i].demand >
+        resources.predefined_resources[i].total) {
+      return false;
+    }
+  }
+
+  // Now check custom resources.
+  for (const auto &task_req_custom_resource : task_req.custom_resources) {
+    auto it = resources.custom_resources.find(task_req_custom_resource.id);
+
+    if (it == resources.custom_resources.end()) {
+      return false;
+    }
+    if (task_req_custom_resource.demand > it->second.total) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
                                                 int64_t node_id,
-                                                const NodeResources &resources) {
+                                                const NodeResources &resources) const {
   int violations = 0;
 
   // First, check predefined resources.
@@ -189,9 +214,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
-  auto it = nodes_.find(local_node_id_);
-  if (it != nodes_.end()) {
-    if (IsSchedulable(task_req, it->first, it->second) == 0) {
+  const auto local_node_it = nodes_.find(local_node_id_);
+  if (local_node_it != nodes_.end()) {
+    if (IsSchedulable(task_req, local_node_it->first, local_node_it->second) == 0) {
       return local_node_id_;
     }
   }
@@ -207,12 +232,30 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     }
   }
 
+  bool local_node_feasible = IsFeasible(task_req, local_node_it->second);
+
   for (const auto &node : nodes_) {
+    // Skip nodes that are not feasible.
+    if (!IsFeasible(task_req, node.second)) {
+      continue;
+    }
+
     // Return -1 if node not schedulable. otherwise return the number
     // of soft constraint violations.
     int64_t violations;
 
     if ((violations = IsSchedulable(task_req, node.first, node.second)) == -1) {
+      if (!local_node_feasible && best_node == -1) {
+        // If the local node is not feasible, and a better node has not yet
+        // been found, schedule to this node, which is feasible but that does
+        // not currently have the resources available.
+        // NOTE(swang): This is needed to make sure that tasks that are not
+        // feasible on this node are spilled back to a node that does have the
+        // appropriate total resources in a timely manner. If there are
+        // multiple feasible nodes, this algorithm can still introduce delays
+        // because of inefficient load-balancing.
+        best_node = node.first;
+      }
       continue;
     }
 

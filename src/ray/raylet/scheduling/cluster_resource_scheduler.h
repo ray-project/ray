@@ -113,6 +113,14 @@ class ClusterResourceScheduler {
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string);
 
+  /// Check whether a task request is feasible on a given node. A node is
+  /// feasible if it has the total resources needed to eventually execute the
+  /// task, even if those resources are currently allocated.
+  ///
+  /// \param task_req Task request to be scheduled.
+  /// \param resources Node's resources.
+  bool IsFeasible(const TaskRequest &task_req, const NodeResources &resources) const;
+
   /// Check whether a task request can be scheduled given a node.
   ///
   ///  \param task_req: Task request to be scheduled.
@@ -128,7 +136,7 @@ class ClusterResourceScheduler {
   ///           >= 0, the number soft constraint violations. If 0, no
   ///           constraint is violated.
   int64_t IsSchedulable(const TaskRequest &task_req, int64_t node_id,
-                        const NodeResources &resources);
+                        const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given task request.
   ///
