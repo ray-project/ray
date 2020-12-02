@@ -543,7 +543,7 @@ def test_reducer_override_no_reference_cycle(ray_start_shared_local_modes):
     assert new_obj() is None
 
 
-def test_buffer_alignment():
+def test_buffer_alignment(ray_start_shared_local_modes):
     # Deserialized large numpy arrays should be 64-byte aligned.
     x = np.random.normal(size=(10, 20, 30))
     y = ray.get(ray.put(x))
