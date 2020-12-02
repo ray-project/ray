@@ -223,7 +223,7 @@ public interface RayRuntime {
   void removePlacementGroup(PlacementGroupId id);
 
   /**
-   * Wait for placement group until ready.
+   * Wait for the placement group to be ready within the specified time.
    * @param id Id of placement group.
    * @param timeoutMs Timeout in milliseconds.
    * @return True if the placement group is created. False otherwise.

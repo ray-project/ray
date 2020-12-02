@@ -51,7 +51,7 @@ public class PlacementGroupImpl implements PlacementGroup {
   }
 
   /**
-   * Wait for placement group until ready.
+   * Wait for the placement group to be ready within the specified time.
    * @param timeoutMs Timeout in milliseconds.
    * @return True if the placement group is created. False otherwise.
    */
