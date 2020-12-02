@@ -124,6 +124,8 @@ Alternatively, you can also run one specific C++ test. You can use:
 Lint and Formatting
 ~~~~~~~~~~~~~~~~~~~
 
+.. note:: Python 3.7 is recommended. You would run into flake8 `issue <https://github.com/ray-project/ray/pull/11588>`_ with Python 3.8.
+
 We also have tests for code formatting and linting that need to pass before merge.
 Install ``yapf==0.23, flake8, flake8-quotes``.
 
