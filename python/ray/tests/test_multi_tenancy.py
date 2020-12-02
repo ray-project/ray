@@ -21,11 +21,13 @@ def get_workers():
                                     raylet["NodeManagerPort"])
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    return [
+    workers = [
         worker for worker in stub.GetNodeStats(
             node_manager_pb2.GetNodeStatsRequest()).core_workers_stats
         if worker.worker_type != common_pb2.DRIVER
     ]
+    print("Num workers", len(workers))
+    return workers
 
 
 # Test that when `redis_address` and `job_config` is not set in
