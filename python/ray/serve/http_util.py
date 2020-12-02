@@ -11,10 +11,10 @@ def build_flask_request(asgi_scope_dict, request_body):
     happen.
     """
     wsgi_environ = build_wsgi_environ(asgi_scope_dict, request_body)
-    # We set shallow=True to prevent self reference, which leads to tracked by
-    # python garbage collector. See
+    # We set populate_request=False to prevent self reference, which leads to
+    # tracked by python garbage collector. See
     # https://github.com/ray-project/ray/issues/12395.
-    return flask.Request(wsgi_environ, shallow=True)
+    return flask.Request(wsgi_environ, populate_request=False)
 
 
 def build_wsgi_environ(scope, body):
