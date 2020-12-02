@@ -64,6 +64,10 @@ class GcsActor {
     auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
     actor_table_data_.set_language(task_spec.language());
+    actor_table_data_.set_extension_data(
+        task_spec.actor_creation_task_spec().extension_data());
+    actor_table_data_.mutable_function_descriptor()->CopyFrom(
+        task_spec.function_descriptor());
     actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
