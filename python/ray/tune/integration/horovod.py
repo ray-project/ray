@@ -146,7 +146,8 @@ class _HorovodTrainable(tune.Trainable):
     def load_checkpoint(self, checkpoint_dir: str):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
         x_id = ray.put(checkpoint_obj)
-        return self.executor.execute(lambda w: w.restore_from_object(x_id))
+        return self.executor.execute(
+            lambda w: w.restore_from_object(ray.get(x_id)))
 
     def stop(self):
         self.executor.execute(lambda w: w.stop())

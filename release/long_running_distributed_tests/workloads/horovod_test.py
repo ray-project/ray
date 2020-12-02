@@ -10,6 +10,7 @@ import torchvision.transforms as transforms
 
 import ray
 from ray import tune
+from ray.tune.schedulers import create_scheduler
 from ray.tune.integration.horovod import (DistributedTrainableCreator,
                                           distributed_checkpoint_dir)
 from ray.util.sgd.torch.resnet import ResNet18
@@ -80,16 +81,15 @@ def train(config, checkpoint_dir=None):
             running_loss += loss.item()
             epoch_steps += 1
             tune.report(loss=running_loss / epoch_steps)
+            break
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1,
                                                 running_loss / epoch_steps))
 
-            if epoch % 3 == 0:
-                with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
-                    path = os.path.join(checkpoint_dir, "checkpoint")
-                    torch.save(
-                        (net.state_dict(), optimizer.state_dict(), epoch),
-                        path)
+        with distributed_checkpoint_dir(step=epoch) as checkpoint_dir:
+            print("this checkpoint dir: ", checkpoint_dir)
+            path = os.path.join(checkpoint_dir, "checkpoint")
+            torch.save((net.state_dict(), optimizer.state_dict(), epoch), path)
 
 
 if __name__ == "__main__":
@@ -118,18 +118,26 @@ if __name__ == "__main__":
         download=True,
         transform=transform_train)
 
+    # ensure that checkpointing works.
+    pbt = create_scheduler(
+        "pbt",
+        perturbation_interval=2,
+        hyperparam_mutations={
+            "lr": tune.uniform(0.001, 0.1),
+        })
+
     analysis = tune.run(
         horovod_trainable,
         metric="loss",
         mode="min",
+        keep_checkpoints_num=1,
+        scheduler=pbt,
         config={
             "lr": tune.grid_search([0.1 * i for i in range(1, 10)]),
             "batch_size": 64,
             "data": ray.put(dataset)
         },
         num_samples=1,
-        fail_fast=True
-        # max_retries=-1
-    )
+        fail_fast=True)
     # callbacks=[FailureInjectorCallback()])
     print("Best hyperparameters found were: ", analysis.best_config)
