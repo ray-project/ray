@@ -79,26 +79,25 @@ class GroupManager(object):
 
     def get_group_by_name(self, group_name):
         """Get the collective group handle by its name."""
-        if group_name not in self._name_group_map:
+        if not self.is_group_exist(group_name):
+            logger.warning("The group '{}' is not initialized.".format(group_name))
             return None
         return self._name_group_map[group_name]
 
     def destroy_collective_group(self, group_name):
         """Group destructor."""
-        if group_name not in self._name_group_map:
-            logger.warning('The group {} does not exist'.format(group_name))
+        if not self.is_group_exist(group_name):
+            logger.warning("The group '{}' does not exist.".format(group_name))
             return
 
         # release the collective group resource
         g = self._name_group_map[group_name]
-
         rank = g.rank
         backend = g.backend()
 
         # clean up the dicts
         del self._group_name_map[g]
         del self._name_group_map[group_name]
-
         if backend == types.Backend.NCCL:
             # release the named actor
             if rank == 0:
@@ -106,10 +105,18 @@ class GroupManager(object):
                 store = ray.get_actor(store_name)
                 ray.wait([store.__ray_terminate__.remote()])
                 ray.kill(store)
+        # Release the communicator resources
         g.destroy()
 
 
 _group_mgr = GroupManager()
+
+
+def is_group_initialized(group_name):
+    """Check if the group is initialized in this process by the group name."""
+    if not _group_mgr.is_group_exist(group_name):
+        return False
+    return True
 
 
 def init_collective_group(backend,
@@ -134,15 +141,58 @@ def init_collective_group(backend,
     global _group_mgr
     # TODO(Hao): implement a group auto-counter.
     if not group_name:
-        raise ValueError('group_name: {},  needs to be a string.'.format(group_name))
+        raise ValueError("group_name '{}' needs to be a string."
+                         .format(group_name))
 
     if _group_mgr.is_group_exist(group_name):
         raise RuntimeError('Trying to initialize a group twice.')
 
     assert(world_size > 0)
-    assert(rank >= 0 )
+    assert(rank >= 0)
     assert(rank < world_size)
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
+
+
+def destroy_collective_group(group_name='default'):
+    """Destroy a collective group given its group name."""
+    global _group_mgr
+    _group_mgr.destroy_collective_group(group_name)
+
+
+def get_rank(group_name='default') -> int:
+    """
+    Return the rank of this process in the given group.
+
+    Args:
+        group_name (str): the name of the group to query
+
+    Returns:
+        the rank of this process in the named group,
+        -1 if the group does not exist or the process does
+        not belong to the group.
+    """
+    if not is_group_initialized(group_name):
+        return -1
+    g = _group_mgr.get_group_by_name(group_name)
+    return g.rank
+
+
+def get_world_size(group_name='default') -> int:
+    """
+    Return the size of the collective gropu with the given name.
+
+    Args:
+        group_name: the name of the group to query
+
+    Returns:
+        The world size of the collective group，
+        -1 if the group does not exist or the process does
+        not belong to the group.
+    """
+    if not is_group_initialized(group_name):
+        return -1
+    g = _group_mgr.get_group_by_name(group_name)
+    return g.world_size
 
 
 def allreduce(tensor,
@@ -153,12 +203,13 @@ def allreduce(tensor,
 
     Args:
         tensor:
-        group_name (string):
+        group_name (str):
         op:
 
     Returns:
         None
     """
+    _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
@@ -181,10 +232,9 @@ def barrier(group_name):
 
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
-    global _group_mgr
-    if not _group_mgr.is_group_exist(group_name):
-        raise ValueError('The collective group {} is not initialized.'.format(group_name))
-    # TODO(Hao): check if this rank is in the group.
+    if not is_group_initialized(group_name):
+        raise RuntimeError("The collective group '{}' is not "
+                           "initialized in the process.".format(group_name))
     g = _group_mgr.get_group_by_name(group_name)
     return g
 
@@ -197,3 +247,18 @@ def _check_backend_availability(backend: types.Backend):
     elif backend == types.Backend.NCCL:
         if not nccl_available():
             raise RuntimeError('NCCL is not available.')
+
+
+def _check_single_tensor_input(tensor):
+    """Check if the tensor is with a supported type."""
+    if types.numpy_available():
+        if isinstance(tensor, types.np.ndarry):
+            return
+    if types.cupy_available():
+        if isinstance(tensor, types.cp.ndarray):
+            return
+    if types.torch_available():
+        if isinstance(tensor, types.th.Tensor):
+            return
+    raise RuntimeError("Unrecognized tensor type. Supported types are: "
+                       "np.ndarray, torch.Tensor, cupy.ndarray.")

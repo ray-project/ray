@@ -7,17 +7,17 @@ _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
 
 try:
-    import numpy
+    import numpy as np
 except ImportError:
     _NUMPY_AVAILABLE = False
 
 try:
-    import torch
+    import torch as th
 except ImportError:
     _TORCH_AVAILABLE = False
 
 try:
-    import cupy
+    import cupy as cp
 except ImportError:
     _CUPY_AVAILABLE = False
 
