@@ -1531,14 +1531,17 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
     py_future = <object>(future)
     loop = py_future._loop
 
-    # Object is retrieved from in memory store.
-    # Here we go through the code path used to deserialize objects.
-    objects_to_deserialize.push_back(obj)
-    data_metadata_pairs = RayObjectsToDataMetadataPairs(
-        objects_to_deserialize)
-    ids_to_deserialize = [ObjectRef(object_ref.Binary())]
-    result = ray.worker.global_worker.deserialize_objects(
-        data_metadata_pairs, ids_to_deserialize)[0]
+    if py_future._skip_deserialization:
+        result = b''
+    else:
+        # Object is retrieved from in memory store.
+        # Here we go through the code path used to deserialize objects.
+        objects_to_deserialize.push_back(obj)
+        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+            objects_to_deserialize)
+        ids_to_deserialize = [ObjectRef(object_ref.Binary())]
+        result = ray.worker.global_worker.deserialize_objects(
+            data_metadata_pairs, ids_to_deserialize)[0]
 
     def set_future():
         # Issue #11030, #8841

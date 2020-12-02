@@ -69,12 +69,21 @@ cdef class ObjectRef(BaseID):
     def __await__(self):
         return self.as_future().__await__()
 
-    def as_future(self):
+    def as_future(self, _skip_deserialization = False):
+        """Create a Python asyncio.Future
+
+        Args:
+            _skip_deserialization(bool): If true, the future result will be
+            None instead of the acutal object; useful when performing ray.wait
+            equivalent operations. Default to True.
+        """
         loop = asyncio.get_event_loop()
         core_worker = ray.worker.global_worker.core_worker
 
         future = loop.create_future()
-        core_worker.get_async(self, future)
         # A hack to keep a reference to the object ref for ref counting.
         future.object_ref = self
+        future._skip_deserialization = _skip_deserialization
+
+        core_worker.get_async(self, future)
         return future
