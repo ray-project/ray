@@ -53,7 +53,7 @@ public class PlacementGroupTest extends BaseTest {
         .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
         1.0, "second_placement_group");
     Assert.assertTrue(firstPlacementGroup.wait(10000));
-    Assert.assertTrue(secondPlacementGroup.wait( 10000));
+    Assert.assertTrue(secondPlacementGroup.wait(10000));
 
     PlacementGroupImpl firstPlacementGroupRes =
         (PlacementGroupImpl)Ray.getPlacementGroup((firstPlacementGroup).getId());
