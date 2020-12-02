@@ -364,7 +364,16 @@ def test_delete_backend(serve_instance):
     client.create_backend("delete:v1", function2)
     client.set_traffic("delete_backend", {"delete:v1": 1.0})
 
-    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
+    for _ in range(10):
+        try:
+            assert requests.get(
+                "http://127.0.0.1:8000/delete-backend").text == "olleh"
+            break
+        except AssertionError:
+            time.sleep(0.5)  # wait for the traffic policy to propogate
+    else:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-backend").text == "olleh"
 
 
 @pytest.mark.parametrize("route", [None, "/delete-endpoint"])
