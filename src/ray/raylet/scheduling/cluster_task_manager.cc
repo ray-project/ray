@@ -17,7 +17,9 @@ ClusterTaskManager::ClusterTaskManager(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
       is_owner_alive_(is_owner_alive),
-      get_node_info_(get_node_info) {}
+      get_node_info_(get_node_info),
+      max_resource_shapes_per_load_report_(RayConfig::instance().max_resource_shapes_per_load_report())
+{}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
@@ -279,8 +281,14 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
   auto resource_load_by_shape =
       data->mutable_resource_load_by_shape()->mutable_resource_demands();
 
+  int num_reported = 0;
+
   // TODO (Alex): Implement the 1-CPU task optimization.
   for (const auto &pair : tasks_to_schedule_) {
+    if (num_reported++ >= max_resource_shapes_per_load_report_) {
+      // TODO (Alex): It's possible that we skip a different scheduling key which contains the same resources.
+      break;
+    }
     const auto &scheduling_class = pair.first;
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
@@ -291,6 +299,10 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
     auto by_shape_entry = resource_load_by_shape->Add();
 
     for (const auto &resource : resources) {
+      if (num_reported++ >= max_resource_shapes_per_load_report_) {
+        // TODO (Alex): It's possible that we skip a different scheduling key which contains the same resources.
+        break;
+      }
       // Add to `resource_loads`.
       const auto &label = resource.first;
       const auto &quantity = resource.second;
@@ -298,13 +310,22 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
 
       // Add to `resource_load_by_shape`.
       (*by_shape_entry->mutable_shape())[label] = quantity;
+
+
+
       // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
       // that the entire cluster is utilized.
-      by_shape_entry->set_num_infeasible_requests_queued(count);
+      // by_shape_entry->set_num_infeasible_requests_queued(count);
+      int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
+      by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
     }
   }
 
   for (const auto &pair : tasks_to_dispatch_) {
+    if (num_reported++ >= max_resource_shapes_per_load_report_) {
+      // TODO (Alex): It's possible that we skip a different scheduling key which contains the same resources.
+      break;
+    }
     const auto &scheduling_class = pair.first;
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
@@ -322,9 +343,9 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
 
       // Add to `resource_load_by_shape`.
       (*by_shape_entry->mutable_shape())[label] = quantity;
-      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-      // that the entire cluster is utilized.
-      by_shape_entry->set_num_ready_requests_queued(count);
+
+      int num_ready = by_shape_entry->num_ready_requests_queued();
+      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
     }
   }
 }

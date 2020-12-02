@@ -144,7 +144,6 @@ def test_global_state_actor_entry(ray_start_regular):
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_load_report(shutdown_only, max_shapes):
     resource1 = "A"
     resource2 = "B"
@@ -194,6 +193,8 @@ def test_load_report(shutdown_only, max_shapes):
     # Check that we respect the max shapes limit.
     if max_shapes != -1:
         assert len(checker.report) <= max_shapes
+
+    print(checker.report)
 
     if max_shapes > 0:
         # Check that we always include the 1-CPU resource shape.
