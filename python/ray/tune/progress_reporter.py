@@ -113,6 +113,7 @@ class TuneReporterBase(ProgressReporter):
             max_error_rows: int = 20,
             max_report_frequency: int = 5,
             infer_limit: int = 3,
+            print_intermediate_tables: Optional[bool] = None,
             metric: Optional[str] = None,
             mode: Optional[str] = None):
         self._total_samples = total_samples
@@ -123,6 +124,12 @@ class TuneReporterBase(ProgressReporter):
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
         self._infer_limit = infer_limit
+
+        if print_intermediate_tables is None:
+            self._print_intermediate_tables = has_verbosity(
+                Verbosity.V3_TRIAL_DETAILS)
+        else:
+            self._print_intermediate_tables = print_intermediate_tables
 
         self._max_report_freqency = max_report_frequency
         self._last_report_time = 0
@@ -252,6 +259,7 @@ class TuneReporterBase(ProgressReporter):
                     metric_columns=self._metric_columns,
                     parameter_columns=self._parameter_columns,
                     total_samples=self._total_samples,
+                    force_table=self._print_intermediate_tables,
                     fmt=fmt,
                     max_rows=max_progress,
                     done=done))
@@ -341,12 +349,13 @@ class JupyterNotebookReporter(TuneReporterBase):
             max_error_rows: int = 20,
             max_report_frequency: int = 5,
             infer_limit: int = 3,
+            print_intermediate_tables: Optional[bool] = None,
             metric: Optional[str] = None,
             mode: Optional[str] = None):
-        super(JupyterNotebookReporter,
-              self).__init__(metric_columns, parameter_columns, total_samples,
-                             max_progress_rows, max_error_rows,
-                             max_report_frequency, infer_limit, metric, mode)
+        super(JupyterNotebookReporter, self).__init__(
+            metric_columns, parameter_columns, total_samples,
+            max_progress_rows, max_error_rows, max_report_frequency,
+            infer_limit, print_intermediate_tables, metric, mode)
         self._overwrite = overwrite
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
@@ -391,13 +400,14 @@ class CLIReporter(TuneReporterBase):
             max_error_rows: int = 20,
             max_report_frequency: int = 5,
             infer_limit: int = 3,
+            print_intermediate_tables: Optional[bool] = None,
             metric: Optional[str] = None,
             mode: Optional[str] = None):
 
-        super(CLIReporter,
-              self).__init__(metric_columns, parameter_columns, total_samples,
-                             max_progress_rows, max_error_rows,
-                             max_report_frequency, infer_limit, metric, mode)
+        super(CLIReporter, self).__init__(
+            metric_columns, parameter_columns, total_samples,
+            max_progress_rows, max_error_rows, max_report_frequency,
+            infer_limit, print_intermediate_tables, metric, mode)
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         print(self._progress_str(trials, done, *sys_info))
@@ -437,6 +447,7 @@ def trial_progress_str(
         metric_columns: Union[List[str], Dict[str, str]],
         parameter_columns: Union[None, List[str], Dict[str, str]] = None,
         total_samples: int = 0,
+        force_table: bool = False,
         fmt: str = "psql",
         max_rows: Optional[int] = None,
         done: bool = False):
@@ -457,10 +468,13 @@ def trial_progress_str(
             the parameter name is used in the message directly. If this is
             empty, all parameters are used in the message.
         total_samples (int): Total number of trials that will be generated.
+        force_table (bool): Force printing a table. If False, a table will
+            be printed only at the end of the training for verbosity levels
+            above `Verbosity.V2_TRIAL_NORM`.
         fmt (str): Output format (see tablefmt in tabulate API).
         max_rows (int): Maximum number of rows in the trial table. Defaults to
             unlimited.
-        done (bool): True indicates that this trial finished.
+        done (bool): True indicates that the tuning run finished.
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
@@ -485,8 +499,7 @@ def trial_progress_str(
         num_trials, f"/{total_samples}"
         if total_samples else "", ", ".join(num_trials_strs)))
 
-    if has_verbosity(Verbosity.V3_TRIAL_DETAILS) or (has_verbosity(
-            Verbosity.V2_TRIAL_NORM) and done):
+    if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
         messages += trial_progress_table(trials, metric_columns,
                                          parameter_columns, fmt, max_rows)
 
