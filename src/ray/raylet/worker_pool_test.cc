@@ -38,10 +38,7 @@ class WorkerPoolMock : public WorkerPool {
                           const WorkerCommandMap &worker_commands)
       : WorkerPool(io_service, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0,
                    {}, nullptr, worker_commands, {}, []() {}),
-        last_worker_process_() {
-    states_by_lang_[ray::Language::JAVA].num_workers_per_process =
-        NUM_WORKERS_PER_PROCESS_JAVA;
-  }
+        last_worker_process_() {}
 
   ~WorkerPoolMock() {
     // Avoid killing real processes
@@ -277,7 +274,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   }
 }
 
-TEST_P(WorkerPoolTest, HandleUnknownWorkerRegistration) {
+TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
   auto worker = CreateWorker(Process(), Language::PYTHON);
   auto status = worker_pool_->RegisterWorker(worker, 1234, [](Status, int) {});
   ASSERT_FALSE(status.ok());
