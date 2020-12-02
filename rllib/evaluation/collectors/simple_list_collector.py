@@ -135,7 +135,7 @@ class _AgentCollector:
             # Is an input_dict. Build it using the inference view requirements.
             if view_req.is_input_dict:
                 batch_data[view_col] = self._get_input_dict(
-                    inference_view_requirements, abs_pos=view_req.abs_pos)
+                    inference_view_requirements, index=view_req.index)
                 continue
 
             # Create the batch of data from the different buffers.
@@ -147,7 +147,7 @@ class _AgentCollector:
                 continue
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
-            shift = view_req.data_rel_pos - \
+            shift = view_req.shift - \
                 (1 if data_col == SampleBatch.OBS else 0)
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
@@ -226,13 +226,13 @@ class _AgentCollector:
                         [np.zeros(shape=shape, dtype=dtype)
                          for _ in range(shift)]
 
-    def _get_input_dict(self, view_reqs, abs_pos: int = -1) -> \
+    def _get_input_dict(self, view_reqs, index: int = -1) -> \
             Dict[str, TensorType]:
 
-        if abs_pos < 0:
-            abs_pos = len(self.buffers[SampleBatch.OBS]) - 1
+        if index < 0:
+            index = len(self.buffers[SampleBatch.OBS]) - 1
         else:
-            abs_pos = self.shift_before + abs_pos
+            index = self.shift_before + index
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
@@ -242,7 +242,7 @@ class _AgentCollector:
 
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
-            time_indices = abs_pos + view_req.data_rel_pos
+            time_indices = index + view_req.shift
 
             if isinstance(time_indices, tuple):
                 data = self.buffers[data_col][time_indices[0]:time_indices[1] +
@@ -486,7 +486,7 @@ class _SimpleListCollector(_SampleCollector):
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             time_indices = \
-                view_req.data_rel_pos - (
+                view_req.shift - (
                     1 if data_col in [SampleBatch.OBS, "t", "env_id",
                                       SampleBatch.EPS_ID,
                                       SampleBatch.AGENT_INDEX] else 0)

@@ -566,7 +566,7 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
-                data_rel_pos=1,
+                shift=1,
                 space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
@@ -734,7 +734,7 @@ class Policy(metaclass=ABCMeta):
             view_reqs = model.inference_view_requirements if model else \
                 self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
-                "state_out_{}".format(i), data_rel_pos=-1, space=space)
+                "state_out_{}".format(i), shift=-1, space=space)
             view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space)
 
 
