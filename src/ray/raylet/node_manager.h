@@ -135,8 +135,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
-              SpaceReleasedCallback on_objects_spilled);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
   ///
@@ -175,6 +174,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
   LocalObjectManager &GetLocalObjectManager() { return local_object_manager_; }
+
+  /// Trigger global GC across the cluster to free up references to actors or
+  /// object ids.
+  void TriggerGlobalGC();
 
  private:
   /// Methods for handling nodes.
@@ -636,10 +639,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleReleaseUnusedBundles(const rpc::ReleaseUnusedBundlesRequest &request,
                                   rpc::ReleaseUnusedBundlesReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Trigger global GC across the cluster to free up references to actors or
-  /// object ids.
-  void TriggerGlobalGC();
 
   /// Trigger local GC on each worker of this raylet.
   void DoLocalGC();
