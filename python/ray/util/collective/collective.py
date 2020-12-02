@@ -19,6 +19,7 @@ try:
 except ImportError:
     _NCCL_AVAILABLE = False
 
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -60,7 +61,6 @@ class GroupManager(object):
                 import cupy.cuda.nccl as nccl
                 group_uid = nccl.get_unique_id()
                 store_name = group_name + NAMED_ACTOR_STORE_SUFFIX
-
                 # Avoid a potential circular dependency in ray/actor.py
                 from ray.util.collective.util import NCCLUniqueIDStore
                 store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(store_name)
