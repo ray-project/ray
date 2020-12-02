@@ -54,7 +54,7 @@ from ray.includes.common cimport (
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
-    LocalMemoryBuffer,
+    CWorkerType,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -65,7 +65,8 @@ from ray.includes.common cimport (
     TASK_TYPE_ACTOR_TASK,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
-    WORKER_TYPE_IO_WORKER,
+    WORKER_TYPE_SPILL_WORKER,
+    WORKER_TYPE_RESTORE_WORKER,
     PLACEMENT_STRATEGY_PACK,
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
@@ -73,7 +74,6 @@ from ray.includes.common cimport (
 )
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorCheckpointID,
     CObjectID,
     CNodeID,
     CPlacementGroupID,
@@ -292,13 +292,14 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
+            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
-                if metadata not in [
+                if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
-                        metadata, language))
+                        metadata_fields[0], language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectRefs are spilled to
@@ -324,19 +325,6 @@ cdef prepare_args(
                     new CTaskArgByReference(CObjectID.FromBinary(
                         core_worker.put_serialized_object(serialized_arg)),
                         CCoreWorkerProcess.GetCoreWorker().GetRpcAddress())))
-
-
-def switch_worker_log_if_needed(worker, next_job_id):
-    if worker.mode != ray.WORKER_MODE:
-        return
-    if (worker.current_logging_job_id is None) or \
-            (worker.current_logging_job_id != next_job_id):
-        job_stdout_path, job_stderr_path = (
-            worker.node.get_job_redirected_log_file(
-                worker.worker_id, next_job_id.binary())
-        )
-        ray.worker.set_log_file(job_stdout_path, job_stderr_path)
-        worker.current_logging_job_id = next_job_id
 
 
 cdef execute_task(
@@ -369,11 +357,6 @@ cdef execute_task(
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
-        worker.actor_checkpoint_info[actor_id] = (
-            ray.worker.ActorCheckpointInfo(
-                num_tasks_since_last_checkpoint=0,
-                last_checkpoint_timestamp=int(1000 * time.time()),
-                checkpoint_ids=[]))
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -472,7 +455,6 @@ cdef execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    switch_worker_log_if_needed(worker, job_id)
                     with ray.worker._changeproctitle(title, next_title):
                         outputs = function_executor(*args, **kwargs)
                     task_exception = False
@@ -492,6 +474,10 @@ cdef execute_task(
                 core_worker.store_task_outputs(
                     worker, outputs, c_return_ids, returns)
         except Exception as error:
+            # If the debugger is enabled, drop into the remote pdb here.
+            if "RAY_PDB" in os.environ:
+                ray.util.pdb.post_mortem()
+
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
 
@@ -601,7 +587,10 @@ cdef c_vector[c_string] spill_objects_handler(
     with gil:
         object_refs = VectorToObjectRefs(object_ids_to_spill)
         try:
-            urls = external_storage.spill_objects(object_refs)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE):
+                urls = external_storage.spill_objects(object_refs)
             for url in urls:
                 return_urls.push_back(url)
         except Exception:
@@ -611,21 +600,26 @@ cdef c_vector[c_string] spill_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_spill_objects_error",
+                "spill_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
         return return_urls
 
 
 cdef void restore_spilled_objects_handler(
+        const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
     with gil:
         urls = []
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
+        object_refs = VectorToObjectRefs(object_ids_to_restore)
         try:
-            external_storage.restore_spilled_objects(urls)
+            with ray.worker._changeproctitle(
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
+                external_storage.restore_spilled_objects(object_refs, urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -633,7 +627,47 @@ cdef void restore_spilled_objects_handler(
             logger.exception(exception_str)
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
-                "io_worker_retore_spilled_objects_error",
+                "restore_spilled_objects_error",
+                traceback.format_exc() + exception_str,
+                job_id=None)
+
+
+cdef void delete_spilled_objects_handler(
+        const c_vector[c_string]& object_urls,
+        CWorkerType worker_type) nogil:
+    with gil:
+        urls = []
+        size = object_urls.size()
+        for i in range(size):
+            urls.append(object_urls[i])
+        try:
+            # Get proctitle.
+            if <int> worker_type == <int> WORKER_TYPE_SPILL_WORKER:
+                original_proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE)
+                proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_DELETE)
+            elif <int> worker_type == <int> WORKER_TYPE_RESTORE_WORKER:
+                original_proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
+                proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE)
+            else:
+                assert False, ("This line shouldn't be reachable.")
+
+            # Delete objects.
+            with ray.worker._changeproctitle(
+                    proctitle,
+                    original_proctitle):
+                external_storage.delete_spilled_objects(urls)
+        except Exception:
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was deleting spilled objects.")
+            logger.exception(exception_str)
+            ray.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
@@ -719,9 +753,12 @@ cdef class CoreWorker:
         elif worker_type == ray.WORKER_MODE:
             self.is_driver = False
             options.worker_type = WORKER_TYPE_WORKER
-        elif worker_type == ray.IO_WORKER_MODE:
+        elif worker_type == ray.SPILL_WORKER_MODE:
             self.is_driver = False
-            options.worker_type = WORKER_TYPE_IO_WORKER
+            options.worker_type = WORKER_TYPE_SPILL_WORKER
+        elif worker_type == ray.RESTORE_WORKER_MODE:
+            self.is_driver = False
+            options.worker_type = WORKER_TYPE_RESTORE_WORKER
         else:
             raise ValueError(f"Unknown worker type: {worker_type}")
         options.language = LANGUAGE_PYTHON
@@ -743,6 +780,7 @@ cdef class CoreWorker:
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
+        options.delete_spilled_objects = delete_spilled_objects_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
@@ -889,7 +927,7 @@ cdef class CoreWorker:
             # can't track their lifecycle, so we don't pin the object
             # in this case.
             check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                         c_object_id, pin_object=object_ref is None))
+                         c_object_id, pin_object=False))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -1171,13 +1209,14 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().KillActor(
                   c_actor_id, True, no_restart))
 
-    def cancel_task(self, ObjectRef object_ref, c_bool force_kill):
+    def cancel_task(self, ObjectRef object_ref, c_bool force_kill,
+                    c_bool recursive):
         cdef:
             CObjectID c_object_id = object_ref.native()
             CRayStatus status = CRayStatus.OK()
 
         status = CCoreWorkerProcess.GetCoreWorker().CancelTask(
-                                            c_object_id, force_kill)
+                                            c_object_id, force_kill, recursive)
 
         if not status.ok():
             raise TypeError(status.message().decode())
@@ -1467,26 +1506,6 @@ cdef class CoreWorker:
             job_id.native(), error_type.encode("ascii"),
             error_message.encode("ascii"), timestamp))
 
-    def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef:
-            CActorCheckpointID checkpoint_id
-            CActorID c_actor_id = actor_id.native()
-
-        # PrepareActorCheckpoint will wait for raylet's reply, release
-        # the GIL so other Python threads can run.
-        with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker()
-                .PrepareActorCheckpoint(c_actor_id, &checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.Binary())
-
-    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
-                                             ActorCheckpointID checkpoint_id):
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker()
-            .NotifyActorResumedFromCheckpoint(
-                actor_id.native(), checkpoint_id.native()))
-
     def set_resource(self, basestring resource_name,
                      double capacity, NodeID client_id):
         CCoreWorkerProcess.GetCoreWorker().SetResource(
@@ -1496,6 +1515,10 @@ cdef class CoreWorker:
     def force_spill_objects(self, object_refs):
         cdef c_vector[CObjectID] object_ids
         object_ids = ObjectRefsToVector(object_refs)
+        assert not RayConfig.instance().automatic_object_deletion_enabled(), (
+            "Automatic object deletion is not supported for"
+            "force_spill_objects yet. Please set"
+            "automatic_object_deletion_enabled: False in Ray's system config.")
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .SpillObjects(object_ids))
@@ -1528,6 +1551,9 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
         if isinstance(result, RayTaskError):
             ray.worker.last_task_error_raise_time = time.time()
             py_future.set_exception(result.as_instanceof_cause())
+        elif isinstance(result, RayError):
+            # Directly raise exception for RayActorError
+            py_future.set_exception(result)
         else:
             py_future.set_result(result)
 

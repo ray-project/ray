@@ -111,38 +111,6 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncUnsubscribe(const ActorID &actor_id) = 0;
 
-  /// Add actor checkpoint data to GCS asynchronously.
-  ///
-  /// \param data_ptr The checkpoint data that will be added to GCS.
-  /// \param callback The callback that will be called after add finishes.
-  /// \return Status
-  /// TODO(micafan) When the GCS backend is redis,
-  /// the checkpoint of the same actor needs to be updated serially,
-  /// otherwise the checkpoint may be overwritten. This issue will be resolved if
-  /// necessary.
-  virtual Status AsyncAddCheckpoint(
-      const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-      const StatusCallback &callback) = 0;
-
-  /// Get actor checkpoint data from GCS asynchronously.
-  ///
-  /// \param checkpoint_id The ID of checkpoint to lookup in GCS.
-  /// \param actor_id The ID of actor that this checkpoint belongs to.
-  /// \param callback The callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
-
-  /// Get actor checkpoint id data from GCS asynchronously.
-  ///
-  /// \param actor_id The ID of actor to lookup in GCS.
-  /// \param callback The callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
-
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -435,11 +403,13 @@ class NodeInfoAccessor {
  public:
   virtual ~NodeInfoAccessor() = default;
 
-  /// Register local node to GCS synchronously.
+  /// Register local node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
+  /// \param callback Callback that will be called when registration is complete.
   /// \return Status
-  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info) = 0;
+  virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
+                              const StatusCallback &callback) = 0;
 
   /// Cancel registration of local node to GCS synchronously.
   ///
@@ -576,6 +546,11 @@ class NodeInfoAccessor {
   /// Resend heartbeat when GCS restarts from a failure.
   virtual void AsyncReReportHeartbeat() = 0;
 
+  /// Return resources in last report. Used by light heartbeat.
+  std::shared_ptr<SchedulingResources> &GetLastHeartbeatResources() {
+    return last_heartbeat_resources_;
+  }
+
   /// Get newest heartbeat of all nodes from GCS asynchronously. Only used when light
   /// heartbeat enabled.
   ///
@@ -621,6 +596,12 @@ class NodeInfoAccessor {
 
  protected:
   NodeInfoAccessor() = default;
+
+ private:
+  /// Cache which stores resources in last heartbeat used to check if they are changed.
+  /// Used by light heartbeat.
+  std::shared_ptr<SchedulingResources> last_heartbeat_resources_ =
+      std::make_shared<SchedulingResources>();
 };
 
 /// \class ErrorInfoAccessor

@@ -41,7 +41,7 @@ struct Mocker {
     builder.SetCommonTaskSpec(task_id, name + ":" + empty_descriptor->CallString(),
                               Language::PYTHON, empty_descriptor, job_id, TaskID::Nil(),
                               0, TaskID::Nil(), owner_address, 1, resource, resource,
-                              PlacementGroupID::Nil(), true);
+                              std::make_pair(PlacementGroupID::Nil(), -1), true);
     builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
     return builder.Build();
   }
@@ -81,18 +81,20 @@ struct Mocker {
   static PlacementGroupSpecification GenPlacementGroupCreation(
       const std::string &name,
       std::vector<std::unordered_map<std::string, double>> &bundles,
-      rpc::PlacementStrategy strategy) {
+      rpc::PlacementStrategy strategy, const JobID &job_id, const ActorID &actor_id) {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy, job_id,
+                                  actor_id, /* is_creator_detached */ false);
     return builder.Build();
   }
 
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
       const std::string name = "",
       rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD,
-      int bundles_count = 2, double cpu_num = 1.0) {
+      int bundles_count = 2, double cpu_num = 1.0, const JobID job_id = JobID::FromInt(1),
+      const ActorID &actor_id = ActorID::Nil()) {
     rpc::CreatePlacementGroupRequest request;
     std::vector<std::unordered_map<std::string, double>> bundles;
     std::unordered_map<std::string, double> bundle;
@@ -101,7 +103,7 @@ struct Mocker {
       bundles.push_back(bundle);
     }
     auto placement_group_creation_spec =
-        GenPlacementGroupCreation(name, bundles, strategy);
+        GenPlacementGroupCreation(name, bundles, strategy, job_id, actor_id);
     request.mutable_placement_group_spec()->CopyFrom(
         placement_group_creation_spec.GetMessage());
     return request;

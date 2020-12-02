@@ -18,6 +18,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
@@ -38,11 +40,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_failure_detector_io_service The event loop of node failure detector.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  /// when detecting the death of nodes.
+  /// \param gcs_resource_manager GCS resource manager.
   explicit GcsNodeManager(boost::asio::io_service &main_io_service,
                           boost::asio::io_service &node_failure_detector_io_service,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -63,6 +66,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle report resource usage rpc come from raylet.
+  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+                                 rpc::ReportResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all resource usage rpc request.
+  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
+                                 rpc::GetAllResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get resource rpc request.
   void HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -152,11 +165,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
-  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
 
   /// Start node failure detector.
   void StartNodeFailureDetector();
@@ -165,16 +178,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdateNodeRealtimeResources(const NodeID &node_id,
                                    const rpc::HeartbeatTableData &heartbeat);
 
-  /// Get cluster realtime resources.
-  const absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>>
-      &GetClusterRealtimeResources() const;
-
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
   ///
   /// \param placement_group_load placement group load protobuf.
   void UpdatePlacementGroupLoad(
       const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+
+  std::string DebugString() const;
 
  protected:
   class NodeFailureDetector {
@@ -206,10 +217,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
     /// Handle a heartbeat from a Raylet.
     ///
-    /// \param node_id The client ID of the Raylet that sent the heartbeat.
-    /// \param heartbeat_data The heartbeat sent by the client.
-    void HandleHeartbeat(const NodeID &node_id,
-                         const rpc::HeartbeatTableData &heartbeat_data);
+    /// \param node_id The node ID of the Raylet that sent the heartbeat.
+    void HandleHeartbeat(const NodeID &node_id);
 
    protected:
     /// A periodic timer that fires on every heartbeat period. Raylets that have
@@ -285,10 +294,28 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Cluster realtime resources.
-  absl::flat_hash_map<NodeID, std::shared_ptr<ResourceSet>> cluster_realtime_resources_;
+  /// Gcs resource manager.
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
+
+  // Debug info.
+  enum CountType {
+    REGISTER_NODE_REQUEST = 0,
+    UNREGISTER_NODE_REQUEST = 1,
+    GET_ALL_NODE_INFO_REQUEST = 2,
+    REPORT_HEARTBEAT_REQUEST = 3,
+    GET_HEARTBEAT_REQUEST = 4,
+    GET_ALL_HEARTBEAT_REQUEST = 5,
+    GET_RESOURCES_REQUEST = 6,
+    UPDATE_RESOURCES_REQUEST = 7,
+    DELETE_RESOURCES_REQUEST = 8,
+    SET_INTERNAL_CONFIG_REQUEST = 9,
+    GET_INTERNAL_CONFIG_REQUEST = 10,
+    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 11,
+    CountType_MAX = 12,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

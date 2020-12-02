@@ -149,7 +149,7 @@ void WorkerPool::Start(int num_workers) {
     int num_worker_processes = static_cast<int>(
         std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
-      StartWorkerProcess(entry.first, ray::rpc::WorkerType::WORKER, JobID::Nil());
+      StartWorkerProcess(entry.first, rpc::WorkerType::WORKER, JobID::Nil());
     }
   }
 }
@@ -178,8 +178,7 @@ Process WorkerPool::StartWorkerProcess(
     std::vector<std::string> dynamic_options,
     std::unordered_map<std::string, std::string> override_environment_variables) {
   rpc::JobConfig *job_config = nullptr;
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      worker_type != rpc::WorkerType::IO_WORKER) {
+  if (RayConfig::instance().enable_multi_tenancy() && !IsIOWorkerType(worker_type)) {
     RAY_CHECK(!job_id.IsNil());
     auto it = all_jobs_.find(job_id);
     if (it == all_jobs_.end()) {
@@ -312,15 +311,27 @@ Process WorkerPool::StartWorkerProcess(
         << "The " << kWorkerRayletConfigPlaceholder
         << " placeholder is not found in worker command.";
   } else if (language == Language::PYTHON) {
-    RAY_CHECK(worker_type == rpc::WorkerType::WORKER ||
-              worker_type == rpc::WorkerType::IO_WORKER);
-    if (worker_type == rpc::WorkerType::IO_WORKER) {
+    RAY_CHECK(worker_type == rpc::WorkerType::WORKER || IsIOWorkerType(worker_type));
+    if (IsIOWorkerType(worker_type)) {
       // Without "--worker-type", by default the worker type is rpc::WorkerType::WORKER.
       worker_command_args.push_back("--worker-type=" + rpc::WorkerType_Name(worker_type));
     }
   }
 
+  if (IsIOWorkerType(worker_type)) {
+    RAY_CHECK(!RayConfig::instance().object_spilling_config().empty());
+    RAY_LOG(DEBUG) << "Adding object spill config "
+                   << RayConfig::instance().object_spilling_config();
+    worker_command_args.push_back("--object-spilling-config=" +
+                                  RayConfig::instance().object_spilling_config());
+  }
+
   ProcessEnvironment env;
+  if (RayConfig::instance().enable_multi_tenancy() && !IsIOWorkerType(worker_type)) {
+    // We pass the job ID to worker processes via an environment variable, so we don't
+    // need to add a new CLI parameter for both Python and Java workers.
+    env.emplace(kEnvVarKeyJobId, job_id.Hex());
+  }
   if (RayConfig::instance().enable_multi_tenancy() && job_config) {
     env.insert(job_config->worker_env().begin(), job_config->worker_env().end());
   }
@@ -328,20 +339,20 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
-
+  // Start a process and measure the startup time.
+  auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
-  if (RayConfig::instance().enable_multi_tenancy() && job_config) {
-    // If the pid is reused between processes, the old process must have exited.
-    // So it's safe to bind the pid with another job ID.
-    RAY_LOG(DEBUG) << "Worker process " << proc.GetId() << " is bound to job " << job_id;
-    state.worker_pids_to_assigned_jobs[proc.GetId()] = job_id;
-  }
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  stats::ProcessStartupTimeMs.Record(duration.count());
+
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
   state.starting_worker_processes.emplace(proc, workers_to_start);
-  if (worker_type == rpc::WorkerType::IO_WORKER) {
-    state.num_starting_io_workers++;
+  if (IsIOWorkerType(worker_type)) {
+    auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
+    io_worker_state.num_starting_io_workers++;
   }
   return proc;
 }
@@ -364,12 +375,13 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
           RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
                         << ") have not registered to raylet within timeout.";
           state.starting_worker_processes.erase(it);
-          if (worker_type == rpc::WorkerType::IO_WORKER) {
+          if (IsIOWorkerType(worker_type)) {
             // Mark the I/O worker as failed.
-            state.num_starting_io_workers--;
+            auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
+            io_worker_state.num_starting_io_workers--;
           }
           // We may have places to start more workers now.
-          TryStartIOWorkers(language, state);
+          TryStartIOWorkers(language);
           starting_worker_timeout_callback_();
         }
       });
@@ -478,27 +490,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
 
   state.registered_workers.insert(worker);
 
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      worker->GetWorkerType() != rpc::WorkerType::IO_WORKER) {
-    auto dedicated_workers_it = state.worker_pids_to_assigned_jobs.find(pid);
-    RAY_CHECK(dedicated_workers_it != state.worker_pids_to_assigned_jobs.end());
-    auto job_id = dedicated_workers_it->second;
-
-    // If the job is unknown to Raylet, we don't allow new registrations.
-    if (!all_jobs_.contains(job_id)) {
-      auto process = Process::FromPid(pid);
-      state.starting_worker_processes.erase(process);
-      Status status =
-          Status::Invalid("The provided job ID is unknown. Reject registration.");
-      send_reply_callback(status, /*port=*/0);
-      return status;
-    }
-
-    worker->AssignJobId(job_id);
-    // We don't call state.worker_pids_to_assigned_jobs.erase(job_id) here
-    // because we allow multi-workers per worker process.
-  }
-
   // Send the reply immediately for worker registrations.
   send_reply_callback(Status::OK(), port);
   return Status::OK();
@@ -515,12 +506,14 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     if (it->second == 0) {
       state.starting_worker_processes.erase(it);
       // We may have slots to start more workers now.
-      TryStartIOWorkers(worker->GetLanguage(), state);
+      TryStartIOWorkers(worker->GetLanguage());
     }
   }
-  if (worker->GetWorkerType() == rpc::WorkerType::IO_WORKER) {
-    state.registered_io_workers.insert(worker);
-    state.num_starting_io_workers--;
+  const auto &worker_type = worker->GetWorkerType();
+  if (IsIOWorkerType(worker_type)) {
+    auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
+    io_worker_state.registered_io_workers.insert(worker);
+    io_worker_state.num_starting_io_workers--;
   }
 
   if (RayConfig::instance().enable_multi_tenancy()) {
@@ -541,7 +534,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
-                                  const JobID &job_id, const rpc::JobConfig &job_config,
+                                  const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
   RAY_CHECK(!driver->GetAssignedTaskId().IsNil());
@@ -553,7 +546,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
-  driver->AssignJobId(job_id);
+  const auto job_id = driver->GetAssignedJobId();
   all_jobs_[job_id] = job_config;
 
   // This is a workaround to start initial workers on this node if and only if Raylet is
@@ -611,31 +604,78 @@ std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredDriver(
   return nullptr;
 }
 
-void WorkerPool::PushIOWorker(const std::shared_ptr<WorkerInterface> &worker) {
-  auto &state = GetStateForLanguage(worker->GetLanguage());
-  RAY_CHECK(worker->GetWorkerType() == rpc::WorkerType::IO_WORKER);
+void WorkerPool::PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::SPILL_WORKER);
+}
+
+void WorkerPool::PopSpillWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::SPILL_WORKER, callback);
+}
+
+void WorkerPool::PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  PushIOWorkerInternal(worker, rpc::WorkerType::RESTORE_WORKER);
+}
+
+void WorkerPool::PopRestoreWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  PopIOWorkerInternal(rpc::WorkerType::RESTORE_WORKER, callback);
+}
+
+void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &worker,
+                                      const rpc::WorkerType &worker_type) {
+  RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
+  auto &state = GetStateForLanguage(Language::PYTHON);
+  auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
+
   RAY_LOG(DEBUG) << "Pushing an IO worker to the worker pool.";
-  if (state.pending_io_tasks.empty()) {
-    state.idle_io_workers.push(worker);
+  if (io_worker_state.pending_io_tasks.empty()) {
+    io_worker_state.idle_io_workers.push(worker);
   } else {
-    auto callback = state.pending_io_tasks.front();
-    state.pending_io_tasks.pop();
+    auto callback = io_worker_state.pending_io_tasks.front();
+    io_worker_state.pending_io_tasks.pop();
     callback(worker);
   }
 }
 
-void WorkerPool::PopIOWorker(
+void WorkerPool::PopIOWorkerInternal(
+    const rpc::WorkerType &worker_type,
     std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
   auto &state = GetStateForLanguage(Language::PYTHON);
-  if (state.idle_io_workers.empty()) {
+  auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
+
+  if (io_worker_state.idle_io_workers.empty()) {
     // We must fill the pending task first, because 'TryStartIOWorkers' will
     // start I/O workers according to the number of pending tasks.
-    state.pending_io_tasks.push(callback);
-    TryStartIOWorkers(Language::PYTHON, state);
+    io_worker_state.pending_io_tasks.push(callback);
+    TryStartIOWorkers(Language::PYTHON, worker_type);
   } else {
-    auto io_worker = state.idle_io_workers.front();
-    state.idle_io_workers.pop();
+    auto io_worker = io_worker_state.idle_io_workers.front();
+    io_worker_state.idle_io_workers.pop();
     callback(io_worker);
+  }
+}
+
+void WorkerPool::PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
+  if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    PushRestoreWorker(worker);
+  } else {
+    PushSpillWorker(worker);
+  }
+}
+
+void WorkerPool::PopDeleteWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  auto &state = GetStateForLanguage(Language::PYTHON);
+  // Choose an I/O worker with more idle workers.
+  size_t num_spill_idle_workers = state.spill_io_worker_state.idle_io_workers.size();
+  size_t num_restore_idle_workers = state.restore_io_worker_state.idle_io_workers.size();
+
+  if (num_restore_idle_workers < num_spill_idle_workers) {
+    PopSpillWorker(callback);
+  } else {
+    PopRestoreWorker(callback);
   }
 }
 
@@ -873,6 +913,41 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
   return worker;
 }
 
+void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
+                                 int64_t backlog_size) {
+  // Code path of task that needs a dedicated worker: an actor creation task with
+  // dynamic worker options, or any task with environment variable overrides.
+  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+      task_spec.OverrideEnvironmentVariables().size() > 0) {
+    return;  // Not handled.
+  }
+
+  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  // The number of available workers that can be used for this task spec.
+  int num_usable_workers = state.idle.size();
+  for (auto &entry : state.starting_worker_processes) {
+    num_usable_workers += entry.second;
+  }
+  // The number of workers total regardless of suitability for this task.
+  int num_workers_total = 0;
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    if (!worker->IsDead()) {
+      num_workers_total++;
+    }
+  }
+  auto desired_usable_workers =
+      std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
+  if (num_usable_workers < desired_usable_workers) {
+    int64_t num_needed = desired_usable_workers - num_usable_workers;
+    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
+                   << backlog_size << " and soft limit " << num_workers_soft_limit_;
+    for (int i = 0; i < num_needed; i++) {
+      StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                         task_spec.JobId());
+    }
+  }
+}
+
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
@@ -885,10 +960,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     }
   }
 
-  stats::CurrentWorker().Record(
-      0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
-
   MarkPortAsFree(worker->AssignedPort());
   return RemoveWorker(state.idle, worker);
 }
@@ -896,9 +967,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
 void WorkerPool::DisconnectDriver(const std::shared_ptr<WorkerInterface> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
-  stats::CurrentDriver().Record(
-      0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
   MarkPortAsFree(driver->AssignedPort());
 }
 
@@ -906,6 +974,11 @@ inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &langua
   auto state = states_by_lang_.find(language);
   RAY_CHECK(state != states_by_lang_.end()) << "Required Language isn't supported.";
   return state->second;
+}
+
+inline bool WorkerPool::IsIOWorkerType(const rpc::WorkerType &worker_type) {
+  return worker_type == rpc::WorkerType::SPILL_WORKER ||
+         worker_type == rpc::WorkerType::RESTORE_WORKER;
 }
 
 std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersRunningTasksForJob(
@@ -999,24 +1072,32 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
   return it != state.tasks_to_dedicated_workers.end();
 }
 
-void WorkerPool::TryStartIOWorkers(const Language &language, State &state) {
+void WorkerPool::TryStartIOWorkers(const Language &language) {
+  TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
+  TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+}
+
+void WorkerPool::TryStartIOWorkers(const Language &language,
+                                   const rpc::WorkerType &worker_type) {
   if (language != Language::PYTHON) {
     return;
   }
-  int available_io_workers_num =
-      state.num_starting_io_workers + state.registered_io_workers.size();
+  auto &state = GetStateForLanguage(language);
+  auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
+
+  int available_io_workers_num = io_worker_state.num_starting_io_workers +
+                                 io_worker_state.registered_io_workers.size();
   int max_workers_to_start =
       RayConfig::instance().max_io_workers() - available_io_workers_num;
   // Compare first to prevent unsigned underflow.
-  if (state.pending_io_tasks.size() > state.idle_io_workers.size()) {
+  if (io_worker_state.pending_io_tasks.size() > io_worker_state.idle_io_workers.size()) {
     int expected_workers_num =
-        state.pending_io_tasks.size() - state.idle_io_workers.size();
+        io_worker_state.pending_io_tasks.size() - io_worker_state.idle_io_workers.size();
     if (expected_workers_num > max_workers_to_start) {
       expected_workers_num = max_workers_to_start;
     }
     for (; expected_workers_num > 0; expected_workers_num--) {
-      Process proc = StartWorkerProcess(ray::Language::PYTHON,
-                                        ray::rpc::WorkerType::IO_WORKER, JobID::Nil());
+      Process proc = StartWorkerProcess(ray::Language::PYTHON, worker_type, JobID::Nil());
       if (!proc.IsValid()) {
         // We may hit the maximum worker start up concurrency limit. Stop.
         return;
@@ -1048,27 +1129,18 @@ std::string WorkerPool::DebugString() const {
     result << "\n- num " << Language_Name(entry.first)
            << " drivers: " << entry.second.registered_drivers.size();
   }
-  result << "- num idle workers: " << idle_of_all_languages_.size();
+  result << "\n- num idle workers: " << idle_of_all_languages_.size();
   return result.str();
 }
 
-void WorkerPool::RecordMetrics() const {
-  for (const auto &entry : states_by_lang_) {
-    // Record worker.
-    for (auto worker : entry.second.registered_workers) {
-      stats::CurrentWorker().Record(
-          worker->GetProcess().GetId(),
-          {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
-    }
-
-    // Record driver.
-    for (auto driver : entry.second.registered_drivers) {
-      stats::CurrentDriver().Record(
-          driver->GetProcess().GetId(),
-          {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
-    }
+WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
+    const rpc::WorkerType &worker_type, WorkerPool::State &state) const {
+  RAY_CHECK(worker_type != rpc::WorkerType::WORKER)
+      << worker_type << " type cannot be used to retrieve io_worker_state";
+  if (worker_type == rpc::WorkerType::SPILL_WORKER) {
+    return state.spill_io_worker_state;
+  } else {
+    return state.restore_io_worker_state;
   }
 }
 

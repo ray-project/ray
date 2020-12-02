@@ -5,6 +5,8 @@ from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.serialization import TuneFunctionDecoder
+from ray.tune.utils.util import is_nan_or_inf
 
 try:
     import pandas as pd
@@ -14,10 +16,10 @@ except ImportError:
     DataFrame = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
-    CONFIG_PREFIX, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
+    EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,8 @@ class Analysis:
         experiment_dir (str): Directory of the experiment to load.
         default_metric (str): Default metric for comparing results. Can be
             overwritten with the ``metric`` parameter in the respective
-            functions.
+            functions. If None but a mode was passed, the anonymous metric
+            `ray.tune.result.DEFAULT_METRIC` will be used per default.
         default_mode (str): Default mode for comparing results. Has to be one
             of [min, max]. Can be overwritten with the ``mode`` parameter
             in the respective functions.
@@ -54,6 +57,10 @@ class Analysis:
             raise ValueError(
                 "`default_mode` has to be None or one of [min, max]")
         self.default_mode = default_mode
+
+        if self.default_metric is None and self.default_mode:
+            # If only a mode was passed, use anonymous metric
+            self.default_metric = DEFAULT_METRIC
 
         if not pd:
             logger.warning(
@@ -337,12 +344,16 @@ class ExperimentAnalysis(Analysis):
             raise ValueError(
                 "{} is not a valid file.".format(experiment_checkpoint_path))
         with open(experiment_checkpoint_path) as f:
-            _experiment_state = json.load(f)
+            _experiment_state = json.load(f, cls=TuneFunctionDecoder)
             self._experiment_state = _experiment_state
 
         if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = _experiment_state["checkpoints"]
+        self._checkpoints = [
+            json.loads(cp, cls=TuneFunctionDecoder)
+            if isinstance(cp, str) else cp
+            for cp in _experiment_state["checkpoints"]
+        ]
         self.trials = trials
 
         super(ExperimentAnalysis, self).__init__(
@@ -495,7 +506,8 @@ class ExperimentAnalysis(Analysis):
     def get_best_trial(self,
                        metric: Optional[str] = None,
                        mode: Optional[str] = None,
-                       scope: str = "last") -> Optional[Trial]:
+                       scope: str = "last",
+                       filter_nan_and_inf: bool = True) -> Optional[Trial]:
         """Retrieve the best trial object.
 
         Compares all trials' scores on ``metric``.
@@ -518,6 +530,9 @@ class ExperimentAnalysis(Analysis):
                 `metric` and compare across trials based on `mode=[min,max]`.
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
+            filter_nan_and_inf (bool): If True (default), NaN or infinite
+                values are disregarded and these trials are never selected as
+                the best trial.
         """
         metric = self._validate_metric(metric)
         mode = self._validate_mode(mode)
@@ -541,6 +556,9 @@ class ExperimentAnalysis(Analysis):
             else:
                 metric_score = trial.metric_analysis[metric][mode]
 
+            if filter_nan_and_inf and is_nan_or_inf(metric_score):
+                continue
+
             if best_metric_score is None:
                 best_metric_score = metric_score
                 best_trial = trial
@@ -555,7 +573,7 @@ class ExperimentAnalysis(Analysis):
 
         if not best_trial:
             logger.warning(
-                "Could not find best trial. Did you pass the correct `metric`"
+                "Could not find best trial. Did you pass the correct `metric` "
                 "parameter?")
         return best_trial
 

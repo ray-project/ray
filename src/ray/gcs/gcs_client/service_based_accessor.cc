@@ -299,83 +299,6 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) 
   return status;
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
-    const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-    const StatusCallback &callback) {
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  ActorCheckpointID checkpoint_id =
-      ActorCheckpointID::FromBinary(data_ptr->checkpoint_id());
-  RAY_LOG(DEBUG) << "Adding actor checkpoint, actor id = " << actor_id
-                 << ", checkpoint id = " << checkpoint_id
-                 << ", job id = " << actor_id.JobId();
-  rpc::AddActorCheckpointRequest request;
-  request.mutable_checkpoint_data()->CopyFrom(*data_ptr);
-
-  auto operation = [this, request, actor_id, checkpoint_id,
-                    callback](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().AddActorCheckpoint(
-        request, [actor_id, checkpoint_id, callback, done_callback](
-                     const Status &status, const rpc::AddActorCheckpointReply &reply) {
-          if (callback) {
-            callback(status);
-          }
-          RAY_LOG(DEBUG) << "Finished adding actor checkpoint, status = " << status
-                         << ", actor id = " << actor_id
-                         << ", checkpoint id = " << checkpoint_id
-                         << ", job id = " << actor_id.JobId();
-          done_callback();
-        });
-  };
-
-  sequencer_.Post(actor_id, operation);
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-    const OptionalItemCallback<rpc::ActorCheckpointData> &callback) {
-  RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id
-                 << ", job id = " << actor_id.JobId();
-  rpc::GetActorCheckpointRequest request;
-  request.set_actor_id(actor_id.Binary());
-  request.set_checkpoint_id(checkpoint_id.Binary());
-  client_impl_->GetGcsRpcClient().GetActorCheckpoint(
-      request, [checkpoint_id, actor_id, callback](
-                   const Status &status, const rpc::GetActorCheckpointReply &reply) {
-        if (reply.has_checkpoint_data()) {
-          callback(status, reply.checkpoint_data());
-        } else {
-          callback(status, boost::none);
-        }
-        RAY_LOG(DEBUG) << "Finished getting actor checkpoint, status = " << status
-                       << ", checkpoint id = " << checkpoint_id
-                       << ", job id = " << actor_id.JobId();
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
-    const ActorID &actor_id,
-    const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) {
-  RAY_LOG(DEBUG) << "Getting actor checkpoint id, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
-  rpc::GetActorCheckpointIDRequest request;
-  request.set_actor_id(actor_id.Binary());
-  client_impl_->GetGcsRpcClient().GetActorCheckpointID(
-      request, [actor_id, callback](const Status &status,
-                                    const rpc::GetActorCheckpointIDReply &reply) {
-        if (reply.has_checkpoint_id_data()) {
-          callback(status, reply.checkpoint_id_data());
-        } else {
-          callback(status, boost::none);
-        }
-        RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, status = " << status
-                       << ", actor id = " << actor_id
-                       << ", job id = " << actor_id.JobId();
-      });
-  return Status::OK();
-}
-
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
@@ -418,7 +341,8 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
+Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
+                                                  const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
@@ -427,22 +351,20 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
 
-  auto operation = [this, request, local_node_info,
-                    node_id](const SequencerDoneCallback &done_callback) {
-    client_impl_->GetGcsRpcClient().RegisterNode(
-        request, [this, node_id, local_node_info, done_callback](
-                     const Status &status, const rpc::RegisterNodeReply &reply) {
-          if (status.ok()) {
-            local_node_info_.CopyFrom(local_node_info);
-            local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
-          }
-          RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                         << ", node id = " << node_id;
-          done_callback();
-        });
-  };
+  client_impl_->GetGcsRpcClient().RegisterNode(
+      request, [this, node_id, local_node_info, callback](
+                   const Status &status, const rpc::RegisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.CopyFrom(local_node_info);
+          local_node_id_ = NodeID::FromBinary(local_node_info.node_id());
+        }
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
+                       << ", node id = " << node_id;
+      });
 
-  sequencer_.Post(node_id, operation);
   return Status::OK();
 }
 
@@ -703,9 +625,42 @@ void ServiceBasedNodeInfoAccessor::AsyncReReportHeartbeat() {
   absl::MutexLock lock(&mutex_);
   if (cached_heartbeat_.has_heartbeat()) {
     RAY_LOG(INFO) << "Rereport heartbeat.";
+    FillHeartbeatRequest(cached_heartbeat_);
     client_impl_->GetGcsRpcClient().ReportHeartbeat(
         cached_heartbeat_,
         [](const Status &status, const rpc::ReportHeartbeatReply &reply) {});
+  }
+}
+
+void ServiceBasedNodeInfoAccessor::FillHeartbeatRequest(
+    rpc::ReportHeartbeatRequest &heartbeat) {
+  if (RayConfig::instance().light_heartbeat_enabled()) {
+    SchedulingResources cached_resources =
+        SchedulingResources(*GetLastHeartbeatResources());
+
+    auto heartbeat_data = heartbeat.mutable_heartbeat();
+    heartbeat_data->clear_resources_total();
+    for (const auto &resource_pair :
+         cached_resources.GetTotalResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_total())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    heartbeat_data->clear_resources_available();
+    heartbeat_data->set_resources_available_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetAvailableResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    heartbeat_data->clear_resource_load();
+    heartbeat_data->set_resource_load_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetLoadResources().GetResourceMap()) {
+      (*heartbeat_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
+    }
   }
 }
 

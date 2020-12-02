@@ -96,7 +96,7 @@ export type GPUStats = {
   name: string;
   temperatureGpu: number;
   fanSpeed: number;
-  utilizationGpu: number;
+  utilizationGpu?: number;
   powerDraw: number;
   enforcedPowerLimit: number;
   memoryUsed: number;

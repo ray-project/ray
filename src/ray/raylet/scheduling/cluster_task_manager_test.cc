@@ -79,7 +79,8 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
-                                 required_resources, {}, PlacementGroupID::Nil(), true);
+                                 required_resources, {},
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true);
 
   for (int i = 0; i < num_args; i++) {
     ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);
@@ -95,35 +96,52 @@ class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest()
       : id_(NodeID::FromRandom()),
-        single_node_resource_scheduler_(CreateSingleNodeScheduler(id_.Binary())),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary())),
         fulfills_dependencies_calls_(0),
         dependencies_fulfilled_(true),
+        is_owner_alive_(true),
         node_info_calls_(0),
-        node_info_(boost::optional<rpc::GcsNodeInfo>{}),
-        task_manager_(id_, single_node_resource_scheduler_,
+        task_manager_(id_, scheduler_,
                       [this](const Task &_task) {
                         fulfills_dependencies_calls_++;
                         return dependencies_fulfilled_;
                       },
+                      [this](const WorkerID &worker_id, const NodeID &node_id) {
+                        return is_owner_alive_;
+                      },
                       [this](const NodeID &node_id) {
                         node_info_calls_++;
-                        return node_info_;
+                        return node_info_[node_id];
                       }) {}
 
   void SetUp() {}
 
   void Shutdown() {}
 
+  void AddNode(const NodeID &id, double num_cpus, double num_gpus = 0,
+               double memory = 0) {
+    std::unordered_map<std::string, double> node_resources;
+    node_resources[ray::kCPU_ResourceLabel] = num_cpus;
+    node_resources[ray::kGPU_ResourceLabel] = num_gpus;
+    node_resources[ray::kMemory_ResourceLabel] = memory;
+    scheduler_->AddOrUpdateNode(id.Binary(), node_resources, node_resources);
+
+    rpc::GcsNodeInfo info;
+    node_info_[id] = info;
+  }
+
   NodeID id_;
-  std::shared_ptr<ClusterResourceScheduler> single_node_resource_scheduler_;
+  std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
   int fulfills_dependencies_calls_;
   bool dependencies_fulfilled_;
 
+  bool is_owner_alive_;
+
   int node_info_calls_;
-  boost::optional<rpc::GcsNodeInfo> node_info_;
+  std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
 
   ClusterTaskManager task_manager_;
 };
@@ -248,6 +266,55 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 0);
 }
 
+TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
+  /*
+    Test the race condition in which a task is assigned to the local node, but
+    it cannot be run because a different task gets assigned the resources
+    first. The un-runnable task should eventually get spilled back to another
+    node.
+  */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 5);
+
+  int num_callbacks = 0;
+  auto callback = [&]() { num_callbacks++; };
+
+  /* Blocked on starting a worker. */
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  rpc::RequestWorkerLeaseReply local_reply;
+  task_manager_.QueueTask(task, &local_reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  /* This task can run but not at the same time as the first */
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  rpc::RequestWorkerLeaseReply spillback_reply;
+  task_manager_.QueueTask(task2, &spillback_reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  // Two workers start. First task is dispatched now, but resources are no
+  // longer available for the second.
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Check that both tasks got removed from the queue.
+  ASSERT_EQ(num_callbacks, 2);
+  // The first task was dispatched.
+  ASSERT_EQ(leased_workers_.size(), 1);
+  // The second task was spilled.
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
+            remote_node_id.Binary());
+}
+
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -266,10 +333,13 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.QueueTask(task, &reply, callback);
 
   // Task is now queued so cancellation works.
+  callback_called = false;
+  reply.Clear();
   ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   // Task will not execute.
-  ASSERT_FALSE(callback_called);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -277,9 +347,12 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.SchedulePendingTasks();
 
   // We can still cancel the task if it's on the dispatch queue.
+  callback_called = false;
+  reply.Clear();
   ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
-  ASSERT_FALSE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_TRUE(callback_called);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
 
@@ -288,9 +361,12 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   // Task is now running so we can't cancel it.
+  callback_called = false;
+  reply.Clear();
   ASSERT_FALSE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
   // Task will not execute.
-  ASSERT_TRUE(callback_called);
+  ASSERT_FALSE(reply.canceled());
+  ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
 }
@@ -364,36 +440,77 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
     auto data = std::make_shared<rpc::HeartbeatTableData>();
     task_manager_.Heartbeat(false, data);
 
-    auto load = data->mutable_resource_load();
-    ASSERT_EQ(load->size(), 2);
-    ASSERT_EQ((*load)["CPU"], 20);  // 9 + 1 + 10 = 20
-    ASSERT_EQ((*load)["GPU"], 6);   // 5 + 1 = 6
-
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
     ASSERT_EQ(load_by_shape->size(), 3);
 
-    auto load1 = (*load_by_shape)[0];
-    auto load2 = (*load_by_shape)[1];
-    auto load3 = (*load_by_shape)[2];
+    std::vector<std::vector<unsigned int>> expected = {
+        // infeasible, ready, CPU, GPU, size
+        {1, 0, 10, 1, 2},
+        {1, 0, 9, 5, 2},
+        {0, 1, 1, 0, 1}};
 
-    ASSERT_EQ(load1.num_infeasible_requests_queued(), 1);
-    ASSERT_EQ(load1.num_ready_requests_queued(), 0);
-    ASSERT_EQ((*load1.mutable_shape())["CPU"], 10);
-    ASSERT_EQ((*load1.mutable_shape())["GPU"], 1);
-    ASSERT_EQ((*load1.mutable_shape()).size(), 2);
-
-    ASSERT_EQ(load2.num_infeasible_requests_queued(), 1);
-    ASSERT_EQ(load2.num_ready_requests_queued(), 0);
-    ASSERT_EQ((*load2.mutable_shape())["CPU"], 9);
-    ASSERT_EQ((*load2.mutable_shape())["GPU"], 5);
-    ASSERT_EQ((*load2.mutable_shape()).size(), 2);
-
-    ASSERT_EQ(load3.num_infeasible_requests_queued(), 0);
-    ASSERT_EQ(load3.num_ready_requests_queued(), 1);
-    ASSERT_EQ((*load3.mutable_shape())["CPU"], 1);
-    ASSERT_EQ((*load3.mutable_shape()).size(), 1);
+    for (auto &load : *load_by_shape) {
+      bool found = false;
+      for (unsigned int i = 0; i < expected.size(); i++) {
+        auto expected_load = expected[i];
+        auto shape = *load.mutable_shape();
+        bool match =
+            (expected_load[0] == load.num_infeasible_requests_queued() &&
+             expected_load[1] == load.num_ready_requests_queued() &&
+             expected_load[2] == shape["CPU"] && expected_load[4] == shape.size());
+        if (expected_load[3]) {
+          match = match && shape["GPU"];
+        }
+        /* These logs are very useful for debugging.
+        RAY_LOG(ERROR) << "==========================";
+        RAY_LOG(ERROR) << expected_load[0] << "\t" <<
+        load.num_infeasible_requests_queued(); RAY_LOG(ERROR) << expected_load[1] << "\t"
+        << load.num_ready_requests_queued(); RAY_LOG(ERROR) << expected_load[2] << "\t" <<
+        shape["CPU"]; RAY_LOG(ERROR) << expected_load[3] << "\t" << shape["GPU"];
+        RAY_LOG(ERROR) << expected_load[4] << "\t" << shape.size();
+        RAY_LOG(ERROR) << "==========================";
+        RAY_LOG(ERROR) << load.DebugString();
+        RAY_LOG(ERROR) << "-----------------------------------";
+        */
+        found = found || match;
+      }
+      ASSERT_TRUE(found);
+    }
   }
+}
+
+TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
+  /*
+    Test the race condition in which the owner of a task dies while the task is pending.
+    This is the essence of test_actor_advanced.py::test_pending_actor_removed_by_owner
+   */
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+
+  is_owner_alive_ = false;
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  is_owner_alive_ = true;
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
 }
 
 int main(int argc, char **argv) {

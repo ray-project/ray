@@ -253,7 +253,7 @@ def build_q_losses(policy: Policy, model, _,
         is_training=True)
 
     # Q scores for actions which we know were selected in the given state.
-    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS],
+    one_hot_selection = F.one_hot(train_batch[SampleBatch.ACTIONS].long(),
                                   policy.action_space.n)
     q_t_selected = torch.sum(
         torch.where(q_t > FLOAT_MIN, q_t,
@@ -317,9 +317,9 @@ def setup_early_mixins(policy: Policy, obs_space, action_space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def after_init(policy: Policy, obs_space: gym.spaces.Space,
-               action_space: gym.spaces.Space,
-               config: TrainerConfigDict) -> None:
+def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space,
+                     config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
     # Move target net to device (this is done automatically for the
@@ -397,7 +397,7 @@ DQNTorchPolicy = build_torch_policy(
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
-    after_init=after_init,
+    before_loss_init=before_loss_init,
     mixins=[
         TargetNetworkMixin,
         ComputeTDErrorMixin,

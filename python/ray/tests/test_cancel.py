@@ -258,5 +258,37 @@ def test_remote_cancel(ray_start_regular, use_force):
         ray.get(inner, timeout=10)
 
 
+@pytest.mark.parametrize("use_force", [True, False])
+def test_recursive_cancel(shutdown_only, use_force):
+    ray.init(num_cpus=4)
+
+    @ray.remote(num_cpus=1)
+    def inner():
+        while True:
+            time.sleep(0.1)
+
+    @ray.remote(num_cpus=1)
+    def outer():
+
+        x = [inner.remote()]
+        print(x)
+        while True:
+            time.sleep(0.1)
+
+    @ray.remote(num_cpus=4)
+    def many_resources():
+        return 300
+
+    outer_fut = outer.remote()
+    many_fut = many_resources.remote()
+    with pytest.raises(GetTimeoutError):
+        ray.get(many_fut, timeout=1)
+    ray.cancel(outer_fut)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(outer_fut, timeout=10)
+
+    assert ray.get(many_fut, timeout=30)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -123,5 +123,5 @@ Community Examples
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/master/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.

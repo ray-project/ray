@@ -11,8 +11,10 @@ from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.registry import get_trainable_cls
-from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
+from ray.tune.syncer import wait_for_sync, set_sync_periods, \
+    SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import FIFOScheduler
@@ -70,7 +72,6 @@ def run(
         checkpoint_at_end=False,
         verbose=2,
         progress_reporter=None,
-        loggers=None,
         log_to_file=False,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -87,6 +88,7 @@ def run(
         raise_on_failed_trial=True,
         callbacks=None,
         # Deprecated args
+        loggers=None,
         ray_auto_init=None,
         run_errored_only=None,
         global_checkpoint_period=None,
@@ -192,9 +194,6 @@ def run(
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        loggers (list): List of logger creators to be used with
-            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
-            See `ray/tune/logger.py`.
         log_to_file (bool|str|Sequence): Log stdout and stderr to files in
             Tune's trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -247,7 +246,9 @@ def run(
             trial (of ERROR state) when the experiments complete.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
-            ``ray.tune.trial_runner.Callback`` class.
+            ``ray.tune.callback.Callback`` class. If not passed,
+            `LoggerCallback` and `SyncerCallback` callbacks are automatically
+            added.
 
 
     Returns:
@@ -309,7 +310,6 @@ def run(
                 sync_to_driver=sync_config.sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
-                loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
@@ -352,6 +352,10 @@ def run(
             "the scheduler you are using was already instantiated with their "
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your scheduler or from your call to `tune.run()`")
+
+    # Create logger and syncer callbacks
+    callbacks = create_default_callbacks(
+        callbacks, sync_config, loggers=loggers)
 
     runner = TrialRunner(
         search_alg=search_alg,
@@ -457,7 +461,8 @@ def run_experiments(experiments,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=True):
+                    concurrent=True,
+                    callbacks=None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -487,7 +492,8 @@ def run_experiments(experiments,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler).trials
+            scheduler=scheduler,
+            callbacks=callbacks).trials
     else:
         trials = []
         for exp in experiments:
@@ -501,5 +507,6 @@ def run_experiments(experiments,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler).trials
+                scheduler=scheduler,
+                callbacks=callbacks).trials
         return trials

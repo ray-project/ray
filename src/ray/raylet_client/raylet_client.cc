@@ -282,37 +282,11 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                    ActorCheckpointID *checkpoint_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
-  fbb.Finish(message);
-
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::PrepareActorCheckpointRequest,
-                                              MessageType::PrepareActorCheckpointReply,
-                                              &reply, &fbb));
-  auto reply_message =
-      flatbuffers::GetRoot<protocol::PrepareActorCheckpointReply>(reply.data());
-  *checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
-  return Status::OK();
-}
-
-Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyActorResumedFromCheckpoint(
-      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, checkpoint_id));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyActorResumedFromCheckpoint, &fbb);
-}
-
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity, const NodeID &client_Id) {
+                                         const double capacity, const NodeID &node_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
-                                                    capacity, to_flatbuf(fbb, client_Id));
+                                                    capacity, to_flatbuf(fbb, node_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
@@ -400,6 +374,25 @@ void raylet::RayletClient::CancelResourceReserve(
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
   grpc_client_->CancelResourceReserve(request, callback);
+}
+
+void raylet::RayletClient::ReleaseUnusedBundles(
+    const std::vector<rpc::Bundle> &bundles_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) {
+  rpc::ReleaseUnusedBundlesRequest request;
+  for (auto &bundle : bundles_in_use) {
+    request.add_bundles_in_use()->CopyFrom(bundle);
+  }
+  grpc_client_->ReleaseUnusedBundles(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing bundles from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
 }
 
 void raylet::RayletClient::PinObjectIDs(

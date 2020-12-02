@@ -42,6 +42,7 @@ class WorkerContext {
   const std::unordered_map<std::string, std::string>
       &GetCurrentOverrideEnvironmentVariables() const;
 
+  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentJobId(const JobID &job_id);
 
@@ -74,6 +75,8 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const;
 
+  bool CurrentActorDetached() const;
+
   int GetNextTaskIndex();
 
   // Returns the next put object index; used to calculate ObjectIDs for puts.
@@ -91,6 +94,7 @@ class WorkerContext {
   ActorID current_actor_id_;
   int current_actor_max_concurrency_ = 1;
   bool current_actor_is_asyncio_ = false;
+  bool is_detached_actor_ = false;
   // The placement group id that the current actor belongs to.
   PlacementGroupID current_actor_placement_group_id_;
   // Whether or not we should implicitly capture parent's placement group.

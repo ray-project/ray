@@ -85,10 +85,6 @@ cdef class Config:
         return RayConfig.instance().object_manager_push_timeout_ms()
 
     @staticmethod
-    def object_manager_repeated_push_delay_ms():
-        return RayConfig.instance().object_manager_repeated_push_delay_ms()
-
-    @staticmethod
     def object_manager_default_chunk_size():
         return RayConfig.instance().object_manager_default_chunk_size()
 
@@ -119,3 +115,7 @@ cdef class Config:
     @staticmethod
     def enable_timeline():
         return RayConfig.instance().enable_timeline()
+
+    @staticmethod
+    def automatic_object_deletion_enabled():
+        return RayConfig.instance().automatic_object_deletion_enabled()

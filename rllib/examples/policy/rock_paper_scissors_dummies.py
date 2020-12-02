@@ -16,7 +16,7 @@ class AlwaysSameHeuristic(Policy):
         self.view_requirements.update({
             "state_in_0": ViewRequirement(
                 "state_out_0",
-                shift=-1,
+                data_rel_pos=-1,
                 space=gym.spaces.Box(0, 100, shape=(), dtype=np.int32))
         })
 
@@ -36,10 +36,7 @@ class AlwaysSameHeuristic(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        if self.config["_use_trajectory_view_api"]:
-            return state_batches[0][0], [s[0] for s in state_batches], {}
-        else:
-            return state_batches[0], state_batches, {}
+        return state_batches[0], state_batches, {}
 
 
 class BeatLastHeuristic(Policy):

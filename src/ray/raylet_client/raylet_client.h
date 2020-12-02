@@ -26,7 +26,6 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using ray::ActorCheckpointID;
 using ray::ActorID;
 using ray::JobID;
 using ray::NodeID;
@@ -118,6 +117,10 @@ class ResourceReserveInterface {
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback) = 0;
 
+  virtual void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
+
   virtual ~ResourceReserveInterface(){};
 };
 
@@ -180,7 +183,7 @@ class RayletClient : public PinObjectsInterface,
   /// \param worker_id A unique ID to represent the worker.
   /// \param worker_type The type of the worker. If it is a certain worker type, an
   /// additional message will be sent to register as one.
-  /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
+  /// \param job_id The job ID of the driver or worker.
   /// \param language Language of the worker.
   /// \param ip_address The IP address of the worker.
   /// \param status This will be populated with the result of connection attempt.
@@ -311,29 +314,13 @@ class RayletClient : public PinObjectsInterface,
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
                           bool deleteCreatingTasks);
 
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return ray::Status.
-  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return ray::Status.
-  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id);
-
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id NodeID where the resource is to be set
+  /// \param node_id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &client_Id);
+                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.
@@ -379,6 +366,11 @@ class RayletClient : public PinObjectsInterface,
       BundleSpecification &bundle_spec,
       const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
       override;
+
+  /// Implements ReleaseUnusedBundlesInterface.
+  void ReleaseUnusedBundles(
+      const std::vector<rpc::Bundle> &bundles_in_use,
+      const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) override;
 
   void PinObjectIDs(
       const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,

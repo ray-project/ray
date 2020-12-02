@@ -2,6 +2,7 @@ from collections import Counter
 import shutil
 import tempfile
 import copy
+import numpy as np
 import os
 import time
 import unittest
@@ -12,7 +13,7 @@ from ray.rllib import _register_all
 
 from ray import tune
 from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
-                      EarlyStopping)
+                      EarlyStopping, run)
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
@@ -90,19 +91,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class_trainable_name = "class_trainable"
         register_trainable(class_trainable_name, _WrappedTrainable)
 
-        trials = run_experiments(
-            {
-                "function_api": {
-                    "run": _function_trainable,
-                    "loggers": [FunctionAPILogger],
-                },
-                "class_api": {
-                    "run": class_trainable_name,
-                    "loggers": [ClassAPILogger],
-                },
-            },
+        [trial1] = run(
+            _function_trainable,
+            loggers=[FunctionAPILogger],
             raise_on_failed_trial=False,
-            scheduler=MockScheduler())
+            scheduler=MockScheduler()).trials
+
+        [trial2] = run(
+            class_trainable_name,
+            loggers=[ClassAPILogger],
+            raise_on_failed_trial=False,
+            scheduler=MockScheduler()).trials
+
+        trials = [trial1, trial2]
 
         # Ignore these fields
         NO_COMPARE_FIELDS = {
@@ -1018,6 +1019,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
             time_budget_s=datetime.timedelta(seconds=3))
         diff = time.time() - start
         self.assertLess(diff, 9)
+
+    def testInfiniteTrials(self):
+        def train(config):
+            time.sleep(0.5)
+            tune.report(np.random.uniform(-10., 10.))
+
+        start = time.time()
+        out = tune.run(train, num_samples=-1, time_budget_s=10)
+        taken = time.time() - start
+
+        # Allow for init time overhead
+        self.assertLessEqual(taken, 20.)
+        self.assertGreaterEqual(len(out.trials), 0)
+
+        status = dict(Counter([trial.status for trial in out.trials]))
+        self.assertGreaterEqual(status["TERMINATED"], 1)
+        self.assertLessEqual(status.get("PENDING", 0), 1)
 
     def testMetricCheckingEndToEnd(self):
         from ray import tune

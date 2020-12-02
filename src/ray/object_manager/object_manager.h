@@ -38,6 +38,7 @@
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 
@@ -49,10 +50,12 @@ struct ObjectManagerConfig {
   /// its own port.
   int object_manager_port;
   /// The time in milliseconds to wait before retrying a pull
-  /// that fails due to client id lookup.
+  /// that fails due to node id lookup.
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
+  /// Max object push bytes in flight.
+  uint64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
@@ -74,14 +77,12 @@ struct ObjectManagerConfig {
 struct LocalObjectInfo {
   /// Information from the object store about the object.
   object_manager::protocol::ObjectInfoT object_info;
-  /// A map from the ID of a remote object manager to the timestamp of when
-  /// the object was last pushed to that object manager (if a push took place).
-  std::unordered_map<NodeID, int64_t> recent_pushes;
 };
 
 class ObjectStoreRunner {
  public:
-  ObjectStoreRunner(const ObjectManagerConfig &config);
+  ObjectStoreRunner(const ObjectManagerConfig &config,
+                    SpillObjectsCallback spill_objects_callback);
   ~ObjectStoreRunner();
 
  private:
@@ -140,26 +141,28 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param push_id Unique push id to indicate this push request
   /// \param object_id Object id
   /// \param owner_address The address of the object's owner
+  /// \param node_id The id of the receiver.
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index of this object chunk, start with 0
   /// \param rpc_client Rpc client used to send message to remote object manager
-  ray::Status SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
-                              const rpc::Address &owner_address, const NodeID &client_id,
-                              uint64_t data_size, uint64_t metadata_size,
-                              uint64_t chunk_index,
-                              std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+  /// \param on_complete Callback to run on completion.
+  void SendObjectChunk(const UniqueID &push_id, const ObjectID &object_id,
+                       const rpc::Address &owner_address, const NodeID &node_id,
+                       uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
+                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client,
+                       std::function<void(const Status &)> on_complete);
 
   /// Receive object chunk from remote object manager, small object may contain one chunk
   ///
-  /// \param client_id Client id of remote object manager which sends this chunk
+  /// \param node_id Node id of remote object manager which sends this chunk
   /// \param object_id Object id
   /// \param owner_address The address of the object's owner
   /// \param data_size Data size
   /// \param metadata_size Metadata size
   /// \param chunk_index Chunk index
   /// \param data Chunk data
-  ray::Status ReceiveObjectChunk(const NodeID &client_id, const ObjectID &object_id,
+  ray::Status ReceiveObjectChunk(const NodeID &node_id, const ObjectID &object_id,
                                  const rpc::Address &owner_address, uint64_t data_size,
                                  uint64_t metadata_size, uint64_t chunk_index,
                                  const std::string &data);
@@ -167,14 +170,14 @@ class ObjectManager : public ObjectManagerInterface,
   /// Send pull request
   ///
   /// \param object_id Object id
-  /// \param client_id Remote server client id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id,
+  /// \param node_id Remote server node id
+  void SendPullRequest(const ObjectID &object_id, const NodeID &node_id,
                        std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
 
-  /// Get the rpc client according to the client ID
+  /// Get the rpc client according to the node ID
   ///
-  /// \param client_id Remote client id, will send rpc request to it
-  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &client_id);
+  /// \param node_id Remote node id, will send rpc request to it
+  std::shared_ptr<rpc::ObjectManagerClient> GetRpcClient(const NodeID &node_id);
 
   /// Get the port of the object manager rpc server.
   int GetServerPort() const { return object_manager_server_.GetPort(); }
@@ -190,7 +193,8 @@ class ObjectManager : public ObjectManagerInterface,
   explicit ObjectManager(boost::asio::io_service &main_service,
                          const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object);
+                         RestoreSpilledObjectCallback restore_spilled_object,
+                         SpillObjectsCallback spill_objects_callback = nullptr);
 
   ~ObjectManager();
 
@@ -219,9 +223,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// on the same object, the second one might be ignored).
   ///
   /// \param object_id The object's object id.
-  /// \param client_id The remote node's client id.
+  /// \param node_id The remote node's id.
   /// \return Void.
-  void Push(const ObjectID &object_id, const NodeID &client_id);
+  void Push(const ObjectID &object_id, const NodeID &node_id);
 
   /// Pull an object from NodeID.
   ///
@@ -229,9 +233,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Status of whether the pull request successfully initiated.
   ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
-  /// Try to Pull an object from one of its expected client locations. If there
-  /// are more client locations to try after this attempt, then this method
-  /// will try each of the other clients in succession, with a timeout between
+  /// Try to Pull an object from one of its expected node locations. If there
+  /// are more node locations to try after this attempt, then this method
+  /// will try each of the other nodes in succession, with a timeout between
   /// each attempt. If the object is received or if the Pull is Canceled before
   /// the timeout, then no more Pull requests for this object will be sent
   /// to other node managers until TryPull is called again.
@@ -291,10 +295,10 @@ class ObjectManager : public ObjectManagerInterface,
   friend class TestObjectManager;
 
   struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
+    PullRequest() : retry_timer(nullptr), timer_set(false), node_locations() {}
     std::unique_ptr<boost::asio::deadline_timer> retry_timer;
     bool timer_set;
-    std::vector<NodeID> client_locations;
+    std::vector<NodeID> node_locations;
   };
 
   struct WaitState {
@@ -369,7 +373,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// completed.
   ///
   /// \param object_id The ID of the object that was sent.
-  /// \param client_id The ID of the client that the chunk was sent to.
+  /// \param node_id The ID of the node that the chunk was sent to.
   /// \param chunk_index The index of the chunk.
   /// \param start_time_us The time when the object manager began sending the
   /// chunk.
@@ -377,7 +381,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param status The status of the send (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleSendFinished(const ObjectID &object_id, const NodeID &client_id,
+  void HandleSendFinished(const ObjectID &object_id, const NodeID &node_id,
                           uint64_t chunk_index, double start_time_us, double end_time_us,
                           ray::Status status);
 
@@ -385,7 +389,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// completed.
   ///
   /// \param object_id The ID of the object that was received.
-  /// \param client_id The ID of the client that the chunk was received from.
+  /// \param node_id The ID of the node that the chunk was received from.
   /// \param chunk_index The index of the chunk.
   /// \param start_time_us The time when the object manager began receiving the
   /// chunk.
@@ -393,12 +397,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// chunk.
   /// \param status The status of the receive (e.g., did it succeed or fail).
   /// \return Void.
-  void HandleReceiveFinished(const ObjectID &object_id, const NodeID &client_id,
+  void HandleReceiveFinished(const ObjectID &object_id, const NodeID &node_id,
                              uint64_t chunk_index, double start_time_us,
                              double end_time_us, ray::Status status);
 
   /// Handle Push task timeout.
-  void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &client_id);
+  void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
 
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
@@ -472,8 +476,17 @@ class ObjectManager : public ObjectManagerInterface,
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
+  /// Object push manager.
+  std::unique_ptr<PushManager> push_manager_;
+
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;
+
+  /// Running total of received chunks.
+  int64_t num_chunks_received_total_ = 0;
+
+  /// Running total of received chunks that failed (duplicated).
+  int64_t num_chunks_received_failed_ = 0;
 };
 
 }  // namespace ray
