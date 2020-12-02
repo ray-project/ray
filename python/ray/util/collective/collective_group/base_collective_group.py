@@ -51,35 +51,3 @@ class BaseGroup(six.with_metaclass(ABCMeta)):
     @abstractmethod
     def barrier(self, barrier_options=BarrierOptions()):
         raise NotImplementedError()
-
-    # @abstractmethod
-    # def reduce(self, tensor, dst, op=SUM, group_name='default'):
-    #     raise NotImplementedError()
-    #
-    # @abstractmethod
-    # def allgather(self, tensor_list, tensor, gropu_name='default'):
-    #     raise NotImplementedError()
-    #
-    # @abstractmethod
-    # def gather(self, tensor, gather_list=None, dst=0, group_name='default'):
-    #     raise NotImplementedError()
-    #
-    # @abstractmethod
-    # def scatter(self, tensor, scatter_list=None, src=0, group_name='default'):
-    #     raise NotImplementedError()
-    #
-    # @abstractmethod
-    # def barrier(self, group_name='default'):
-    #     raise NotImplementedError()
-
-    # @abstractmethod
-    # def send(self):
-    #     raise NotImplementedError()
-    #
-    # @abstractmethod
-    # def recv(self):
-    #     raise NotImplementedError()
-    #
-    # @abstractmethod
-    # def broadcast(self):
-    #     raise NotImplementedError()

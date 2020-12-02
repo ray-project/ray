@@ -7,8 +7,11 @@ import cupy
 
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
-from ray.util.collective.types import AllReduceOptions, BarrierOptions, named_actor_suffix
+from ray.util.collective.types import AllReduceOptions, BarrierOptions
+from ray.util.collective.const import NAMED_ACTOR_STORE_SUFFIX
 
+
+logger = logging.getLogger(__name__)
 
 # TODO(Hao):
 # (1) stream management, instead of using the default stream, using a dedicate stream
@@ -27,20 +30,21 @@ class Rendezvous:
         if timeout is not None and timeout < 0:
             raise ValueError("The 'timeout' argument must be nonnegative. "
                              f"Received {timeout}")
-        self._store_name = self._group_name + named_actor_suffix
+        self._store_name = self._group_name + NAMED_ACTOR_STORE_SUFFIX
         timeout_delta = datetime.timedelta(seconds=timeout)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
         while elapsed < timeout_delta:
             try:
-                logging.debug("Trying to meet at the store '{}'".format(self._store_name))
+                logger.debug("Trying to meet at the store '{}'".format(self._store_name))
                 self._store = ray.get_actor(self._store_name)
             except ValueError:
-                logging.debug("Failed to meet at the store '{}'."
+                logger.debug("Failed to meet at the store '{}'."
                               "Trying again...".format(self._store_name))
                 time.sleep(1)
                 elapsed = datetime.datetime.now() - start_time
                 continue
+            logger.debug("Successful rendezvous!")
             break
         if not self._store:
             raise RuntimeError("Unable to meet other processes "
@@ -56,6 +60,7 @@ class Rendezvous:
         uid = ray.get(self._store.get_id.remote())
         return uid
 
+
 class NCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
@@ -69,7 +74,7 @@ class NCCLGroup(BaseGroup):
             raise RuntimeError('NCCL in Ray requires NCCL>=2.0.')
         # TODO(Hao): check version here
         if nccl_util.get_nccl_runtime_version() < 2704:
-            logging.warning('NCCL send/recv calls requires NCCL>=2.7.4')
+            logger.warning('NCCL send/recv calls requires NCCL>=2.7.4')
 
         self._rendezvous = Rendezvous(self.group_name)
         self._rendezvous.meet_at_store()

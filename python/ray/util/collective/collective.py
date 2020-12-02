@@ -3,6 +3,7 @@ import logging
 
 import ray
 from ray.util.collective import types
+from ray.util.collective.const import NAMED_ACTOR_STORE_SUFFIX
 
 # Get the availability information first by importing information
 _MPI_AVAILABLE = True
@@ -82,7 +83,7 @@ class GroupManager(object):
             if rank == 0:
                 import cupy.cuda.nccl as nccl
                 group_uid = nccl.get_unique_id()
-                store_name = group_name + types.named_actor_suffix
+                store_name = group_name + NAMED_ACTOR_STORE_SUFFIX
 
                 store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(store_name)
                 ray.wait([store.set_id.remote(group_uid)])
@@ -123,7 +124,7 @@ class GroupManager(object):
         if backend == 'nccl':
             # release the named actor
             if rank == 0:
-                store_name = group_name + types.named_actor_suffix
+                store_name = group_name + NAMED_ACTOR_STORE_SUFFIX
                 store = ray.get_actor(store_name)
                 ray.wait([store.__ray_terminate__.remote()])
                 ray.kill(store)
@@ -195,7 +196,7 @@ class GroupManager_2(object):
         if backend == 'nccl':
             # release the named actor
             if rank == 0:
-                store_name = group_name + types.named_actor_suffix
+                store_name = group_name + NAMED_ACTOR_STORE_SUFFIX
                 store = ray.get_actor(store_name)
                 ray.wait([store.__ray_terminate__.remote()])
                 ray.kill(store)
