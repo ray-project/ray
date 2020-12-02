@@ -4,7 +4,7 @@ min_workers: 0
 max_workers: 0
 
 docker:
-    image: rayproject/ray-ml:nightly-gpu
+    image: anyscale/ray-ml:latest-gpu
     container_name: ray_container
     pull_before_run: True
 
@@ -31,7 +31,7 @@ head_node:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - sudo apt-get install -y libglib2.0-0 curl unzip gcc python3-dev
+    - sudo apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1 curl unzip gcc python3-dev
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
