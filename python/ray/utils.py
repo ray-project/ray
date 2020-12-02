@@ -4,7 +4,6 @@ import hashlib
 import inspect
 import logging
 import multiprocessing
-import numpy as np
 import os
 import signal
 import subprocess
@@ -13,11 +12,13 @@ import tempfile
 import threading
 import time
 import uuid
+from inspect import signature
 
+import numpy as np
+import psutil
 import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
-import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -854,3 +855,8 @@ def get_user():
         return pwd.getpwuid(os.getuid()).pw_name
     except Exception:
         return ""
+
+
+def get_function_args(callable):
+    all_parameters = frozenset(signature(callable).parameters)
+    return list(all_parameters)

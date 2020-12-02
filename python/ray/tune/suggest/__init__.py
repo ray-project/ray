@@ -1,4 +1,6 @@
 import inspect
+
+from ray.utils import get_function_args
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
@@ -95,14 +97,10 @@ def create_searcher(
 
     SearcherClass = SEARCH_ALG_IMPORT[search_alg]()
 
-    search_alg_defined_args = inspect.getfullargspec(SearcherClass).args
-    search_alg_input_args = {}
+    search_alg_args = get_function_args(SearcherClass)
+    trimmed_kwargs = {k: v for k, v in kwargs.items() if k in search_alg_args}
 
-    for arg, value in kwargs.items():
-        if arg in search_alg_defined_args:
-            search_alg_input_args[arg] = value
-
-    return SearcherClass(**search_alg_input_args)
+    return SearcherClass(**trimmed_kwargs)
 
 
 __all__ = [
