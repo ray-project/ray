@@ -4,7 +4,7 @@ Ray Serve FAQ
 =============
 
 This page answers some common questions about Ray Serve. If you have more
-questions, feel free to ask them in the `Ray Github Discussions page <https://github.com/ray-project/ray/discussions>`_.
+questions, feel free to ask them in the `Discussion Board <https://discuss.ray.io/>`_.
 
 .. contents::
 

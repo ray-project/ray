@@ -34,6 +34,9 @@ You can install the latest Ray wheels via the following command. These daily rel
 
 .. note:: ``ray install-nightly`` may not capture updated library dependencies. After running ``ray install-nightly``, consider running ``pip install ray[<library>]`` *without upgrading (via -U)* to update dependencies.
 
+
+.. note:: If you're currently on ``ray<=1.0.1.post1``, ``ray install-nightly`` will not install the most recent nightly wheels. Please use the links below instead.
+
 Alternatively, here are the links to the latest wheels (which are built for each commit on the
 master branch). To install these wheels, use the following ``pip`` command and wheels
 instead of the ones above:
