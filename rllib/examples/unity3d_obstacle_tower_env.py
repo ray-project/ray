@@ -122,9 +122,10 @@ parser.add_argument("--stop-iters", type=int, default=9999)
 parser.add_argument("--stop-reward", type=float, default=9999.0)
 parser.add_argument("--stop-timesteps", type=int, default=10000000)
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--num-gpus", type=int, default=0)
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)#TODO
+    ray.init()
 
     args = parser.parse_args()
 
@@ -155,7 +156,8 @@ if __name__ == "__main__":
         "sgd_minibatch_size": 500,
         "train_batch_size": 5000,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+        "num_gpus": max(args.num_gpus,
+                        int(os.environ.get("RLLIB_NUM_GPUS", "0"))),
         "num_sgd_iter": 20,
         "rollout_fragment_length": 200,
         "clip_param": 0.1,
