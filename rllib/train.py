@@ -191,10 +191,10 @@ def run(args, parser):
 
         if args.v:
             exp["config"]["log_level"] = "INFO"
-            verbose = 2
+            verbose = 3  # Print details on trial result
         if args.vv:
             exp["config"]["log_level"] = "DEBUG"
-            verbose = 3
+            verbose = 3  # Print details on trial result
 
     if args.ray_num_nodes:
         cluster = Cluster()

@@ -789,6 +789,7 @@ class TrialProgressCallback(Callback):
     def _print_result(self, result: Dict):
         print_result = result.copy()
         print_result.pop("config", None)
+        print_result.pop("hist_stats", None)
         print_result.pop("trial_id", None)
         print_result.pop("experiment_tag", None)
         print_result.pop("done", None)
