@@ -33,10 +33,12 @@ namespace raylet {
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
  public:
-  LocalObjectManager(size_t free_objects_batch_size, int64_t free_objects_period_ms,
+  LocalObjectManager(boost::asio::io_service &io_context, size_t free_objects_batch_size,
+                     int64_t free_objects_period_ms,
                      IOWorkerPoolInterface &io_worker_pool,
                      gcs::ObjectInfoAccessor &object_info_accessor,
                      rpc::CoreWorkerClientPool &owner_client_pool,
+                     bool object_pinning_enabled, bool automatic_object_deletion_enabled,
                      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
                      SpaceReleasedCallback on_objects_spilled)
       : free_objects_period_ms_(free_objects_period_ms),
@@ -44,6 +46,8 @@ class LocalObjectManager {
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
+        object_pinning_enabled_(object_pinning_enabled),
+        automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         on_objects_spilled_(on_objects_spilled),
         last_free_objects_at_ms_(current_time_ms()) {}
@@ -102,6 +106,16 @@ class LocalObjectManager {
   /// Try to clear any objects that have been freed.
   void FlushFreeObjectsIfNeeded(int64_t now_ms);
 
+  /// Judge if objects are deletable from pending_delete_queue and delete them if
+  /// necessary.
+  /// TODO(sang): We currently only use 1 IO worker per each call to this method because
+  /// delete is a low priority tasks. But we can potentially support more workers to be
+  /// used at once.
+  ///
+  /// \param max_batch_size Maximum number of objects that can be deleted by one
+  /// invocation.
+  void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
+
  private:
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
@@ -121,6 +135,11 @@ class LocalObjectManager {
                       const rpc::SpillObjectsReply &worker_reply,
                       std::function<void(const ray::Status &)> callback);
 
+  /// Delete spilled objects stored in given urls.
+  ///
+  /// \param urls_to_delete List of urls to delete from external storages.
+  void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
+
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
 
@@ -136,6 +155,12 @@ class LocalObjectManager {
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
   rpc::CoreWorkerClientPool &owner_client_pool_;
+
+  /// Whether to enable pinning for plasma objects.
+  bool object_pinning_enabled_;
+
+  /// Whether to enable automatic deletion when refs are gone out of scope.
+  bool automatic_object_deletion_enabled_;
 
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
@@ -171,6 +196,24 @@ class LocalObjectManager {
   /// This class is accessed by both the raylet and plasma store threads. The
   /// mutex protects private members that relate to object spilling.
   mutable absl::Mutex mutex_;
+
+  ///
+  /// Fields below are used to delete spilled objects.
+  ///
+
+  /// A list of object id and url pairs that need to be deleted.
+  /// We don't instantly delete objects when it goes out of scope from external storages
+  /// because those objects could be still in progress of spilling.
+  std::queue<ObjectID> spilled_object_pending_delete_ GUARDED_BY(mutex_);
+
+  /// Mapping from object id to url_with_offsets. We cannot reuse pinned_objects_ because
+  /// pinned_objects_ entries are deleted when spilling happens.
+  absl::flat_hash_map<ObjectID, std::string> spilled_objects_url_ GUARDED_BY(mutex_);
+
+  /// Base URL -> ref_count. It is used because there could be multiple objects
+  /// within a single spilled file. We need to ref count to avoid deleting the file
+  /// before all objects within that file are out of scope.
+  absl::flat_hash_map<std::string, uint64_t> url_ref_count_ GUARDED_BY(mutex_);
 };
 
 };  // namespace raylet

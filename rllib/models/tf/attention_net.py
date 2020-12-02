@@ -313,6 +313,7 @@ class GTrXLNet(RecurrentNetwork):
 
         return logits, [observations] + memory_outs
 
+    # TODO: (sven) Deprecate this once trajectory view API has fully matured.
     @override(RecurrentNetwork)
     def get_initial_state(self) -> List[np.ndarray]:
         # State is the T last observations concat'd together into one Tensor.

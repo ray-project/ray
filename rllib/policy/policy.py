@@ -92,6 +92,7 @@ class Policy(metaclass=ABCMeta):
             self.view_requirements = view_reqs
         else:
             self.view_requirements.update(view_reqs)
+        self._update_model_inference_view_requirements_from_init_state()
 
     @abstractmethod
     @DeveloperAPI
@@ -278,7 +279,8 @@ class Policy(metaclass=ABCMeta):
         # `self.compute_actions()`.
         state_batches = [
             # TODO: (sven) remove unsqueezing code here for non-traj.view API.
-            s if self.config["_use_trajectory_view_api"] else s.unsqueeze(0)
+            s if self.config.get("_use_trajectory_view_api", False) else
+            s.unsqueeze(0)
             if torch and isinstance(s, torch.Tensor) else np.expand_dims(s, 0)
             for k, s in input_dict.items() if k[:9] == "state_in_"
         ]
@@ -717,22 +719,23 @@ class Policy(metaclass=ABCMeta):
         return SampleBatch(ret, _dont_check_lens=True)
 
     def _update_model_inference_view_requirements_from_init_state(self):
-        """Uses this Model's initial state to auto-add necessary ViewReqs.
+        """Uses Model's (or this Policy's) init state to add needed ViewReqs.
 
         Can be called from within a Policy to make sure RNNs automatically
         update their internal state-related view requirements.
         Changes the `self.inference_view_requirements` dict.
         """
-        model = self.model
+        model = getattr(self, "model", None)
+        obj = model or self
         # Add state-ins to this model's view.
-        for i, state in enumerate(model.get_initial_state()):
-            model.inference_view_requirements["state_in_{}".format(i)] = \
-                ViewRequirement(
-                    "state_out_{}".format(i),
-                    data_rel_pos=-1,
-                    space=Box(-1.0, 1.0, shape=state.shape))
-            model.inference_view_requirements["state_out_{}".format(i)] = \
-                ViewRequirement(space=Box(-1.0, 1.0, shape=state.shape))
+        for i, state in enumerate(obj.get_initial_state()):
+            space = Box(-1.0, 1.0, shape=state.shape) if \
+                isinstance(state, np.ndarray) else None
+            view_reqs = model.inference_view_requirements if model else \
+                self.view_requirements
+            view_reqs["state_in_{}".format(i)] = ViewRequirement(
+                "state_out_{}".format(i), data_rel_pos=-1, space=space)
+            view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space)
 
 
 def clip_action(action, action_space):

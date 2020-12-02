@@ -290,11 +290,13 @@ class _PolicyCollector:
                 training).
         """
         for view_col, data in batch.items():
+            # TODO(ekl) how do we handle this for policies that don't extend
+            # Torch / TF Policy template (no inference of view reqs)?
             # Skip columns that are not used for training.
-            if view_col not in view_requirements or \
-                    not view_requirements[view_col].used_for_training:
-                continue
-            assert view_requirements[view_col].is_input_dict is False
+            # if view_col not in view_requirements or \
+            #         not view_requirements[view_col].used_for_training:
+            #     continue
+            # assert view_requirements[view_col].is_input_dict is False
             self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.count += batch.count

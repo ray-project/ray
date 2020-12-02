@@ -162,6 +162,7 @@ class QMixTorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
+        config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
@@ -213,6 +214,9 @@ class QMixTorchPolicy(Policy):
             framework="torch",
             name="target_model",
             default_model=RNNModel).to(self.device)
+
+        # Combine view_requirements for Model and Policy.
+        self.view_requirements.update(self.model.inference_view_requirements)
 
         self.exploration = self._create_exploration()
 
