@@ -197,8 +197,10 @@ class Queue:
             raise ValueError("'num_items' must be nonnegative")
         if num_items > self.qsize():
             raise Empty("Cannot get " + str(num_items) +
-                       " items from queue of size " + str(self.qsize()))
+                        " items from queue of size " + str(self.qsize()))
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
+
+
 @ray.remote
 class _QueueActor:
     def __init__(self, maxsize):
