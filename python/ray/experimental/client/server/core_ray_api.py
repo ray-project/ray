@@ -26,7 +26,7 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
-    def call_remote(self, f: ClientRemoteFunc, *args, **kwargs):
+    def call_remote(self, f: ClientRemoteFunc, kind: int, *args, **kwargs):
         if f._raylet_remote_func is None:
             f._raylet_remote_func = ray.remote(f._func)
         return f._raylet_remote_func.remote(*args, **kwargs)

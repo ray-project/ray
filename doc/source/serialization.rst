@@ -29,12 +29,6 @@ The numpy array is stored as a read-only object, and all Ray workers on the same
 
 .. tip:: You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors hold objects that cannot be serialized.
 
-PyTorch Tensors
----------------
-
-Ray supports zero-copy serialization for PyTorch tensors by default. However, this would enforcing the importing of
-the ``torch`` module. To disable this feature, one can set the environment variable ``RAY_DISABLE_PYTORCH_SERIALIZER=1``.
-
 Serialization notes
 -------------------
 
@@ -69,6 +63,48 @@ Serialization notes
 - Whenever possible, use numpy arrays or Python collections of numpy arrays for maximum performance.
 
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
+
+Troubleshooting
+---------------
+
+Use ``ray.util.inspect_serializability`` to identify tricky pickling issues. This function can be used to trace a potential non-serializable object within any Python object -- whether it be a function, class, or object instance.
+
+Below, we demonstrate this behavior on a function with a non-serializable object (threading lock):
+
+.. code-block:: python
+
+    from ray.util import inspect_serializability
+    import threading
+
+    lock = threading.Lock()
+
+    def test():
+        print(lock)
+
+    inspect_serializability(test, name="test")
+
+The resulting output is:
+
+
+.. code-block:: bash
+
+    =============================================================
+    Checking Serializability of <function test at 0x7f9ca9843950>
+    =============================================================
+    !!! FAIL serialization: can't pickle _thread.lock objects
+    Detected 1 global variables. Checking serializability...
+        Serializing 'lock' <unlocked _thread.lock object at 0x7f9cb83fb210>...
+        !!! FAIL serialization: can't pickle _thread.lock objects
+        WARNING: Did not find non-serializable object in <unlocked _thread.lock object at 0x7f9cb83fb210>. This may be an oversight.
+    =============================================================
+    Variable:
+
+        lock [obj=<unlocked _thread.lock object at 0x7f9cb83fb210>, parent=<function test at 0x7f9ca9843950>]
+
+    was found to be non-serializable. There may be multiple other undetected variables that were non-serializable.
+    Consider either removing the instantiation/imports of these variables or moving the instantiation into the scope of the function/class.
+    If you have any suggestions on how to improve this error message, please reach out to the Ray developers on github.com/ray-project/ray/issues/
+    =============================================================
 
 Known Issues
 ------------

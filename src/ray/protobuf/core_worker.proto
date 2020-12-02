@@ -317,6 +317,14 @@ message RestoreSpilledObjectsRequest {
 message RestoreSpilledObjectsReply {
 }
 
+message DeleteSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message DeleteSpilledObjectsReply {
+}
+
 message ExitRequest {
 }
 
@@ -366,6 +374,9 @@ service CoreWorkerService {
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
+  // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
+      returns (DeleteSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
   // Request for a worker to exit.

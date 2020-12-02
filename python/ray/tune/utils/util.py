@@ -115,14 +115,14 @@ def get_pinned_object(pinned_id):
 
 
 class warn_if_slow:
-    """Prints a warning if a given operation is slower than 100ms.
+    """Prints a warning if a given operation is slower than 500ms.
 
     Example:
         >>> with warn_if_slow("some_operation"):
         ...    ray.get(something)
     """
 
-    DEFAULT_THRESHOLD = 0.5
+    DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
 
     def __init__(self, name, threshold=None):
         self.name = name
@@ -137,10 +137,10 @@ class warn_if_slow:
         now = time.time()
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
+            _duration = now - self.start
             logger.warning(
-                "The `%s` operation took %s seconds to complete, "
-                "which may be a performance bottleneck.", self.name,
-                now - self.start)
+                f"The `{self.name}` operation took {_duration:.3f} s, "
+                "which may be a performance bottleneck.")
 
 
 class Tee(object):

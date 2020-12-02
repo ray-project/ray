@@ -272,9 +272,11 @@ class RolloutWorker(ParallelIteratorWorker):
             output_creator (Callable[[IOContext], OutputWriter]): Function that
                 returns an OutputWriter object for saving generated
                 experiences.
-            remote_worker_envs (bool): If using num_envs > 1, whether to create
-                those new envs in remote processes instead of in the current
-                process. This adds overheads, but can make sense if your envs
+            remote_worker_envs (bool): If using num_envs_per_worker > 1,
+                whether to create those new envs in remote processes instead of
+                in the current process. This adds overheads, but can make sense
+                if your envs are expensive to step/reset (e.g., for StarCraft).
+                Use this cautiously, overheads are significant!
             remote_env_batch_wait_ms (float): Timeout that remote workers
                 are waiting when polling environments. 0 (continue when at
                 least one env is ready) is a reasonable default, but optimal
