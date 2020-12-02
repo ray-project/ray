@@ -232,17 +232,16 @@ class LocalObjectManagerTest : public ::testing::Test {
   LocalObjectManagerTest()
       : owner_client(std::make_shared<MockWorkerClient>()),
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
-        manager(
-            io_service_, free_objects_batch_size,
-            /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-            /*object_pinning_enabled=*/true,
-            /*automatic_object_delete_enabled=*/true,
-            [&](const std::vector<ObjectID> &object_ids) {
-              for (const auto &object_id : object_ids) {
-                freed.insert(object_id);
-              }
-            },
-            [&]() { num_callbacks_fired++; }),
+        manager(io_service_, free_objects_batch_size,
+                /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
+                /*object_pinning_enabled=*/true,
+                /*automatic_object_delete_enabled=*/true,
+                [&](const std::vector<ObjectID> &object_ids) {
+                  for (const auto &object_id : object_ids) {
+                    freed.insert(object_id);
+                  }
+                },
+                [&]() { num_callbacks_fired++; }),
         unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
     RayConfig::instance().initialize({{"object_spilling_config", "mock_config"}});
   }
