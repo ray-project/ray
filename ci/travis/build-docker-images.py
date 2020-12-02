@@ -31,11 +31,11 @@ DOCKER_HUB_DESCRIPTION = {
 
 
 def _merge_build():
-    return os.environ.get("TRAVIS_PULL_REQUEST").lower() == "false"
+    return os.environ.get("TRAVIS_PULL_REQUEST", "").lower() == "false"
 
 
 def _release_build():
-    branch = os.environ.get("TRAVIS_BRANCH")
+    branch = os.environ.get("TRAVIS_BRANCH", "")
     if not branch:
         print("Branch not found!")
         print(os.environ)
