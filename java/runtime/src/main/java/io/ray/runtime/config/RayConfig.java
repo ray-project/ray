@@ -235,7 +235,7 @@ public class RayConfig {
       codeSearchPath = Collections.emptyList();
     }
 
-    if (!isDriver) {
+    if (isDriver) {
       numWorkersPerProcess = 1; // Actually this value isn't used in RayNativeRuntime.
     } else {
       numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");

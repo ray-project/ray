@@ -107,8 +107,7 @@ class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest() : error_message_type_(1), client_call_manager_(io_service_) {
     RayConfig::instance().initialize(
-        {{"num_workers_per_process_java", std::to_string(NUM_WORKERS_PER_PROCESS_JAVA)},
-         {"object_spilling_config", "mock_config"},
+        {{"object_spilling_config", "mock_config"},
          {"max_io_workers", std::to_string(MAX_IO_WORKER_SIZE)}});
     SetWorkerCommands(
         {{Language::PYTHON, {"dummy_py_worker_command"}},

@@ -619,6 +619,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
   TaskSpecification task_spec;
   size_t num_returns = 3;
+  task_spec.GetMutableMessage().set_job_id(job_id.Binary());
   task_spec.GetMutableMessage().set_num_returns(num_returns);
   context.ResetCurrentTask();
   context.SetCurrentTask(task_spec);

@@ -59,7 +59,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     LOGGER.info("beforeTest");
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
     RayConfig.reset();
@@ -79,7 +78,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
         System.getProperty("ray.run-mode"));
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
 
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
@@ -135,7 +133,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   public void testWordCount() {
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.job.num-java-workers-per-process", "1");
 
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");

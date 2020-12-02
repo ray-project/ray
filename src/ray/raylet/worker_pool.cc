@@ -501,15 +501,15 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
         StartWorkerProcess(Language::PYTHON, rpc::WorkerType::WORKER, job_id);
       }
     }
+  }
 
-    if (delay_callback) {
-      RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
-      first_job_send_register_client_reply_to_driver_ = [send_reply_callback, port]() {
-        send_reply_callback(Status::OK(), port);
-      };
-    } else {
+  if (delay_callback) {
+    RAY_CHECK(!first_job_send_register_client_reply_to_driver_);
+    first_job_send_register_client_reply_to_driver_ = [send_reply_callback, port]() {
       send_reply_callback(Status::OK(), port);
-    }
+    };
+  } else {
+    send_reply_callback(Status::OK(), port);
   }
 
   return Status::OK();
@@ -684,8 +684,7 @@ void WorkerPool::TryKillingIdleWorkers() {
 
     if (worker_state.starting_worker_processes.count(process) > 0) {
       // A Java worker process may hold multiple workers.
-      // Some workers of this process are pending registration. Skip killing this
-      // worker.
+      // Some workers of this process are pending registration. Skip killing this worker.
       continue;
     }
 
@@ -697,8 +696,8 @@ void WorkerPool::TryKillingIdleWorkers() {
       if (worker_state.idle.count(worker) == 0 ||
           now - idle_of_all_languages_map_[worker] <
               RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-        // Another worker in this process isn't idle, or hasn't been idle for a while,
-        // so this process can't be killed.
+        // Another worker in this process isn't idle, or hasn't been idle for a while, so
+        // this process can't be killed.
         can_be_killed = false;
         break;
       }
@@ -709,8 +708,8 @@ void WorkerPool::TryKillingIdleWorkers() {
 
     if (running_size - workers_in_the_same_process.size() <
         static_cast<size_t>(num_workers_soft_limit_)) {
-      // A Java worker process may contain multiple workers. Killing more workers than
-      // we expect may slow the job.
+      // A Java worker process may contain multiple workers. Killing more workers than we
+      // expect may slow the job.
       return;
     }
 
@@ -720,8 +719,8 @@ void WorkerPool::TryKillingIdleWorkers() {
                     << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
                     << " with pid " << process.GetId()
                     << " has been idle for a a while. Kill it.";
-      // To avoid object lost issue caused by forcibly killing, send an RPC request to
-      // the worker to allow it to do cleanup before exiting.
+      // To avoid object lost issue caused by forcibly killing, send an RPC request to the
+      // worker to allow it to do cleanup before exiting.
       auto rpc_client = worker->rpc_client();
       RAY_CHECK(rpc_client);
       rpc::ExitRequest request;
