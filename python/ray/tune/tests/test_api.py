@@ -1153,6 +1153,15 @@ class ShimCreationTest(unittest.TestCase):
         real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
         assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
 
+    def testExtraParams(self):
+        kwargs = {"metric": "metric_foo", "mode": "min", "extra_param": "test"}
+
+        scheduler = "async_hyperband"
+        tune.create_scheduler(scheduler, **kwargs)
+
+        searcher_ax = "ax"
+        tune.create_searcher(searcher_ax, **kwargs)
+
 
 class ApiTestFast(unittest.TestCase):
     @classmethod
