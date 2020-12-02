@@ -110,9 +110,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled,
-           getenv("RAY_ENABLE_NEW_SCHEDULER") != nullptr &&
-               getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
+RAY_CONFIG(bool, new_scheduler_enabled, true)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
