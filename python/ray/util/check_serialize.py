@@ -143,7 +143,7 @@ def inspect_serializability(
 
     Returns:
         bool: True if serializable.
-        set[FailureTuple]: Set of objects that cloudpickle is unable to serialize.
+        set[FailureTuple]: Set of unserializable objects.
 
     .. versionadded:: 1.1.0
 
