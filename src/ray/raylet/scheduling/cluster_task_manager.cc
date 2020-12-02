@@ -47,6 +47,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       if (node_id_string.empty()) {
         // There is no node that has available resources to run the request.
         // Move on to the next shape.
+        RAY_LOG(DEBUG) << "No feasible node found for task "
+                       << task.GetTaskSpecification().TaskId();
         break;
       } else {
         if (node_id_string == self_node_id_.Binary()) {
@@ -83,6 +85,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
+      RAY_LOG(DEBUG) << "Waiting for args for task: "
+                     << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
       TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_[task_id] = work;
@@ -238,6 +242,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+        RAY_LOG(DEBUG) << "Canceling task " << task_id;
         ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
