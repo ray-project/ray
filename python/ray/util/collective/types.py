@@ -52,6 +52,3 @@ class AllReduceOptions:
 
 class BarrierOptions:
     timeout = unset_timeout
-
-
-named_actor_suffix = '_unique_id_actor'
