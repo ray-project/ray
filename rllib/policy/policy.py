@@ -730,7 +730,7 @@ class Policy(metaclass=ABCMeta):
         # Add state-ins to this model's view.
         for i, state in enumerate(obj.get_initial_state()):
             space = Box(-1.0, 1.0, shape=state.shape) if \
-                isinstance(state, np.ndarray) else None
+                isinstance(state, np.ndarray) else state
             view_reqs = model.inference_view_requirements if model else \
                 self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(

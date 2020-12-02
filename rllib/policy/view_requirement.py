@@ -65,7 +65,7 @@ class ViewRequirement:
                 `self.inference_view_requirements`.
         """
         self.data_col = data_col
-        self.space = space or gym.spaces.Box(
+        self.space = space if space is not None else gym.spaces.Box(
             float("-inf"), float("inf"), shape=())
 
         self.index = index

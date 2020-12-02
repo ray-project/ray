@@ -1,4 +1,5 @@
 import collections
+from gym.spaces import Space
 import logging
 import numpy as np
 from typing import Any, List, Dict, Tuple, TYPE_CHECKING, Union
@@ -208,7 +209,7 @@ class _AgentCollector:
             ] else 0)
             # Python primitive or dict (e.g. INFOs).
             if isinstance(data, (int, float, bool, str, dict)):
-                self.buffers[col] = [0 for _ in range(shift)]
+                self.buffers[col] = [data for _ in range(shift)]
             # np.ndarray, torch.Tensor, or tf.Tensor.
             else:
                 shape = data.shape
@@ -493,9 +494,11 @@ class _SimpleListCollector(_SampleCollector):
             data_list = []
             for k in keys:
                 if data_col not in buffers[k]:
-                    self.agent_collectors[k]._build_buffers({
-                        data_col: view_req.space.sample()
-                    })
+                    #TODO: rename `space` into space_or_value
+                    fill_value = view_req.space.sample() if isinstance(
+                        view_req.space, Space) else view_req.space
+                    self.agent_collectors[k]._build_buffers(
+                        {data_col: fill_value})
                 data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
 
