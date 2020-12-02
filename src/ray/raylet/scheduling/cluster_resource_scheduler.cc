@@ -235,20 +235,14 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   bool local_node_feasible = IsFeasible(task_req, local_node_it->second);
 
   for (const auto &node : nodes_) {
-    // Skip nodes that are not feasible.
-    if (!IsFeasible(task_req, node.second)) {
-      continue;
-    }
-
     // Return -1 if node not schedulable. otherwise return the number
     // of soft constraint violations.
-    int64_t violations;
-
-    if ((violations = IsSchedulable(task_req, node.first, node.second)) == -1) {
-      if (!local_node_feasible && best_node == -1) {
+    int64_t violations = IsSchedulable(task_req, node.first, node.second);
+    if (violations == -1) {
+      if (!local_node_feasible && best_node == -1 && IsFeasible(task_req, node.second)) {
         // If the local node is not feasible, and a better node has not yet
-        // been found, schedule to this node, which is feasible but that does
-        // not currently have the resources available.
+        // been found, and this node does not currently have the resources
+        // available but is feasible, then schedule to this node.
         // NOTE(swang): This is needed to make sure that tasks that are not
         // feasible on this node are spilled back to a node that does have the
         // appropriate total resources in a timely manner. If there are
