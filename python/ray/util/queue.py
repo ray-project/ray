@@ -12,8 +12,9 @@ class Full(Exception):
 
 
 class Queue:
-    """A first-in, first-out queue implementation on Ray.  The behavior and use
-    cases are similar to those of the asyncio.Queue class.
+    """A first-in, first-out queue implementation on Ray. 
+    
+    The behavior and use cases are similar to those of the asyncio.Queue class.
 
     Features both sync and async put and get methods.  Provides the option to
     block until space is available when calling put on a full queue,
