@@ -1191,8 +1191,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
-  if ((RayConfig::instance().enable_multi_tenancy() &&
-       (worker_type != rpc::WorkerType::SPILL_WORKER &&
+  if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
         worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
@@ -1625,9 +1624,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
-  // Prestart optimization is only needed when multi-tenancy is on.
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      RayConfig::instance().enable_worker_prestart()) {
+  if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
   }

@@ -39,7 +39,7 @@ echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
 
 # Enable multi-worker feature in Java test
-TEST_ARGS=(-Dray.raylet.config.num_workers_per_process_java=10 -Dray.job.num-java-workers-per-process=10)
+TEST_ARGS=(-Dray.job.num-java-workers-per-process=10)
 
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
@@ -57,7 +57,7 @@ case "${OSTYPE}" in
   darwin*) ip=$(ipconfig getifaddr en0);;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
-RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar"
+RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop

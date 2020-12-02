@@ -148,8 +148,7 @@ class RayParams:
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 lru_evict=False,
-                 code_search_path=None):
+                 lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -195,9 +194,6 @@ class RayParams:
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
-        self.code_search_path = code_search_path
-        if code_search_path is None:
-            self.code_search_path = []
 
         # Set the internal config options for LRU eviction.
         if lru_evict:

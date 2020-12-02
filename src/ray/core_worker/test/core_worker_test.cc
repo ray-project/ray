@@ -620,7 +620,7 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
   TaskSpecification task_spec;
   size_t num_returns = 3;
   task_spec.GetMutableMessage().set_num_returns(num_returns);
-  context.ResetCurrentTask(task_spec);
+  context.ResetCurrentTask();
   context.SetCurrentTask(task_spec);
   ASSERT_EQ(context.GetCurrentTaskID(), task_spec.TaskId());
 

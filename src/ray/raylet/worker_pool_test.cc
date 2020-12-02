@@ -408,17 +408,11 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const auto real_command =
       worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
 
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    ASSERT_EQ(
-        real_command,
-        std::vector<std::string>(
-            {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path",
-             "dummy_java_worker_command", GetNumJavaWorkersPerProcessSystemProperty(1)}));
-  } else {
-    ASSERT_EQ(real_command, std::vector<std::string>(
-                                {"test_op_0", "test_op_1", "dummy_java_worker_command",
-                                 GetNumJavaWorkersPerProcessSystemProperty(1)}));
-  }
+  ASSERT_EQ(
+      real_command,
+      std::vector<std::string>(
+          {"test_op_0", "test_op_1", "-Dray.job.code-search-path=/test/code_serch_path",
+           "dummy_java_worker_command", GetNumJavaWorkersPerProcessSystemProperty(1)}));
   worker_pool_->HandleJobFinished(JOB_ID);
 }
 

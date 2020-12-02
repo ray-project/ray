@@ -69,15 +69,7 @@ ray::JobID GetProcessJobID(const ray::CoreWorkerOptions &options) {
   if (options.worker_type == ray::WorkerType::WORKER) {
     // For workers, the job ID is assigned by Raylet via an environment variable.
     const char *job_id_env = std::getenv(kEnvVarKeyJobId);
-    // TODO(kfstorm): Use `RAY_CHECK` instead once the `enable_multi_tenancy` flag is
-    // removed.
-    // RAY_CHECK(job_id_env);
-    if (!job_id_env) {
-      // Multi-tenancy is disabled.
-      // NOTE(kfstorm): We can't read `RayConfig::instance().enable_multi_tenancy()` here
-      // because `RayConfig` is not initialized yet.
-      return ray::JobID::Nil();
-    }
+    RAY_CHECK(job_id_env);
     return ray::JobID::FromHex(job_id_env);
   }
   return options.job_id;
@@ -1840,7 +1832,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   if (!options_.is_local_mode) {
     SetCurrentTaskId(TaskID::Nil());
-    worker_context_.ResetCurrentTask(task_spec);
+    worker_context_.ResetCurrentTask();
   }
   {
     absl::MutexLock lock(&mutex_);
