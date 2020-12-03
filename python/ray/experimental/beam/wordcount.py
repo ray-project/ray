@@ -58,11 +58,6 @@ def run(argv=None, save_main_session=True):
         dest='input',
         default='test_in.txt',
         help='Input file to process.')
-    parser.add_argument(
-        '--output',
-        dest='output',
-        default='test_out',
-        help='Output file to write results to.')
     known_args, pipeline_args = parser.parse_known_args(argv)
     pipeline_args.append('--runner=ray.experimental.beam.runner.RayRunner')
 
@@ -88,10 +83,7 @@ def run(argv=None, save_main_session=True):
             return '%s: %d' % (word, count)
 
         output = counts | 'Format' >> beam.MapTuple(format_result)
-
-        # Write the output using a "Write" transform that has side effects.
-        # pylint: disable=expression-not-assigned
-        output | 'Write' >> WriteToText(known_args.output)
+        output | 'Print' >> beam.Map(print)
 
 
 if __name__ == '__main__':
