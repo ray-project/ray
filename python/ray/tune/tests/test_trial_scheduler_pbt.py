@@ -122,7 +122,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
         class FileCheck(Callback):
             def __init__(self, verbose=False):
                 self.iter_ = 0
-                import psutil
                 self.process = psutil.Process()
                 self.verbose = verbose
 
