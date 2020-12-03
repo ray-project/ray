@@ -119,7 +119,7 @@ class _Registry:
             from ray.tune import TuneError
             raise TuneError("Unknown category {} not among {}".format(
                 category, KNOWN_CATEGORIES))
-        self._to_flush[(category, key)] = pickle.dumps(value)
+        self._to_flush[(category, key)] = pickle.dumps_debug(value)
         if _internal_kv_initialized():
             self.flush_values()
 
@@ -169,6 +169,7 @@ class _ParameterRegistry:
     def flush(self):
         for k, v in self.to_flush.items():
             self.references[k] = ray.put(v)
+        self.to_flush.clear()
 
 
 parameter_registry = _ParameterRegistry()
