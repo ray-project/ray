@@ -12,12 +12,37 @@ import org.slf4j.LoggerFactory;
 public class JniUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(JniUtils.class);
   private static Set<String> loadedLibs = Sets.newHashSet();
+  private static String defaultDestDir;
 
   /**
    * Loads the native library specified by the <code>libraryName</code> argument.
    * The <code>libraryName</code> argument must not contain any platform specific
    * prefix, file extension or path.
    *
+   * @param libraryName   the name of the library.
+   */
+  public static synchronized void loadLibrary(String libraryName) {
+    loadLibrary(getDefaultDestDir(), libraryName);
+  }
+
+  /**
+   * Loads the native library specified by the <code>libraryName</code> argument.
+   * The <code>libraryName</code> argument must not contain any platform specific
+   * prefix, file extension or path.
+   *
+   * @param libraryName the name of the library.
+   * @param exportSymbols export symbols of library so that it can be used by other libs.
+   */
+  public static synchronized void loadLibrary(String libraryName, boolean exportSymbols) {
+    loadLibrary(getDefaultDestDir(), libraryName, exportSymbols);
+  }
+
+  /**
+   * Loads the native library specified by the <code>libraryName</code> argument.
+   * The <code>libraryName</code> argument must not contain any platform specific
+   * prefix, file extension or path.
+   *
+   * @param destDir The destination dir the library to be extracted.
    * @param libraryName the name of the library.
    */
   public static synchronized void loadLibrary(String destDir, String libraryName) {
@@ -29,6 +54,7 @@ public class JniUtils {
    * The <code>libraryName</code> argument must not contain any platform specific
    * prefix, file extension or path.
    *
+   * @param destDir The destination dir the library to be extracted.
    * @param libraryName   the name of the library.
    * @param exportSymbols export symbols of library so that it can be used by other libs.
    */
@@ -38,13 +64,6 @@ public class JniUtils {
       LOGGER.debug("Loading native library {}.", libraryName);
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
-      if (destDir == null) {
-        try {
-          destDir = Files.createTempDirectory("native_libs").toString();
-        } catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-      }
       final File file = BinaryFileUtil.getNativeFile(destDir, fileName);
 
       if (exportSymbols) {
@@ -58,4 +77,17 @@ public class JniUtils {
     }
   }
 
+  /**
+   * Cache the result so that multiple calls return the same dest dir.
+   */
+  private static synchronized String getDefaultDestDir() {
+    if (defaultDestDir == null) {
+      try {
+        defaultDestDir = Files.createTempDirectory("native_libs").toString();
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+    }
+    return defaultDestDir;
+  }
 }

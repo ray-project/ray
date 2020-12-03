@@ -11,8 +11,8 @@ import io.ray.runtime.util.JniUtils;
 public class TransferHandler {
 
   static {
-    JniUtils.loadLibrary(null, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
-    JniUtils.loadLibrary(null, "streaming_java");
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
+    JniUtils.loadLibrary("streaming_java");
   }
 
   private long writerClientNative;
