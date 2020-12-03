@@ -1,4 +1,5 @@
 import asyncio
+from os import sync
 import traceback
 import inspect
 from collections.abc import Iterable
@@ -90,7 +91,11 @@ class BatchQueue:
 
 
 def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
-    """Creates a replica class wrapping the provided function or class."""
+    """Creates a replica class wrapping the provided function or class.
+
+    This approach is picked over inheritance to avoid conflict between user
+    provided class and the RayServeReplica class.
+    """
 
     if inspect.isfunction(func_or_class):
         is_function = True
@@ -137,10 +142,6 @@ def wrap_to_ray_error(exception: Exception) -> RayTaskError:
     except Exception as e:
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
-
-
-def ensure_async(func: Callable) -> Callable:
-    return sync_to_async(func)
 
 
 class RayServeReplica:
@@ -248,7 +249,7 @@ class RayServeReplica:
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
-        method_to_call = ensure_async(self.get_runner_method(request_item))
+        method_to_call = sync_to_async(self.get_runner_method(request_item))
         arg = parse_request_item(request_item)
 
         start = time.time()
@@ -290,7 +291,7 @@ class RayServeReplica:
 
             self.request_counter.record(batch_size)
 
-            call_method = ensure_async(call_methods.pop())
+            call_method = sync_to_async(call_methods.pop())
             result_list = await call_method(args)
 
             if not isinstance(result_list, Iterable) or isinstance(
@@ -388,10 +389,15 @@ class RayServeReplica:
                                     self.config.batch_wait_timeout)
         self.reconfigure(self.config.user_config)
 
-    async def handle_request(self,
-                             request: Union[Query, bytes]) -> asyncio.Future:
-        if isinstance(request, bytes):
-            request = Query.ray_deserialize(request)
+    async def handle_request(
+            self,
+            request_metadata,
+            request_context,
+            *request_args,
+            **request_kwargs,
+    ) -> asyncio.Future:
+        request = Query(request_args, request_kwargs, request_context,
+                        request_metadata)
 
         request.tick_enter_replica = time.time()
         logger.debug("Replica {} received request {}".format(
