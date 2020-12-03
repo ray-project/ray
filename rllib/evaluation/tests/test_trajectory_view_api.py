@@ -306,23 +306,28 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         config["num_workers"] = 2
         config["num_sgd_iter"] = 2
+        config["framework"] = "torch"
         config["rollout_fragment_length"] = 21
         config["rollout_fragment_unit"] = "agent_steps"
-        config["train_batch_size"] = 128
+        config["train_batch_size"] = 147
         config["multiagent"] = {
             "policies": {
-                "p0": (None, action_space, obs_space, {}),
-                "p1": (None, action_space, obs_space, {}),
+                "p0": (None, obs_space, action_space, {}),
+                "p1": (None, obs_space, action_space, {}),
             },
             "policy_mapping_fn": lambda aid: "p{}".format(aid),
         }
         tune.register_env(
             "ma_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
         num_iterations = 2
-
         trainer = ppo.PPOTrainer(config=config, env="ma_cartpole")
+        results = None
         for i in range(num_iterations):
-            trainer.train()
+            results = trainer.train()
+        self.assertGreater(results["timesteps_total"],
+                           num_iterations * config["train_batch_size"])
+        self.assertLess(results["timesteps_total"],
+                        (num_iterations + 1) * config["train_batch_size"])
         trainer.stop()
 
 
