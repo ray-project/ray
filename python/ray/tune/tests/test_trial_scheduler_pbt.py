@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import pickle
+import psutil
 import random
 import unittest
 import sys
@@ -24,11 +25,6 @@ class MockParam(object):
         val = self._params[self._index % len(self._params)]
         self._index += 1
         return val
-
-
-def get_virt_mem():
-    import psutil
-    return psutil.virtual_memory().used
 
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
@@ -140,9 +136,13 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                     print("Iteration", self.iter_)
                     print("=" * 10)
                     print("Number of objects: ", len(ray.objects()))
-                    print("Virtual Mem:", get_virt_mem() >> 30, "gb")
+                    print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
                     print("File Descriptors:", len(all_files))
                 assert len(all_files) < 20
+
+            @classmethod
+            def get_virt_mem(cls):
+                return psutil.virtual_memory().used
 
         param_a = MockParam([1, -1])
 
