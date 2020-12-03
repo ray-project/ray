@@ -13,5 +13,6 @@ steps:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
           propagate-uid-gid: true
+          debug: true
     agents:
       queue: simon-agent-q
