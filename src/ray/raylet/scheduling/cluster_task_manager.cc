@@ -316,24 +316,26 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
       count += it->second.size();
     }
 
-    auto by_shape_entry = resource_load_by_shape->Add();
+    if (count > 0) {
+      auto by_shape_entry = resource_load_by_shape->Add();
 
-    for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
-      // Add to `resource_loads`.
-      const auto &label = resource.first;
-      const auto &quantity = resource.second;
-      (*resource_loads)[label] += quantity * count;
+      for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
+        // Add to `resource_loads`.
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        (*resource_loads)[label] += quantity * count;
 
-      // Add to `resource_load_by_shape`.
-      (*by_shape_entry->mutable_shape())[label] = quantity;
-    }
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+      }
 
-    int num_ready = by_shape_entry->num_ready_requests_queued();
-    by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+      int num_ready = by_shape_entry->num_ready_requests_queued();
+      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
 
-    auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
-    if (backlog_it != backlog_tracker_.end()) {
-      by_shape_entry->set_backlog_size(backlog_it->second);
+      auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
+      if (backlog_it != backlog_tracker_.end()) {
+        by_shape_entry->set_backlog_size(backlog_it->second);
+      }
     }
   }
 
@@ -519,7 +521,8 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
 
 void ClusterTaskManager::AddToBacklog(const Task &task) {
   if (report_worker_backlog_) {
-    backlog_tracker_[task.GetTaskSpecification().GetSchedulingClass()] +=
+    auto cls = task.GetTaskSpecification().GetSchedulingClass();
+    backlog_tracker_[cls] +=
         task.BacklogSize();
   }
 }

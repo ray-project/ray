@@ -480,6 +480,50 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   }
 }
 
+TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+  std::shared_ptr<MockWorker> worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  for (int i = 0; i < 10; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 100}});
+    task.SetBacklogSize(i);
+    ASSERT_EQ(task.BacklogSize(), i);
+    task_manager_.QueueTask(task, &reply, callback);
+  }
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  auto data = std::make_shared<rpc::HeartbeatTableData>();
+  task_manager_.Heartbeat(false, data);
+
+  auto resource_load_by_shape = data->resource_load_by_shape();
+  auto shape1 = resource_load_by_shape.resource_demands()[0];
+
+  ASSERT_EQ(shape1.backlog_size(), 9);
+
+
+
+
+
+}
+
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   /*
     Test the race condition in which the owner of a task dies while the task is pending.
