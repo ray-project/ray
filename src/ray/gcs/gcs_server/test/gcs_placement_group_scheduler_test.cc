@@ -100,7 +100,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
     gcs_node_manager_->AddNode(node);
     rpc::HeartbeatTableData heartbeat;
-    heartbeat.set_client_id(node->node_id());
+    heartbeat.set_node_id(node->node_id());
     (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
     gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
                                                    heartbeat);

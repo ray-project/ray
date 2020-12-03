@@ -1,10 +1,12 @@
 import json
 import os
+import sys
 import shutil
 import tempfile
 import unittest
 
 import ray
+import ray.cloudpickle as cloudpickle
 from ray.rllib import _register_all
 
 from ray import tune
@@ -467,6 +469,19 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEquals(trial_1.last_result["cp"], "DIR")
         self.assertEquals(trial_2.last_result["metric"], 500_000)
         self.assertEquals(trial_2.last_result["cp"], "DIR")
+
+    def testWithParameters2(self):
+        class Data:
+            def __init__(self):
+                import numpy as np
+                self.data = np.random.rand((2 * 1024 * 1024))
+
+        def train(config, data=None):
+            tune.report(metric=len(data.data))
+
+        trainable = tune.with_parameters(train, data=Data())
+        dumped = cloudpickle.dumps(trainable)
+        assert sys.getsizeof(dumped) < 100 * 1024
 
     def testReturnAnonymous(self):
         def train(config):

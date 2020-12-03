@@ -66,3 +66,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         uint64_t metrics_report_interval_ms() const
 
         c_bool enable_timeline() const
+
+        c_bool automatic_object_deletion_enabled() const
