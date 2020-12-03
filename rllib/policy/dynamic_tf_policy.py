@@ -290,14 +290,14 @@ class DynamicTFPolicy(TFPolicy):
                     action_distribution=action_dist,
                     timestep=timestep,
                     explore=explore)
-            if self.config["_use_trajectory_view_api"]:
-                self._dummy_batch[SampleBatch.ACTION_DIST_INPUTS] = \
-                    np.zeros(
-                        [1 if not s else s for s in
-                         dist_inputs.shape.as_list()])
-            self._input_dict[SampleBatch.ACTION_DIST_INPUTS] = \
-                tf1.placeholder(shape=dist_inputs.shape.as_list(),
-                                dtype=tf.float32)
+            #if self.config["_use_trajectory_view_api"]:
+            #    self._dummy_batch[SampleBatch.ACTION_DIST_INPUTS] = \
+            #        np.zeros(
+            #            [1 if not s else s for s in
+            #             dist_inputs.shape.as_list()])
+            #self._input_dict[SampleBatch.ACTION_DIST_INPUTS] = \
+            #    tf1.placeholder(shape=dist_inputs.shape.as_list(),
+            #                    dtype=tf.float32)
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
@@ -577,7 +577,8 @@ class DynamicTFPolicy(TFPolicy):
                                 batch_for_postproc.accessed_keys
             # Tag those only needed for post-processing.
             for key in batch_for_postproc.accessed_keys:
-                if key not in train_batch.accessed_keys:
+                if key not in train_batch.accessed_keys and \
+                        key not in self.model.inference_view_requirements:
                     self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]

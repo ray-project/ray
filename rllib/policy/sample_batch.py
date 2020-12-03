@@ -76,8 +76,11 @@ class SampleBatch:
                 self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, \
-            "Data columns must be same length, but lens are {}".format(lengths)
+        try:#TODO
+            assert len(set(lengths)) == 1, \
+                "Data columns must be same length, but lens are {}".format(lengths)
+        except Exception as e:
+            raise e
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
@@ -328,7 +331,10 @@ class SampleBatch:
         Returns:
             TensorType: The data under the given key.
         """
-        return self.data[key]
+        try:#TODO
+            return self.data[key]
+        except Exception as e:
+            raise e
 
     @PublicAPI
     def __setitem__(self, key, item) -> None:

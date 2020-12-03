@@ -193,11 +193,11 @@ def postprocess_ppo_gae(
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
-        # Input dict is provided to us automatically via the policy-defined
-        # "view". It's a single-timestep input_dict (at very end of
-        # trajectory).
+        # Input dict is provided to us automatically via the Model's
+        # requirements. It's a single-timestep (last one in trajectory)
+        # input_dict.
         if policy.config["_use_trajectory_view_api"]:
-            # <- call create_input_dict(sample_batch, index=-1)
+            # Create an input dict according to the Model's requirements.
             input_dict = policy.model.get_input_dict(sample_batch, index=-1)
             last_r = policy._value(**input_dict)
         # TODO: (sven) Remove once trajectory view API is all-algo default.
@@ -303,8 +303,8 @@ class ValueNetworkMixin:
         # observation.
         if config["use_gae"]:
 
-            # Input dict is provided to us automatically via the policy-defined
-            # "view". It's a single-timestep (last one in trajectory)
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
             if config["_use_trajectory_view_api"]:
 

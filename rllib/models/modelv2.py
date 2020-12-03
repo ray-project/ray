@@ -322,18 +322,15 @@ class ModelV2:
 
         input_dict = {}
         for view_col, view_req in self.inference_view_requirements.items():
-            # Create the batch of data from the different buffers.
-            data_col = view_req.data_col or view_col
-            time_indices = index + view_req.shift
-
             # Create batches of size 1 (single-agent input-dict).
-            if isinstance(time_indices, tuple):
-                data = sample_batch[data_col][time_indices[0]:time_indices[1] +
-                                              1]
+
+            # Index range.
+            if isinstance(index, tuple):
+                data = sample_batch[view_col][index[0]:index[1] + 1]
                 input_dict[view_col] = np.array([data])
+            # Single index.
             else:
-                input_dict[view_col] = sample_batch[data_col][time_indices:
-                                                              time_indices + 1]
+                input_dict[view_col] = sample_batch[view_col][index:index + 1]
 
         # Add valid `seq_lens`, just in case RNNs need it.
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)

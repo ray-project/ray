@@ -210,8 +210,8 @@ class ValueNetworkMixin:
         # When doing GAE, we need the value function estimate on the
         # observation.
         if config["use_gae"]:
-            # Input dict is provided to us automatically via the policy-defined
-            # "view". It's a single-timestep (last one in trajectory)
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
             if config["_use_trajectory_view_api"]:
 
