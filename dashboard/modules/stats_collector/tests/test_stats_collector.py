@@ -262,7 +262,7 @@ def test_multi_node_churn(enable_test_module, disable_aiohttp_cache,
     t.start()
 
     t_st = datetime.now()
-    duration = timedelta(seconds=20)
+    duration = timedelta(seconds=60)
     while datetime.now() < t_st + duration:
         get_index()
         time.sleep(2)
