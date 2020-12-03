@@ -159,7 +159,7 @@ class DashboardHead:
                 if not gcs_address:
                     raise Exception("GCS address not found.")
                 logger.info("Connect to GCS at %s", gcs_address)
-                channel = aiogrpc.insecure_channel(gcs_address)
+                channel = dashboard_utils.create_insecure_channel(gcs_address)
             except Exception as ex:
                 logger.error("Connect to GCS failed: %s, retry...", ex)
                 await asyncio.sleep(

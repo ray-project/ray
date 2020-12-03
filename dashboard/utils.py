@@ -1,34 +1,36 @@
 import abc
-import os
-import socket
-import time
 import asyncio
 import collections
-import json
 import datetime
 import functools
 import importlib
 import inspect
+import json
 import logging
+import os
 import pkgutil
+import socket
 import traceback
-from base64 import b64decode
 from abc import ABCMeta, abstractmethod
-from collections.abc import MutableMapping, Mapping, Sequence
+from base64 import b64decode
 from collections import namedtuple
+from collections.abc import MutableMapping, Mapping, Sequence
 from typing import Any
 
-import aioredis
+import aiohttp.signals
 import aiohttp.web
-import ray.new_dashboard.consts as dashboard_consts
+import aioredis
+import time
 from aiohttp import hdrs
 from aiohttp.frozenlist import FrozenList
 from aiohttp.typedefs import PathLike
 from aiohttp.web import RouteDef
-import aiohttp.signals
 from google.protobuf.json_format import MessageToDict
-from ray.utils import binary_to_hex
+from grpc.experimental import aio as aiogrpc
+
+import ray.new_dashboard.consts as dashboard_consts
 from ray.ray_constants import env_bool
+from ray.utils import binary_to_hex
 
 try:
     create_task = asyncio.create_task
@@ -682,3 +684,22 @@ def async_loop_forever(interval_seconds):
         return _looper
 
     return _wrapper
+
+
+def create_insecure_channel(address, options=None,
+                            compression=None, interceptors=None):
+    """Disable the http proxy when create channel"""
+    # disable http proxy
+    if options is not None:
+        need_add = True
+        for k, v in options:
+            if k == "grpc.enable_http_proxy":
+                need_add = False
+                break
+        if need_add:
+            options = (*options, ("grpc.enable_http_proxy", 0))
+    else:
+        options = (("grpc.enable_http_proxy", 0),)
+
+    return aiogrpc.insecure_channel(
+        address, options, compression, interceptors)

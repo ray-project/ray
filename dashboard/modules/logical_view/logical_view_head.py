@@ -46,7 +46,8 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
         except KeyError:
             return rest_response(success=False, message="Bad Request")
         try:
-            channel = aiogrpc.insecure_channel(f"{ip_address}:{port}")
+            channel = dashboard_utils.create_insecure_channel(
+                f"{ip_address}:{port}")
             stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
 
             await stub.KillActor(

@@ -4,7 +4,6 @@ import yaml
 import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray
 import ray.gcs_utils
@@ -38,7 +37,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
+            channel = dashboard_utils.create_insecure_channel(
+                f"{ip}:{ports[1]}")
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
