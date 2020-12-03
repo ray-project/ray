@@ -2,6 +2,7 @@ steps:
   - label: "Setting up build env"
     commands:
       - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
+      # ECR login should be done by Elastic CI stack runners for us
       - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
     agents:
       queue: simon-agent-q
