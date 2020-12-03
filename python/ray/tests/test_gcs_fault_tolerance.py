@@ -36,15 +36,18 @@ def test_gcs_server_restart(ray_start_regular):
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    result = ray.get(actor1.method.remote(7))
-    assert result == 9
-
     actor2 = Increase.remote()
     result = ray.get(actor2.method.remote(2))
     assert result == 4
 
     result = ray.get(increase.remote(1))
     assert result == 2
+
+    # Check whether actor1 is alive or not.
+    # NOTE: We can't execute it immediately after gcs restarts
+    # because it takes time for the worker to exit.
+    result = ray.get(actor1.method.remote(7))
+    assert result == 9
 
 
 @pytest.mark.parametrize(
