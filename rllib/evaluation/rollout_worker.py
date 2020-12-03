@@ -459,6 +459,14 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
+        # Update Policy's view requirements from Model, only if Policy directly
+        # inherited from base `Policy` class. At this point here, the Policy
+        # must have it's Model (if any) defined and ready to output an initial
+        # state.
+        for pol in self.policy_map.values():
+            if not pol._model_init_state_automatically_added:
+                pol._update_model_inference_view_requirements_from_init_state()
+
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs

@@ -92,7 +92,7 @@ class Policy(metaclass=ABCMeta):
             self.view_requirements = view_reqs
         else:
             self.view_requirements.update(view_reqs)
-        self._update_model_inference_view_requirements_from_init_state()
+        self._model_init_state_automatically_added = False
 
     @abstractmethod
     @DeveloperAPI
@@ -728,6 +728,7 @@ class Policy(metaclass=ABCMeta):
         update their internal state-related view requirements.
         Changes the `self.inference_view_requirements` dict.
         """
+        self._model_init_state_automatically_added = True
         model = getattr(self, "model", None)
         obj = model or self
         # Add state-ins to this model's view.
