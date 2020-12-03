@@ -421,7 +421,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
 
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
-  return raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+  return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
 }  // namespace gcs
