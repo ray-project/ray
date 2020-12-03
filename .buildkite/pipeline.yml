@@ -4,7 +4,7 @@ steps:
       - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
       - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
     agents:
-      amog-test-q
+      queue: amog-test-q
   - wait
   - label: "Run tests"
     commands: ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED; sleep 10
