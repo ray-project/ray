@@ -183,6 +183,7 @@ class CommandBasedClient(SyncClient):
         self.sync_down_template = sync_down_template
         self.delete_template = delete_template
         self.logfile = None
+        self._closed = False
         self.cmd_process = None
 
     def set_logdir(self, logdir):
@@ -193,15 +194,16 @@ class CommandBasedClient(SyncClient):
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync_out", dir=logdir, suffix=".log", delete=False)
+        self._closed = False
 
     def _get_logfile(self):
-        if self.logfile:
-            return self.logfile
-        else:
+        if self._closed:
             raise RuntimeError(
-                "[internalerror] The sync client does not exist anymore. "
+                "[internalerror] The client has been closed. "
                 "Please report this stacktrace + your cluster configuration "
                 "on Github!")
+        else:
+            return self.logfile
 
     def sync_up(self, source, target):
         return self._execute(self.sync_up_template, source, target)
@@ -240,9 +242,11 @@ class CommandBasedClient(SyncClient):
         self.cmd_process = None
 
     def close(self):
-        logger.debug(f"Closing the logfile: {str(self.logfile)}")
-        self.logfile.close()
-        self.logfile = None
+        if self.logfile:
+            logger.debug(f"Closing the logfile: {str(self.logfile)}")
+            self.logfile.close()
+            self.logfile = None
+            self._closed = True
 
     @property
     def is_running(self):
