@@ -216,7 +216,8 @@ def test_load_report(shutdown_only, max_shapes):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
+@pytest.mark.skipif(
+    new_scheduler_enabled(), reason="requires placement groups")
 def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
@@ -285,7 +286,6 @@ def test_placement_group_load_report(ray_start_cluster):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
         num_cpus=1, _system_config={

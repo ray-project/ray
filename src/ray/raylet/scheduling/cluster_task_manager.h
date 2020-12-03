@@ -129,6 +129,7 @@ class ClusterTaskManager {
   NodeInfoGetter get_node_info_;
 
   const int max_resource_shapes_per_load_report_;
+  const bool report_worker_backlog_;
 
   /// Queue of lease requests that are waiting for resources to become available.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
@@ -137,6 +138,9 @@ class ClusterTaskManager {
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+
+  /// Track the cumulative backlog of all workers requesting a lease to this raylet.
+  std::unordered_map<SchedulingClass, int> backlog_tracker_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
@@ -147,10 +151,13 @@ class ClusterTaskManager {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+      const Task &task, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
   void Spillback(const NodeID &spillback_to, const Work &work);
+
+  void AddToBacklog(const Task &task);
+  void RemoveFromBacklog(const Task &task);
 };
-}  // namespace raylet
 }  // namespace ray
+}  // namespace raylet
