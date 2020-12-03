@@ -705,8 +705,11 @@ class Policy(metaclass=ABCMeta):
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
-                ret[view_col] = np.zeros_like(
-                    [view_req.space.sample() for _ in range(batch_size)])
+                if isinstance(view_req.space, gym.spaces.Space):
+                    ret[view_col] = np.zeros_like(
+                        [view_req.space.sample() for _ in range(batch_size)])
+                else:
+                    ret[view_col] = [view_req.space for _ in range(batch_size)]
 
         # Handle input-dict requests (point to same ret here).
         _input_dict = {k: v for k, v in ret.items()}
@@ -730,7 +733,7 @@ class Policy(metaclass=ABCMeta):
         # Add state-ins to this model's view.
         for i, state in enumerate(obj.get_initial_state()):
             space = Box(-1.0, 1.0, shape=state.shape) if \
-                isinstance(state, np.ndarray) else state
+                hasattr(state, "shape") else state
             view_reqs = model.inference_view_requirements if model else \
                 self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
