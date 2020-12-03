@@ -216,7 +216,10 @@ class CommandBasedClient(SyncClient):
         final_cmd = self.delete_template.format(target=quote(target))
         logger.debug("Running delete: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile())
+            final_cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=self._get_logfile())
         return True
 
     def wait(self):
@@ -258,7 +261,10 @@ class CommandBasedClient(SyncClient):
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self._get_logfile())
+            final_cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=self._get_logfile())
         return True
 
     @staticmethod
