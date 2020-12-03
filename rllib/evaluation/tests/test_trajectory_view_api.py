@@ -1,13 +1,16 @@
 import copy
 import gym
 from gym.spaces import Box, Discrete
+import numpy as np
 import time
 import unittest
 
 import ray
+from ray import tune
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwareLSTMPolicy
@@ -294,6 +297,33 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             result = rollout_worker_wo_api.sample()
             pol_batch_wo = result.policy_batches["pol0"]
             check(pol_batch_w.data, pol_batch_wo.data)
+
+    def test_counting_by_agent_steps(self):
+        """Test whether a PPOTrainer can be built with all frameworks."""
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        action_space = Discrete(2)
+        obs_space = Box(float("-inf"), float("inf"), (4, ), dtype=np.float32)
+
+        config["num_workers"] = 2
+        config["num_sgd_iter"] = 2
+        config["rollout_fragment_length"] = 21
+        config["rollout_fragment_unit"] = "agent_steps"
+        config["train_batch_size"] = 128
+        config["multiagent"] = {
+            "policies": {
+                "p0": (None, action_space, obs_space, {}),
+                "p1": (None, action_space, obs_space, {}),
+            },
+            "policy_mapping_fn": lambda aid: "p{}".format(aid),
+        }
+        tune.register_env(
+            "ma_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
+        num_iterations = 2
+
+        trainer = ppo.PPOTrainer(config=config, env="ma_cartpole")
+        for i in range(num_iterations):
+            trainer.train()
+        trainer.stop()
 
 
 def analyze_rnn_batch(batch, max_seq_len):
