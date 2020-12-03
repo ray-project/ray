@@ -192,7 +192,7 @@ install_nvm() {
   fi
 }
 
-install_pip() {
+install_upgrade_pip() {
   local python=python
   if command -v python3 > /dev/null; then
     python=python3
@@ -237,10 +237,11 @@ install_dependencies() {
   install_base
   install_toolchains
   install_nvm
-  install_pip
+  install_upgrade_pip
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    install_upgrade_pip
   fi
 
   # Install modules needed in all jobs.
@@ -314,9 +315,6 @@ install_dependencies() {
       1.5) TORCHVISION_VERSION=0.6.0;;
       *) TORCHVISION_VERSION=0.5.0;;
     esac
-    which -a pip
-    pip --version
-    pip install --help
     pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
