@@ -241,6 +241,7 @@ install_dependencies() {
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    # Upgrade the miniconda pip.
     install_upgrade_pip
   fi
 
