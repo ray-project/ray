@@ -686,8 +686,10 @@ def async_loop_forever(interval_seconds):
     return _wrapper
 
 
-def create_insecure_channel(address, options=None,
-                            compression=None, interceptors=None):
+def create_insecure_channel(address,
+                            options=None,
+                            compression=None,
+                            interceptors=None):
     """Disable the http proxy when create channel"""
     # disable http proxy
     if options is not None:
@@ -699,7 +701,7 @@ def create_insecure_channel(address, options=None,
         if need_add:
             options = (*options, ("grpc.enable_http_proxy", 0))
     else:
-        options = (("grpc.enable_http_proxy", 0),)
+        options = (("grpc.enable_http_proxy", 0), )
 
-    return aiogrpc.insecure_channel(
-        address, options, compression, interceptors)
+    return aiogrpc.insecure_channel(address, options, compression,
+                                    interceptors)
