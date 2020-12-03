@@ -1,3 +1,5 @@
 steps:
   - label: "Testing"
     command: echo "hello from pipeline.yml"
+    agents:
+      queue: simon-agent-q
