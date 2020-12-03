@@ -16,5 +16,6 @@ steps:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
           debug: true
           shell: ["/bin/bash", "-e", "-c"]
+          shm-size: 2g
     agents:
       queue: simon-agent-q
