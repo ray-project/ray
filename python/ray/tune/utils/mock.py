@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import json
+import random
 
 import ray.utils
 
@@ -8,6 +9,7 @@ from ray.rllib.agents.mock import _MockTrainer
 from ray.tune import DurableTrainable, Trainable
 from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
+from ray.tune.callback import Callback
 
 MOCK_REMOTE_DIR = os.path.join(ray.utils.get_user_temp_dir(),
                                "mock-tune-remote") + os.sep
@@ -88,3 +90,27 @@ class MyTrainableClass(Trainable):
     def load_checkpoint(self, checkpoint_path):
         with open(checkpoint_path) as f:
             self.timestep = json.loads(f.read())["timestep"]
+
+
+class FailureInjectorCallback(Callback):
+    """Adds random failure injection to the TrialExecutor."""
+
+    def __init__(self,
+                 config_path="/home/ubuntu/ray_bootstrap_config.yaml",
+                 probability=0.1,
+                 disable=False):
+        self.probability = probability
+        self.config_path = config_path
+        self.disable = disable
+
+    def on_step_begin(self, **info):
+        from ray.autoscaler._private.commands import kill_node
+        # With 10% probability inject failure to a worker.
+        if random.random() < self.probability and not self.disable:
+            # With 10% probability fully terminate the node.
+            should_terminate = random.random() < self.probability
+            kill_node(
+                self.config_path,
+                yes=True,
+                hard=should_terminate,
+                override_cluster_name=None)

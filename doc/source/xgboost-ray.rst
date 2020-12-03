@@ -151,6 +151,8 @@ Package Reference
 Training/Validation
 ~~~~~~~~~~~~~~~~~~~
 
+.. autoclass:: ray.util.xgboost.RayParams
+
 .. autofunction:: ray.util.xgboost.train
 
 .. autofunction:: ray.util.xgboost.predict

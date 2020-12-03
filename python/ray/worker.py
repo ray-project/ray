@@ -48,7 +48,8 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
-from ray.utils import _random_string, check_oversized_pickle, is_cython
+from ray.utils import _random_string, check_oversized_pickle
+from ray.util.inspect import is_cython
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -62,25 +63,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-
-class ActorCheckpointInfo:
-    """Information used to maintain actor checkpoints."""
-
-    __slots__ = [
-        # Number of tasks executed since last checkpoint.
-        "num_tasks_since_last_checkpoint",
-        # Timestamp of the last checkpoint, in milliseconds.
-        "last_checkpoint_timestamp",
-        # IDs of the previous checkpoints.
-        "checkpoint_ids",
-    ]
-
-    def __init__(self, num_tasks_since_last_checkpoint,
-                 last_checkpoint_timestamp, checkpoint_ids):
-        self.num_tasks_since_last_checkpoint = num_tasks_since_last_checkpoint
-        self.last_checkpoint_timestamp = last_checkpoint_timestamp
-        self.checkpoint_ids = checkpoint_ids
 
 
 class Worker:
@@ -106,8 +88,6 @@ class Worker:
         self.cached_functions_to_run = []
         self.actor_init_error = None
         self.actors = {}
-        # Information used to maintain actor checkpoints.
-        self.actor_checkpoint_info = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
