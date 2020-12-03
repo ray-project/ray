@@ -9,7 +9,7 @@ steps:
   - wait
   - label: "Run inside build env"
     commands:
-      - chown -R ray .
+      - sudo chown -R ray .
       - ./ci/travis/ci.sh init
     plugins:
       - docker#v3.7.0:
