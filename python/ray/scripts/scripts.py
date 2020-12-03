@@ -158,7 +158,7 @@ def continue_debug_session():
     when a user is stepping between Ray tasks.
     """
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
-            "RAY_PDB_")
+        "RAY_PDB_")
 
     for active_session in active_sessions:
         if active_session.startswith(b"RAY_PDB_CONTINUE"):

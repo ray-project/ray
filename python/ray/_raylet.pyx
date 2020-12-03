@@ -461,17 +461,17 @@ cdef execute_task(
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
-                        if ray.worker.global_worker.debugger_breakpoint != b"":
-                            # If this happens, the user typed "remote" and there
-                            # were no more remote calls left in this task. In that
-                            # case we just exit the debugger.
+                        next_breakpoint = (
+                            ray.worker.global_worker.debugger_breakpoint)
+                        if next_breakpoint != b"":
+                            # If this happens, the user typed "remote" and
+                            # there were no more remote calls left in this
+                            # task. In that case we just exit the debugger.
                             ray.experimental.internal_kv._internal_kv_put(
-                                "RAY_PDB_{}".format(
-                                    ray.worker.global_worker.debugger_breakpoint),
+                                "RAY_PDB_{}".format(next_breakpoint),
                                 "{\"exit_debugger\": true}")
                             ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(
-                                    ray.worker.global_worker.debugger_breakpoint)
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
