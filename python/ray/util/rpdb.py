@@ -214,11 +214,14 @@ def set_trace(breakpoint_uuid=None):
 
     Can be used within a Ray task or actor.
     """
-    frame = sys._getframe().f_back
-    rdb = connect_ray_pdb(
-        None, None, False, None,
-        breakpoint_uuid.decode() if breakpoint_uuid else None)
-    rdb.set_trace(frame=frame)
+    # If there is an active debugger already, we do not want to
+    # start another one, so "set_trace" is just a no-op in that case.
+    if ray.worker.global_worker.debugger_breakpoint == "":
+        frame = sys._getframe().f_back
+        rdb = connect_ray_pdb(
+            None, None, False, None,
+            breakpoint_uuid.decode() if breakpoint_uuid else None)
+        rdb.set_trace(frame=frame)
 
 
 def post_mortem():

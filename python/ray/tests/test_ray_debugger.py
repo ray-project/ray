@@ -64,6 +64,38 @@ def test_ray_debugger_stepping(shutdown_only):
     ray.get(result)
 
 
+def test_ray_debugger_recursive(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def fact(n):
+        if n < 1:
+            return n
+        ray.util.pdb.set_trace()
+        n_id = fact.remote(n - 1)
+        return n * ray.get(n_id)
+
+    result = fact.remote(5)
+
+    p = pexpect.spawn("ray debug")
+    p.expect("Enter breakpoint index or press enter to refresh: ")
+    p.sendline("0")
+    p.expect("(Pdb)")
+    p.sendline("remote")
+    p.expect("(Pdb)")
+    p.sendline("remote")
+    p.expect("(Pdb)")
+    p.sendline("remote")
+    p.expect("(Pdb)")
+    p.sendline("remote")
+    p.expect("(Pdb)")
+    p.sendline("remote")
+    p.expect("(Pdb)")
+    p.sendline("remote")
+
+    ray.get(result)
+
+
 if __name__ == "__main__":
     import pytest
     # Make subprocess happy in bazel.
