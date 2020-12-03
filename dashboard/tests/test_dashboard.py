@@ -586,7 +586,12 @@ def test_http_proxy(enable_test_module, shutdown_only):
     while True:
         time.sleep(1)
         try:
-            response = requests.get(webui_url + "/test/dump")
+            response = requests.get(
+                webui_url + "/test/dump",
+                proxies={
+                    "http": None,
+                    "https": None
+                })
             response.raise_for_status()
             try:
                 response.json()
