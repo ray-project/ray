@@ -112,7 +112,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self.node_id = str(node_id)
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
-        self.home = None
+        self._home = None
 
     def run(
             self,
@@ -194,7 +194,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 logger.warning("'rsync_filter' detected but is currently "
                                "unsupported for k8s.")
         if target.startswith("~"):
-            target = self._get_home() + target[1:]
+            target = self.home + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -210,7 +210,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = self._get_home() + target[1:]
+                target = self.home + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
@@ -219,7 +219,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
 
     def run_rsync_down(self, source, target, options=None):
         if source.startswith("~"):
-            source = self._get_home() + source[1:]
+            source = self.home + source[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -235,7 +235,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = self._get_home() + target[1:]
+                target = self.home + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
@@ -246,17 +246,18 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         return "{} exec -it {} -- bash".format(" ".join(self.kubectl),
                                                self.node_id)
 
-    def _get_home(self):
+    @property
+    def home(self):
         # TODO (Dmitri): Think about how to use the node's HOME variable
         # without making an extra kubectl exec call.
-        if self.home is None:
+        if self._home is None:
             cmd = self.kubectl + [
                 "exec", "-it", self.node_id, "--", "printenv", "HOME"
             ]
             joined_cmd = " ".join(cmd)
             raw_out = self.process_runner.check_output(joined_cmd, shell=True)
-            self.home = raw_out.decode().strip("\n\r")
-        return self.home
+            self._home = raw_out.decode().strip("\n\r")
+        return self._home
 
 
 class SSHOptions:
