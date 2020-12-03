@@ -9,11 +9,12 @@ steps:
   - wait
   - label: "Run inside build env"
     commands:
-      - sudo chown -R ray .
+      - chown -R ray .
       - ./ci/travis/ci.sh init
     plugins:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
           debug: true
+          shell: ["/bin/bash", "-e", "-c"]
     agents:
       queue: simon-agent-q
