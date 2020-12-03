@@ -95,14 +95,6 @@ public class GlobalStateAccessor {
     }
   }
 
-  public boolean waitPlacementGroupReady(PlacementGroupId placementGroupId, int timeoutMs) {
-    synchronized (GlobalStateAccessor.class) {
-      validateGlobalStateAccessorPointer();
-      return nativeWaitPlacementGroupReady(globalStateAccessorNativePointer,
-        placementGroupId.getBytes(), timeoutMs);
-    }
-  }
-
   public byte[] getInternalConfig() {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
@@ -164,7 +156,4 @@ public class GlobalStateAccessor {
       byte[] placementGroupId);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
-
-  private native boolean nativeWaitPlacementGroupReady(long nativePtr,
-      byte[] placementGroupId, int timeoutMs);
 }

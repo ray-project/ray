@@ -317,8 +317,6 @@ TEST_F(GlobalStateAccessorTest, TestWorkerTable) {
 // TODO(sang): Add tests after adding asyncAdd
 TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
   ASSERT_EQ(global_state_->GetAllPlacementGroupInfo().size(), 0);
-  ASSERT_EQ(global_state_->WaitPlacementGroupReady(PlacementGroupID::FromRandom(), 100),
-            false);
 }
 
 }  // namespace ray

@@ -202,7 +202,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
-    return gcsClient.waitPlacementGroupReady(id, timeoutMs);
+    return taskSubmitter.waitPlacementGroupReady(id, timeoutMs);
   }
 
   @SuppressWarnings("unchecked")
