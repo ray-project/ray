@@ -498,7 +498,6 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   for (int i = 0; i < 10; i++) {
     Task task = CreateTask({{ray::kCPU_ResourceLabel, 100}});
     task.SetBacklogSize(i);
-    ASSERT_EQ(task.BacklogSize(), i);
     task_manager_.QueueTask(task, &reply, callback);
   }
   task_manager_.SchedulePendingTasks();
@@ -516,12 +515,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   auto resource_load_by_shape = data->resource_load_by_shape();
   auto shape1 = resource_load_by_shape.resource_demands()[0];
 
-  ASSERT_EQ(shape1.backlog_size(), 9);
-
-
-
-
-
+  ASSERT_EQ(shape1.backlog_size(), 45);
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
