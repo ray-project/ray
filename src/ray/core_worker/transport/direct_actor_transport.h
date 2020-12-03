@@ -389,10 +389,12 @@ class ActorSchedulingQueue : public SchedulingQueue {
     ScheduleRequests();
   }
 
-  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound results in a fatal error.
-  bool CancelTaskIfFound(TaskID task_id) { 
-    RAY_CHECK(false) << "Cannot cancel actor tasks"; 
-    // The return instruction will never be executed, but we need to include it nonetheless because this is a non-void function.
+  // We don't allow the cancellation of actor tasks, so invoking CancelTaskIfFound results
+  // in a fatal error.
+  bool CancelTaskIfFound(TaskID task_id) {
+    RAY_CHECK(false) << "Cannot cancel actor tasks";
+    // The return instruction will never be executed, but we need to include it
+    // nonetheless because this is a non-void function.
     return false;
   }
 

@@ -79,7 +79,7 @@ class MockWorker {
       // Merge input args and write the merged content to each of return ids
       return MergeInputArgsAsOutput(args, return_ids, results);
     } else if ("WhileTrueLoop" == typed_descriptor->ModuleName()) {
-      return WhileTrueLoop(args,return_ids,results);
+      return WhileTrueLoop(args, return_ids, results);
     } else {
       return Status::TypeError("Unknown function descriptor: " +
                                typed_descriptor->ModuleName());
@@ -132,7 +132,8 @@ class MockWorker {
   Status WhileTrueLoop(const std::vector<std::shared_ptr<RayObject>> &args,
                        const std::vector<ObjectID> &return_ids,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-    while(1) {}
+    while (1) {
+    }
     return Status::OK();
   }
 
