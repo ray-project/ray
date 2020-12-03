@@ -85,6 +85,12 @@ class TuneReporterBase(ProgressReporter):
             Defaults to 5s.
         infer_limit (int): Maximum number of metrics to automatically infer
             from tune results.
+        print_intermediate_tables (bool|None): Print intermediate result
+            tables. If None (default), will be set to True for verbosity
+            levels above 3, otherwise False. If True, intermediate tables
+            will be printed with experiment progress. If False, tables
+            will only be printed at then end of the tuning run for verbosity
+            levels greater than 2.
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -337,6 +343,17 @@ class JupyterNotebookReporter(TuneReporterBase):
             corresponding to each trial. Defaults to 20.
         max_report_frequency (int): Maximum report frequency in seconds.
             Defaults to 5s.
+        infer_limit (int): Maximum number of metrics to automatically infer
+            from tune results.
+        print_intermediate_tables (bool|None): Print intermediate result
+            tables. If None (default), will be set to True for verbosity
+            levels above 3, otherwise False. If True, intermediate tables
+            will be printed with experiment progress. If False, tables
+            will only be printed at then end of the tuning run for verbosity
+            levels greater than 2.
+        metric (str): Metric used to determine best current trial.
+        mode (str): One of [min, max]. Determines whether objective is
+            minimizing or maximizing the metric attribute.
     """
 
     def __init__(
@@ -389,6 +406,17 @@ class CLIReporter(TuneReporterBase):
             corresponding to each trial. Defaults to 20.
         max_report_frequency (int): Maximum report frequency in seconds.
             Defaults to 5s.
+        infer_limit (int): Maximum number of metrics to automatically infer
+            from tune results.
+        print_intermediate_tables (bool|None): Print intermediate result
+            tables. If None (default), will be set to True for verbosity
+            levels above 3, otherwise False. If True, intermediate tables
+            will be printed with experiment progress. If False, tables
+            will only be printed at then end of the tuning run for verbosity
+            levels greater than 2.
+        metric (str): Metric used to determine best current trial.
+        mode (str): One of [min, max]. Determines whether objective is
+            minimizing or maximizing the metric attribute.
     """
 
     def __init__(
