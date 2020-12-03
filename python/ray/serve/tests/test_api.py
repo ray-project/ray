@@ -180,6 +180,20 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
         client.create_endpoint("test", backend="backend2", route="/test")
 
 
+def test_no_http(serve_instance):
+    client = serve.start(http_host=None)
+
+    assert len(ray.get(client._controller.get_routers.remote())) == 0
+
+    def hello(*args):
+        return "hello"
+
+    client.create_backend("backend", hello)
+    client.create_endpoint("endpoint", backend="backend")
+
+    assert ray.get(client.get_handle("endpoint").remote()) == "hello"
+
+
 def test_set_traffic_missing_data(serve_instance):
     client = serve_instance
 

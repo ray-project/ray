@@ -116,8 +116,7 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
 NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         SpaceReleasedCallback on_objects_spilled)
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
@@ -166,8 +165,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                             [this](const std::vector<ObjectID> &object_ids) {
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
-                            },
-                            on_objects_spilled),
+                            }),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       record_metrics_period_(config.record_metrics_period_ms) {
@@ -2135,9 +2133,9 @@ void NodeManager::MarkObjectsAsFailed(
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    status = store_client_.Create(object_id, ref.owner_address(), 0,
-                                  reinterpret_cast<const uint8_t *>(meta.c_str()),
-                                  meta.length(), &data);
+    status = store_client_.TryCreateImmediately(
+        object_id, ref.owner_address(), 0,
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
     }
