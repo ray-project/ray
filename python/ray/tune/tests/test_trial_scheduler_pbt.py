@@ -99,8 +99,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def testFileFree(self):
         class MyTrainable(Trainable):
             def setup(self, config):
-                # Make sure this is large enough so ray uses object store
-                # instead of in-process store.
                 self.iter = 0
                 self.a = config["a"]
 
@@ -129,7 +127,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 self.verbose = verbose
 
             def on_trial_result(self, *args, **kwargs):
-                # assert len(ray.objects()) <= 10
                 self.iter_ += 1
                 all_files = self.process.open_files()
                 if self.verbose:
