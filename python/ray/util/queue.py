@@ -1,4 +1,6 @@
 import asyncio
+from typing import Optional, Any
+from collections.abc import Iterable
 
 import ray
 
@@ -12,21 +14,21 @@ class Full(Exception):
 
 
 class Queue:
-    """A first-in, first-out queue implementation on Ray. 
-    
+    """A first-in, first-out queue implementation on Ray.
+
     The behavior and use cases are similar to those of the asyncio.Queue class.
 
     Features both sync and async put and get methods.  Provides the option to
     block until space is available when calling put on a full queue,
     or to block until items are available when calling get on an empty queue.
-    
+
     Optionally supports batched put and get operations to minimize
     serialization overhead.
 
     Args:
         maxsize (optional, int): maximum size of the queue. If zero, size is
             unbounded.
-    
+
     Examples:
         >>> q = Queue()
         >>> items = list(range(10))
@@ -36,7 +38,7 @@ class Queue:
         >>>     assert item == q.get()
     """
 
-    def __init__(self, maxsize=0):
+    def __init__(self, maxsize: int = 0):
         self.maxsize = maxsize
         self.actor = _QueueActor.remote(self.maxsize)
 
@@ -59,9 +61,14 @@ class Queue:
         """Whether the queue is full."""
         return ray.get(self.actor.full.remote())
 
-    def put(self, item, block=True, timeout=None):
-        """Adds an item to the queue.  If block is True and the queue is full,
-        blocks until the queue is no longer full or until timeout.
+    def put(self,
+            item: Any,
+            block: bool = True,
+            timeout: Optional[float] = None):
+        """Adds an item to the queue.
+
+        If block is True and the queue is full, blocks until the queue is no
+        longer full or until timeout.
 
         There is no guarantee of order if multiple producers put to the same
         full queue.
@@ -82,8 +89,13 @@ class Queue:
             else:
                 ray.get(self.actor.put.remote(item, timeout))
 
-    async def put_async(self, item, block=True, timeout=None):
-        """Adds an item to the queue.  If block is True and the queue is full,
+    async def put_async(self,
+                        item: Any,
+                        block: bool = True,
+                        timeout: Optional[float] = None):
+        """Adds an item to the queue.
+
+        If block is True and the queue is full,
         blocks until the queue is no longer full or until timeout.
 
         There is no guarantee of order if multiple producers put to the same
@@ -105,9 +117,11 @@ class Queue:
             else:
                 await self.actor.put.remote(item, timeout)
 
-    def get(self, block=True, timeout=None):
-        """Gets an item from the queue.  If block is True and the queue is
-        empty, blocks until the queue is no longer empty or until timeout.
+    def get(self, block: bool = True, timeout: Optional[float] = None):
+        """Gets an item from the queue.
+
+        If block is True and the queue is empty, blocks until the queue is no
+        longer empty or until timeout.
 
         There is no guarantee of order if multiple consumers get from the
         same empty queue.
@@ -131,7 +145,9 @@ class Queue:
             else:
                 return ray.get(self.actor.get.remote(timeout))
 
-    async def get_async(self, block=True, timeout=None):
+    async def get_async(self,
+                        block: bool = True,
+                        timeout: Optional[float] = None):
         """Gets an item from the queue.
 
         There is no guarantee of order if multiple consumers get from the
@@ -155,7 +171,7 @@ class Queue:
             else:
                 return await self.actor.get.remote(timeout)
 
-    def put_nowait(self, item):
+    def put_nowait(self, item: Any):
         """Equivalent to put(item, block=False).
 
         Raises:
@@ -163,18 +179,15 @@ class Queue:
         """
         return self.put(item, block=False)
 
-    def put_nowait_batch(self, items):
+    def put_nowait_batch(self, items: Iterable):
         """Takes in a list of items and puts them into the queue in order.
 
         Raises:
             Full: if the items will not fit in the queue
         """
-        if not isinstance(items, list):
-            raise TypeError("Argument 'items' must be a list")
-        if self.maxsize > 0 and len(items) + self.qsize() > self.maxsize:
-            raise Full("Cannot add " + str(len(items)) +
-                       " items to queue of size " + str(self.qsize()) +
-                       " and maxsize " + str(self.maxsize))
+        if not isinstance(items, Iterable):
+            raise TypeError("Argument 'items' must be an Iterable")
+
         ray.get(self.actor.put_nowait_batch.remote(items))
 
     def get_nowait(self):
@@ -185,7 +198,7 @@ class Queue:
         """
         return self.get(block=False)
 
-    def get_nowait_batch(self, num_items):
+    def get_nowait_batch(self, num_items: int):
         """Gets items from the queue and returns them in a
         list in order.
 
@@ -196,16 +209,15 @@ class Queue:
             raise TypeError("Argument 'num_items' must be an int")
         if num_items < 0:
             raise ValueError("'num_items' must be nonnegative")
-        if num_items > self.qsize():
-            raise Empty("Cannot get " + str(num_items) +
-                        " items from queue of size " + str(self.qsize()))
+
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
 
 
 @ray.remote
 class _QueueActor:
     def __init__(self, maxsize):
-        self.queue = asyncio.Queue(maxsize)
+        self.maxsize = maxsize
+        self.queue = asyncio.Queue(self.maxsize)
 
     def qsize(self):
         return self.queue.qsize()
@@ -232,6 +244,11 @@ class _QueueActor:
         self.queue.put_nowait(item)
 
     def put_nowait_batch(self, items):
+        # If maxsize is 0, queue is unbounded, so no need to check size.
+        if self.maxsize > 0 and len(items) + self.qsize() > self.maxsize:
+            raise Full("Cannot add " + str(len(items)) +
+                       " items to queue of size " + str(self.qsize()) +
+                       " and maxsize " + str(self.maxsize))
         for item in items:
             self.queue.put_nowait(item)
 
@@ -239,4 +256,7 @@ class _QueueActor:
         return self.queue.get_nowait()
 
     def get_nowait_batch(self, num_items):
+        if num_items > self.qsize():
+            raise Empty("Cannot get " + str(num_items) +
+                        " items from queue of size " + str(self.qsize()))
         return [self.queue.get_nowait() for _ in range(num_items)]
