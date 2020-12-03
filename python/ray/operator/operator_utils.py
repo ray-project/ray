@@ -1,11 +1,9 @@
 import copy
 import logging
-import math
 import os
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, Iterator, List
 
 from kubernetes import watch
-import yaml
 
 from ray.autoscaler._private.kubernetes import core_api, custom_objects_api
 
@@ -40,17 +38,12 @@ root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
 
 
-def config_path(cluster):
-    file_name = cluster + CONFIG_SUFFIX
+def config_path(cluster_name: str) -> str:
+    file_name = cluster_name + CONFIG_SUFFIX
     return os.path.join(RAY_CONFIG_DIR, file_name)
 
 
-def write_config(config, config_path):
-    with open(config_path, "w") as file:
-        yaml.dump(config, file)
-
-
-def cluster_cr_stream():
+def cluster_cr_stream() -> Iterator:
     w = watch.Watch()
     return w.stream(
         custom_objects_api().list_namespaced_custom_object,

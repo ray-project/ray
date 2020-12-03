@@ -21,6 +21,7 @@ kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/op
 import logging
 import multiprocessing as mp
 import os
+from typing import Any, Callable, Dict, Optional
 import yaml
 
 from ray._private import services
@@ -31,16 +32,18 @@ from ray import ray_constants
 
 
 class RayCluster():
-    def __init__(self, config):
+    def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.name = self.config["cluster_name"]
         self.config_path = operator_utils.config_path(self.name)
 
         self.setup_logging()
 
-        self.subprocess = None
+        self.subprocess = None  # type: Optional[mp.Process]
 
-    def do_in_subprocess(self, f, wait_to_finish=False):
+    def do_in_subprocess(self,
+                         f: Callable[[], None],
+                         wait_to_finish: bool = False) -> None:
         # First stop the subprocess if it's alive
         if self.subprocess and self.subprocess.is_alive():
             self.subprocess.terminate()
@@ -53,14 +56,14 @@ class RayCluster():
         if wait_to_finish:
             self.subprocess.join()
 
-    def create_or_update(self):
+    def create_or_update(self) -> None:
         self.do_in_subprocess(self._create_or_update)
 
-    def _create_or_update(self):
+    def _create_or_update(self) -> None:
         self.start_head()
         self.start_monitor()
 
-    def start_head(self):
+    def start_head(self) -> None:
         self.write_config()
         self.config = commands.create_or_update_cluster(
             self.config_path,
@@ -72,11 +75,11 @@ class RayCluster():
             no_config_cache=True)
         self.write_config()
 
-    def write_config(self):
+    def write_config(self) -> None:
         with open(self.config_path, "w") as file:
             yaml.dump(self.config, file)
 
-    def start_monitor(self):
+    def start_monitor(self) -> None:
         ray_head_pod_ip = commands.get_head_node_ip(self.config_path)
         # TODO: Add support for user-specified redis port and password
         redis_address = services.address(ray_head_pod_ip,
@@ -88,11 +91,11 @@ class RayCluster():
             prefix_cluster_info=True)
         self.mtr.run()
 
-    def tear_down(self):
+    def tear_down(self) -> None:
         self.do_in_subprocess(self._tear_down, wait_to_finish=True)
         self.clean_up_logging()
 
-    def _tear_down(self):
+    def _tear_down(self) -> None:
         commands.teardown_cluster(
             self.config_path,
             yes=True,
@@ -100,21 +103,21 @@ class RayCluster():
             override_cluster_name=None,
             keep_min_workers=False)
 
-    def setup_logging(self):
+    def setup_logging(self) -> None:
         self.handler = logging.StreamHandler()
         self.handler.addFilter(lambda rec: rec.processName == self.name)
         logging_format = ":".join([self.name, ray_constants.LOGGER_FORMAT])
         self.handler.setFormatter(logging.Formatter(logging_format))
         operator_utils.root_logger.addHandler(self.handler)
 
-    def clean_up_logging(self):
+    def clean_up_logging(self) -> None:
         operator_utils.root_logger.removeHandler(self.handler)
 
 
 ray_clusters = {}
 
 
-def cluster_action(cluster_config, event_type):
+def cluster_action(cluster_config: Dict[str, Any], event_type: str) -> None:
     cluster_name = cluster_config["cluster_name"]
     if event_type == "ADDED":
         ray_clusters[cluster_name] = RayCluster(cluster_config)
@@ -126,7 +129,7 @@ def cluster_action(cluster_config, event_type):
         del ray_clusters[cluster_name]
 
 
-def main():
+def main() -> None:
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
     stream = operator_utils.cluster_cr_stream()
