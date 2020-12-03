@@ -82,8 +82,7 @@ struct LocalObjectInfo {
 class ObjectStoreRunner {
  public:
   ObjectStoreRunner(const ObjectManagerConfig &config,
-                    SpillObjectsCallback spill_objects_callback,
-                    std::function<void()> object_store_full_callback);
+                    SpillObjectsCallback spill_objects_callback);
   ~ObjectStoreRunner();
 
  private:
@@ -195,8 +194,7 @@ class ObjectManager : public ObjectManagerInterface,
                          const NodeID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
                          RestoreSpilledObjectCallback restore_spilled_object,
-                         SpillObjectsCallback spill_objects_callback = nullptr,
-                         std::function<void()> object_store_full_callback = nullptr);
+                         SpillObjectsCallback spill_objects_callback = nullptr);
 
   ~ObjectManager();
 

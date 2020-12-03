@@ -10,8 +10,8 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import (SignalActor, put_object, wait_for_condition,
-                            new_scheduler_enabled)
+from ray.test_utils import SignalActor, put_object, wait_for_condition, \
+    new_scheduler_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +167,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynres notimpl")
 def test_actor_creation_task(ray_start_regular):
     @ray.remote
     def large_object():
@@ -269,16 +269,7 @@ def test_feature_flag(shutdown_only):
 
     # The ray.get below fails with only LRU eviction, as the object
     # that was ray.put by the actor should have been evicted.
-    ref = actor.get_large_object.remote()
-    ray.get(ref)
-
-    # Keep refs in scope so that they don't get GCed immediately.
-    for _ in range(5):
-        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
-    del put_ref
-
-    wait_for_condition(
-        lambda: not ray.worker.global_worker.core_worker.object_exists(ref))
+    _fill_object_store_and_get(actor.get_large_object.remote(), succeed=False)
 
 
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):

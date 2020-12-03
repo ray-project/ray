@@ -27,8 +27,7 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 namespace ray {
 
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
-                                     SpillObjectsCallback spill_objects_callback,
-                                     std::function<void()> object_store_full_callback) {
+                                     SpillObjectsCallback spill_objects_callback) {
   if (config.object_store_memory > 0) {
     plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
         config.store_socket_name, config.object_store_memory, config.huge_pages,
@@ -36,7 +35,7 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
     // Initialize object store.
     store_thread_ =
         std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
-                    spill_objects_callback, object_store_full_callback);
+                    spill_objects_callback);
     // Sleep for sometime until the store is working. This can suppress some
     // connection warnings.
     std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -55,12 +54,11 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory,
                              RestoreSpilledObjectCallback restore_spilled_object,
-                             SpillObjectsCallback spill_objects_callback,
-                             std::function<void()> object_store_full_callback)
+                             SpillObjectsCallback spill_objects_callback)
     : self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
-      object_store_internal_(config, spill_objects_callback, object_store_full_callback),
+      object_store_internal_(config, spill_objects_callback),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
