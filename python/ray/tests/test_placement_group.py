@@ -1253,5 +1253,24 @@ def test_create_placement_group_during_gcs_server_restart(
         ray.get(placement_groups[i].ready())
 
 
+def test_placement_group_wait_api(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name",
+        strategy="PACK",
+        bundles=[
+            {
+                "CPU": 2,
+            },
+            {
+                "CPU": 2
+            }
+        ])
+    assert placement_group.wait(10000)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
