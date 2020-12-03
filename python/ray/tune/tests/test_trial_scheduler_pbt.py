@@ -94,18 +94,17 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=2)
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
     def tearDown(self):
         ray.shutdown()
 
-    def testMemoryCheckpointFree(self):
+    def testFileFree(self):
         class MyTrainable(Trainable):
             def setup(self, config):
                 # Make sure this is large enough so ray uses object store
                 # instead of in-process store.
-                self.large_object = random.getrandbits(int(10e5))
                 self.iter = 0
                 self.a = config["a"]
 
@@ -117,32 +116,33 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
                 file_path = os.path.join(checkpoint_dir, "model.mock")
 
                 with open(file_path, "wb") as fp:
-                    pickle.dump((self.large_object, self.iter, self.a), fp)
+                    pickle.dump((self.iter, self.a), fp)
                 return file_path
 
             def load_checkpoint(self, path):
                 with open(path, "rb") as fp:
-                    self.large_object, self.iter, self.a = pickle.load(fp)
+                    self.iter, self.a = pickle.load(fp)
 
-        class CustomExecutor(RayTrialExecutor):
-            iter_ = 0
-            import psutil
-            process = psutil.Process()
+        from ray.tune.callback import Callback
 
-            def save(self, *args, **kwargs):
-                checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
+        class FileCheck(Callback):
+            def __init__(self, verbose=False):
+                self.iter_ = 0
+                import psutil
+                self.process = psutil.Process()
+                self.verbose = verbose
+
+            def on_trial_result(self, *args, **kwargs):
                 # assert len(ray.objects()) <= 10
                 self.iter_ += 1
-                print("Iteration", self.iter_)
-                print("=" * 10)
-                print("Number of objects: ", len(ray.objects()))
-                print("Virtual Mem:", get_virt_mem() >> 30)
                 all_files = self.process.open_files()
-                print("File Descriptors:", len(all_files))
-                if len(all_files) > 50:
-                    raise
-                print()
-                return checkpoint
+                if self.verbose:
+                    print("Iteration", self.iter_)
+                    print("=" * 10)
+                    print("Number of objects: ", len(ray.objects()))
+                    print("Virtual Mem:", get_virt_mem() >> 30, "gb")
+                    print("File Descriptors:", len(all_files))
+                assert len(all_files) < 20
 
         param_a = MockParam([1, -1])
 
@@ -159,15 +159,14 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
             MyTrainable,
             name="ray_demo",
             scheduler=pbt,
-            stop={"training_iteration": 20},
-            num_samples=8,
-            checkpoint_freq=1,
+            stop={"training_iteration": 10},
+            num_samples=4,
+            checkpoint_freq=2,
             keep_checkpoints_num=1,
             verbose=False,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(
-                queue_trials=False, reuse_actors=False),
+            callbacks=[FileCheck()],
         )
 
 
