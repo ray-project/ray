@@ -25,9 +25,14 @@ class HTTPProxy:
     This class should be instantiated and ran by ASGI server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
+    >>> uvicorn.run(HTTPProxy(controller_name))
     # blocks forever
     """
+    def __init__(self, controller_name):
+        # Set the controller name so that serve.connect() will connect to the
+        # controller instance this proxy is running in.
+        ray.serve.api._set_internal_controller_name(controller_name)
+        self.client = ray.serve.connect()
 
     async def fetch_config_from_controller(self, controller_name):
         assert ray.is_initialized()
@@ -113,10 +118,17 @@ class HTTPProxy:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
-        handle = RayServeHandle(
-            self.controller_handle,
-            endpoint_name,
-            sync=True,
+        # handle = RayServeHandle(
+        #     self.controller_handle,
+        #     endpoint_name,
+        #     sync=True,
+        #     method_name=headers.get("X-SERVE-CALL-METHOD".lower(), None),
+        #     shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
+        #     http_method=scope["method"].upper(),
+        #     http_headers=headers)
+
+        # TODO(architkulkarni): method, shard key
+        handle = self.client.get_handle(endpoint_name).options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(), None),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
             http_method=scope["method"].upper(),
@@ -144,7 +156,7 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
 
-        self.app = HTTPProxy()
+        self.app = HTTPProxy(controller_name)
         await self.app.fetch_config_from_controller(controller_name)
 
         self.wrapped_app = self.app
