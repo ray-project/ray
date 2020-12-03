@@ -40,7 +40,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
-    && $HOME/anaconda3/bin/conda init \ 
+    && $HOME/anaconda3/bin/conda init \
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh \
     && $HOME/anaconda3/bin/conda install -y \
@@ -51,14 +51,14 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         cython==0.29.0 \
         numpy==1.15.4 \
         psutil \
-        blist \ 
+        blist \
     # blist is needed for numpy (which is re-installed when ray is installed)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
-    && $HOME/anaconda3/bin/pip uninstall -y dask \ 
+    && $HOME/anaconda3/bin/pip uninstall -y dask \
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake \
-    # Either install kubectl or remove wget 
+    # Either install kubectl or remove wget
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
         then wget -O - -q https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add - \
         && sudo touch /etc/apt/sources.list.d/kubernetes.list \
