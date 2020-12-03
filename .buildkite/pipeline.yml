@@ -1,6 +1,6 @@
 steps:
   - label: "Setting up build env"
-    command: docker build -f .buildkite/Dockerfile -t rayproject/build_env
+    command: docker build -f .buildkite/Dockerfile -t rayproject/build_env .
     agents:
       queue: simon-agent-q
   - label: "Run inside build env"
