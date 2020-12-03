@@ -218,6 +218,12 @@ def test_pass_handles(ray_start_regular_shared):
         actor_handle = ExecActor.remote()
         assert ray.get(actor_handle.exec.remote(fact, 7)) == local_fact(7)
         assert ray.get(func_actor_exec.remote(actor_handle, fact, 10)) == local_fact(10)
+        second_actor = ExecActor.remote()
+        assert ray.get(actor_handle.exec_exec.remote(second_actor, fact, 9)) == local_fact(9)
+        test_actor_obj = {}
+        test_actor_obj["actor"] = second_actor
+        test_actor_obj["f"] = fact
+        assert ray.get(sneaky_actor_exec.remote(test_actor_obj, 4)) == local_fact(4)
 
 
 
