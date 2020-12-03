@@ -575,7 +575,6 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            SampleBatch.UNROLL_ID: ViewRequirement(),
             "t": ViewRequirement(),
         }
 
@@ -697,9 +696,6 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            # Skip input_dicts for now.
-            if view_req.is_input_dict:
-                continue
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(view_req.space)
                 ret[view_col] = \
@@ -711,15 +707,7 @@ class Policy(metaclass=ABCMeta):
                 else:
                     ret[view_col] = [view_req.space for _ in range(batch_size)]
 
-        # Handle input-dict requests (point to same ret here).
-        _input_dict = {k: v for k, v in ret.items()}
-        for view_col, view_req in self.view_requirements.items():
-            if view_req.is_input_dict:
-                ret[view_col] = _input_dict
-                ret[view_col]["seq_lens"] = np.array(
-                    [1 for _ in range(batch_size)], dtype=np.int32)
-
-        return SampleBatch(ret, _dont_check_lens=True)
+        return SampleBatch(ret)
 
     def _update_model_inference_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.

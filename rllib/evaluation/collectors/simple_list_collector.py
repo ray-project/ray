@@ -133,12 +133,6 @@ class _AgentCollector:
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
-            # Is an input_dict. Build it using the inference view requirements.
-            if view_req.is_input_dict:
-                batch_data[view_col] = self._get_input_dict(
-                    inference_view_requirements, index=view_req.index)
-                continue
-
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
 
@@ -170,7 +164,7 @@ class _AgentCollector:
             if len(data) > 0:
                 batch_data[view_col] = data
 
-        batch = SampleBatch(batch_data, _dont_check_lens=True)
+        batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
             # TODO: (sven) Once we have the additional
@@ -227,37 +221,6 @@ class _AgentCollector:
                         [np.zeros(shape=shape, dtype=dtype)
                          for _ in range(shift)]
 
-    def _get_input_dict(self, view_reqs, index: int = -1) -> \
-            Dict[str, TensorType]:
-
-        if index < 0:
-            index = len(self.buffers[SampleBatch.OBS]) - 1
-        else:
-            index = self.shift_before + index
-
-        input_dict = {}
-        for view_col, view_req in view_reqs.items():
-            # Skip input_dict view-reqs.
-            if view_req.is_input_dict:
-                continue
-
-            # Create the batch of data from the different buffers.
-            data_col = view_req.data_col or view_col
-            time_indices = index + view_req.shift
-
-            if isinstance(time_indices, tuple):
-                data = self.buffers[data_col][time_indices[0]:time_indices[1] +
-                                              1]
-            else:
-                data = self.buffers[data_col][time_indices]
-            # Create batches of 1 (single-agent input-dict).
-            input_dict[view_col] = np.array([data])
-
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
-
 
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
@@ -299,7 +262,6 @@ class _PolicyCollector:
             if view_col not in view_requirements or \
                     not view_requirements[view_col].used_for_training:
                 continue
-            assert view_requirements[view_col].is_input_dict is False
             self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.count += batch.count
@@ -314,7 +276,7 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        batch = SampleBatch(self.buffers, _dont_check_lens=True)
+        batch = SampleBatch(self.buffers)
         assert SampleBatch.UNROLL_ID in batch.data
         # Clear buffers for future samples.
         self.buffers.clear()
@@ -482,10 +444,6 @@ class _SimpleListCollector(_SampleCollector):
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
-            # Skip input_dict view-reqs.
-            if view_req.is_input_dict:
-                continue
-
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             time_indices = \

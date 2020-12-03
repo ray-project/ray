@@ -13,8 +13,7 @@ from typing import Dict, List, Optional, Type, Union
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    view_requirements_fn
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -428,5 +427,4 @@ AsyncPPOTFPolicy = build_tf_policy(
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,
         ValueNetworkMixin
     ],
-    view_requirements_fn=view_requirements_fn,
     get_batch_divisibility_req=lambda p: p.config["rollout_fragment_length"])

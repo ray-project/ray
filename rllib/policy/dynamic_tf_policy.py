@@ -80,8 +80,6 @@ class DynamicTFPolicy(TFPolicy):
             ], Tuple[TensorType, type, List[TensorType]]]] = None,
             existing_inputs: Optional[Dict[str, "tf1.placeholder"]] = None,
             existing_model: Optional[ModelV2] = None,
-            view_requirements_fn: Optional[Callable[[Policy], Dict[
-                str, ViewRequirement]]] = None,
             get_batch_divisibility_req: Optional[Callable[[Policy],
                                                           int]] = None,
             obs_include_prev_action_reward: bool = True):
@@ -135,9 +133,6 @@ class DynamicTFPolicy(TFPolicy):
                 placeholders to use instead of defining new ones.
             existing_model (Optional[ModelV2]): When copying a policy, this
                 specifies an existing model to clone and share weights with.
-            view_requirements_fn (Callable[[Policy],
-                Dict[str, ViewRequirement]]): An optional callable to retrieve
-                additional train view requirements for this policy.
             get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
                 Optional callable that returns the divisibility requirement for
                 sample batches. If None, will assume a value of 1.
@@ -203,9 +198,6 @@ class DynamicTFPolicy(TFPolicy):
         # Use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
         self.view_requirements = self._get_default_view_requirements()
-        # Update this Policy's ViewRequirements (if function given).
-        if callable(view_requirements_fn):
-            self.view_requirements.update(view_requirements_fn(self))
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
@@ -441,7 +433,7 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space, name=view_col)
-        dummy_batch = self._get_dummy_batch_from_view_requirements()
+        dummy_batch = self._get_dummy_batch_from_view_requirements(batch_size=32)
 
         return input_dict, dummy_batch
 
@@ -501,7 +493,7 @@ class DynamicTFPolicy(TFPolicy):
             for k, v in self.extra_compute_action_fetches().items():
                 dummy_batch[k] = fake_array(v)
 
-        sb = SampleBatch(dummy_batch, _dont_check_lens=True)
+        sb = SampleBatch(dummy_batch)
         batch_for_postproc = UsageTrackingDict(sb)
         batch_for_postproc.count = sb.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")

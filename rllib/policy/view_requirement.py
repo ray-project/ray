@@ -31,8 +31,7 @@ class ViewRequirement:
                  space: gym.Space = None,
                  shift: Union[int, List[int]] = 0,
                  index: Optional[int] = None,
-                 used_for_training: bool = True,
-                 is_input_dict: bool = False):
+                 used_for_training: bool = True):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -60,9 +59,6 @@ class ViewRequirement:
             used_for_training (bool): Whether the data will be used for
                 training. If False, the column will not be copied into the
                 final train batch.
-            is_input_dict (bool): Whether the "view" of this requirement is an
-                entire (inference) input dict based on the Model's
-                `self.inference_view_requirements`.
         """
         self.data_col = data_col
         self.space = space if space is not None else gym.spaces.Box(
@@ -72,7 +68,3 @@ class ViewRequirement:
 
         self.shift = shift
         self.used_for_training = used_for_training
-
-        # Whether the "view" is an entire (inference) input dict based on the
-        # Model's `self.inference_view_requirements`.
-        self.is_input_dict = is_input_dict

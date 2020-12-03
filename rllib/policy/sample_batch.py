@@ -61,7 +61,6 @@ class SampleBatch:
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
-        self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = None
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
@@ -77,10 +76,8 @@ class SampleBatch:
                 self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
-        if not self.dont_check_lens:
-            assert len(set(lengths)) == 1, \
-                "Data columns must be same length, but lens are " \
-                "{}".format(lengths)
+        assert len(set(lengths)) == 1, \
+            "Data columns must be same length, but lens are {}".format(lengths)
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
@@ -120,8 +117,7 @@ class SampleBatch:
         return SampleBatch(
             out,
             _seq_lens=np.array(seq_lens, dtype=np.int32),
-            _time_major=concat_samples[0].time_major,
-            _dont_check_lens=True)
+            _time_major=concat_samples[0].time_major)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":

@@ -16,7 +16,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
@@ -198,7 +197,9 @@ def postprocess_ppo_gae(
         # "view". It's a single-timestep input_dict (at very end of
         # trajectory).
         if policy.config["_use_trajectory_view_api"]:
-            last_r = policy._value(**sample_batch["_value_input_dict"])
+            # <- call create_input_dict(sample_batch, index=-1)
+            input_dict = policy.model.get_input_dict(sample_batch, index=-1)
+            last_r = policy._value(**input_dict)
         # TODO: (sven) Remove once trajectory view API is all-algo default.
         else:
             next_state = []
@@ -374,14 +375,6 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def view_requirements_fn(policy):
-    # Adds the input-dict used in postprocessing to the dict of view-reqs.
-    # This is for value calculation at the very end of a trajectory
-    # (index=-1). It's only used if the trajectory is not finished yet and we
-    # have to rely on the last value function output as a reward estimation.
-    return {"_value_input_dict": ViewRequirement(is_input_dict=True, index=-1)}
-
-
 # Build a child class of `DynamicTFPolicy`, given the custom functions defined
 # above.
 PPOTFPolicy = build_tf_policy(
@@ -397,6 +390,4 @@ PPOTFPolicy = build_tf_policy(
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
-    ],
-    view_requirements_fn=view_requirements_fn,
-)
+    ])
