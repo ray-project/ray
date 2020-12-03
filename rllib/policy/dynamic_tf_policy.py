@@ -290,14 +290,6 @@ class DynamicTFPolicy(TFPolicy):
                     action_distribution=action_dist,
                     timestep=timestep,
                     explore=explore)
-            #if self.config["_use_trajectory_view_api"]:
-            #    self._dummy_batch[SampleBatch.ACTION_DIST_INPUTS] = \
-            #        np.zeros(
-            #            [1 if not s else s for s in
-            #             dist_inputs.shape.as_list()])
-            #self._input_dict[SampleBatch.ACTION_DIST_INPUTS] = \
-            #    tf1.placeholder(shape=dist_inputs.shape.as_list(),
-            #                    dtype=tf.float32)
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
