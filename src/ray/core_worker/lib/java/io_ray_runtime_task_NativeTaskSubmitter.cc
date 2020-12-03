@@ -224,7 +224,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       /*placement_options=*/
       std::pair<ray::PlacementGroupID, int64_t>(ray::PlacementGroupID::Nil(), 0),
       /*placement_group_capture_child_tasks=*/true,
-      /*debugger_breakpoint*/"");
+      /*debugger_breakpoint*/ "");
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
