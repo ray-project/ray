@@ -571,10 +571,7 @@ def test_immutable_types():
         print(d3[1])
 
 
-def test_http_proxy(enable_test_module, shutdown_only):
-    os.environ["http_proxy"] = "http://example.com"
-    os.environ["https_proxy"] = "http://example.com"
-
+def test_http_proxy(enable_test_module, set_http_proxy, shutdown_only):
     address_info = ray.init(num_cpus=1, include_dashboard=True)
     assert (wait_until_server_available(address_info["webui_url"]) is True)
 
