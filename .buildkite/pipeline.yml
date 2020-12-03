@@ -1,10 +1,15 @@
 steps:
   - label: "Setting up build env"
-    command: docker build -f .buildkite/Dockerfile -t rayproject/build_env .
+    commands:
+      - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
+      - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
     agents:
       queue: simon-agent-q
+  - wait
   - label: "Run inside build env"
     command: ./ci/travis/ci.sh init
     plugins:
       - docker#v3.7.0:
-          image: rayproject/build_env
+          image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
+    agents:
+      queue: simon-agent-q
