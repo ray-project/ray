@@ -8,7 +8,7 @@ steps:
       queue: simon-agent-q
   - wait
   - label: "Run inside build env"
-    command:
+    commands:
       - sudo chown -R ray .
       - ./ci/travis/ci.sh init
     plugins:
