@@ -227,6 +227,18 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
         }
         MarkSchedulingDone();
         SchedulePendingPlacementGroups();
+
+        // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
+        // placement group and remove all of them from
+        // placement_group_to_create_callbacks_.
+        auto pg_to_create_iter =
+            placement_group_to_create_callbacks_.find(placement_group_id);
+        if (pg_to_create_iter != placement_group_to_create_callbacks_.end()) {
+          for (auto &callback : pg_to_create_iter->second) {
+            callback(status);
+          }
+          placement_group_to_create_callbacks_.erase(pg_to_create_iter);
+        }
       }));
 }
 
@@ -258,7 +270,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
     ray::rpc::SendReplyCallback send_reply_callback) {
   auto placement_group = std::make_shared<GcsPlacementGroup>(request);
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
-  RegisterPlacementGroup(placement_group, [this, reply, send_reply_callback,
+  RegisterPlacementGroup(placement_group, [reply, send_reply_callback,
                                            placement_group](Status status) {
     if (status.ok()) {
       RAY_LOG(INFO) << "Finished registering placement group, "
@@ -268,17 +280,6 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
                     << placement_group->DebugString() << ", cause: " << status.message();
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-
-    // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
-    // placement group and remove all of them from placement_group_to_create_callbacks_.
-    auto iter =
-        placement_group_to_create_callbacks_.find(placement_group->GetPlacementGroupID());
-    if (iter != placement_group_to_create_callbacks_.end()) {
-      for (auto &callback : iter->second) {
-        callback(status);
-      }
-      placement_group_to_create_callbacks_.erase(iter);
-    }
   });
   ++counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST];
 }
@@ -413,20 +414,26 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   // directly.
   const auto &iter = registered_placement_groups_.find(placement_group_id);
   if (iter == registered_placement_groups_.end()) {
+    RAY_LOG(DEBUG) << "Placement group is not exist, placement group id = "
+                   << placement_group_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply,
                        Status::NotFound("Placement group is not exist."));
   } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
+    RAY_LOG(DEBUG) << "Placement group is created, placement group id = "
+                   << placement_group_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  } else {
+    auto callback = [placement_group_id, reply,
+                     send_reply_callback](const Status &status) {
+      RAY_LOG(DEBUG)
+          << "Finished waiting for placement group until ready, placement group id = "
+          << placement_group_id;
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    };
+    placement_group_to_create_callbacks_[placement_group_id].emplace_back(
+        std::move(callback));
   }
 
-  auto callback = [placement_group_id, reply, send_reply_callback](const Status &status) {
-    RAY_LOG(DEBUG)
-        << "Finished waiting for placement group until ready, placement group id = "
-        << placement_group_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  placement_group_to_create_callbacks_[placement_group_id].emplace_back(
-      std::move(callback));
   ++counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST];
 }
 
