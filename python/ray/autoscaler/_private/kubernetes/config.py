@@ -1,3 +1,4 @@
+import pdb
 import copy
 import logging
 import math
@@ -66,8 +67,8 @@ def fillout_resources_kubernetes(config):
     for node_type in node_types:
         container_data = node_types[node_type]["node_config"]["spec"][
             "containers"][0]
-        config["available_node_types"][node_types][
-            "resources"] = get_resources(container_data)
+        config["available_node_types"][node_type]["resources"] = get_resources(
+            container_data)
     return config
 
 
@@ -85,6 +86,9 @@ def get_resources(container_data):
 
 
 def get_resource(container_resources, resource_name):
+    if (resource_name == "gpu" and ("gpu" in container_resources["requests"])
+            and (container_resources["requests"]["gpu"] == "4542m")):
+        pdb.set_trace()
     request = _get_resource(
         container_resources, resource_name, field_name="requests")
     limit = _get_resource(

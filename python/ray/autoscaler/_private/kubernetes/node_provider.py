@@ -179,8 +179,7 @@ class KubernetesNodeProvider(NodeProvider):
         return bootstrap_kubernetes(cluster_config)
 
     @staticmethod
-    def fillout_available_node_types_resources(
-            cluster_config: Dict[str, Any]) -> Dict[str, Any]:
+    def fillout_available_node_types_resources(cluster_config):
         """Fills out missing "resources" field for available_node_types."""
         return fillout_resources_kubernetes(cluster_config)
 
