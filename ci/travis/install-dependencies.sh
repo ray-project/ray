@@ -192,7 +192,7 @@ install_nvm() {
   fi
 }
 
-install_pip() {
+install_upgrade_pip() {
   local python=python
   if command -v python3 > /dev/null; then
     python=python3
@@ -237,10 +237,12 @@ install_dependencies() {
   install_base
   install_toolchains
   install_nvm
-  install_pip
+  install_upgrade_pip
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    # Upgrade the miniconda pip.
+    install_upgrade_pip
   fi
 
   # Install modules needed in all jobs.
@@ -278,8 +280,8 @@ install_dependencies() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
@@ -314,7 +316,6 @@ install_dependencies() {
       1.5) TORCHVISION_VERSION=0.6.0;;
       *) TORCHVISION_VERSION=0.5.0;;
     esac
-
     pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
