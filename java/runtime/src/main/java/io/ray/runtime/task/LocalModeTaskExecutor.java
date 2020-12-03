@@ -1,6 +1,5 @@
 package io.ray.runtime.task;
 
-import io.ray.api.id.ActorId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
 
@@ -34,11 +33,4 @@ public class LocalModeTaskExecutor extends TaskExecutor<LocalModeTaskExecutor.Lo
     return new LocalActorContext(runtime.getWorkerContext().getCurrentWorkerId());
   }
 
-  @Override
-  protected void maybeSaveCheckpoint(Object actor, ActorId actorId) {
-  }
-
-  @Override
-  protected void maybeLoadCheckpoint(Object actor, ActorId actorId) {
-  }
 }

@@ -7,6 +7,7 @@ import warnings
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
@@ -31,6 +32,29 @@ def ray_start_cluster_with_resource():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+    }],
+    indirect=True)
+def test_object_transfer_during_oom(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    def put():
+        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+
+    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    remote_ref = put.remote()
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(remote_ref, timeout=1)
+    del local_ref
+    ray.get(remote_ref)
 
 
 # This test is here to make sure that when we broadcast an object to a bunch of

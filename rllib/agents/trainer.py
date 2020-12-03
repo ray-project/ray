@@ -237,8 +237,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Experimental flag to speed up sampling and use "trajectory views" as
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
-    # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": False,
+    "_use_trajectory_view_api": True,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -568,11 +567,22 @@ class Trainer(Trainable):
             elif "." in env:
                 self.env_creator = \
                     lambda env_context: from_config(env, env_context)
-            # Try gym.
+            # Try gym/PyBullet.
             else:
-                import gym  # soft dependency
-                self.env_creator = \
-                    lambda env_context: gym.make(env, **env_context)
+
+                def _creator(env_context):
+                    import gym
+                    # Allow for PyBullet envs to be used as well (via string).
+                    # This allows for doing things like
+                    # `env=CartPoleContinuousBulletEnv-v0`.
+                    try:
+                        import pybullet_envs
+                        pybullet_envs.getList()
+                    except (ModuleNotFoundError, ImportError):
+                        pass
+                    return gym.make(env, **env_context)
+
+                self.env_creator = _creator
         else:
             self.env_creator = lambda env_config: None
 
@@ -1068,7 +1078,9 @@ class Trainer(Trainable):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 
-        if type(config["input_evaluation"]) != list:
+        if isinstance(config["input_evaluation"], tuple):
+            config["input_evaluation"] = list(config["input_evaluation"])
+        elif not isinstance(config["input_evaluation"], list):
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))

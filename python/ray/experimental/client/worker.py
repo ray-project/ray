@@ -2,15 +2,21 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
-from typing import List, Tuple
+import inspect
+from typing import List
+from typing import Tuple
 
 import ray.cloudpickle as cloudpickle
+from ray.util.inspect import is_cython
 import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
+from ray.experimental.client.common import ClientActorRef
+from ray.experimental.client.common import ClientActorClass
+from ray.experimental.client.common import ClientRemoteMethod
 from ray.experimental.client.common import ClientRemoteFunc
 
 
@@ -87,7 +93,7 @@ class Worker:
              *,
              num_returns: int = 1,
              timeout: float = None
-             ) -> (List[ClientObjectRef], List[ClientObjectRef]):
+             ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
         assert isinstance(object_refs, list)
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
@@ -112,21 +118,62 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    def remote(self, func):
-        return ClientRemoteFunc(func)
+    def remote(self, function_or_class, *args, **kwargs):
+        # TODO(barakmich): Arguments to ray.remote
+        # get captured here.
+        if (inspect.isfunction(function_or_class)
+                or is_cython(function_or_class)):
+            return ClientRemoteFunc(function_or_class)
+        elif inspect.isclass(function_or_class):
+            return ClientActorClass(function_or_class)
+        else:
+            raise TypeError("The @ray.remote decorator must be applied to "
+                            "either a function or to a class.")
 
-    def call_remote(self, func, *args, **kwargs):
-        if not isinstance(func, ClientRemoteFunc):
-            raise TypeError("Client not passing a ClientRemoteFunc stub")
-        func_ref = self._put(func)
+    def call_remote(self, instance, kind, *args, **kwargs):
+        ticket = None
+        if kind == ray_client_pb2.ClientTask.FUNCTION:
+            ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
+        elif kind == ray_client_pb2.ClientTask.ACTOR:
+            ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
+            return ClientActorRef(ticket.return_id)
+        elif kind == ray_client_pb2.ClientTask.METHOD:
+            ticket = self._call_method(instance, *args, **kwargs)
+
+        if ticket is None:
+            raise Exception(
+                "Couldn't call_remote on %s for type %s" % (instance, kind))
+        return ClientObjectRef(ticket.return_id)
+
+    def _call_method(self, instance: ClientRemoteMethod, *args, **kwargs):
+        if not isinstance(instance, ClientRemoteMethod):
+            raise TypeError("Client not passing a ClientRemoteMethod stub")
         task = ray_client_pb2.ClientTask()
-        task.name = func._name
-        task.payload_id = func_ref.id
+        task.type = ray_client_pb2.ClientTask.METHOD
+        task.name = instance.method_name
+        task.payload_id = instance.actor_handle.actor_id.id
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
         ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ClientObjectRef(ticket.return_id)
+        return ticket
+
+    def _put_and_schedule(self, item, task_type, *args, **kwargs):
+        if isinstance(item, ClientRemoteFunc):
+            ref = self._put(item)
+        elif isinstance(item, ClientActorClass):
+            ref = self._put(item.actor_cls)
+        else:
+            raise TypeError("Client not passing a ClientRemoteFunc stub")
+        task = ray_client_pb2.ClientTask()
+        task.type = task_type
+        task.name = item._name
+        task.payload_id = ref.id
+        for arg in args:
+            pb_arg = convert_to_arg(arg)
+            task.args.append(pb_arg)
+        ticket = self.server.Schedule(task, metadata=self.metadata)
+        return ticket
 
     def close(self):
         self.channel.close()

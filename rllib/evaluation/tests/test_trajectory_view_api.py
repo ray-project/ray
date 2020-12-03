@@ -10,7 +10,7 @@ import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
-    EpisodeEnvAwarePolicy
+    EpisodeEnvAwareLSTMPolicy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -59,7 +59,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].shift == 1
+                    assert view_req_policy[key].data_rel_pos == 1
             rollout_worker = trainer.workers.local_worker()
             sample_batch = rollout_worker.sample()
             expected_count = \
@@ -99,10 +99,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
                 if key == SampleBatch.PREV_ACTIONS:
                     assert view_req_policy[key].data_col == SampleBatch.ACTIONS
-                    assert view_req_policy[key].shift == -1
+                    assert view_req_policy[key].data_rel_pos == -1
                 elif key == SampleBatch.PREV_REWARDS:
                     assert view_req_policy[key].data_col == SampleBatch.REWARDS
-                    assert view_req_policy[key].shift == -1
+                    assert view_req_policy[key].data_rel_pos == -1
                 elif key not in [
                         SampleBatch.NEXT_OBS, SampleBatch.PREV_ACTIONS,
                         SampleBatch.PREV_REWARDS
@@ -110,7 +110,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].shift == 1
+                    assert view_req_policy[key].data_rel_pos == 1
             trainer.stop()
 
     def test_traj_view_simple_performance(self):
@@ -121,7 +121,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         obs_space = Box(-1.0, 1.0, shape=(700, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,
@@ -147,7 +146,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policy_mapping_fn": policy_fn,
         }
         num_iterations = 2
-        # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             print("w/ traj. view API")
             config["_use_trajectory_view_api"] = True
@@ -253,7 +251,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
         }
 
         def policy_fn(agent_id):
@@ -316,8 +314,8 @@ def analyze_rnn_batch(batch, max_seq_len):
         state_in_1 = batch["state_in_1"][idx]
 
         # Check postprocessing outputs.
-        if "postprocessed_column" in batch:
-            postprocessed_col_t = batch["postprocessed_column"][idx]
+        if "2xobs" in batch:
+            postprocessed_col_t = batch["2xobs"][idx]
             assert (obs_t == postprocessed_col_t / 2.0).all()
 
         # Check state-in/out and next-obs values.
@@ -386,8 +384,8 @@ def analyze_rnn_batch(batch, max_seq_len):
             r_t = batch["rewards"][k]
 
             # Check postprocessing outputs.
-            if "postprocessed_column" in batch:
-                postprocessed_col_t = batch["postprocessed_column"][k]
+            if "2xobs" in batch:
+                postprocessed_col_t = batch["2xobs"][k]
                 assert (obs_t == postprocessed_col_t / 2.0).all()
 
             # Check state-in/out and next-obs values.
