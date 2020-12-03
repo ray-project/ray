@@ -8,7 +8,7 @@ steps:
       queue: simon-agent-q
   - wait
   - label: "Run inside build env"
-    command: ./ci/travis/ci.sh init
+    command: ./ci/travis/ci.sh init; sleep 10
     plugins:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
