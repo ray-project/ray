@@ -57,7 +57,6 @@ class MyParallelBundleManager(BundleManager):
     split_result_list = [
     ]  # type: List[beam_fn_api_pb2.ProcessBundleSplitResponse]
 
-    @ray.remote
     def execute(part_map_input_timers):
       # type: (...) -> BundleProcessResult
       part_map, input_timers = part_map_input_timers
@@ -72,24 +71,25 @@ class MyParallelBundleManager(BundleManager):
           expected_output_timers,
           dry_run)
 
-    #for result, split_result in executor.map(execute, zip(part_inputs,  # pylint: disable=zip-builtin-not-iterating
-                                                            #timer_inputs)):
-    results = ray.get([execute.remote(_in) for _in in zip(part_inputs, timer_inputs)])
-    for result, split_result in results:
-      #print("===== result below =====:")
-      #print(result)
-      #print("===== result above =====:")
-      split_result_list += split_result
-      if merged_result is None:
-        merged_result = result
-      else:
-        merged_result = beam_fn_api_pb2.InstructionResponse(
-            process_bundle=beam_fn_api_pb2.ProcessBundleResponse(
-                monitoring_infos=monitoring_infos.consolidate(
-                    itertools.chain(
-                        result.process_bundle.monitoring_infos,
-                        merged_result.process_bundle.monitoring_infos))),
-            error=result.error or merged_result.error)
+    print("=== PART INPUTS ({}) ===".format(len(part_inputs)))
+    print(part_inputs)
+    print("===================")
+    with thread_pool_executor.shared_unbounded_instance() as executor:
+      for result, split_result in executor.map(execute, zip(part_inputs, timer_inputs)):
+        #print("===== result below =====:")
+        #print(result)
+        #print("===== result above =====:")
+        split_result_list += split_result
+        if merged_result is None:
+          merged_result = result
+        else:
+          merged_result = beam_fn_api_pb2.InstructionResponse(
+              process_bundle=beam_fn_api_pb2.ProcessBundleResponse(
+                  monitoring_infos=monitoring_infos.consolidate(
+                      itertools.chain(
+                          result.process_bundle.monitoring_infos,
+                          merged_result.process_bundle.monitoring_infos))),
+              error=result.error or merged_result.error)
     assert merged_result is not None
     return merged_result, split_result_list
 

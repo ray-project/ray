@@ -85,7 +85,7 @@ def run(argv=None, save_main_session=True):
             return '%s: %d' % (word, count)
 
         output = counts | 'Format' >> beam.MapTuple(format_result)
-        output | 'Print' >> beam.Map(print)
+        output | 'Write' >> WriteToText("output")
 
 
 if __name__ == '__main__':
