@@ -1,5 +1,10 @@
 steps:
-  - label: "Testing"
-    command: echo "hello from pipeline.yml"
+  - label: "Setting up build env"
+    command: docker build -f .buildkite/Dockerfile -t rayproject/build_env
     agents:
       queue: simon-agent-q
+  - label: "Run inside build env"
+    command: ./ci/travis/ci.sh init
+    plugins:
+      - docker#3.7.0
+          image: rayproject/build_env
