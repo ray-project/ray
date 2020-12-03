@@ -1,16 +1,18 @@
 import logging
 from concurrent import futures
 import grpc
+import uuid
 from ray import cloudpickle
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
-from ray.experimental.client import stash_api_for_tests
+from ray.experimental.client import stash_api_for_tests, _set_server_api
 from ray.experimental.client.common import convert_from_arg
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client.server.core_ray_api import CoreRayServerAPI
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +34,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         item_ser = cloudpickle.dumps(item)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
 
-    def PutObject(self, request, context=None):
+    def PutObject(self, request, context=None) -> ray_client_pb2.PutResponse:
         obj = cloudpickle.loads(request.data)
+        return self._put_and_retain_obj(obj)
+
+    def _put_and_retain_obj(self, obj) -> ray_client_pb2.PutResponse:
         objectref = ray.put(obj)
         self.object_refs[objectref.binary()] = objectref
         logger.info("put: %s" % objectref)
@@ -105,30 +110,32 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 actor_class = ray.get(actor_class_ref)
                 if not inspect.isclass(actor_class):
                     raise Exception("Attempting to schedule actor that "
-                                    "isn't a ClientActorClass.")
+                                    "isn't a class.")
                 reg_class = ray.remote(actor_class)
                 self.registered_actor_classes[task.payload_id] = reg_class
             remote_class = self.registered_actor_classes[task.payload_id]
             arglist = _convert_args(task.args, prepared_args)
-            actor = remote_class.remote(*arglist)
-            actor_ref = actor._actor_id
-            self.actor_refs[actor_ref.binary()] = actor
-        return ray_client_pb2.ClientTaskTicket(return_id=actor_ref.binary())
+            bin_id = uuid.uuid4().bytes
+            actor = remote_class.options(name=bin_id.hex()).remote(*arglist)
+            self.actor_refs[bin_id] = actor
+        return ray_client_pb2.ClientTaskTicket(return_id=bin_id)
 
     def _schedule_function(self, task: ray_client_pb2.ClientTask,
                            context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         if task.payload_id not in self.function_refs:
             funcref = self.object_refs[task.payload_id]
             func = ray.get(funcref)
-            if not isinstance(func, ClientRemoteFunc):
+            if not inspect.isfunction(func):
                 raise Exception("Attempting to schedule function that "
-                                "isn't a ClientRemoteFunc.")
-            self.function_refs[task.payload_id] = func
+                                "isn't a function.")
+            self.function_refs[task.payload_id] = ray.remote(func)
         remote_func = self.function_refs[task.payload_id]
         arglist = _convert_args(task.args, prepared_args)
         # Prepare call if we're in a test
         with stash_api_for_tests(self._test_mode):
             output = remote_func.remote(*arglist)
+            if output.binary() in self.object_refs:
+                raise Exception("already found it")
             self.object_refs[output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
@@ -149,6 +156,7 @@ def _convert_args(arg_list, prepared_args=None):
 def serve(connection_str, test_mode=False):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer(test_mode=test_mode)
+    _set_server_api(CoreRayServerAPI(task_servicer))
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     server.add_insecure_port(connection_str)

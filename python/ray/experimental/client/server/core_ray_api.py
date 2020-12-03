@@ -11,6 +11,7 @@ import ray
 
 from ray.experimental.client.api import APIImpl
 from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client.common import ClientObjectRef
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 
@@ -28,9 +29,11 @@ class CoreRayAPI(APIImpl):
         return ray.remote(*args, **kwargs)
 
     def call_remote(self, instance, kind: int, *args, **kwargs):
-        if instance._raylet_remote_func is None:
-            instance._raylet_remote_func = ray.remote(instance._func)
-        return instance._raylet_remote_func.remote(*args, **kwargs)
+        return instance._get_ray_remote_impl().remote(*args, **kwargs)
+
+    def get_actor_from_object(self, actor_id):
+        return ray.get_actor(actor_id.id.hex())
+
 
     def close(self, *args, **kwargs):
         return None
@@ -46,8 +49,30 @@ class CoreRayServerAPI(CoreRayAPI):
     def __init__(self, server_instance):
         self.server = server_instance
 
+    def put(self, vals, *args, **kwargs):
+        to_put = []
+        single = False
+        if isinstance(vals, list):
+            to_put = vals
+        else:
+            single = True
+            to_put.append(vals)
+
+        out = [self._put(x) for x in to_put]
+        if single:
+            out = out[0]
+        return out
+
+    def _put(self, val):
+        resp = self.server._put_and_retain_obj(val)
+        return ClientObjectRef(resp.id)
+
+    def get_actor_from_object(self, id: bytes):
+        return self.server.actor_refs[id]
+
     def call_remote(self, instance, kind: int, *args, **kwargs):
         task = instance._prepare_client_task()
-        ticket = self.server.Schedule(task, prepared_args = args)
+        ticket = self.server.Schedule(task, prepared_args=args)
+        return ClientObjectRef(ticket.return_id)
 
 

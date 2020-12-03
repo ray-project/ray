@@ -3,6 +3,7 @@ from ray.experimental.client import ray
 from typing import Any
 from typing import Dict
 from ray import cloudpickle
+import traceback
 
 
 class ClientBaseRef:
@@ -18,12 +19,15 @@ class ClientBaseRef:
     def __eq__(self, other):
         return self.id == other.id
 
+    def binary(self):
+        return self.id
+
 
 class ClientObjectRef(ClientBaseRef):
     pass
 
 
-class ClientActorRef(ClientBaseRef):
+class ClientActorNameRef(ClientBaseRef):
     pass
 
 
@@ -33,7 +37,7 @@ class ClientRemoteFunc:
         self._name = f.__name__
         self.id = None
         self._ref = None
-        self._raylet_remote_func = None
+        self._raylet_remote = None
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote function cannot be called directly. "
@@ -43,12 +47,17 @@ class ClientRemoteFunc:
         return ray.call_remote(self, ray_client_pb2.ClientTask.FUNCTION, *args,
                                **kwargs)
 
+    def _get_ray_remote_impl(self):
+        if self._raylet_remote is None:
+            self._raylet_remote = ray.remote(self._func)
+        return self._raylet_remote
+
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         if self._ref is None:
-            self._ref = ray.put(self)
+            self._ref = ray.put(self._func)
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.FUNCTION
         task.name = self._name
@@ -61,6 +70,7 @@ class ClientActorClass:
         self.actor_cls = actor_cls
         self._name = actor_cls.__name__
         self._ref = None
+        self._raylet_remote = None
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote actor cannot be instantiated directly. "
@@ -83,10 +93,10 @@ class ClientActorClass:
         # Actually instantiate the actor
         ref = ray.call_remote(self, ray_client_pb2.ClientTask.ACTOR, *args,
                               **kwargs)
-        return ClientActorHandle(ref, self)
+        return ClientActorHandle(ClientActorNameRef(ref.id), self)
 
     def __repr__(self):
-        return "ClientRemoteActor(%s, %s)" % (self._name, self.id)
+        return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
 
     def __getattr__(self, key):
         raise NotImplementedError("static methods")
@@ -102,24 +112,35 @@ class ClientActorClass:
 
 
 class ClientActorHandle:
-    def __init__(self, actor_id: ClientActorRef,
+    def __init__(self, actor_id: ClientActorNameRef,
                  actor_class: ClientActorClass):
         self.actor_id = actor_id
         self.actor_class = actor_class
+        self._real_actor_handle = None
+
+    def _get_ray_remote_impl(self):
+        if self._real_actor_handle is None:
+            self._real_actor_handle = ray.get_actor_from_object(self.actor_id)
+        return self._real_actor_handle
 
     def __getstate__(self) -> Dict:
         state = {
             "actor_id": self.actor_id,
             "actor_class": self.actor_class,
+            "_real_actor_handle": self._real_actor_handle,
         }
         return state
 
     def __setstate__(self, state: Dict) -> None:
         self.actor_id = state["actor_id"]
         self.actor_class = state["actor_class"]
+        self._real_actor_handle = state["_real_actor_handle"]
 
     def __getattr__(self, key):
         return ClientRemoteMethod(self, key)
+
+    def __repr__(self):
+        return "ClientActorHandle(%s, %s, %s)" % (self.actor_id, self.actor_class, self._real_actor_handle)
 
 
 class ClientRemoteMethod:
@@ -130,6 +151,10 @@ class ClientRemoteMethod:
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote method cannot be called directly. "
                         "Use {self._name}.remote() instead")
+
+    def _get_ray_remote_impl(self):
+        return getattr(
+            self.actor_handle._get_ray_remote_impl(), self.method_name)
 
     def __getstate__(self) -> Dict:
         state = {

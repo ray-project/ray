@@ -3,6 +3,7 @@ It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
 import inspect
+import logging
 from typing import List
 from typing import Tuple
 
@@ -14,11 +15,11 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientRemoteMethod
 from ray.experimental.client.common import ClientRemoteFunc
 
+logger = logging.getLogger(__name__)
 
 class Worker:
     def __init__(self,
@@ -135,6 +136,7 @@ class Worker:
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
+        logging.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
         return ClientObjectRef(ticket.return_id)
 

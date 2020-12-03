@@ -14,27 +14,63 @@ logger = logging.getLogger(__name__)
 # the thing.
 _client_api: Optional[APIImpl] = None
 
+_server_api: Optional[APIImpl] = None
+
+_is_server: bool = False
+
 
 @contextmanager
 def stash_api_for_tests(in_test: bool):
-    api = None
+    global _is_server
+    is_server = _is_server
     if in_test:
-        api = stash_api()
-    yield api
+        _is_server = True
+    yield _server_api
     if in_test:
-        restore_api(api)
+        _is_server = is_server
 
 
-def stash_api() -> Optional[APIImpl]:
+def _set_client_api(val: Optional[APIImpl]):
     global _client_api
-    a = _client_api
+    global _is_server
+    if _client_api is not None:
+        raise Exception("Trying to set more than one client API")
+    _client_api = val
+    _is_server = False
+
+
+def _set_server_api(val: Optional[APIImpl]):
+    global _server_api
+    global _is_server
+    if _server_api is not None:
+        raise Exception("Trying to set more than one server API")
+    _server_api = val
+    _is_server = True
+
+
+def reset_api():
+    global _client_api
+    global _server_api
+    global _is_server
     _client_api = None
-    return a
+    _server_api = None
+    _is_server = False
 
 
-def restore_api(api: Optional[APIImpl]):
+def _get_client_api() -> APIImpl:
     global _client_api
-    _client_api = api
+    global _server_api
+    global _is_server
+    api = None
+    if _is_server:
+        api = _server_api
+    else:
+        api = _client_api
+    if api is None:
+        # We're inside a raylet worker
+        from ray.experimental.client.server.core_ray_api import CoreRayAPI
+        return CoreRayAPI()
+    return api
 
 
 class RayAPIStub:
@@ -43,11 +79,10 @@ class RayAPIStub:
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
                 stub=None):
-        global _client_api
         from ray.experimental.client.worker import Worker
         _client_worker = Worker(
             conn_str, secure=secure, metadata=metadata, stub=stub)
-        _client_api = ClientAPI(_client_worker)
+        _set_client_api(ClientAPI(_client_worker))
 
     def disconnect(self):
         global _client_api
@@ -56,15 +91,10 @@ class RayAPIStub:
         _client_api = None
 
     def __getattr__(self, key: str):
-        global _client_api
-        self.__check_client_api()
-        return getattr(_client_api, key)
+        global _get_client_api
+        api = _get_client_api()
+        return getattr(api, key)
 
-    def __check_client_api(self):
-        global _client_api
-        if _client_api is None:
-            from ray.experimental.client.server.core_ray_api import CoreRayAPI
-            _client_api = CoreRayAPI()
 
 
 ray = RayAPIStub()

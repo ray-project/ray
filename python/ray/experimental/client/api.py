@@ -31,7 +31,11 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def call_remote(self, f, kind, *args, **kwargs):
+    def call_remote(self, instance, kind: int, *args, **kwargs):
+        pass
+
+    @abstractmethod
+    def get_actor_from_object(self, id):
         pass
 
     @abstractmethod
@@ -57,6 +61,9 @@ class ClientAPI(APIImpl):
 
     def call_remote(self, f, kind, *args, **kwargs):
         return self.worker.call_remote(f, kind, *args, **kwargs)
+
+    def get_actor_from_object(self, id):
+        raise Exception("Calling get_actor_from_object on the client side")
 
     def close(self, *args, **kwargs):
         return self.worker.close()
