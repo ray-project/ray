@@ -295,8 +295,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(
 
 JNIEXPORT jboolean JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeWaitPlacementGroupReady(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray placement_group_id_bytes,
-    jint timeout_ms) {
+    JNIEnv *env, jclass p, jbyteArray placement_group_id_bytes, jint timeout_ms) {
   const auto placement_group_id =
       JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
   auto status = ray::CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(

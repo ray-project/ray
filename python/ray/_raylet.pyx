@@ -1179,7 +1179,7 @@ cdef class CoreWorker:
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker().WaitPlacementGroupReady(
                 cplacement_group_id, ctimeout_ms)
-            return status.ok()
+        return status.ok()
 
     def submit_actor_task(self,
                           Language language,

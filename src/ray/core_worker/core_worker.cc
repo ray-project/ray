@@ -1467,7 +1467,8 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
       placement_group_id,
       [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::milliseconds(timeout_ms))) {
+  if (status_future.wait_for(std::chrono::milliseconds(timeout_ms)) !=
+      std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
            << " creation.";
