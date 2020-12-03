@@ -3,7 +3,6 @@ from contextlib import contextmanager
 
 import ray.experimental.client.server.server as ray_client_server
 from ray.experimental.client import ray, reset_api
-import ray.experimental.client as ray_client
 from ray.experimental.client.common import ClientObjectRef
 
 
@@ -174,10 +173,12 @@ def test_basic_actor(ray_start_regular_shared):
 
 def test_pass_handles(ray_start_regular_shared):
     with ray_start_client_server() as ray:
+
         @ray.remote
         class ExecActor:
             def exec(self, f, x):
                 return ray.get(f.remote(x))
+
             def exec_exec(self, actor, f, x):
                 return ray.get(actor.exec.remote(f, x))
 
@@ -217,14 +218,16 @@ def test_pass_handles(ray_start_regular_shared):
         assert ray.get(sneaky_func_exec.remote(test_obj, 5)) == local_fact(5)
         actor_handle = ExecActor.remote()
         assert ray.get(actor_handle.exec.remote(fact, 7)) == local_fact(7)
-        assert ray.get(func_actor_exec.remote(actor_handle, fact, 10)) == local_fact(10)
+        assert ray.get(func_actor_exec.remote(actor_handle, fact,
+                                              10)) == local_fact(10)
         second_actor = ExecActor.remote()
-        assert ray.get(actor_handle.exec_exec.remote(second_actor, fact, 9)) == local_fact(9)
+        assert ray.get(actor_handle.exec_exec.remote(second_actor, fact,
+                                                     9)) == local_fact(9)
         test_actor_obj = {}
         test_actor_obj["actor"] = second_actor
         test_actor_obj["f"] = fact
-        assert ray.get(sneaky_actor_exec.remote(test_actor_obj, 4)) == local_fact(4)
-
+        assert ray.get(sneaky_actor_exec.remote(test_actor_obj,
+                                                4)) == local_fact(4)
 
 
 if __name__ == "__main__":

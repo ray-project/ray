@@ -11,7 +11,6 @@ import inspect
 from ray.experimental.client import stash_api_for_tests, _set_server_api
 from ray.experimental.client.common import convert_from_arg
 from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.common import ClientRemoteFunc
 from ray.experimental.client.server.core_ray_api import CoreRayServerAPI
 
 logger = logging.getLogger(__name__)
@@ -75,7 +74,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
+    def Schedule(self, task, context=None,
+                 prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         logger.info("schedule: %s %s" %
                     (task.name,
                      ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
@@ -90,8 +90,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 "Unimplemented Schedule task type: %s" %
                 ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
 
-    def _schedule_method(self, task: ray_client_pb2.ClientTask,
-                         context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
+    def _schedule_method(
+            self,
+            task: ray_client_pb2.ClientTask,
+            context=None,
+            prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
@@ -102,8 +105,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             self.object_refs[output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
-    def _schedule_actor(self, task: ray_client_pb2.ClientTask,
-                        context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
+    def _schedule_actor(self,
+                        task: ray_client_pb2.ClientTask,
+                        context=None,
+                        prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         with stash_api_for_tests(self._test_mode):
             if task.payload_id not in self.registered_actor_classes:
                 actor_class_ref = self.object_refs[task.payload_id]
@@ -120,8 +125,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             self.actor_refs[bin_id] = actor
         return ray_client_pb2.ClientTaskTicket(return_id=bin_id)
 
-    def _schedule_function(self, task: ray_client_pb2.ClientTask,
-                           context=None, prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
+    def _schedule_function(
+            self,
+            task: ray_client_pb2.ClientTask,
+            context=None,
+            prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
         if task.payload_id not in self.function_refs:
             funcref = self.object_refs[task.payload_id]
             func = ray.get(funcref)

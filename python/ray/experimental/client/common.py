@@ -3,7 +3,6 @@ from ray.experimental.client import ray
 from typing import Any
 from typing import Dict
 from ray import cloudpickle
-import traceback
 
 
 class ClientBaseRef:
@@ -140,7 +139,8 @@ class ClientActorHandle:
         return ClientRemoteMethod(self, key)
 
     def __repr__(self):
-        return "ClientActorHandle(%s, %s, %s)" % (self.actor_id, self.actor_class, self._real_actor_handle)
+        return "ClientActorHandle(%s, %s, %s)" % (
+            self.actor_id, self.actor_class, self._real_actor_handle)
 
 
 class ClientRemoteMethod:
@@ -153,8 +153,8 @@ class ClientRemoteMethod:
                         "Use {self._name}.remote() instead")
 
     def _get_ray_remote_impl(self):
-        return getattr(
-            self.actor_handle._get_ray_remote_impl(), self.method_name)
+        return getattr(self.actor_handle._get_ray_remote_impl(),
+                       self.method_name)
 
     def __getstate__(self) -> Dict:
         state = {
@@ -172,8 +172,10 @@ class ClientRemoteMethod:
                                **kwargs)
 
     def __repr__(self):
-        name = "%s.%s" % (self.actor_handle.actor_class._name, self.method_name)
-        return "ClientRemoteMethod(%s, %s)" % (name, self.actor_handle.actor_id)
+        name = "%s.%s" % (self.actor_handle.actor_class._name,
+                          self.method_name)
+        return "ClientRemoteMethod(%s, %s)" % (name,
+                                               self.actor_handle.actor_id)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         task = ray_client_pb2.ClientTask()

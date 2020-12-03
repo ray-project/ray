@@ -10,9 +10,7 @@
 import ray
 
 from ray.experimental.client.api import APIImpl
-from ray.experimental.client.common import ClientRemoteFunc
 from ray.experimental.client.common import ClientObjectRef
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 
 class CoreRayAPI(APIImpl):
@@ -33,7 +31,6 @@ class CoreRayAPI(APIImpl):
 
     def get_actor_from_object(self, actor_id):
         return ray.get_actor(actor_id.id.hex())
-
 
     def close(self, *args, **kwargs):
         return None
@@ -74,5 +71,3 @@ class CoreRayServerAPI(CoreRayAPI):
         task = instance._prepare_client_task()
         ticket = self.server.Schedule(task, prepared_args=args)
         return ClientObjectRef(ticket.return_id)
-
-

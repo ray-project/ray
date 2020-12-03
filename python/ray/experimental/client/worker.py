@@ -16,10 +16,10 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorClass
-from ray.experimental.client.common import ClientRemoteMethod
 from ray.experimental.client.common import ClientRemoteFunc
 
 logger = logging.getLogger(__name__)
+
 
 class Worker:
     def __init__(self,

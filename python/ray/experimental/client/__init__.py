@@ -96,7 +96,6 @@ class RayAPIStub:
         return getattr(api, key)
 
 
-
 ray = RayAPIStub()
 
 # Someday we might add methods in this module so that someone who
