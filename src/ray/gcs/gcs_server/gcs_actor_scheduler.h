@@ -89,7 +89,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// schedule actors.
   /// \param schedule_success_handler Invoked when actors are created on the worker
   /// successfully.
-  /// \param raylet_client_pool Raylet client pool to construct connections to workers.
+  /// \param raylet_client_pool Raylet client pool to construct connections to raylets.
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
@@ -284,7 +284,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   bool report_worker_backlog_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
-  /// The cached raylet worker client used to communicate with raylet client worker.
+  /// The cached raylet clients used to communicate with raylet.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The cached core worker clients which are used to communicate with leased worker.
   rpc::CoreWorkerClientPool core_worker_clients_;

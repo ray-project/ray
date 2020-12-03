@@ -519,7 +519,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
 
-  /// The cached raylet worker client used to communicate with raylet client worker.
+  /// The cached raylet clients used to communicate with raylets.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 
   /// The nodes which are releasing unused bundles.

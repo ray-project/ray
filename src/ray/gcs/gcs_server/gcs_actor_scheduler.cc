@@ -119,9 +119,6 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
     }
   }
 
-  // Remove the related remote lease client from remote_lease_clients_.
-  // There is no need to check in this place, because it is possible that there are no
-  // workers leased on this node.
   raylet_client_pool_->Disconnect(node_id);
 
   return actor_ids;
@@ -424,8 +421,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
 
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
-  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
-  return raylet_client;
+  return raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
 }  // namespace gcs
