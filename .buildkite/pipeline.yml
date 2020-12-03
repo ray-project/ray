@@ -15,6 +15,7 @@ steps:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
           debug: true
+          user: root
           shell: ["/bin/bash", "-e", "-c"]
           shm-size: 2g
     agents:
