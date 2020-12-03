@@ -112,33 +112,6 @@ message UpdateActorInfoReply {
   GcsStatus status = 1;
 }
 
-message AddActorCheckpointRequest {
-  ActorCheckpointData checkpoint_data = 1;
-}
-
-message AddActorCheckpointReply {
-  GcsStatus status = 1;
-}
-
-message GetActorCheckpointRequest {
-  bytes actor_id = 1;
-  bytes checkpoint_id = 2;
-}
-
-message GetActorCheckpointReply {
-  GcsStatus status = 1;
-  ActorCheckpointData checkpoint_data = 2;
-}
-
-message GetActorCheckpointIDRequest {
-  bytes actor_id = 1;
-}
-
-message GetActorCheckpointIDReply {
-  GcsStatus status = 1;
-  ActorCheckpointIdData checkpoint_id_data = 2;
-}
-
 // Service for actor info access.
 service ActorInfoGcsService {
   // Register actor to gcs service.
@@ -155,13 +128,6 @@ service ActorInfoGcsService {
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
   // Update actor info in GCS Service.
   rpc UpdateActorInfo(UpdateActorInfoRequest) returns (UpdateActorInfoReply);
-  // Add actor checkpoint data to GCS Service.
-  rpc AddActorCheckpoint(AddActorCheckpointRequest) returns (AddActorCheckpointReply);
-  // Get actor checkpoint data from GCS Service.
-  rpc GetActorCheckpoint(GetActorCheckpointRequest) returns (GetActorCheckpointReply);
-  // Get actor checkpoint id data from GCS Service.
-  rpc GetActorCheckpointID(GetActorCheckpointIDRequest)
-      returns (GetActorCheckpointIDReply);
 }
 
 message RegisterNodeRequest {

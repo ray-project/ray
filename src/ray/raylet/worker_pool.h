@@ -72,6 +72,11 @@ class IOWorkerPoolInterface {
   virtual void PopRestoreWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
+  virtual void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) = 0;
+
+  virtual void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
+
   virtual ~IOWorkerPoolInterface(){};
 };
 
@@ -214,6 +219,22 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param callback The callback that returns an available restore I/O worker.
   void PopRestoreWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+
+  /// Add an idle delete I/O worker to the pool.
+  ///
+  /// NOTE: There's currently no concept of delete workers or delete worker pools.
+  /// When deleting objects, it shares the workers within restore or spill worker pools.
+  /// This method is just a higher level abstraction to hide that implementation detail.
+  ///
+  /// \param worker The idle I/O worker. It could be either spill or restore I/O worker.
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker);
+
+  /// Pop an idle delete I/O worker from the pool and trigger a callback when
+  /// when delete I/O worker is available.
+  /// NOTE: There's currently no concept of delete workers or delete worker pools.
+  /// This method just finds more available I/O workers from either spill or restore pool
+  /// and pop them out.
+  void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
 
   /// Add an idle worker to the pool.
   ///

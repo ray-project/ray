@@ -2,7 +2,6 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.api.Checkpointable.Checkpoint;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.JobId;
@@ -12,7 +11,6 @@ import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.runtime.generated.Gcs;
-import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.TablePrefix;
 import io.ray.runtime.placementgroup.PlacementGroupUtils;
@@ -173,33 +171,6 @@ public class GcsClient {
         taskId.getBytes());
     RedisClient client = getShardClient(taskId);
     return client.exists(key);
-  }
-
-  /**
-   * Get the available checkpoints for the given actor ID.
-   */
-  public List<Checkpoint> getCheckpointsForActor(ActorId actorId) {
-    List<Checkpoint> checkpoints = new ArrayList<>();
-    byte[] result = globalStateAccessor.getActorCheckpointId(actorId);
-    if (result != null) {
-      ActorCheckpointIdData data = null;
-      try {
-        data = ActorCheckpointIdData.parseFrom(result);
-      } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invalid protobuf data from GCS.");
-      }
-      UniqueId[] checkpointIds = new UniqueId[data.getCheckpointIdsCount()];
-      for (int i = 0; i < checkpointIds.length; i++) {
-        checkpointIds[i] = UniqueId
-            .fromByteBuffer(data.getCheckpointIds(i).asReadOnlyByteBuffer());
-      }
-
-      for (int i = 0; i < checkpointIds.length; i++) {
-        checkpoints.add(new Checkpoint(checkpointIds[i], data.getTimestamps(i)));
-      }
-    }
-    checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
-    return checkpoints;
   }
 
   public JobId nextJobId() {
