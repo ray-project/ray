@@ -22,7 +22,7 @@ from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    ResourceDemandScheduler, NodeType, NodeID
+    ResourceDemandScheduler, NodeType, NodeID, get_bin_pack_residual
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
@@ -163,6 +163,9 @@ class StandardAutoscaler:
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
+        if self.resource_demand_vector:
+            max_resources_by_ip = copy.copy(
+                self.load_metrics.get_static_node_resources_by_ip())
 
         nodes_to_terminate = []
         node_type_counts = collections.defaultdict(int)
@@ -170,22 +173,38 @@ class StandardAutoscaler:
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
         for node_id in self._sort_based_on_last_used(nodes, last_used):
-            # Make sure to not kill idle node types if the number of workers
-            # of that type is lower/equal to the min_workers of that type.
-            if self._keep_min_worker_of_node_type(
-                    node_id,
-                    node_type_counts) and self.launch_config_ok(node_id):
-                continue
-
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
+            if not self.launch_config_ok(node_id):
                 logger.info("StandardAutoscaler: "
-                            "{}: Terminating idle node".format(node_id))
+                            "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
-            elif not self.launch_config_ok(node_id):
-                logger.info("StandardAutoscaler: "
-                            "{}: Terminating outdated node".format(node_id))
-                nodes_to_terminate.append(node_id)
+            else:
+                # Do not kill idle node types if the number of workers of that
+                # type is lower/equal to the min_workers of that type.
+                if self._keep_min_worker_of_node_type(node_id,
+                                                      node_type_counts):
+                    continue
+
+                if node_ip in last_used and last_used[node_ip] < horizon:
+                    # Respecting request_resources() constraint.
+                    if self.resource_demand_vector:
+                        node_resources = copy.copy(
+                            max_resources_by_ip[node_ip])
+                        del max_resources_by_ip[node_ip]
+                        resource_requests, _ = get_bin_pack_residual(
+                            list(max_resources_by_ip.values()), self.resource_demand_vector)
+                        # If removing the node will require adding resources to
+                        # fulfill request_resources() demand, keep it.
+                        # TODO(ameer): this is not great. E.g., it might remove
+                        # a cheap node when a more expensive one can be removed
+                        # if this loop encounters the cheaper node before the
+                        # more expensive one.
+                        if resource_requests:
+                            max_resources_by_ip[node_ip] = node_resources
+                            continue
+                    logger.info("StandardAutoscaler: "
+                                "{}: Terminating idle node.".format(node_id))
+                    nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
