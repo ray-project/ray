@@ -1,0 +1,23 @@
+steps:
+  - label: "Setting up build env"
+    commands:
+      - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
+      - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
+    agents:
+      amog-test-q
+  - wait
+  - label: "Run tests"
+    commands: ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED; sleep 10
+    agents: 
+      queue: amog-test-q
+    plugins:
+      - docker#v3.7.0:
+          image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
+          debug: true
+    env:
+      SGD_TESTING=1
+      PYTHON=3.6
+      TF_VERSION=2.1.0
+      TFP_VERSION=0.8
+      TORCH_VERSION=1.5
+      PYTHONWARNINGS=ignore
