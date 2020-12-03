@@ -206,7 +206,7 @@ install_upgrade_pip() {
       "${python}" -W ignore -m pip config -q --user set global.disable-pip-version-check True
       "${python}" -W ignore -m pip config -q --user set global.no-color True
       "${python}" -W ignore -m pip config -q --user set global.progress_bar off
-      # "${python}" -W ignore -m pip config -q --user set global.quiet True
+      "${python}" -W ignore -m pip config -q --user set global.quiet True
     fi
   fi
 }
@@ -280,8 +280,8 @@ install_dependencies() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
