@@ -93,5 +93,4 @@ def test_ref_in_handle_input(serve_instance):
 
 if __name__ == "__main__":
     import sys
-    import pytest
     sys.exit(pytest.main(["-v", "-s", __file__]))
