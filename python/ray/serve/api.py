@@ -84,7 +84,7 @@ class Client:
             self._shutdown = True
 
     @_ensure_connected
-    def get_result(self, result_object_id: Any) -> FutureResult:
+    def get_result(self, result_object_id: ray.ObjectRef) -> FutureResult:
         result_id: str = ray.get(result_object_id)
         result = ray.get(self._controller.wait_for_event.remote(result_id))
         logger.debug(f"Getting result_id ({result_id}) with result: {result}")

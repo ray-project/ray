@@ -437,10 +437,6 @@ class FutureResult:
         default_factory=lambda: None)
 
 
-class WrappedResult(asyncio.Event):
-    future_result: FutureResult
-
-
 @ray.remote
 class ServeController:
     """Responsible for managing the state of the serving system.
@@ -504,7 +500,7 @@ class ServeController:
             self.http_host, self.http_port, self.http_middlewares)
 
         # Map of awaiting results
-        self.inflight_results: Dict[ResultId, WrappedResult] = dict()
+        self.inflight_results: Dict[ResultId, asyncio.Future] = dict()
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -540,21 +536,20 @@ class ServeController:
 
     async def wait_for_event(self, uuid: ResultId) -> FutureResult:
         future = self.inflight_results[uuid]
-        await future.wait()
+        result = await future
         # NOTE(ilr) We have to delete this *after* we return to avoid a
         # situation where the controller crashes *after* deleting and before
         # returning to the API (and user).
-        asyncio.get_event_loop().call_soon_threadsafe(
+        asyncio.get_event_loop().create_task(
             lambda: self.inflight_results.pop(uuid))
-        return future.future_result
+        return result
 
     def _create_and_set_result(self, result: bool,
                                goal_state: Dict[str, any]) -> ResultId:
-        fut = WrappedResult()
-        fut.future_result = FutureResult(result, goal_state)
+        fut = asyncio.get_event_loop().create_future()
+        fut.set_result(FutureResult(result, goal_state))
         uuid = get_random_letters(length=20)
         self.inflight_results[uuid] = fut
-        fut.set()
         return uuid
 
     async def _num_inflight_results(self) -> int:
