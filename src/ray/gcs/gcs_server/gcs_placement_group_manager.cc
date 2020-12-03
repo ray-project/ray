@@ -414,7 +414,7 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   const auto &iter = registered_placement_groups_.find(placement_group_id);
   if (iter == registered_placement_groups_.end()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                       Status::Invalid("Placement group is not exist."));
+                       Status::NotFound("Placement group is not exist."));
   } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   }
