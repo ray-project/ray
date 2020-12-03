@@ -314,7 +314,9 @@ install_dependencies() {
       1.5) TORCHVISION_VERSION=0.6.0;;
       *) TORCHVISION_VERSION=0.5.0;;
     esac
-
+    which -a pip
+    pip --version
+    pip install --help
     pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
