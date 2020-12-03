@@ -279,6 +279,9 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
 
 void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
                                    std::shared_ptr<HeartbeatTableData> data) const {
+  if (max_resource_shapes_per_load_report_ == 0) {
+    return;
+  }
   // TODO (WangTao): Find a way to check if load changed and combine it with light
   // heartbeat. Now we just report it every time.
   data->set_resource_load_changed(true);
@@ -288,14 +291,51 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
 
   int num_reported = 0;
 
-  // TODO (Alex): Implement the 1-CPU task optimization.
+  // 1-CPU optimization
+  static const ResourceSet one_cpu_resource_set(
+                                                std::unordered_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
+  static const SchedulingClass one_cpu_scheduling_cls(
+                                                      TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
+  {
+    num_reported++;
+    int count = 0;
+    auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
+    if (it != tasks_to_schedule_.end()) {
+      count += it->second.size();
+    }
+    it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
+    if (it != tasks_to_dispatch_.end()) {
+      count += it->second.size();
+    }
+
+    auto by_shape_entry = resource_load_by_shape->Add();
+
+    for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
+      // Add to `resource_loads`.
+      const auto &label = resource.first;
+      const auto &quantity = resource.second;
+      (*resource_loads)[label] += quantity * count;
+
+      // Add to `resource_load_by_shape`.
+      (*by_shape_entry->mutable_shape())[label] = quantity;
+
+      int num_ready = by_shape_entry->num_ready_requests_queued();
+      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+    }
+
+  }
+
+
   for (const auto &pair : tasks_to_schedule_) {
-    if (num_reported++ >= max_resource_shapes_per_load_report_ && max_resource_shapes_per_load_report_ > 0) {
+    const auto &scheduling_class = pair.first;
+    if (scheduling_class == one_cpu_scheduling_cls) {
+      continue;
+    }
+    if (num_reported++ >= max_resource_shapes_per_load_report_ && max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
       break;
     }
-    const auto &scheduling_class = pair.first;
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
             .GetResourceMap();
@@ -327,12 +367,15 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
   }
 
   for (const auto &pair : tasks_to_dispatch_) {
-    if (num_reported++ >= max_resource_shapes_per_load_report_ && max_resource_shapes_per_load_report_ > 0) {
+    const auto &scheduling_class = pair.first;
+    if (scheduling_class == one_cpu_scheduling_cls) {
+      continue;
+    }
+    if (num_reported++ >= max_resource_shapes_per_load_report_ && max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
       break;
     }
-    const auto &scheduling_class = pair.first;
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
             .GetResourceMap();
