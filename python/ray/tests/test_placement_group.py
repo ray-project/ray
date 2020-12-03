@@ -1249,7 +1249,7 @@ def test_create_placement_group_during_gcs_server_restart(
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
 
-    for i in range(0, 10):
+    for i in range(0, 100):
         ray.get(placement_groups[i].ready())
 
 
