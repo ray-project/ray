@@ -117,6 +117,13 @@ class ClusterResourceScheduler {
   /// feasible if it has the total resources needed to eventually execute the
   /// task, even if those resources are currently allocated.
   ///
+  /// \param shape The resource demand's shape.
+  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
+
+  /// Check whether a task request is feasible on a given node. A node is
+  /// feasible if it has the total resources needed to eventually execute the
+  /// task, even if those resources are currently allocated.
+  ///
   /// \param task_req Task request to be scheduled.
   /// \param resources Node's resources.
   bool IsFeasible(const TaskRequest &task_req, const NodeResources &resources) const;

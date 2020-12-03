@@ -98,6 +98,13 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
+bool ClusterResourceScheduler::IsLocallyFeasible(
+    const std::unordered_map<std::string, double> shape) {
+  const TaskRequest task_req = ResourceMapToTaskRequest(string_to_int_map_, shape);
+  RAY_CHECK(nodes_.contains(local_node_id_));
+  return IsFeasible(task_req, nodes_[local_node_id_]);
+}
+
 bool ClusterResourceScheduler::IsFeasible(const TaskRequest &task_req,
                                           const NodeResources &resources) const {
   // First, check predefined resources.
