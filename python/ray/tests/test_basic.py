@@ -673,7 +673,6 @@ def test_args_stars_after(ray_start_shared_local_modes):
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
 
-
 def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
