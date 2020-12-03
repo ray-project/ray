@@ -74,7 +74,6 @@ struct GcsServerMocker {
         const ray::TaskSpecification &resource_spec,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
         const int64_t backlog_size = -1) override {
-      RAY_LOG(ERROR) << "REQUEST_WORKER_LEASE";
       num_workers_requested += 1;
       callbacks.push_back(callback);
     }
