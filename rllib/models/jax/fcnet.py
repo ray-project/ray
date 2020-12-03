@@ -20,7 +20,7 @@ class FullyConnectedNetwork(JAXModelV2):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
 
-        self.key = jax.random.PRNGKey(time.time_ns())
+        self.key = jax.random.PRNGKey(int(time.time()))
 
         activation = model_config.get("fcnet_activation")
         hiddens = model_config.get("fcnet_hiddens", [])

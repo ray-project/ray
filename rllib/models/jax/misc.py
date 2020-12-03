@@ -40,7 +40,7 @@ class SlimFC:
         if initializer is None:
             initializer = flax.nn.initializers.xavier_uniform()
 
-        self.prng_key = prng_key or jax.random.PRNGKey(time.time_ns())
+        self.prng_key = prng_key or jax.random.PRNGKey(int(time.time()))
         _, self.prng_key = jax.random.split(self.prng_key)
         # Create the flax dense layer.
         self._dense = nn.Dense(

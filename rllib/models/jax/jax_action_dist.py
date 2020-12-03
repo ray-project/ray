@@ -19,7 +19,7 @@ class JAXDistribution(ActionDistribution):
         # Store the last sample here.
         self.last_sample = None
         # Use current time as pseudo-random number generator's seed.
-        self.prng_key = jax.random.PRNGKey(seed=time.time_ns())
+        self.prng_key = jax.random.PRNGKey(seed=int(time.time()))
 
     @override(ActionDistribution)
     def logp(self, actions: TensorType) -> TensorType:
