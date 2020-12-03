@@ -10,9 +10,9 @@ import ray
 import ray.test_utils
 from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import (wait_for_condition, wait_for_pid_to_exit,
-                            run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray.test_utils import (
+    wait_for_condition, wait_for_pid_to_exit, run_string_as_driver,
+    run_string_as_driver_nonblocking, new_scheduler_enabled)
 
 
 def get_workers():
@@ -21,13 +21,11 @@ def get_workers():
                                     raylet["NodeManagerPort"])
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    workers = [
+    return [
         worker for worker in stub.GetNodeStats(
             node_manager_pb2.GetNodeStatsRequest()).core_workers_stats
         if worker.worker_type != common_pb2.DRIVER
     ]
-    print("Num workers", len(workers))
-    return workers
 
 
 # Test that when `redis_address` and `job_config` is not set in
@@ -38,7 +36,7 @@ def test_initial_workers(shutdown_only):
     wait_for_condition(lambda: len(get_workers()) == 1)
 
 
-# This test case starts some driver processes. Each driver process submit
+# This test case starts some driver processes. Each driver process submits
 # some tasks and collect the PIDs of the workers used by the driver. The
 # drivers output the PID list which will be read by the test case itself. The
 # test case will compare the PIDs used by different drivers and make sure that
@@ -207,48 +205,6 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
     time.sleep(1)
     # The two remaining workers stay alive forever.
     assert len(get_workers()) == 2
-
-
-def test_worker_capping_fifo(shutdown_only):
-    # Start 3 initial workers by setting num_cpus to 3.
-    info = ray.init(num_cpus=3)
-    wait_for_condition(lambda: len(get_workers()) == 3)
-
-    time.sleep(1)
-
-    @ray.remote
-    def getpid():
-        return os.getpid()
-
-    worker1, worker2, _ = get_workers()
-
-    # Ensure worker1 isn't the most recent worker.
-    if worker1.pid == ray.get(getpid.remote()):
-        worker1, worker2 = [worker2, worker1]
-
-    # Worker 1 is before worker 2 in the FIFO queue.
-
-    driver_code = """
-import ray
-import time
-
-ray.init(address="{}")
-
-@ray.remote
-def foo():
-    pass
-
-ray.get(foo.remote())
-# Sleep a while to make sure an idle worker exits before this driver exits.
-time.sleep(2)
-ray.shutdown()
-    """.format(info["redis_address"])
-
-    run_string_as_driver(driver_code)
-
-    # Worker 1 should have been killed. If this test becomes flaky, it means
-    # we aren't enforcing FIFO order.
-    wait_for_pid_to_exit(worker1.pid)
 
 
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
