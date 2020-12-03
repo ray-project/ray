@@ -88,7 +88,7 @@ const makeGroupedTableContents = (
     );
     return (
       <NodeRowGroup
-        key={node.ip}
+        key={node.raylet.nodeId}
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
@@ -139,7 +139,12 @@ const useNodeInfoStyles = makeStyles((theme: Theme) =>
   }),
 );
 
-const nodesSelector = (state: StoreState) => state.dashboard?.nodeInfo?.clients;
+// Dead node payloads don't contain the full information needed to render
+// so we filter them out here.
+const liveNodesSelector = (state: StoreState) =>
+  state.dashboard?.nodeInfo?.clients.filter(
+    (node) => node.raylet.state === "ALIVE",
+  );
 
 type DialogState = {
   nodeIp: string;
@@ -170,7 +175,7 @@ const NodeInfo: React.FC<{}> = () => {
   const toggleOrder = () => setOrder(order === "asc" ? "desc" : "asc");
   const [orderBy, setOrderBy] = React.useState<nodeInfoColumnId | null>(null);
   const classes = useNodeInfoStyles();
-  const nodes = useSelector(nodesSelector);
+  const nodes = useSelector(liveNodesSelector);
   if (!nodes) {
     return <Typography color="textSecondary">Loading...</Typography>;
   }

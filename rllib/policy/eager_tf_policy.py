@@ -11,7 +11,7 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import convert_to_non_tf_type
@@ -194,6 +194,7 @@ def build_eager_tf_policy(name,
                           action_sampler_fn=None,
                           action_distribution_fn=None,
                           mixins=None,
+                          view_requirements_fn=None,
                           obs_include_prev_action_reward=True,
                           get_batch_divisibility_req=None):
     """Build an eager TF policy.
@@ -264,6 +265,9 @@ def build_eager_tf_policy(name,
                 for s in self.model.get_initial_state()
             ]
 
+            # Update this Policy's ViewRequirements (if function given).
+            if callable(view_requirements_fn):
+                self.view_requirements.update(view_requirements_fn(self))
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
@@ -278,9 +282,16 @@ def build_eager_tf_policy(name,
             self._loss_initialized = True
 
             if optimizer_fn:
-                self._optimizer = optimizer_fn(self, config)
+                optimizers = optimizer_fn(self, config)
             else:
-                self._optimizer = tf.keras.optimizers.Adam(config["lr"])
+                optimizers = tf.keras.optimizers.Adam(config["lr"])
+            optimizers = force_list(optimizers)
+            if getattr(self, "exploration", None):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            # TODO: (sven) Allow tf policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            self._optimizer = optimizers[0] if optimizers else None
 
             if after_init:
                 after_init(self, observation_space, action_space, config)
@@ -302,14 +313,18 @@ def build_eager_tf_policy(name,
             return sample_batch
 
         @override(Policy)
-        def learn_on_batch(self, samples):
+        def learn_on_batch(self, postprocessed_batch):
+            # Callback handling.
+            self.callbacks.on_learn_on_batch(
+                policy=self, train_batch=postprocessed_batch)
+
             # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
-                samples,
+                postprocessed_batch,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
                 batch_divisibility_req=self.batch_divisibility_req)
-            return self._learn_on_batch_eager(samples)
+            return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
         @convert_eager_outputs
@@ -573,7 +588,8 @@ def build_eager_tf_policy(name,
             if apply_gradients_fn:
                 apply_gradients_fn(self, self._optimizer, grads_and_vars)
             else:
-                self._optimizer.apply_gradients(grads_and_vars)
+                self._optimizer.apply_gradients(
+                    [(g, v) for g, v in grads_and_vars if g is not None])
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""

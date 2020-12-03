@@ -23,11 +23,15 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
+    def wait(self, *args, **kwargs):
+        pass
+
+    @abstractmethod
     def remote(self, *args, **kwargs):
         pass
 
     @abstractmethod
-    def call_remote(self, f, *args, **kwargs):
+    def call_remote(self, f, kind, *args, **kwargs):
         pass
 
     @abstractmethod
@@ -45,11 +49,22 @@ class ClientAPI(APIImpl):
     def put(self, *args, **kwargs):
         return self.worker.put(*args, **kwargs)
 
+    def wait(self, *args, **kwargs):
+        return self.worker.wait(*args, **kwargs)
+
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, f, *args, **kwargs):
-        return self.worker.call_remote(f, *args, **kwargs)
+    def call_remote(self, f, kind, *args, **kwargs):
+        return self.worker.call_remote(f, kind, *args, **kwargs)
 
     def close(self, *args, **kwargs):
         return self.worker.close()
+
+    def __getattr__(self, key: str):
+        if not key.startswith("_"):
+            raise NotImplementedError(
+                "Not available in Ray client: `ray.{}`. This method is only "
+                "available within Ray remote functions and is not yet "
+                "implemented in the client API.".format(key))
+        return self.__getattribute__(key)

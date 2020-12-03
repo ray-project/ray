@@ -14,7 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import fc, relu
+from ray.rllib.utils.numpy import fc, huber_loss, relu
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     framework_iterator
@@ -524,7 +524,8 @@ class TestSAC(unittest.TestCase):
         base_td_error = np.abs(q_t_selected - q_t_selected_target)
         td_error = base_td_error
         critic_loss = [
-            0.5 * np.mean(np.power(q_t_selected_target - q_t_selected, 2.0))
+            np.mean(train_batch["weights"] *
+                    huber_loss(q_t_selected_target - q_t_selected))
         ]
         target_entropy = -np.prod((1, ))
         alpha_loss = -np.mean(log_alpha * (log_pis_t + target_entropy))

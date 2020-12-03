@@ -16,8 +16,8 @@ from six.moves import queue
 from ray.util.debug import log_once
 from ray.tune import TuneError, session
 from ray.tune.trainable import Trainable, TrainableUtil
-from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
+                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.utils import (detect_checkpoint_function, detect_config_single,
                             detect_reporter)
 
@@ -164,7 +164,7 @@ class StatusReporter:
             "report __call__ is made to ensure correct runtime metrics.")
 
         if _metric:
-            kwargs["_metric"] = _metric
+            kwargs[DEFAULT_METRIC] = _metric
 
         # time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
@@ -627,6 +627,7 @@ def with_parameters(fn, **kwargs):
         parameter_registry.put(prefix + k, v)
 
     use_checkpoint = detect_checkpoint_function(fn)
+    keys = list(kwargs.keys())
 
     def inner(config, checkpoint_dir=None):
         fn_kwargs = {}
@@ -638,7 +639,7 @@ def with_parameters(fn, **kwargs):
                           or default
             fn_kwargs["checkpoint_dir"] = default
 
-        for k in kwargs:
+        for k in keys:
             fn_kwargs[k] = parameter_registry.get(prefix + k)
         fn(config, **fn_kwargs)
 

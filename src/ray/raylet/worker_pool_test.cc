@@ -27,6 +27,7 @@ namespace raylet {
 int NUM_WORKERS_PER_PROCESS_JAVA = 3;
 int MAXIMUM_STARTUP_CONCURRENCY = 5;
 int MAX_IO_WORKER_SIZE = 2;
+int POOL_SIZE_SOFT_LIMIT = 5;
 JobID JOB_ID = JobID::FromInt(1);
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
@@ -35,8 +36,8 @@ class WorkerPoolMock : public WorkerPool {
  public:
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, 0, 0, MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr,
-                   worker_commands, {}, []() {}),
+      : WorkerPool(io_service, 0, POOL_SIZE_SOFT_LIMIT, 0, MAXIMUM_STARTUP_CONCURRENCY, 0,
+                   0, {}, nullptr, worker_commands, {}, []() {}),
         last_worker_process_() {
     states_by_lang_[ray::Language::JAVA].num_workers_per_process =
         NUM_WORKERS_PER_PROCESS_JAVA;
@@ -312,6 +313,28 @@ TEST_P(WorkerPoolTest, InitialWorkerProcessCount) {
   } else {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
     ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 0);
+  }
+}
+
+TEST_P(WorkerPoolTest, TestPrestartingWorkers) {
+  if (RayConfig::instance().enable_multi_tenancy()) {
+    const auto task_spec = ExampleTaskSpec();
+    // Prestarts 2 workers.
+    worker_pool_->PrestartWorkers(task_spec, 2);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 2);
+    // Prestarts 1 more worker.
+    worker_pool_->PrestartWorkers(task_spec, 3);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
+    // No more needed.
+    worker_pool_->PrestartWorkers(task_spec, 1);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 3);
+    // Capped by soft limit of 5.
+    worker_pool_->PrestartWorkers(task_spec, 20);
+    ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
+    ASSERT_EQ(worker_pool_->NumWorkerProcessesStarting(), 5);
   }
 }
 
@@ -707,6 +730,44 @@ TEST_P(WorkerPoolTest, MaxSpillRestoreWorkersIntegrationTest) {
   }
 
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2 * MAX_IO_WORKER_SIZE);
+}
+
+TEST_P(WorkerPoolTest, DeleteWorkerPushPop) {
+  /// Make sure delete workers always pop an I/O worker that has more idle worker in their
+  /// pools.
+  // 2 spill worker and 1 restore worker.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+
+  std::unordered_set<std::shared_ptr<WorkerInterface>> restore_workers;
+  restore_workers.insert(CreateRestoreWorker(Process::CreateNewDummy()));
+
+  for (const auto &worker : spill_workers) {
+    worker_pool_->PushSpillWorker(worker);
+  }
+  for (const auto &worker : restore_workers) {
+    worker_pool_->PushRestoreWorker(worker);
+  }
+
+  // PopDeleteWorker should pop a spill worker in this case.
+  worker_pool_->PopDeleteWorker([this](std::shared_ptr<WorkerInterface> worker) {
+    ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::SPILL_WORKER);
+    worker_pool_->PushDeleteWorker(worker);
+  });
+
+  // Add 2 more restore workers. Now we have 2 spill workers and 3 restore workers.
+  for (int i = 0; i < 2; i++) {
+    auto restore_worker = CreateRestoreWorker(Process::CreateNewDummy());
+    restore_workers.insert(restore_worker);
+    worker_pool_->PushRestoreWorker(restore_worker);
+  }
+
+  // PopDeleteWorker should pop a spill worker in this case.
+  worker_pool_->PopDeleteWorker([this](std::shared_ptr<WorkerInterface> worker) {
+    ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::RESTORE_WORKER);
+    worker_pool_->PushDeleteWorker(worker);
+  });
 }
 
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,

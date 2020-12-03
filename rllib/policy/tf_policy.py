@@ -765,6 +765,11 @@ class TFPolicy(Policy):
 
     def _build_learn_on_batch(self, builder, postprocessed_batch):
         self._debug_vars()
+
+        # Callback handling.
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch)
+
         builder.add_feed_dict(self.extra_compute_grad_feed_dict())
         builder.add_feed_dict(
             self._get_loss_inputs_dict(postprocessed_batch, shuffle=False))
@@ -882,6 +887,9 @@ class EntropyCoeffSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff.load(
+        op_or_none = self.entropy_coeff.assign(
             self.entropy_coeff_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+            read_value=False,  # return tf op (None in eager mode).
+        )
+        if self._sess is not None:
+            self._sess.run(op_or_none)

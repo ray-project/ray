@@ -40,6 +40,10 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   MOCK_METHOD1(MarkScheduleCancelled, void(const PlacementGroupID &placement_group_id));
 
+  MOCK_METHOD1(
+      ReleaseUnusedBundles,
+      void(const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles));
+
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
       const NodeID &node_id) override {
     absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles;
@@ -64,8 +68,10 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()) {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        io_service_, io_service_, gcs_pub_sub_, gcs_table_storage_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
+    gcs_node_manager_ =
+        std::make_shared<gcs::GcsNodeManager>(io_service_, io_service_, gcs_pub_sub_,
+                                              gcs_table_storage_, gcs_resource_manager_);
     gcs_placement_group_manager_.reset(
         new gcs::GcsPlacementGroupManager(io_service_, mock_placement_group_scheduler_,
                                           gcs_table_storage_, *gcs_node_manager_));
@@ -99,6 +105,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;

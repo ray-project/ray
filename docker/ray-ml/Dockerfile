@@ -15,6 +15,8 @@ RUN sudo apt-get update \
         libgl1-mesa-dev \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements.txt \ 
     && $HOME/anaconda3/bin/pip --no-cache-dir install -r requirements_ml_docker.txt \
+    # Remove dataclasses & typing because they are included in Py3.7
+    && $HOME/anaconda3/bin/pip uninstall dataclasses typing -y  \ 
     && sudo rm requirements.txt && sudo rm requirements_ml_docker.txt \
     && sudo apt-get remove cmake gcc -y \
     && sudo apt-get clean

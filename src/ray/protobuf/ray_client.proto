@@ -30,10 +30,16 @@ message Arg {
 }
 
 message ClientTask {
-  // Optionally Provided Task Name
-  string name = 1;
-  bytes payload_id = 2;
-  repeated Arg args = 3;
+  enum RemoteExecType {
+    FUNCTION = 0;
+    ACTOR = 1;
+    METHOD = 2;
+    STATIC_METHOD = 3;
+  }
+  RemoteExecType type = 1;
+  string name = 2;
+  bytes payload_id = 3;
+  repeated Arg args = 4;
 }
 
 message ClientTaskTicket {
@@ -56,11 +62,24 @@ message GetResponse {
   bool valid = 1;
   bytes data = 2;
 }
+message WaitRequest {
+  repeated bytes object_refs = 1;
+  int64 num_returns = 2;
+  double timeout = 3;
+}
+
+message WaitResponse {
+  bool valid = 1;
+  repeated bytes ready_object_ids = 2;
+  repeated bytes remaining_object_ids = 3;
+}
 
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
   rpc PutObject(PutRequest) returns (PutResponse) {
+  }
+  rpc WaitObject(WaitRequest) returns (WaitResponse) {
   }
   rpc Schedule(ClientTask) returns (ClientTaskTicket) {
   }
