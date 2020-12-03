@@ -152,6 +152,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 
 
 def continue_debug_session():
+    """Continue active debugging session.
+
+    This function will connect 'ray debug' to the right debugger
+    when a user is stepping between Ray tasks.
+    """
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
 
@@ -192,7 +197,6 @@ def debug(address):
 
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
-
         print("Active breakpoints:")
         for i, active_session in enumerate(active_sessions):
             data = json.loads(

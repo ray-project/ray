@@ -216,7 +216,7 @@ def set_trace(breakpoint_uuid=None):
     """
     # If there is an active debugger already, we do not want to
     # start another one, so "set_trace" is just a no-op in that case.
-    if ray.worker.global_worker.debugger_breakpoint == "":
+    if ray.worker.global_worker.debugger_breakpoint == b"":
         frame = sys._getframe().f_back
         rdb = connect_ray_pdb(
             None, None, False, None,

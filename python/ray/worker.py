@@ -104,7 +104,7 @@ class Worker:
         self._session_index = 0
         # If this is set, the next .remote call should drop into the
         # debugger, at the specified breakpoint ID.
-        self.debugger_breakpoint = ""
+        self.debugger_breakpoint = b""
         # If this is set, ray.get calls invoked on the object ID returned
         # by the worker should drop into the debugger at the specified
         # breakpoint ID.

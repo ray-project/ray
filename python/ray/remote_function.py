@@ -263,7 +263,7 @@ class RemoteFunction:
                 or dict())
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
-            worker.debugger_breakpoint = ""
+            worker.debugger_breakpoint = b""
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:
