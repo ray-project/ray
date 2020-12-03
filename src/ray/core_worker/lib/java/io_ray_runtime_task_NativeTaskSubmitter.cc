@@ -300,6 +300,9 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeWaitPlacementGroupReady(
       JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
   auto status = ray::CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
       placement_group_id, timeout_ms);
+  if (status.IsNotFound()) {
+    env->ThrowNew(java_ray_exception_class, status.message().c_str());
+  }
   return status.ok();
 }
 
