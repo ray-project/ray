@@ -6,5 +6,5 @@ steps:
   - label: "Run inside build env"
     command: ./ci/travis/ci.sh init
     plugins:
-      - docker#3.7.0
+      - docker#3.7.0:
           image: rayproject/build_env
