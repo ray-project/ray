@@ -78,14 +78,15 @@ def run(argv=None, save_main_session=True):
         counts = (lines
                   | 'Split' >>
                   (beam.ParDo(WordExtractingDoFn()).with_output_types(unicode))
-                  | 'PairWIthOne' >> beam.Map(lambda x: (x, 1)))
+                  | 'PairWIthOne' >> beam.Map(lambda x: (x, 1))
+                  | 'GroupAndSum' >> beam.CombinePerKey(sum))
 
         # Format the counts into a PCollection of strings.
         def format_result(word, count):
             return '%s: %d' % (word, count)
 
         output = counts | 'Format' >> beam.MapTuple(format_result)
-        output | 'Print' >> beam.Map(print)
+        output | 'Write' >> WriteToText("output")
 
 
 if __name__ == '__main__':
