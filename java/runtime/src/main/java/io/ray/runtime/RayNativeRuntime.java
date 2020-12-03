@@ -88,7 +88,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       JniUtils.loadLibrary(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
 
       if (rayConfig.workerMode == WorkerType.DRIVER) {
-        RunManager.fillConfigForDriver(rayConfig);
+        RunManager.getAddressInfoAndFillConfig(rayConfig);
       }
 
       gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
@@ -117,7 +117,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         rayletConfigStringMap.put(entry.getKey(), entry.getValue().toString());
       }
 
-      // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
       nativeInitialize(rayConfig.workerMode.getNumber(),
           rayConfig.nodeIp, rayConfig.getNodeManagerPort(),
           rayConfig.workerMode == WorkerType.DRIVER ? System.getProperty("user.dir") : "",

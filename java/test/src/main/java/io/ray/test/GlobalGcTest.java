@@ -17,12 +17,12 @@ public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.head.args.0", "--object-store-memory=" + 140L * 1024 * 1024);
+    System.setProperty("ray.head-args.0", "--object-store-memory=" + 140L * 1024 * 1024);
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.head.args.0");
+    System.clearProperty("ray.head-args.0");
   }
 
   public static class LargeObjectWithCyclicRef {

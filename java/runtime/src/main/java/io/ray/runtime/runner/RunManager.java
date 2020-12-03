@@ -78,7 +78,9 @@ public class RunManager {
     }
   }
 
-  public static void fillConfigForDriver(RayConfig rayConfig) {
+  public static void getAddressInfoAndFillConfig(RayConfig rayConfig) {
+    // NOTE(kfstorm): This method depends on an internal Python API of ray to get the
+    // address info of the local node.
     String script = String.format("import ray;"
         + " print(ray._private.services.get_address_info_from_redis("
         + "'%s', '%s', redis_password='%s', no_warning=True))",

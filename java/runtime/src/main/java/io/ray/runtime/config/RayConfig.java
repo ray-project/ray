@@ -203,7 +203,7 @@ public class RayConfig {
       numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
     }
 
-    headArgs = config.getStringList("ray.head.args");
+    headArgs = config.getStringList("ray.head-args");
 
     // Validate config.
     validate();

@@ -20,14 +20,14 @@ public class ResourcesManagementTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    System.setProperty("ray.head.args.0", "--num-cpus=4");
-    System.setProperty("ray.head.args.1", "--resources={\"RES-A\":4}");
+    System.setProperty("ray.head-args.0", "--num-cpus=4");
+    System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
   }
 
   @AfterClass
   public void tearDown() {
-    System.clearProperty("ray.head.args.0");
-    System.clearProperty("ray.head.args.1");
+    System.clearProperty("ray.head-args.0");
+    System.clearProperty("ray.head-args.1");
   }
 
   public static Integer echo(Integer number) {
