@@ -1,5 +1,4 @@
 import asyncio
-from os import sync
 import traceback
 import inspect
 from collections.abc import Iterable
@@ -122,8 +121,15 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
                                            backend_config, is_function,
                                            controller_handle)
 
-        async def handle_request(self, request):
-            return await self.backend.handle_request(request)
+        async def handle_request(
+                self,
+                request_metadata,
+                *request_args,
+                **request_kwargs,
+        ):
+            query = Query(request_args, request_kwargs,
+                          request_metadata.request_context, request_metadata)
+            return await self.backend.handle_request(query)
 
         def ready(self):
             pass
@@ -389,16 +395,7 @@ class RayServeReplica:
                                     self.config.batch_wait_timeout)
         self.reconfigure(self.config.user_config)
 
-    async def handle_request(
-            self,
-            request_metadata,
-            request_context,
-            *request_args,
-            **request_kwargs,
-    ) -> asyncio.Future:
-        request = Query(request_args, request_kwargs, request_context,
-                        request_metadata)
-
+    async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
         logger.debug("Replica {} received request {}".format(
             self.replica_tag, request.metadata.request_id))

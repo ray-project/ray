@@ -107,8 +107,8 @@ class ReplicaSet:
                 # This replica is overloaded, try next one
                 continue
             logger.debug(f"Replica set assigned {query} to {replica}")
-            ref = replica.handle_request.remote(query.metadata, query.context,
-                                                *query.args, **query.kwargs)
+            ref = replica.handle_request.remote(query.metadata, *query.args,
+                                                **query.kwargs)
             self.in_flight_queries[replica].add(ref)
             return ref
         return None
