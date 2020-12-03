@@ -463,7 +463,6 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     assert t1.status == Trial.TERMINATED, runner.debug_string()
 
 
-@pytest.mark.skip(reason="Not very consistent.")
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
 def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     """Tests that TrialRunner save/restore works on cluster shutdown."""
@@ -633,7 +632,6 @@ tune.run(
 
 
 # TODO(ujvl): Fix test.
-@pytest.mark.skip(reason="Not very consistent.")
 def test_cluster_interrupt(start_connected_cluster, tmpdir):
     """Tests run_experiment on cluster shutdown with actual interrupt.
 
@@ -642,71 +640,35 @@ def test_cluster_interrupt(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
 
-    # Needs to be in scope for pytest
-    class _Mock(tune.Trainable):
-        """Finishes on the 4th iteration."""
+    def execute_script_with_args(address, local_dir):
+        current_dir = os.path.dirname(__file__)
+        script = os.path.join(current_dir,
+                              "_test_cluster_interrupt.py")
+        args = ["--ray-address", address, "--local-dir", local_dir]
+        subprocess.Popen([sys.executable, script] + list(args))
 
-        def setup(self, config):
-            self.state = {"hi": 0}
+    execute_script_with_args(address=address, local_dir=dirpath)
 
-        def step(self):
-            self.state["hi"] += 1
-            time.sleep(0.5)
-            return {"done": self.state["hi"] >= 4}
-
-        def save_checkpoint(self, path):
-            return self.state
-
-        def load_checkpoint(self, state):
-            self.state = state
-
-    # Removes indent from class.
-    reformatted = "\n".join(line[4:] if len(line) else line
-                            for line in inspect.getsource(_Mock).split("\n"))
-
-    script = """
-import os
-import time
-import ray
-from ray import tune
-
-os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
-
-ray.init(address="{address}")
-
-{fail_class_code}
-
-tune.run(
-    {fail_class},
-    name="experiment",
-    stop=dict(training_iteration=5),
-    local_dir="{checkpoint_dir}",
-    checkpoint_freq=1,
-    max_failures=1,
-    raise_on_failed_trial=False)
-""".format(
-        address=cluster.address,
-        checkpoint_dir=dirpath,
-        fail_class_code=reformatted,
-        fail_class=_Mock.__name__)
-    run_string_as_driver_nonblocking(script)
+    def get_trials(checkpoint_dir):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal trialrunner
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            return runner.get_trials()
+            return trials[0]
 
     # Wait until the right checkpoint is saved.
     # The trainable returns every 0.5 seconds, so this should not miss
     # the checkpoint.
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
     for i in range(50):
-        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
-            # Inspect the internal trialrunner
-            runner = TrialRunner(
-                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
-            trials = runner.get_trials()
-            last_res = trials[0].last_result
+        last_trial = get_trials(local_checkpoint_dir)[0]
+        if last_trial:
+            last_res = last_trial.last_result
             if last_res and last_res.get("training_iteration") == 3:
                 break
         time.sleep(0.2)
-
-    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+    else:
         raise RuntimeError("Checkpoint file didn't appear.")
 
     ray.shutdown()
@@ -715,23 +677,19 @@ tune.run(
     Experiment.register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
-    runner = TrialRunner(
-        resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
-    trials = runner.get_trials()
+    trials = get_trials(local_checkpoint_dir)
     assert trials[0].last_result["training_iteration"] == 3
     assert trials[0].status == Trial.PENDING
 
     # Restore properly from checkpoint
-    trials2 = tune.run_experiments(
-        {
-            "experiment": {
-                "run": _Mock,
-                "local_dir": dirpath,
-                "checkpoint_freq": 1
-            }
-        },
+    trials2 = tune.run(
+        _Mock,
+        local_dir=dirpath,
+        checkpoint_freq=1,
         resume=True,
-        raise_on_failed_trial=False)
+        name="experiment",
+        raise_on_failed_trial=False
+    )
     assert all(t.status == Trial.TERMINATED for t in trials2)
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
     ray.shutdown()
@@ -749,7 +707,6 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
-    from ray.tune import register_trainable
     register_trainable("trainable", MyTrainableClass)
 
     def execute_script_with_args(*args):
