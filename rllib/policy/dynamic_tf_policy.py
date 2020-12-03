@@ -433,7 +433,8 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space, name=view_col)
-        dummy_batch = self._get_dummy_batch_from_view_requirements(batch_size=32)
+        dummy_batch = self._get_dummy_batch_from_view_requirements(
+            batch_size=32)
 
         return input_dict, dummy_batch
 

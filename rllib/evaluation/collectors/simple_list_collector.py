@@ -257,8 +257,6 @@ class _PolicyCollector:
             # TODO(ekl) how do we handle this for policies that don't extend
             #   Torch/TFPolicy template (no inference of view reqs)?
             # Skip columns that are not used for training.
-            #if view_requirements[view_col].is_input_dict:
-            #    continue
             if view_col not in view_requirements or \
                     not view_requirements[view_col].used_for_training:
                 continue
@@ -454,11 +452,11 @@ class _SimpleListCollector(_SampleCollector):
             data_list = []
             for k in keys:
                 if data_col not in buffers[k]:
-                    #TODO: rename `space` into space_or_value
                     fill_value = view_req.space.sample() if isinstance(
                         view_req.space, Space) else view_req.space
-                    self.agent_collectors[k]._build_buffers(
-                        {data_col: fill_value})
+                    self.agent_collectors[k]._build_buffers({
+                        data_col: fill_value
+                    })
                 data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
 

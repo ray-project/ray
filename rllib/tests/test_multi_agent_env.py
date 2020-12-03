@@ -326,13 +326,12 @@ class TestMultiAgentEnv(unittest.TestCase):
                     env_id = episodes[0].env_id
                     fake_eps = MultiAgentEpisode(
                         episodes[0]._policies, episodes[0]._policy_mapping_fn,
-                        lambda: None, lambda x: None, env_id
-                    )
+                        lambda: None, lambda x: None, env_id)
                     builder = get_global_worker().sampler.sample_collector
                     agent_id = "extra_0"
                     policy_id = "p1"  # use p1 so we can easily check it
-                    builder.add_init_obs(
-                        fake_eps, agent_id, env_id, policy_id, -1, obs_batch[0])
+                    builder.add_init_obs(fake_eps, agent_id, env_id, policy_id,
+                                         -1, obs_batch[0])
                     for t in range(4):
                         builder.add_action_reward_next_obs(
                             episode_id=fake_eps.episode_id,
@@ -346,10 +345,8 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 rewards=0,
                                 dones=t == 4,
                                 infos={},
-                                new_obs=obs_batch[0]
-                            ))
-                    batch = builder.postprocess_episode(
-                        episode=fake_eps)
+                                new_obs=obs_batch[0]))
+                    batch = builder.postprocess_episode(episode=fake_eps)
                     episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
