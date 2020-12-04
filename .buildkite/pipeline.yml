@@ -18,6 +18,8 @@ steps:
           user: root
           shell: ["/bin/bash", "-e", "-c"]
           shm-size: 2g
-          tty: false
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: America/Los_Angeles
     agents:
       queue: simon-agent-q
