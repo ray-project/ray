@@ -536,8 +536,8 @@ class NormalSchedulingQueue : public SchedulingQueue {
   // false.
   bool CancelTaskIfFound(TaskID task_id) {
     absl::MutexLock lock(&mu_);
-    for (std::deque<InboundRequest>::iterator it = pending_normal_tasks_.begin();
-         it != pending_normal_tasks_.end(); ++it) {
+    for (std::deque<InboundRequest>::iterator it = pending_normal_tasks_.rbegin();
+         it != pending_normal_tasks_.rend(); ++it) {
       if (it->TaskID() == task_id) {
         pending_normal_tasks_.erase(it);
         return true;
