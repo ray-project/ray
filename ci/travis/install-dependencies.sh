@@ -229,7 +229,9 @@ install_node() {
 }
 
 install_toolchains() {
-  "${ROOT_DIR}"/install-toolchains.sh
+  if [ -n "${BUILDKITE-}" ]; then # try slim down the docker image
+    "${ROOT_DIR}"/install-toolchains.sh
+  fi
 }
 
 install_dependencies() {
