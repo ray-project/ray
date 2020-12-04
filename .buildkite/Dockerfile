@@ -9,8 +9,8 @@ RUN apt-get install -y -qq \
     sudo unzip apt-utils dialog tzdata wget
 
 RUN cd /tmp \
-    && wget https://download.docker.com/linux/static/stable/x86_64/docker-19.03.9.tgz \
+    && wget -q https://download.docker.com/linux/static/stable/x86_64/docker-19.03.9.tgz \
     && tar zxvf docker-19.03.9.tgz \
-    && cp docker/* /bin/
-
-RUN docker --version
+    && cp docker/* /bin/ \
+    && cd / \
+    && docker --version
