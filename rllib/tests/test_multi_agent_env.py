@@ -338,15 +338,16 @@ class TestMultiAgentEnv(unittest.TestCase):
                             agent_id=agent_id,
                             env_id=env_id,
                             policy_id=policy_id,
-                            agent_done=t == 4,
+                            agent_done=t == 3,
                             values=dict(
                                 t=t,
                                 actions=0,
                                 rewards=0,
-                                dones=t == 4,
+                                dones=t == 3,
                                 infos={},
                                 new_obs=obs_batch[0]))
-                    batch = builder.postprocess_episode(episode=fake_eps)
+                    batch = builder.postprocess_episode(
+                        episode=fake_eps, build=True)
                     episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
@@ -365,9 +366,13 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_mapping_fn=lambda agent_id: "p0",
             rollout_fragment_length=5)
         batch = ev.sample()
+        # 5 environment steps (rollout_fragment_length).
         self.assertEqual(batch.count, 5)
+        # 10 agent steps for p0: 2 agents, both using p0 as their policy.
         self.assertEqual(batch.policy_batches["p0"].count, 10)
-        self.assertEqual(batch.policy_batches["p1"].count, 25)
+        # 20 agent steps for p1: Each time both(!) agents takes 1 step,
+        # p1 takes 4: 5 (rollout-fragment length) * 4 = 20
+        self.assertEqual(batch.policy_batches["p1"].count, 20)
 
     def test_train_multi_agent_cartpole_single_policy(self):
         n = 10

@@ -49,6 +49,7 @@ class _AgentCollector:
     def __init__(self, shift_before: int = 0):
         self.shift_before = max(shift_before, 1)
         self.buffers: Dict[str, List] = {}
+        self.episode_id = None
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
         self.count = 0
@@ -74,13 +75,12 @@ class _AgentCollector:
             self._build_buffers(
                 single_row={
                     SampleBatch.OBS: init_obs,
-                    SampleBatch.EPS_ID: episode_id,
                     SampleBatch.AGENT_INDEX: agent_index,
                     "env_id": env_id,
                     "t": t,
                 })
         self.buffers[SampleBatch.OBS].append(init_obs)
-        self.buffers[SampleBatch.EPS_ID].append(episode_id)
+        self.episode_id = episode_id
         self.buffers[SampleBatch.AGENT_INDEX].append(agent_index)
         self.buffers["env_id"].append(env_id)
         self.buffers["t"].append(t)
@@ -98,6 +98,11 @@ class _AgentCollector:
         assert SampleBatch.OBS not in values
         values[SampleBatch.OBS] = values[SampleBatch.NEXT_OBS]
         del values[SampleBatch.NEXT_OBS]
+        # Make sure EPS_ID stays the same for this agent. Usually, it should
+        # not be part of `values` anyways.
+        if SampleBatch.EPS_ID in values:
+            assert values[SampleBatch.EPS_ID] == self.episode_id
+            del values[SampleBatch.EPS_ID]
 
         for k, v in values.items():
             if k not in self.buffers:
@@ -166,6 +171,9 @@ class _AgentCollector:
 
         batch = SampleBatch(batch_data)
 
+        # Add EPS_ID and UNROLL_ID to batch.
+        batch.data[SampleBatch.EPS_ID] = np.repeat(
+            self.episode_id, batch.count)
         if SampleBatch.UNROLL_ID not in batch.data:
             # TODO: (sven) Once we have the additional
             #  model.preprocess_train_batch in place (attention net PR), we
@@ -525,8 +533,8 @@ class _SimpleListCollector(_SampleCollector):
             del other_batches[agent_id]
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
-            if any(pre_batch["dones"][:-1]) or len(set(
-                    pre_batch["eps_id"])) > 1:
+            if any(pre_batch[SampleBatch.DONES][:-1]) or len(set(
+                    pre_batch[SampleBatch.EPS_ID])) > 1:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
                     "from a single trajectory.", pre_batch)

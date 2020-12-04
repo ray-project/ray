@@ -568,8 +568,20 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.OBS,
                 shift=1,
                 space=self.observation_space),
+
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
+            # For backward compatibility with custom Models that don't specify
+            # these explicitly (will be removed by Policy if not used).
+            SampleBatch.PREV_ACTIONS: ViewRequirement(
+                data_col=SampleBatch.ACTIONS,
+                shift=-1,
+                space=self.action_space),
+
             SampleBatch.REWARDS: ViewRequirement(),
+            # For backward compatibility with custom Models that don't specify
+            # these explicitly (will be removed by Policy if not used).
+            SampleBatch.PREV_REWARDS: ViewRequirement(
+                data_col=SampleBatch.REWARDS, shift=-1),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
