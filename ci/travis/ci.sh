@@ -261,6 +261,9 @@ _bazel_build_before_install() {
     target="//:ray_pkg"
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
+  which python
+  export PATH="/opt/miniconda/bin:$PATH"
+  which python
   bazel build "${target}"
 }
 
@@ -271,7 +274,7 @@ install_ray() {
     build_dashboard_front_end
     which pip
     which python
-    source /root/.bashrc
+    export PATH="/opt/miniconda/bin:$PATH"
     conda activate
     which pip
     which python
@@ -480,7 +483,8 @@ build() {
   fi
 
   if [ "${RAY_DEFAULT_BUILD-}" = 1 ] || [ "${LINT-}" = 1 ]; then
-    install_go
+    echo "skipping go install"
+    # install_go
   fi
 
   if need_wheels; then
