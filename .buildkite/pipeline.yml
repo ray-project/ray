@@ -10,13 +10,14 @@ steps:
   - wait
   - label: "Build shared container"
     commands:
+      - cat /root/.bazelrc
       # Copy the git checkout to local directory so it will be captured by docker commit
       - cp -r /mounted_workdir /workdir
       - cd /workdir
       # Run legacy environment setup
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
-      - echo 'export PATH=/opt/miniconda/bin:$PATH' >> /root/.bashrc
+      - cat /root/.bazelrc
       # Commit this container
       - /bin/docker tag $(docker commit --pause=false $(hostname)) 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
       - /bin/docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
