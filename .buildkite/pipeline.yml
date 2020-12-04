@@ -2,7 +2,7 @@ steps:
   - label: "Setting up bootstrap env"
     commands:
       - mv /tmp/bazel-credential.json .
-      - aws ecr get-login-password --region us-west-2 > ecr_password
+      - aws ecr get-login-password --region us-west-2 > ecr_password.txt
       - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
       - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
     agents:
