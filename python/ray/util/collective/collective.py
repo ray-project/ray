@@ -106,7 +106,7 @@ class GroupManager(object):
                 ray.wait([store.__ray_terminate__.remote()])
                 ray.kill(store)
         # Release the communicator resources
-        g.destroy()
+        g.destroy_group()
 
 
 _group_mgr = GroupManager()
@@ -119,18 +119,18 @@ def is_group_initialized(group_name):
     return True
 
 
-def init_collective_group(backend,
-                          world_size,
-                          rank,
-                          group_name='default'):
+def init_collective_group(world_size: int,
+                          rank: int,
+                          backend=types.Backend.NCCL,
+                          group_name: str = 'default'):
     """
     Initialize a collective group inside an actor process.
 
     This is an
     Args:
-        backend:
         world_size:
         rank:
+        backend:
         group_name:
 
     Returns:
@@ -144,6 +144,8 @@ def init_collective_group(backend,
         raise ValueError("group_name '{}' needs to be a string."
                          .format(group_name))
 
+
+
     if _group_mgr.is_group_exist(group_name):
         raise RuntimeError('Trying to initialize a group twice.')
 
@@ -153,13 +155,13 @@ def init_collective_group(backend,
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
-def destroy_collective_group(group_name='default'):
+def destroy_collective_group(group_name: str = 'default') -> None:
     """Destroy a collective group given its group name."""
     global _group_mgr
     _group_mgr.destroy_collective_group(group_name)
 
 
-def get_rank(group_name='default') -> int:
+def get_rank(group_name: str = 'default') -> int:
     """
     Return the rank of this process in the given group.
 
@@ -196,7 +198,7 @@ def get_world_size(group_name='default') -> int:
 
 
 def allreduce(tensor,
-              group_name,
+              group_name: str,
               op=types.ReduceOp.SUM):
     """
     Collective allreduce the tensor across the group with name group_name.

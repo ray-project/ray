@@ -26,7 +26,7 @@ class Rendezvous:
         self._store_name = None
         self._store = None
 
-    def meet_at_store(self, timeout=180):
+    def meet(self, timeout=180):
         """Meet at the named actor store."""
         if timeout is not None and timeout < 0:
             raise ValueError("The 'timeout' argument must be nonnegative. "
@@ -78,7 +78,7 @@ class NCCLGroup(BaseGroup):
             logger.warning('NCCL send/recv calls requires NCCL>=2.7.4')
 
         self._rendezvous = Rendezvous(self.group_name)
-        self._rendezvous.meet_at_store()
+        self._rendezvous.meet()
 
         # Setup the nccl uid using the store
         self._init_nccl_unique_id()
