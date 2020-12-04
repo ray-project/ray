@@ -24,7 +24,7 @@ NCCL_REDUCE_OP_MAP = {
 
 # cupy types are the same with numpy types
 NUMPY_NCCL_DTYPE_MAP = {
-    numpy.bool: nccl.NCCL_UINT8,
+    numpy.uint8: nccl.NCCL_UINT8,
     numpy.float16: nccl.NCCL_FLOAT16,
     numpy.float32: nccl.NCCL_FLOAT32,
     numpy.float64: nccl.NCCL_FLOAT64,
@@ -33,7 +33,7 @@ NUMPY_NCCL_DTYPE_MAP = {
 if torch_available():
     import torch
     TORCH_NCCL_DTYPE_MAP = {
-        torch.bool: nccl.NCCL_UINT8,
+        torch.uint8: nccl.NCCL_UINT8,
         torch.float16: nccl.NCCL_FLOAT16,
         torch.float32: nccl.NCCL_FLOAT32,
         torch.float64: nccl.NCCL_FLOAT64,

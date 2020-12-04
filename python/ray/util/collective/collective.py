@@ -65,9 +65,10 @@ class GroupManager(object):
                 from ray.util.collective.util import NCCLUniqueIDStore
                 store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(store_name)
                 ray.wait([store.set_id.remote(group_uid)])
-
+            
             logger.debug('creating NCCL group: {}'.format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
+            
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         return self._name_group_map[group_name]
@@ -254,7 +255,7 @@ def _check_backend_availability(backend: types.Backend):
 def _check_single_tensor_input(tensor):
     """Check if the tensor is with a supported type."""
     if types.numpy_available():
-        if isinstance(tensor, types.np.ndarry):
+        if isinstance(tensor, types.np.ndarray):
             return
     if types.cupy_available():
         if isinstance(tensor, types.cp.ndarray):

@@ -1,9 +1,9 @@
 """Test the collective group APIs."""
 import pytest
-
+import numpy as np
 import ray
 import ray.util.collective as col
-from ray.util.collective.types import Backend
+from ray.util.collective.types import Backend, ReduceOp
 
 import cupy as cp
 
@@ -17,8 +17,12 @@ class Worker:
         col.init_collective_group(world_size, rank, backend, group_name)
         return True
 
-    def do_work(self):
-        return
+    def set_buffer(self, data):
+        self.buffer = data
+
+    def do_work(self, group_name="default", op=ReduceOp.SUM):
+        col.allreduce(self.buffer, group_name, op)
+        return self.buffer
 
     def destroy_group(self, group_name='default'):
         col.destroy_collective_group(group_name)
@@ -133,10 +137,94 @@ def test_misc_apis_2_actors(ray_start_single_node_2_gpus):
 def test_reinit_group(ray_start_single_node_2_gpus):
     pass
 
-# TODO (Dacheng): test the allreduce api with different groups, object size, etc.
-def test_allreduce(ray_start_single_node_2_gpus):
-    pass
+@pytest.mark.parametrize("group_name", ['default', 'test', '123?34!'])
+def test_allreduce_different_name(ray_start_single_node_2_gpus, group_name):
+    world_size = 2
+    actors, _ = get_actors_group(num_workers=world_size,group_name=group_name)
+    results = ray.get([a.do_work.remote(group_name) for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=cp.float32) * world_size).all()
+    assert (results[1] == cp.ones((10,), dtype=cp.float32) * world_size).all()
 
+@pytest.mark.parametrize("array_size", [1, 15, 177])
+def test_allreduce_different_array_size(ray_start_single_node_2_gpus, array_size):
+    world_size = 2
+    actors, _ = get_actors_group(world_size)
+    ray.wait([a.set_buffer.remote(cp.ones(array_size, dtype=cp.float32)) for a in actors])
+    results = ray.get([a.do_work.remote() for a in actors])
+    assert (results[0] == cp.ones((array_size,), dtype=cp.float32) * world_size).all()
+    assert (results[1] == cp.ones((array_size,), dtype=cp.float32) * world_size).all()
+
+def test_allreduce_destroy(ray_start_single_node_2_gpus, backend="nccl", group_name="default"):
+    world_size = 2
+    actors, _ = get_actors_group(world_size)
+
+    results = ray.get([a.do_work.remote() for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=cp.float32) * world_size).all()
+    assert (results[1] == cp.ones((10,), dtype=cp.float32) * world_size).all()
+   
+   # destroy the group and try do work, should fail 
+    ray.wait([a.destroy_group.remote() for a in actors])
+    with pytest.raises(RuntimeError):
+        results = ray.get([a.do_work.remote() for a in actors])
+
+    # reinit the same group and all reduce 
+    ray.get([actor.init_group.remote(world_size, i, backend, group_name)
+                                 for i, actor in enumerate(actors)])
+    results = ray.get([a.do_work.remote() for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=cp.float32) * world_size * 2).all()
+    assert (results[1] == cp.ones((10,), dtype=cp.float32) * world_size * 2).all()
+
+def test_allreduce_multiple_group(ray_start_single_node_2_gpus, backend="nccl", num_groups=5):
+    world_size = 2
+    actors, _ = get_actors_group(world_size)
+    for group_name in range(1, num_groups):
+        ray.get([actor.init_group.remote(world_size, i, backend, str(group_name))
+                                             for i, actor in enumerate(actors)])
+    for i in range(num_groups):
+        results = ray.get([a.do_work.remote() for a in actors])
+        assert (results[0] == cp.ones((10,), dtype=cp.float32) * (world_size ** (i + 1))).all()
+
+def test_allreduce_different_op(ray_start_single_node_2_gpus):
+    world_size = 2
+    actors, _ = get_actors_group(world_size)
+
+    # check product
+    ray.wait([a.set_buffer.remote(cp.ones(10, dtype=cp.float32) * (i + 2)) for i, a in enumerate(actors)])
+    results = ray.get([a.do_work.remote(op=ReduceOp.PRODUCT) for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=cp.float32) * 6).all()
+    assert (results[1] == cp.ones((10,), dtype=cp.float32) * 6).all()
+    
+    # check min
+    ray.wait([a.set_buffer.remote(cp.ones(10, dtype=cp.float32) * (i + 2)) for i, a in enumerate(actors)])
+    results = ray.get([a.do_work.remote(op=ReduceOp.MIN) for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=cp.float32) * 2).all()
+    assert (results[1] == cp.ones((10,), dtype=cp.float32) * 2).all()
+    
+    # check max
+    ray.wait([a.set_buffer.remote(cp.ones(10, dtype=cp.float32) * (i + 2)) for i, a in enumerate(actors)])
+    results = ray.get([a.do_work.remote(op=ReduceOp.MAX) for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=cp.float32) * 3).all()
+    assert (results[1] == cp.ones((10,), dtype=cp.float32) * 3).all()
+
+
+@pytest.mark.parametrize("dtype", [cp.uint8, cp.float16, cp.float32, cp.float64])
+def test_allreduce_different_dtype(ray_start_single_node_2_gpus, dtype):
+    world_size = 2
+    actors, _ = get_actors_group(world_size)
+    ray.wait([a.set_buffer.remote(cp.ones(10, dtype=dtype)) for a in actors])
+    results = ray.get([a.do_work.remote() for a in actors])
+    assert (results[0] == cp.ones((10,), dtype=dtype) * world_size).all()
+    assert (results[1] == cp.ones((10,), dtype=dtype) * world_size).all()
+
+def test_allreduce_different_torch_cupy(ray_start_single_node_2_gpus):
+    return 
+    import torch
+    world_size = 2
+    actors, _ = get_actors_group(world_size)
+    ray.wait([actors[0].set_buffer.remote(torch.ones(10,))])
+    results = ray.get([a.do_work.remote() for a in actors])
+    assert (results[0] == cp.ones((10,)) * world_size).all()
+    assert (results[1] == cp.ones((10,)) * world_size).all()
 
 if __name__ == "__main__":
     import pytest
