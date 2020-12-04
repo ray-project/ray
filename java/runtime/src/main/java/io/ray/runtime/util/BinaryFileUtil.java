@@ -12,15 +12,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.SystemUtils;
 
 public class BinaryFileUtil {
-  public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
-
-  public static final String GCS_SERVER_BINARY_NAME = "gcs_server";
-
-  public static final String PLASMA_STORE_SERVER_BINARY_NAME = "plasma_store_server";
-
-  public static final String RAYLET_BINARY_NAME = "raylet";
-
-  public static final String REDIS_MODULE_LIBRARY_NAME = "libray_redis_module.so";
 
   public static final String CORE_WORKER_JAVA_LIBRARY = "core_worker_library_java";
 

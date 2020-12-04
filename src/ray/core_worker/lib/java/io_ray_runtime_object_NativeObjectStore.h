@@ -68,7 +68,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeAddLocalReference
- * Signature: ([B)V
+ * Signature: ([B[B)V
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, jclass,
@@ -78,7 +78,7 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeAddLocalReference(JNIEnv *, j
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeRemoveLocalReference
- * Signature: ([B)V
+ * Signature: ([B[B)V
  */
 JNIEXPORT void JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *, jclass,
