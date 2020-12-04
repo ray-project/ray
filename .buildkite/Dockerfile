@@ -22,3 +22,6 @@ RUN mkdir /bazel-cache; \
     (echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> /root/.bazelrc); \
     (echo "build --google_credentials=/bazel-credential.json" >> /root/.bazelrc) && \
     cat /root/.bazelrc
+
+COPY ecr_password.txt /ecr_password.txt
+RUN cat ecr_password | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
