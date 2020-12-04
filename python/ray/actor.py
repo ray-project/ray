@@ -8,7 +8,7 @@ import ray.signature as signature
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
-from ray.util.collective import collective as col
+
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
@@ -423,8 +423,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None,
-                collective=None):
+                override_environment_variables=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -466,8 +465,7 @@ class ActorClass:
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
                     override_environment_variables=(
-                        override_environment_variables),
-                    collective=collective)
+                        override_environment_variables))
 
         return ActorOptionWrapper()
 
@@ -488,8 +486,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None,
-                collective=None):
+                override_environment_variables=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -529,7 +526,6 @@ class ActorClass:
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
-            collective: what colletive configuration to use
 
         Returns:
             A handle to the newly created actor.
@@ -679,12 +675,6 @@ class ActorClass:
             extension_data=str(actor_method_cpu),
             override_environment_variables=override_environment_variables
             or dict())
-        
-        if collective:
-            col.init_collective_group(backend=collective["backend"],
-                                      world_size=collective["world_size"],
-                                      rank=collective["rank"],
-                                      group_name=collective["group_name"])
 
         actor_handle = ActorHandle(
             meta.language,
@@ -695,8 +685,7 @@ class ActorClass:
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
-            original_handle=True,
-            collective=collective)
+            original_handle=True)
 
         return actor_handle
 
@@ -740,8 +729,7 @@ class ActorHandle:
                  actor_method_cpus,
                  actor_creation_function_descriptor,
                  session_and_job,
-                 original_handle=False,
-                 collective=None):
+                 original_handle=False):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_original_handle = original_handle
@@ -754,7 +742,7 @@ class ActorHandle:
         self._ray_actor_creation_function_descriptor = \
             actor_creation_function_descriptor
         self._ray_function_descriptor = {}
-        self._collective = collective
+
         if not self._ray_is_cross_language:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
