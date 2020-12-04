@@ -60,7 +60,8 @@ def run(argv=None, save_main_session=True):
         help='Input file to process.')
     known_args, pipeline_args = parser.parse_known_args(argv)
     pipeline_args.append('--runner=ray.experimental.beam.runner.RayRunner')
-    pipeline_args.append('--direct_num_workers=2')
+    pipeline_args.append('--direct_num_workers=0')
+    pipeline_args.append('--direct_running_mode=multi_processing')
     #pipeline_args.append('--runner=BundleBasedDirectRunner')
 
     # We use the save_main_session option because one or more DoFn's in this

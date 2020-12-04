@@ -1,4 +1,5 @@
 import itertools
+import sys
 
 from apache_beam.pipeline import PipelineVisitor
 from apache_beam.options.pipeline_options import DirectOptions
@@ -6,7 +7,8 @@ from apache_beam.options.value_provider import RuntimeValueProvider
 from apache_beam.runners.direct.bundle_factory import BundleFactory
 from apache_beam.runners.runner import PipelineState
 from apache_beam.runners.direct.clock import RealClock
-from apache_beam.portability.api import beam_fn_api_pb2
+from apache_beam.portability.api import beam_fn_api_pb2, beam_runner_api_pb2
+from apache_beam.portability import python_urns
 from apache_beam.runners.portability.fn_api_runner import FnApiRunner
 from apache_beam.runners.portability.fn_api_runner.fn_runner import BundleManager
 from apache_beam.runners.direct.direct_runner import BundleBasedDirectRunner, _get_transform_overrides
@@ -14,9 +16,6 @@ from apache_beam.runners.runner import PipelineResult
 from apache_beam.runners.runner import PipelineRunner
 from apache_beam.utils import thread_pool_executor
 from apache_beam.metrics import monitoring_infos
-
-import ray
-ray.init()
 
 
 class MyParallelBundleManager(BundleManager):
@@ -93,8 +92,8 @@ class MyParallelBundleManager(BundleManager):
     assert merged_result is not None
     return merged_result, split_result_list
 
-import apache_beam.runners.portability.fn_api_runner.fn_runner #ParallelBundleManager
-apache_beam.runners.portability.fn_api_runner.fn_runner.ParallelBundleManager = MyParallelBundleManager
+#import apache_beam.runners.portability.fn_api_runner.fn_runner #ParallelBundleManager
+#apache_beam.runners.portability.fn_api_runner.fn_runner.ParallelBundleManager = MyParallelBundleManager
 #apache_beam.runners.portability.fn_api_runner.fn_runner.BundleManager = None
 
 
