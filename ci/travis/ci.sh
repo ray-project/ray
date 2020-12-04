@@ -264,6 +264,7 @@ _bazel_build_before_install() {
   which python
   export PATH="/opt/miniconda/bin:$PATH"
   which python
+  cat /root/.bazelrc
   bazel build "${target}"
 }
 
@@ -272,11 +273,8 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
-    which pip
     which python
     export PATH="/opt/miniconda/bin:$PATH"
-    conda activate
-    which pip
     which python
     pip install -v -e .
   )
