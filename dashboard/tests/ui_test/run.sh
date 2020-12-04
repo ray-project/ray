@@ -11,6 +11,6 @@ function inline_link {
 }
 
 pip install -r requirements.txt
-python test_screenshot.py
+python make_screenshot.py
 buildkite-agent artifact upload dashboard_render.png
 inline_image 'artifact:dashboard_render.png' 'Rendering of Ray Dashboard'
