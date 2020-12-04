@@ -24,6 +24,7 @@ steps:
           user: root
           shell: ["/bin/bash", "-e", "-c"]
           propagate-environment: true
+          always-pull: true
           volumes:
             - "/var/run/docker.sock:/var/run/docker.sock"
     env:
