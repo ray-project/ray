@@ -673,6 +673,7 @@ def test_args_stars_after(ray_start_shared_local_modes):
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
 
+
 def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.
@@ -694,6 +695,7 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
         return "φ"
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
