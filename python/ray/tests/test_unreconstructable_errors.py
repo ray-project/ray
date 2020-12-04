@@ -9,7 +9,7 @@ class TestUnreconstructableErrors(unittest.TestCase):
         ray.init(
             num_cpus=1,
             object_store_memory=150 * 1024 * 1024,
-            redis_max_memory=10000000)
+            redis_max_memory=100000000)
 
     def tearDown(self):
         ray.shutdown()

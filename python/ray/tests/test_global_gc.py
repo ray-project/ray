@@ -15,6 +15,7 @@ from ray.internal.internal_api import global_gc
 logger = logging.getLogger(__name__)
 
 
+@pytest.mark.skip(reason="TODO(Edi)")
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     for _ in range(2):

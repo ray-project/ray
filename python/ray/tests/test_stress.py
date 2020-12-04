@@ -15,7 +15,7 @@ def ray_start_combination(request):
         initialize_head=True,
         head_node_args={
             "num_cpus": 10,
-            "redis_max_memory": 10**7
+            "redis_max_memory": 100000000
         })
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)

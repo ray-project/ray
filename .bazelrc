@@ -27,6 +27,7 @@ build --per_file_copt="-\\.(asm|S)$,.*/_streaming\\.cpp@-Wno-deprecated-declarat
 build --host_copt="-Wno-builtin-macro-redefined"
 build --host_copt="-Wno-inconsistent-missing-override"
 build --host_copt="-Wno-microsoft-unqualified-friend"
+build --host_copt="-Wno-range-loop-analysis"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0

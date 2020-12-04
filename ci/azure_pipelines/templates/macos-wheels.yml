@@ -35,6 +35,9 @@ steps:
     source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
 
     # Duplicate the wheel packages for the architecture of the agent
+    pushd "$BUILD_SOURCESDIRECTORY/.whl/"
+    for f in *macosx_11_0*; do mv "$f" "$(echo "$f" | sed s/macosx_11_0/macosx_10_15/)"; done
+    popd
 
     # Start Original script
 

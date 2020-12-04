@@ -58,13 +58,13 @@ steps:
   displayName: 'Install pre-requisites'
 - script: |
     # Install nodejs so we can run the Javascript version of inkling compiler
-    curl -sL https://deb.nodesource.com/setup_10.x | sudo -E bash -
+    curl -sL https://deb.nodesource.com/setup_15.x | sudo -E bash -
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -yq \
         --allow-downgrades --allow-remove-essential --allow-change-held-packages \
         nodejs
 
     # Install NVM
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.0/install.sh | bash
     NVM_HOME="${HOME}/.nvm"
     if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
       echo "NVM is not installed"
@@ -75,6 +75,11 @@ steps:
     # Install Bazelisk
     echo "Install Bazelisk"
     sudo npm install -g @bazel/bazelisk
+
+    mkdir -p ./bazel
+    sudo chmod -R 777 ./bazel
+    echo "Current dir: $(pwd)"
+    ls -larth ./bazel
   displayName: 'Install Bazel'
 - script: |
     # Install JDK

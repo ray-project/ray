@@ -197,6 +197,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
 
 # The purpose of this test is to make sure that an object that was already been
 # transferred to a node can be transferred again.
+@pytest.mark.skip(reason="TODO(Edi)")
 def test_object_transfer_retry(ray_start_cluster):
     cluster = ray_start_cluster
 

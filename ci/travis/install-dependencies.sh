@@ -276,17 +276,17 @@ install_dependencies() {
       msys) tf_version="${TF_VERSION:-2.2.0}";;
       *) tf_version="${TF_VERSION:-2.1.0}";;
     esac
-    pip_packages+=(scipy tensorflow=="${tf_version}" cython==0.29.0 gym==0.17.2 \
+    pip_packages+=(scipy==1.4.1 tensorflow=="${tf_version}" cython==0.29.0 gym==0.17.2 \
       opencv-python-headless pyyaml pandas==1.0.5 requests feather-format lxml openpyxl xlrd \
       py-spy pytest pytest-timeout networkx tabulate aiohttp uvicorn dataclasses pygments werkzeug \
       kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio scikit-learn==0.22.2 numba \
-      Pillow prometheus_client boto3 urllib3 numpy pickle5==0.0.11)
+      Pillow prometheus_client boto3 urllib3 numpy pickle5==0.0.11 h5py==2.10.0)
     if [ "${OSTYPE}" != msys ]; then
       # These packages aren't Windows-compatible
       pip_packages+=(blist)  # https://github.com/DanielStutzbach/blist/issues/81#issue-391460716
     fi
 
-    pip install --upgrade pip
+    pip install --upgrade pip~=20.2.0
     pip install --upgrade setuptools
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
@@ -321,7 +321,7 @@ install_dependencies() {
   # Additional RLlib dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install tensorflow-probability=="${TFP_VERSION-0.8}" gast==0.2.2 \
-      torch=="${TORCH_VERSION-1.4}" torchvision atari_py gym[atari]==0.17.2 lz4 smart_open
+      torch=="${TORCH_VERSION-1.4}" torchvision==0.7.0 atari_py==0.2.6 gym[atari]==0.17.2 lz4==3.1.0 smart_open==2.2.1
   fi
 
   # Additional streaming dependencies.

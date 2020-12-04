@@ -10,9 +10,9 @@ steps:
     versionSpec: '8'
     jdkArchitectureOption: 'x64'
     jdkSourceOption: AzureStorage
-    azureResourceManagerEndpoint: RayADOAgents
-    azureStorageAccountName: rayadoagentsimage
+    azureResourceManagerEndpoint: RayADOAgents2
+    azureStorageAccountName: adoraytests
     azureContainerName: jdk
-    azureCommonVirtualFile: 'jdk-8u241-linux-x64.tar.gz'
+    azureCommonVirtualFile: 'jdk-8u271-linux-x64.tar.gz'
     jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk8'
     cleanDestinationDirectory: false

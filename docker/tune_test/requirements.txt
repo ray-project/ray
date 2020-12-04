@@ -28,5 +28,5 @@ tensorflow_probability
 torch
 torchvision
 xgboost
-zoopt>=0.4.0
+zoopt==0.4.0
 timm

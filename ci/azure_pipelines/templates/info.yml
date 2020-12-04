@@ -14,7 +14,7 @@ steps:
         echo "Please check the changes, change the azure pipelines acordingly and update the sha256"
         exit 1
       fi
-      EXPECTED_HASH_CI_FOLDER='8fad9f28611feec116fa8cd47b62a776b09d7ece0f6ea17c732552c899ee4fee'
+      EXPECTED_HASH_CI_FOLDER='85a060f84b9f8b0e7784e21efd67d7c75f3e41176835892c82d54f911f6a753a'
       CURRENT_HASH_CI_FOLDER=$(find ./ci -path "./ci/azure_pipelines" -prune -o -path "./**/.DS_Store" -prune -o -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256 | awk '{print $1}')
       if [[ $EXPECTED_HASH_CI_FOLDER != $CURRENT_HASH_CI_FOLDER ]]; then 
         echo "The original CI folder of the project has changed"

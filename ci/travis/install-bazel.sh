@@ -4,7 +4,7 @@ set -euox pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-version="${USE_BAZEL_VERSION:-3.3.0}"
+version="${USE_BAZEL_VERSION:-3.4.1}"
 achitecture="${HOSTTYPE}"
 platform="unknown"
 case "${OSTYPE}" in
@@ -30,11 +30,13 @@ esac
 # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
 { git ls-files -s || true; } | {
   missing_symlinks=()
+  set +x
   while read -r mode digest sn path; do
     if [ "${mode}" = 120000 ]; then
       test -L "${path}" || missing_symlinks+=("${paths}")
     fi
   done
+  set -x
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
     echo "error: expected symlink: ${missing_symlinks[@]}" 1>&2
     echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2

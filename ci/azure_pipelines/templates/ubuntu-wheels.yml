@@ -22,6 +22,7 @@ steps:
     LINUX_WHEELS: 1
     RAY_INSTALL_JAVA: 1
     RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+    npm_config_user: root
   displayName: 'Run original travis install phase'
   timeoutInMinutes: 120
 # Script phase of the travis Ubuntu wheels build
@@ -49,5 +50,6 @@ steps:
     LINUX_WHEELS: 1
     RAY_INSTALL_JAVA: 1
     RAY_GCS_ACTOR_SERVICE_ENABLED: 'true'
+    npm_config_user: root
   displayName: 'Run original script phase'
   timeoutInMinutes: 60
