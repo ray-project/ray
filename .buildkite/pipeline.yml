@@ -17,7 +17,6 @@ steps:
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
       # Commit this container
-      - echo "$PATH"
       - /bin/docker tag $(docker commit --pause=false $(hostname)) 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
       - /bin/docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
     plugins:
@@ -41,8 +40,9 @@ steps:
   - wait
   - label: "Run Ray core test"
     commands:
-      - echo "$PATH"
+      - bazel build --config=ci //:ray_pkg # just to confirm the caches work
       - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
+      - rm -rf python/ray/thirdparty_files; cd python; pip install -e . --verbose; cd ..
       - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...
       - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
     plugins:

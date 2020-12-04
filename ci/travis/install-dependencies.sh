@@ -229,7 +229,7 @@ install_node() {
 }
 
 install_toolchains() {
-  if [ -n "${BUILDKITE-}" ]; then # try slim down the docker image
+  if [ -z "${BUILDKITE-}" ]; then # try slim down the docker image by skipping clang in docker image
     "${ROOT_DIR}"/install-toolchains.sh
   fi
 }
