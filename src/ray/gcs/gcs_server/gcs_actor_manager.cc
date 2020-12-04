@@ -287,8 +287,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.
-  // NOTE: The storage put operation is ordered. It's impossible to have `ActorTable` put
-  // success but `ActorTaskSpecTable` put failure.
+  // NOTE: The storage put operation is ordered. We put `ActorTaskSpecTable` first and
+  // then `ActorTable`, so there won't be `ActorTable` put success but
+  // `ActorTaskSpecTable` put failure.
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(actor_id, request.task_spec(),
                                                             [](const Status &status) {}));
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
