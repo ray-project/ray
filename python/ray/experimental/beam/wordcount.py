@@ -50,6 +50,7 @@ class WordExtractingDoFn(beam.DoFn):
     Returns:
       The processed element.
     """
+        import re
         return re.findall(r'[\w\']+', element, re.UNICODE)
 
 
