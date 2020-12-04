@@ -262,13 +262,18 @@ class _PolicyCollector:
                 training).
         """
         for view_col, data in batch.items():
-            # TODO(ekl) how do we handle this for policies that don't extend
-            #   Torch/TFPolicy template (no inference of view reqs)?
-            # Skip columns that are not used for training.
+            ## TODO(ekl) how do we handle this for policies that don't extend
+            ##   Torch/TFPolicy template (no inference of view reqs)?
+            ## Skip columns that are not used for training.
+            #if view_col not in view_requirements or \
+            #        not view_requirements[view_col].used_for_training:
+            #    continue
+            # 1) If col is not in view_requirements, we must have a direct
+            # child of the base Policy that doesn't do auto-view req creation.
+            # 2) Col is in view-reqs and needed for training.
             if view_col not in view_requirements or \
-                    not view_requirements[view_col].used_for_training:
-                continue
-            self.buffers[view_col].extend(data)
+                    view_requirements[view_col].used_for_training:
+                self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.count += batch.count
 
@@ -455,17 +460,19 @@ class _SimpleListCollector(_SampleCollector):
             time_indices = \
                 view_req.shift - (
                     1 if data_col in [SampleBatch.OBS, "t", "env_id",
-                                      SampleBatch.EPS_ID,
                                       SampleBatch.AGENT_INDEX] else 0)
             data_list = []
             for k in keys:
-                if data_col not in buffers[k]:
-                    fill_value = view_req.space.sample() if isinstance(
-                        view_req.space, Space) else view_req.space
-                    self.agent_collectors[k]._build_buffers({
-                        data_col: fill_value
-                    })
-                data_list.append(buffers[k][data_col][time_indices])
+                if data_col == SampleBatch.EPS_ID:
+                    data_list.append(self.agent_collectors[k].episode_id)
+                else:
+                    if data_col not in buffers[k]:
+                        fill_value = view_req.space.sample() if isinstance(
+                            view_req.space, Space) else view_req.space
+                        self.agent_collectors[k]._build_buffers({
+                            data_col: fill_value
+                        })
+                    data_list.append(buffers[k][data_col][time_indices])
             input_dict[view_col] = np.array(data_list)
 
         self._reset_inference_calls(policy_id)
