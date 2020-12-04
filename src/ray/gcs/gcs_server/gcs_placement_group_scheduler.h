@@ -105,13 +105,10 @@ class ScheduleContext {
 
 class GcsScheduleStrategy {
  public:
-  GcsScheduleStrategy(GcsResourceManager &gcs_resource_manager)
-      : gcs_resource_manager_(gcs_resource_manager) {}
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
-  
  protected:
   /// Judge whether the remaining resources are sufficient for allocate.
   ///
@@ -130,7 +127,6 @@ class GcsScheduleStrategy {
 /// nodes.
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -138,7 +134,6 @@ class GcsPackStrategy : public GcsScheduleStrategy {
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -147,7 +142,6 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 /// node does not have enough resources, it will fail to schedule.
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };
@@ -157,7 +151,6 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 /// If the node resource is insufficient, it will fail to schedule.
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
-  using GcsScheduleStrategy::GcsScheduleStrategy;
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
                        const std::unique_ptr<ScheduleContext> &context) override;
 };

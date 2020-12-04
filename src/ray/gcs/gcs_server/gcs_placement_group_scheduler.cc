@@ -30,30 +30,10 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       lease_client_factory_(std::move(lease_client_factory)) {
-  scheduler_strategies_.push_back(
-      std::make_shared<GcsPackStrategy>(gcs_resource_manager));
-  scheduler_strategies_.push_back(
-      std::make_shared<GcsSpreadStrategy>(gcs_resource_manager));
-  scheduler_strategies_.push_back(
-      std::make_shared<GcsStrictPackStrategy>(gcs_resource_manager));
-  scheduler_strategies_.push_back(
-      std::make_shared<GcsStrictSpreadStrategy>(gcs_resource_manager));
-}
-
-void GcsScheduleStrategy::ResetAcquiredResources() { acquired_resources_.clear(); }
-
-void GcsScheduleStrategy::RecordResourceAcquirement(
-    const NodeID &node_id, const ResourceSet &required_resources) {
-  acquired_resources_[node_id].push_back(required_resources);
-}
-
-void GcsScheduleStrategy::ReturnAcquiredResources() {
-  for (auto &resources_list : acquired_resources_) {
-    for (auto &resources : resources_list.second) {
-      gcs_resource_manager_.ReleaseResource(resources_list.first, resources);
-    }
-  }
-  ResetAcquiredResources();
+  scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
+  scheduler_strategies_.push_back(std::make_shared<GcsStrictSpreadStrategy>());
 }
 
 bool GcsScheduleStrategy::IsAvailableResourceSufficient(
@@ -106,18 +86,12 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
     schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
   }
 
-  // Update cluster resource.
-  gcs_resource_manager_.AcquireResource(candidate_nodes.front().second,
-                                        required_resources);
-
   return schedule_map;
 }
 
 ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
     const std::unique_ptr<ScheduleContext> &context) {
-  ResetAcquiredResources();
-
   // The current algorithm is to select a node and deploy as many bundles as possible.
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
@@ -137,7 +111,6 @@ ScheduleMap GcsPackStrategy::Schedule(
 
   if (schedule_map.size() != bundles.size()) {
     schedule_map.clear();
-    ReturnAcquiredResources();
   }
   return schedule_map;
 }
@@ -171,11 +144,11 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       }
     }
 
-    // We've traversed all the nodes from `iter_begin` to `candidate_nodes->end()`, but we
+    // We've traversed all the nodes from `iter_begin` to `candidate_nodes.end()`, but we
     // haven't found one that meets the requirements.
-    // If `iter_begin` is `candidate_nodes->begin()`, it means that all nodes are not
+    // If `iter_begin` is `candidate_nodes.begin()`, it means that all nodes are not
     // satisfied, we will return directly. Otherwise, we will traverse the nodes from
-    // `candidate_nodes->begin()` to `iter_begin` to find the nodes that meet the
+    // `candidate_nodes.begin()` to `iter_begin` to find the nodes that meet the
     // requirements.
     if (iter == candidate_nodes.end()) {
       if (iter_begin != candidate_nodes.begin()) {
@@ -197,13 +170,12 @@ ScheduleMap GcsSpreadStrategy::Schedule(
         break;
       }
     }
-    // NOTE: If `iter == candidate_nodes->end()`, ++iter causes crash.
+    // NOTE: If `iter == candidate_nodes.end()`, ++iter causes crash.
     iter_begin = ++iter;
   }
 
   if (schedule_map.size() != bundles.size()) {
     schedule_map.clear();
-    ReturnAcquiredResources();
   }
   return schedule_map;
 }
@@ -218,7 +190,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   const auto &candidate_nodes = context->cluster_resources_;
 
   // The number of bundles is more than the number of nodes, scheduling fails.
-  if (bundles.size() > candidate_nodes->size()) {
+  if (bundles.size() > candidate_nodes.size()) {
     return schedule_map;
   }
 
@@ -237,14 +209,13 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     }
 
     // Node resource is not satisfied, scheduling failed.
-    if (iter == candidate_nodes->end()) {
+    if (iter == candidate_nodes.end()) {
       break;
     }
   }
 
   if (schedule_map.size() != bundles.size()) {
     schedule_map.clear();
-    ReturnAcquiredResources();
   }
   return schedule_map;
 }
