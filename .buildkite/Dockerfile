@@ -11,4 +11,6 @@ RUN apt-get install -y -qq \
 RUN cd /tmp \
     && wget https://download.docker.com/linux/static/stable/x86_64/docker-19.03.9.tgz \
     && tar zxvf docker-19.03.9.tgz \
-    && cp docker/* /usr/bin/
+    && cp docker/* /bin/
+
+RUN docker --version
