@@ -41,8 +41,11 @@ steps:
   - wait
   - label: "Run Ray core test"
     commands:
-      - bazel build --config=ci //:ray_pkg # just to confirm the caches work
-      - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
+      - cat /root/.bashrc
+      - conda activate
+      - python --version
+      # - bazel build --config=ci //:ray_pkg # just to confirm the caches work
+      # - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
       - rm -rf python/ray/thirdparty_files; cd python; pip install -e . --verbose; cd ..
       - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...
       - bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...
@@ -51,7 +54,7 @@ steps:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
           debug: true
           user: root
-          shell: ["/bin/bash", "-e", "-c"]
+          shell: ["/bin/bash", "-e", "-c", "-i"]
           shm-size: 2g
           propagate-environment: true
           mount-checkout: false
