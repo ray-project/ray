@@ -18,5 +18,6 @@ steps:
           user: root
           shell: ["/bin/bash", "-e", "-c"]
           shm-size: 2g
+          tty: false
     agents:
       queue: simon-agent-q
