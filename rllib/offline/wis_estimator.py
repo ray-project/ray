@@ -24,7 +24,7 @@ class WeightedImportanceSamplingEstimator(OffPolicyEstimator):
 
         # calculate importance ratios
         p = []
-        for t in range(batch.count - 1):
+        for t in range(batch.count):
             if t == 0:
                 pt_prev = 1.0
             else:
