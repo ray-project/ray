@@ -187,7 +187,6 @@ class ResourceDemandScheduler:
             nodes_to_add = (min_workers_nodes_to_add.get(
                 node_type, 0) + placement_group_nodes_to_add.get(node_type, 0)
                             + nodes_to_add_based_on_demand.get(node_type, 0))
-
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
@@ -289,6 +288,7 @@ class ResourceDemandScheduler:
         workers, it returns max(1, min_workers) worker nodes from which we
         later calculate the node resources.
         """
+
         worker_nodes = self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         if self.max_workers == 0:
