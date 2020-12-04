@@ -187,7 +187,7 @@ install_nvm() {
         "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
-  else if [ ! -f "${NVM_HOME}/nvm.sh" ]; then
+  elif [ ! -f "${NVM_HOME}/nvm.sh" ]; then
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.37.2/install.sh | bash
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
