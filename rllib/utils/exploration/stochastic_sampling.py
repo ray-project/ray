@@ -8,9 +8,10 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
-from ray.rllib.utils.framework import get_variable, try_import_tf, \
-    try_import_torch, TensorType
+from ray.rllib.utils.framework import get_variable, try_import_jax, \
+    try_import_tf, try_import_torch, TensorType
 
+jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
@@ -36,7 +37,7 @@ class StochasticSampling(Exploration):
         Args:
             action_space (gym.spaces.Space): The gym action space used by the
                 environment.
-            framework (str): One of None, "tf", "torch".
+            framework (str): One of None, "jax", "tf", "torch".
             model (ModelV2): The ModelV2 used by the owning Policy.
             random_timesteps (int): The number of timesteps for which to act
                 completely randomly. Only after this number of timesteps,
@@ -65,9 +66,9 @@ class StochasticSampling(Exploration):
                                action_distribution: ActionDistribution,
                                timestep: Union[int, TensorType],
                                explore: bool = True):
-        if self.framework == "torch":
-            return self._get_torch_exploration_action(action_distribution,
-                                                      timestep, explore)
+        if self.framework in ["torch", "jax"]:
+            return self._get_exploration_action(action_distribution,
+                                                timestep, explore)
         else:
             return self._get_tf_exploration_action_op(action_distribution,
                                                       timestep, explore)
@@ -114,9 +115,9 @@ class StochasticSampling(Exploration):
             with tf1.control_dependencies([assign_op]):
                 return action, logp
 
-    def _get_torch_exploration_action(self, action_dist: ActionDistribution,
-                                      timestep: Union[TensorType, int],
-                                      explore: Union[TensorType, bool]):
+    def _get_exploration_action(self, action_dist: ActionDistribution,
+                                timestep: Union[TensorType, int],
+                                explore: Union[TensorType, bool]):
         # Set last timestep or (if not given) increase by one.
         self.last_timestep = timestep if timestep is not None else \
             self.last_timestep + 1
@@ -136,6 +137,7 @@ class StochasticSampling(Exploration):
         # No exploration -> Return deterministic actions.
         else:
             action = action_dist.deterministic_sample()
-            logp = torch.zeros_like(action_dist.sampled_action_logp())
+            fw = torch if self.framework == "torch" else jax.numpy
+            logp = fw.zeros_like(action_dist.sampled_action_logp())
 
         return action, logp

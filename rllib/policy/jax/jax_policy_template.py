@@ -3,28 +3,27 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.jax.jax_action_dist import JAXDistribution
+from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
+from ray.rllib.policy.jax.jax_policy import JAXPolicy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
-torch, _ = try_import_torch()
+jax, _ = try_import_jax()
 
 
 @DeveloperAPI
-def build_torch_policy(
+def build_jax_policy_class(
         name: str,
         *,
         loss_fn: Optional[Callable[[
-            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
+            Policy, ModelV2, Type[JAXDistribution], SampleBatch
         ], Union[TensorType, List[TensorType]]]],
         get_default_config: Optional[Callable[[], TrainerConfigDict]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
@@ -35,7 +34,7 @@ def build_torch_policy(
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
-            TorchDistributionWrapper
+            JAXDistribution
         ], Dict[str, TensorType]]] = None,
         extra_grad_process_fn: Optional[Callable[[
             Policy, "torch.optim.Optimizer", TensorType
@@ -67,14 +66,14 @@ def build_torch_policy(
         ], ModelV2]] = None,
         make_model_and_action_dist: Optional[Callable[[
             Policy, gym.spaces.Space, gym.spaces.Space, TrainerConfigDict
-        ], Tuple[ModelV2, Type[TorchDistributionWrapper]]]] = None,
+        ], Tuple[ModelV2, Type[JAXDistribution]]]] = None,
         apply_gradients_fn: Optional[Callable[
             [Policy, "torch.optim.Optimizer"], None]] = None,
         mixins: Optional[List[type]] = None,
         view_requirements_fn: Optional[Callable[[Policy], Dict[
             str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
-) -> Type[TorchPolicy]:
+) -> Type[JAXPolicy]:
     """Helper function for creating a torch policy class at runtime.
 
     Args:
@@ -187,10 +186,8 @@ def build_torch_policy(
             specified args.
     """
 
-    deprecation_warning("build_torch_policy", "build_policy_class(framework='torch')", error=False)
-
     original_kwargs = locals().copy()
-    base = add_mixins(TorchPolicy, mixins)
+    base = add_mixins(JAXPolicy, mixins)
 
     class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
@@ -231,7 +228,7 @@ def build_torch_policy(
             assert isinstance(self.model, TorchModelV2), \
                 "ERROR: Generated Model must be a TorchModelV2 object!"
 
-            TorchPolicy.__init__(
+            JAXPolicy.__init__(
                 self,
                 observation_space=obs_space,
                 action_space=action_space,
@@ -286,7 +283,7 @@ def build_torch_policy(
 
                 return sample_batch
 
-        @override(TorchPolicy)
+        @override(JAXPolicy)
         def extra_grad_process(self, optimizer, loss):
             """Called after optimizer.zero_grad() and loss.backward() calls.
 
@@ -296,9 +293,9 @@ def build_torch_policy(
             if extra_grad_process_fn:
                 return extra_grad_process_fn(self, optimizer, loss)
             else:
-                return TorchPolicy.extra_grad_process(self, optimizer, loss)
+                return JAXPolicy.extra_grad_process(self, optimizer, loss)
 
-        @override(TorchPolicy)
+        @override(JAXPolicy)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
                 fetches = convert_to_non_torch_type(
@@ -306,16 +303,16 @@ def build_torch_policy(
                 # Auto-add empty learner stats dict if needed.
                 return dict({LEARNER_STATS_KEY: {}}, **fetches)
             else:
-                return TorchPolicy.extra_compute_grad_fetches(self)
+                return JAXPolicy.extra_compute_grad_fetches(self)
 
-        @override(TorchPolicy)
+        @override(JAXPolicy)
         def apply_gradients(self, gradients):
             if apply_gradients_fn:
                 apply_gradients_fn(self, gradients)
             else:
-                TorchPolicy.apply_gradients(self, gradients)
+                JAXPolicy.apply_gradients(self, gradients)
 
-        @override(TorchPolicy)
+        @override(JAXPolicy)
         def extra_action_out(self, input_dict, state_batches, model,
                              action_dist):
             with torch.no_grad():
@@ -323,29 +320,29 @@ def build_torch_policy(
                     stats_dict = extra_action_out_fn(
                         self, input_dict, state_batches, model, action_dist)
                 else:
-                    stats_dict = TorchPolicy.extra_action_out(
+                    stats_dict = JAXPolicy.extra_action_out(
                         self, input_dict, state_batches, model, action_dist)
                 return convert_to_non_torch_type(stats_dict)
 
-        @override(TorchPolicy)
+        @override(JAXPolicy)
         def optimizer(self):
             if optimizer_fn:
                 optimizers = optimizer_fn(self, self.config)
             else:
-                optimizers = TorchPolicy.optimizer(self)
+                optimizers = JAXPolicy.optimizer(self)
             optimizers = force_list(optimizers)
             if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
             return optimizers
 
-        @override(TorchPolicy)
+        @override(JAXPolicy)
         def extra_grad_info(self, train_batch):
             with torch.no_grad():
                 if stats_fn:
                     stats_dict = stats_fn(self, train_batch)
                 else:
-                    stats_dict = TorchPolicy.extra_grad_info(self, train_batch)
+                    stats_dict = JAXPolicy.extra_grad_info(self, train_batch)
                 return convert_to_non_torch_type(stats_dict)
 
     def with_updates(**overrides):
@@ -365,7 +362,7 @@ def build_torch_policy(
         ..    loss_function=[some_new_loss_function],
         .. )
         """
-        return build_torch_policy(**dict(original_kwargs, **overrides))
+        return build_jax_policy_class(**dict(original_kwargs, **overrides))
 
     policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.__name__ = name

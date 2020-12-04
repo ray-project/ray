@@ -119,7 +119,9 @@ class FullyConnectedNetwork(JAXModelV2):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
-            return self._value_branch(
-                self._value_branch_separate(self._last_flat_in)).squeeze(1)
+            x = self._last_flat_in
+            for layer in self._value_branch_separate:
+                x = layer(x)
+            return self._value_branch(x).squeeze(1)
         else:
             return self._value_branch(self._features).squeeze(1)

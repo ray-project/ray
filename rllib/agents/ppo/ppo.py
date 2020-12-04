@@ -158,6 +158,9 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     if config["framework"] == "torch":
         from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
         return PPOTorchPolicy
+    elif config["framework"] == "jax":
+        from ray.rllib.agents.ppo.ppo_jax_policy import PPOJAXPolicy
+        return PPOJAXPolicy
 
 
 class UpdateKL:
