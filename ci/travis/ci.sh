@@ -214,6 +214,8 @@ build_dashboard_front_end() {
       nvm use --silent node
       install_npm_project
       npm run -s build
+      # Should clean up about 500M
+      rm -rf node_modules/
     )
   fi
 }
