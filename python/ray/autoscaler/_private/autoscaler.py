@@ -178,6 +178,8 @@ class StandardAutoscaler:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
+                if node_ip in max_resources_by_ip:
+                    del max_resources_by_ip[node_ip]
             else:
                 # Do not kill idle node types if the number of workers of that
                 # type is lower/equal to the min_workers of that type.
@@ -192,7 +194,8 @@ class StandardAutoscaler:
                             max_resources_by_ip[node_ip])
                         del max_resources_by_ip[node_ip]
                         resource_requests, _ = get_bin_pack_residual(
-                            list(max_resources_by_ip.values()), self.resource_demand_vector)
+                            list(max_resources_by_ip.values()),
+                            self.resource_demand_vector)
                         # If removing the node will require adding resources to
                         # fulfill request_resources() demand, keep it.
                         # TODO(ameer): this is not great. E.g., it might remove

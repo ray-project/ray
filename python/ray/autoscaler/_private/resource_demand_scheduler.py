@@ -136,23 +136,6 @@ class ResourceDemandScheduler:
                 that we don't take into account existing usage.
         """
 
-        # If the user is using request_resources() API, calculate the remaining
-        # delta resources required to meet their requested cluster size.
-        if ensure_min_cluster_size is not None:
-            used_resources = []
-            for ip, max_res in max_resources_by_ip.items():
-                res = copy.deepcopy(max_res)
-                _inplace_subtract(res, unused_resources_by_ip.get(ip, {}))
-                used_resources.append(res)
-            # Example: user requests 1000 CPUs, but the cluster is currently
-            # 500 CPUs in size with 250 used. Then, the delta is 750 CPUs that
-            # we need to fit to get the cluster to scale to 1000.
-            resource_requests, _ = get_bin_pack_residual(
-                used_resources, ensure_min_cluster_size)
-            resource_demands += resource_requests
-        else:
-            resource_requests = []
-
         if self.is_legacy_yaml():
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
@@ -194,12 +177,6 @@ class ResourceDemandScheduler:
         logger.info("Unfulfilled demands: {}".format(unfulfilled))
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
-        if resource_requests:
-            nodes_to_add_based_on_requests = get_nodes_for(
-                self.node_types, node_type_counts, max_to_add,
-                resource_requests)
-        else:
-            nodes_to_add_based_on_requests = {}
         nodes_to_add_based_on_demand = get_nodes_for(
             self.node_types, node_type_counts, max_to_add, unfulfilled)
         # Merge nodes to add based on demand and nodes to add based on
@@ -210,13 +187,48 @@ class ResourceDemandScheduler:
             nodes_to_add = (min_workers_nodes_to_add.get(
                 node_type, 0) + placement_group_nodes_to_add.get(node_type, 0)
                             + nodes_to_add_based_on_demand.get(node_type, 0))
+
             if nodes_to_add > 0:
                 total_nodes_to_add[node_type] = nodes_to_add
 
+        if ensure_min_cluster_size is not None:
+            current_static_max_resources = copy.copy(
+                list(max_resources_by_ip.values()))
+            resource_requests_to_lift_max_launch, _ = get_bin_pack_residual(
+                current_static_max_resources, ensure_min_cluster_size)
+            _, existing_node_type_counts = self.calculate_node_resources(
+                nodes, launching_nodes, {})
+            nodes_to_add_based_on_requests_to_lift_max_launch = get_nodes_for(
+                self.node_types, existing_node_type_counts,
+                self.max_workers + 1 - len(nodes),
+                resource_requests_to_lift_max_launch)
+
+            future_max_resources = []
+            future_max_resources_cnt = {}
+            for node_type in self.node_types:
+                num_nodes = node_type_counts.get(
+                    node_type, 0) + nodes_to_add_based_on_demand.get(
+                        node_type, 0)
+                future_max_resources.extend(
+                    num_nodes * [self.node_types[node_type]["resources"]])
+                future_max_resources_cnt[node_type] = num_nodes
+            unfulfilled_request_resources, _ = get_bin_pack_residual(
+                future_max_resources, ensure_min_cluster_size)
+            nodes_to_add_based_on_request_resources = get_nodes_for(
+                self.node_types, future_max_resources_cnt,
+                self.max_workers + 1 - sum(future_max_resources_cnt.values()),
+                unfulfilled_request_resources)
+            for node_type in self.node_types:
+                nodes_to_add = nodes_to_add_based_on_request_resources.get(
+                    node_type, 0) + total_nodes_to_add.get(node_type, 0)
+                if nodes_to_add > 0:
+                    total_nodes_to_add[node_type] = nodes_to_add
+        else:
+            nodes_to_add_based_on_requests_to_lift_max_launch = {}
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
             total_nodes_to_add, unused_resources_by_ip.keys(), nodes,
-            launching_nodes, nodes_to_add_based_on_requests)
+            launching_nodes, nodes_to_add_based_on_requests_to_lift_max_launch)
 
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add

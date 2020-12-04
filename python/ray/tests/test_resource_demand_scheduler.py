@@ -10,7 +10,7 @@ import ray
 from ray.autoscaler._private.util import \
     rewrite_legacy_yaml_to_available_node_types
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
-    MockProcessRunner
+    MockProcessRunner, TYPES_A, MULTI_WORKER_CLUSTER
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
@@ -31,60 +31,6 @@ from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 
 from time import sleep
-
-TYPES_A = {
-    "empty_node": {
-        "node_config": {
-            "FooProperty": 42,
-        },
-        "resources": {},
-        "max_workers": 0,
-    },
-    "m4.large": {
-        "node_config": {},
-        "resources": {
-            "CPU": 2
-        },
-        "max_workers": 10,
-    },
-    "m4.4xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 16
-        },
-        "max_workers": 8,
-    },
-    "m4.16xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 64
-        },
-        "max_workers": 4,
-    },
-    "p2.xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 16,
-            "GPU": 1
-        },
-        "max_workers": 10,
-    },
-    "p2.8xlarge": {
-        "node_config": {},
-        "resources": {
-            "CPU": 32,
-            "GPU": 8
-        },
-        "max_workers": 4,
-    },
-}
-
-MULTI_WORKER_CLUSTER = dict(
-    SMALL_CLUSTER, **{
-        "available_node_types": TYPES_A,
-        "head_node_type": "empty_node",
-        "worker_default_node_type": "m4.large",
-    })
 
 
 def test_util_score():
