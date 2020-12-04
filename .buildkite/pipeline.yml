@@ -1,30 +1,49 @@
 steps:
-  - label: "Setting up build env"
+  - label: "Setting up bootstrap env"
     commands:
       - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
-      # ECR login should be done by Elastic CI stack runners for us
       - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
     agents:
       queue: simon-agent-q
   - wait
-  - label: "Run inside build env"
+  - label: "Build shared container"
     commands:
+      # Setup bazel cache so re-mounting still works
+      - mkdir /bazel-cache
+      - echo "build --disk_cache=/bazel-cache" >> $HOME/.bazelrc
+      - echo "build --repository_cache=/bazel-cache" >> $HOME/.bazelrc
+      # Run legacy environment setup
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
-      - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
+      # Commit this container
+      - docker tag $(docker commit --pause=false $(hostname)) 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
+      - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
     plugins:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
           debug: true
           user: root
           shell: ["/bin/bash", "-e", "-c"]
-          shm-size: 2g
           propagate-environment: true
     env:
       PYTHON: "3.6"
       CI: "true"
-      SMALL_AND_LARGE_TESTS: "1"
       RAY_DEFAULT_BUILD: "1"
-      RAY_USE_RANDOM_PORTS: "1"
+    agents:
+      queue: simon-build-farm-q
+  - wait
+  - label: "Run Ray core test"
+    commands:
+      - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
+      - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...
+      - bazel test python/ray/new_dashboard/...
+    plugins:
+      - docker#v3.7.0:
+          image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
+          debug: true
+          user: root
+          shell: ["/bin/bash", "-e", "-c"]
+          shm-size: 2g
+          propagate-environment: true
     agents:
       queue: simon-agent-q
