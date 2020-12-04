@@ -178,7 +178,9 @@ class StandardAutoscaler:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
-                if node_ip in max_resources_by_ip:
+                # Outdated nodes are always terminated.
+                if self.resource_demand_vector and \
+                        node_ip in max_resources_by_ip:
                     del max_resources_by_ip[node_ip]
             else:
                 # Do not kill idle node types if the number of workers of that

@@ -192,45 +192,91 @@ class ResourceDemandScheduler:
                 total_nodes_to_add[node_type] = nodes_to_add
 
         if ensure_min_cluster_size is not None:
-            current_static_max_resources = copy.copy(
-                list(max_resources_by_ip.values()))
-            resource_requests_to_lift_max_launch, _ = get_bin_pack_residual(
-                current_static_max_resources, ensure_min_cluster_size)
-            _, existing_node_type_counts = self.calculate_node_resources(
-                nodes, launching_nodes, {})
-            nodes_to_add_based_on_requests_to_lift_max_launch = get_nodes_for(
-                self.node_types, existing_node_type_counts,
-                self.max_workers + 1 - len(nodes),
-                resource_requests_to_lift_max_launch)
-
-            future_max_resources = []
-            future_max_resources_cnt = {}
-            for node_type in self.node_types:
-                num_nodes = node_type_counts.get(
-                    node_type, 0) + nodes_to_add_based_on_demand.get(
-                        node_type, 0)
-                future_max_resources.extend(
-                    num_nodes * [self.node_types[node_type]["resources"]])
-                future_max_resources_cnt[node_type] = num_nodes
-            unfulfilled_request_resources, _ = get_bin_pack_residual(
-                future_max_resources, ensure_min_cluster_size)
-            nodes_to_add_based_on_request_resources = get_nodes_for(
-                self.node_types, future_max_resources_cnt,
-                self.max_workers + 1 - sum(future_max_resources_cnt.values()),
-                unfulfilled_request_resources)
-            for node_type in self.node_types:
-                nodes_to_add = nodes_to_add_based_on_request_resources.get(
-                    node_type, 0) + total_nodes_to_add.get(node_type, 0)
-                if nodes_to_add > 0:
-                    total_nodes_to_add[node_type] = nodes_to_add
+            request_resources_lift_node_max_launch = \
+                self._request_resources_lift_node_max_launch(
+                    nodes, launching_nodes, max_resources_by_ip,
+                    ensure_min_cluster_size)
+            total_nodes_to_add = self._ensure_min_cluster_size(
+                total_nodes_to_add, ensure_min_cluster_size, node_type_counts,
+                nodes_to_add_based_on_demand)
         else:
-            nodes_to_add_based_on_requests_to_lift_max_launch = {}
+            request_resources_lift_node_max_launch = {}
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
             total_nodes_to_add, unused_resources_by_ip.keys(), nodes,
-            launching_nodes, nodes_to_add_based_on_requests_to_lift_max_launch)
+            launching_nodes, request_resources_lift_node_max_launch)
 
         logger.info("Node requests: {}".format(total_nodes_to_add))
+        return total_nodes_to_add
+
+    def _request_resources_lift_node_max_launch(
+            self, nodes: List[NodeID], launching_nodes: Dict[NodeType, int],
+            max_resources_by_ip: Dict[NodeIP, ResourceDict],
+            ensure_min_cluster_size: List[ResourceDict]
+    ) -> Dict[NodeType, int]:
+        """Nodes that can bypass max launch to respect request_resources().
+
+        The maximum number of nodes allowed to launch concurrently to respect
+        request_resources() is the residual of binpacking the desired min
+        cluster size from the max resources of nodes in the heartbeat (active).
+        """
+        # Calculates the residual of binpacking the ensure_min_cluster_size
+        # on the currently running max resources in the heartbeat.
+        current_static_max_resources = copy.copy(
+            list(max_resources_by_ip.values()))
+        resource_requests_to_lift_max_launch, _ = get_bin_pack_residual(
+            current_static_max_resources, ensure_min_cluster_size)
+        # We account here for launching/pending nodes only when used as an
+        # upper bound constraint for max_workers used in get_nodes_for.
+        _, existing_node_type_counts = self.calculate_node_resources(
+            nodes, launching_nodes, {})
+        request_resources_lift_node_max_launch = get_nodes_for(
+            self.node_types, existing_node_type_counts,
+            self.max_workers + 1 - len(nodes),
+            resource_requests_to_lift_max_launch)
+        return request_resources_lift_node_max_launch
+
+    def _ensure_min_cluster_size(
+            self, total_nodes_to_add: Dict[NodeType, int],
+            ensure_min_cluster_size: List[ResourceDict],
+            node_type_counts: Dict[NodeType, int],
+            nodes_to_add_based_on_demand: Dict[NodeType, int]
+    ) -> Dict[NodeType, int]:
+        """Ensure minimum cluster size when using request_resources() API.
+
+        The new nodes to add to ensure minimum cluster size are calculated as
+        follows:
+        1) Get future nodes: pending+launching+running+total_nodes_to_add.
+        2) Get the residual of binpacking the desired min cluster size on
+           the maximum resources of the combined future nodes.
+        3) Add nodes to account for the residual.
+        """
+        future_max_resources = []
+        future_max_resources_cnt = {}
+        for node_type in self.node_types:
+            # Calculate the number of current+future nodes for each node type.
+            # node_type_counts here includes all current + future nodes except
+            # for nodes to add based on demand.
+            num_nodes = node_type_counts.get(
+                node_type, 0) + nodes_to_add_based_on_demand.get(node_type, 0)
+            future_max_resources.extend([
+                copy.deepcopy(self.node_types[node_type]["resources"])
+                for _ in range(num_nodes)
+            ])
+            future_max_resources_cnt[node_type] = num_nodes
+
+        unfulfilled_request_resources, _ = get_bin_pack_residual(
+            future_max_resources, ensure_min_cluster_size)
+        nodes_to_add_based_on_request_resources = get_nodes_for(
+            self.node_types, future_max_resources_cnt,
+            self.max_workers + 1 - sum(future_max_resources_cnt.values()),
+            unfulfilled_request_resources)
+        for node_type in self.node_types:
+            nodes_to_add = nodes_to_add_based_on_request_resources.get(
+                node_type, 0) + total_nodes_to_add.get(node_type, 0)
+            if nodes_to_add > 0:
+                total_nodes_to_add[node_type] = nodes_to_add
+
         return total_nodes_to_add
 
     def _legacy_worker_node_to_launch(
@@ -653,7 +699,6 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
         List[ResourceDict] the residual list resources that do not fit.
         List[ResourceDict]: The updated node_resources after the method.
     """
-
     unfulfilled = []
 
     # A most naive bin packing algorithm.

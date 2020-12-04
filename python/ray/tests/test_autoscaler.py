@@ -738,7 +738,7 @@ class AutoscalingTest(unittest.TestCase):
             }
 
     def testRequestResourcesAfterIdleTimeout(self):
-        "Nodes for request_resources() should not removed after being idle."
+        """Nodes for request_resources() shouldnt removed after being idle."""
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["max_workers"] = 4
         config["idle_timeout_minutes"] = 0
