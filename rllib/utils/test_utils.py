@@ -5,7 +5,7 @@ import numpy as np
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
 
-jax = try_import_jax()
+jax, flax = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 if tf1:
     eager_mode = None
