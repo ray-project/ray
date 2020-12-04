@@ -9,6 +9,7 @@ steps:
   - label: "Build shared container"
     commands:
       # Setup bazel cache so re-mounting still works
+      - /bin/docker ps
       - mkdir /bazel-cache
       - echo "build --disk_cache=/bazel-cache" >> /root/.bazelrc
       - echo "build --repository_cache=/bazel-cache" >> /root/.bazelrc
