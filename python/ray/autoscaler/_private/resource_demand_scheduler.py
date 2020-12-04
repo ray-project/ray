@@ -245,10 +245,10 @@ class ResourceDemandScheduler:
 
         The new nodes to add to ensure minimum cluster size are calculated as
         follows:
-        1) Get future nodes: pending+launching+running+total_nodes_to_add.
-        2) Get the residual of binpacking the desired min cluster size on
-           the maximum resources of the combined future nodes.
-        3) Add nodes to account for the residual.
+            1) Get future nodes: pending+launching+running+total_nodes_to_add.
+            2) Get the residual of binpacking the desired min cluster size on
+               the maximum resources of the combined future nodes.
+            3) Add nodes to account for the residual.
         """
         future_max_resources = []
         future_max_resources_cnt = {}
