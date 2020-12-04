@@ -19,6 +19,8 @@ steps:
           debug: true
           user: root
           shell: ["/bin/bash", "-e", "-c"]
+          shm-size: 2g
+          propagate-environment: true
     env:
       SGD_TESTING=1
       PYTHON=3.6
