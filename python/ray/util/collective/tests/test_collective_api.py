@@ -243,16 +243,19 @@ def test_allreduce_different_dtype(ray_start_single_node_2_gpus, dtype):
     assert (results[1] == cp.ones((10,), dtype=dtype) * world_size).all()
 
 
-def test_allreduce_different_torch_cupy(ray_start_single_node_2_gpus):
-    return 
+def test_allreduce_torch_cupy(ray_start_single_node_2_gpus):
     import torch
     world_size = 2
     actors, _ = get_actors_group(world_size)
-    ray.wait([actors[0].set_buffer.remote(torch.ones(10,))])
+    ray.wait([actors[1].set_buffer.remote(torch.ones(10,).cuda())])
     results = ray.get([a.do_work.remote() for a in actors])
     assert (results[0] == cp.ones((10,)) * world_size).all()
     assert (results[1] == cp.ones((10,)) * world_size).all()
 
+    ray.wait([actors[0].set_buffer.remote(torch.ones(10,))])
+    ray.wait([actors[1].set_buffer.remote(cp.ones(10,))])
+    with pytest.raises(RuntimeError):
+        results = ray.get([a.do_work.remote() for a in actors])
 
 if __name__ == "__main__":
     import pytest

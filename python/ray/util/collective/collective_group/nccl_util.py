@@ -94,6 +94,8 @@ def get_tensor_ptr(tensor):
         return tensor.data
     if torch_available():
         if isinstance(tensor, torch.Tensor):
+            if not tensor.is_cuda:
+                raise RuntimeError('torch tensor must be on gpu.')
             return tensor.data_ptr()
     raise ValueError('Unsupported tensor type')
 
