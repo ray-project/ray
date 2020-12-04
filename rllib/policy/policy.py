@@ -617,6 +617,8 @@ class Policy(metaclass=ABCMeta):
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
         batch_for_postproc = UsageTrackingDict(self._dummy_batch)
         batch_for_postproc.count = self._dummy_batch.count
+        #postprocessed_batch = self.exploration.postprocess_trajectory(
+        #    self, batch_for_postproc)
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
