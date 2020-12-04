@@ -3,20 +3,6 @@ from ray import tune
 
 import os
 
-try:
-    from xgboost_ray.session import is_xgboost_ray_actor, get_actor_rank, \
-        put_queue
-except ImportError:
-
-    def is_xgboost_ray_actor():
-        return False
-
-    def get_actor_rank():
-        return 0
-
-    def put_queue(_):
-        return False
-
 
 class TuneCallback:
     """Base class for Tune's XGBoost callbacks."""
@@ -68,11 +54,8 @@ class TuneReportCallback(TuneCallback):
             metrics = [metrics]
         self._metrics = metrics
 
-    def __call__(self, env):
+    def _get_report_dict(self, env):
         # Only one worker should report to Tune
-        if is_xgboost_ray_actor() and get_actor_rank() != 0:
-            return
-
         result_dict = dict(env.evaluation_result_list)
         if not self._metrics:
             report_dict = result_dict
@@ -84,11 +67,11 @@ class TuneReportCallback(TuneCallback):
                 else:
                     metric = key
                 report_dict[key] = result_dict[metric]
+        return report_dict
 
-        if is_xgboost_ray_actor():
-            put_queue(lambda: tune.report(**report_dict))
-        else:
-            tune.report(**report_dict)
+    def __call__(self, env):
+        report_dict = self._get_report_dict(env)
+        tune.report(**report_dict)
 
 
 class _TuneCheckpointCallback(TuneCallback):
@@ -103,22 +86,24 @@ class _TuneCheckpointCallback(TuneCallback):
     Args:
         filename (str): Filename of the checkpoint within the checkpoint
             directory. Defaults to "checkpoint".
+        frequency (int): How often to save checkpoints. Per default, a
+            checkpoint is saved every five iterations.
 
     """
 
-    def __init__(self, filename: str = "checkpoint"):
+    def __init__(self, filename: str = "checkpoint", frequency: int = 5):
         self._filename = filename
+        self._frequency = frequency
+
+    @staticmethod
+    def _create_checkpoint(env, filename: str, frequency: int):
+        if env.iteration % frequency > 0:
+            return
+        with tune.checkpoint_dir(step=env.iteration) as checkpoint_dir:
+            env.model.save_model(os.path.join(checkpoint_dir, filename))
 
     def __call__(self, env):
-        def _create_checkpoint():
-            with tune.checkpoint_dir(step=env.iteration) as checkpoint_dir:
-                env.model.save_model(
-                    os.path.join(checkpoint_dir, self._filename))
-
-        if not is_xgboost_ray_actor():
-            _create_checkpoint()
-        elif get_actor_rank() == 0:
-            put_queue(lambda: _create_checkpoint())
+        self._create_checkpoint(env, self._filename, self._frequency)
 
 
 class TuneReportCheckpointCallback(TuneCallback):
@@ -137,6 +122,8 @@ class TuneReportCheckpointCallback(TuneCallback):
             directory. Defaults to "checkpoint". If this is None,
             all metrics will be reported to Tune under their default names as
             obtained from XGBoost.
+        frequency (int): How often to save checkpoints. Per default, a
+            checkpoint is saved every five iterations.
 
     Example:
 
@@ -161,12 +148,15 @@ class TuneReportCheckpointCallback(TuneCallback):
                 {"loss": "eval-logloss"}, "xgboost.mdl)])
 
     """
+    _checkpoint_callback_cls = _TuneCheckpointCallback
+    _report_callbacks_cls = TuneReportCallback
 
     def __init__(self,
                  metrics: Union[None, str, List[str], Dict[str, str]] = None,
-                 filename: str = "checkpoint"):
-        self._checkpoint = _TuneCheckpointCallback(filename)
-        self._report = TuneReportCallback(metrics)
+                 filename: str = "checkpoint",
+                 frequency: int = 5):
+        self._checkpoint = self._checkpoint_callback_cls(filename, frequency)
+        self._report = self._report_callbacks_cls(metrics)
 
     def __call__(self, env):
         self._checkpoint(env)
