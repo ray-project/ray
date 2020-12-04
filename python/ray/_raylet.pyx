@@ -1177,8 +1177,8 @@ cdef class CoreWorker:
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
         cdef int ctimeout_ms = timeout_ms
         with nogil:
-            status = CCoreWorkerProcess.GetCoreWorker().WaitPlacementGroupReady(
-                cplacement_group_id, ctimeout_ms)
+            status = CCoreWorkerProcess.GetCoreWorker()
+                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
         return status.ok()
 
     def submit_actor_task(self,
