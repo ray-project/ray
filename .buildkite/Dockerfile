@@ -14,3 +14,10 @@ RUN cd /tmp \
     && cp docker/* /bin/ \
     && cd / \
     && docker --version
+
+COPY bazel-credential.json /bazel-credential.json
+RUN mkdir /bazel-cache && \
+    echo "build --disk_cache=/bazel-cache" >> /root/.bazelrc \
+    echo "build --repository_cache=/bazel-cache" >> /root/.bazelrc \
+    echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> /root/.bazelrc \
+    echo "build --google_credentials=/bazel-credential.json" >> /root/.bazelrc

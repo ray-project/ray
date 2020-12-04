@@ -10,9 +10,6 @@ steps:
     commands:
       # Setup bazel cache so re-mounting still works
       - /bin/docker ps
-      - mkdir /bazel-cache
-      - echo "build --disk_cache=/bazel-cache" >> /root/.bazelrc
-      - echo "build --repository_cache=/bazel-cache" >> /root/.bazelrc
       # Run legacy environment setup
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
@@ -26,6 +23,8 @@ steps:
           user: root
           shell: ["/bin/bash", "-e", "-c"]
           propagate-environment: true
+          volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock"
     env:
       PYTHON: "3.6"
       CI: "true"
