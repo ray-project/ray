@@ -1,6 +1,7 @@
 steps:
   - label: "Setting up bootstrap env"
     commands:
+      - mv /tmp/bazel-credential.json .
       - docker build -f .buildkite/Dockerfile -t 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env .
       - docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
     agents:
