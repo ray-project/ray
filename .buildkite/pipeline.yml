@@ -9,8 +9,8 @@ steps:
   - wait
   - label: "Run inside build env"
     commands:
-      # - sudo chown -R ray .
       - ./ci/travis/ci.sh init
+      - ./ci/travis/ci.sh build
     plugins:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
@@ -18,5 +18,11 @@ steps:
           user: root
           shell: ["/bin/bash", "-e", "-c"]
           shm-size: 2g
+    env:
+      PYTHON: "3.6"
+      CI: "true"
+      SMALL_AND_LARGE_TESTS: "1"
+      RAY_DEFAULT_BUILD: "1"
+      RAY_USE_RANDOM_PORTS: "1"
     agents:
       queue: simon-agent-q
