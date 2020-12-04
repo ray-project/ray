@@ -539,7 +539,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
     for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
          it != pending_normal_tasks_.rend(); ++it) {
       if (it->TaskID() == task_id) {
-        pending_normal_tasks_.erase(it);
+        pending_normal_tasks_.erase(std::next(it).base());
         return true;
       }
     }
