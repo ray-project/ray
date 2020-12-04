@@ -11,6 +11,7 @@ steps:
     commands:
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
+      - ./ci/suppress_output bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
     plugins:
       - docker#v3.7.0:
           image: 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_build_env
@@ -18,6 +19,7 @@ steps:
           user: root
           shell: ["/bin/bash", "-e", "-c"]
           shm-size: 2g
+          propagate-environment: true
     env:
       PYTHON: "3.6"
       CI: "true"
