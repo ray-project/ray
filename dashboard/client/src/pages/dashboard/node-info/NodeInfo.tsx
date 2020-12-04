@@ -88,7 +88,7 @@ const makeGroupedTableContents = (
     );
     return (
       <NodeRowGroup
-        key={node.raylet.nodeId}
+        // key={node.raylet.nodeId}
         node={node}
         workerFeatureData={sortedClusterWorkers}
         features={nodeInfoFeatures}
@@ -119,7 +119,7 @@ const makeUngroupedTableContents = (
     <NodeWorkerRow
       features={workerInfoFeatures}
       data={workerFeatureDatum}
-      key={`worker-${i}`}
+      // key={`worker-${i}`}
     />
   ));
 };

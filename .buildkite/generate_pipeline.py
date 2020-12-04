@@ -8,7 +8,7 @@ BAZEL_TEST_COMMANDS = [(
     "bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...",
 ), (
     "dashboard",
-    "bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/...",
+    "bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/... && cd dashboard/tests/ui_test && bash run.sh",
 ), (
     "medium a-j",
     "bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...",
@@ -40,6 +40,10 @@ if __name__ == "__main__":
             }],
             'agents': {
                 'queue': 'simon-agent-q'
+            },
+            "env": {
+                "LC_ALL": "C.UTF-8",
+                "LANG": "C.UTF-8"
             }
         })
     print(json.dumps(pipeline_steps))
