@@ -320,6 +320,11 @@ install_dependencies() {
     pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
+
+    which -a pip
+    pip --version
+    pip install --help
+    python -c 'import tensorflow as tf; print(tf.__version__)'
   fi
 
   # Additional Tune dependency for Horovod.
