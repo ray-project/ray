@@ -271,12 +271,6 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_from_dummy_batch(
-                auto_remove_unneeded_view_reqs=True,
-                stats_fn=stats_fn,
-            )
-            self._loss_initialized = True
-
             if optimizer_fn:
                 optimizers = optimizer_fn(self, config)
             else:
@@ -288,6 +282,12 @@ def build_eager_tf_policy(name,
             # TODO: (sven) Allow tf policy to have more than 1 optimizer.
             #  Just like torch Policy does.
             self._optimizer = optimizers[0] if optimizers else None
+
+            self._initialize_loss_from_dummy_batch(
+                auto_remove_unneeded_view_reqs=True,
+                stats_fn=stats_fn,
+            )
+            self._loss_initialized = True
 
             if after_init:
                 after_init(self, observation_space, action_space, config)

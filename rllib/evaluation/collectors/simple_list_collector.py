@@ -262,12 +262,6 @@ class _PolicyCollector:
                 training).
         """
         for view_col, data in batch.items():
-            ## TODO(ekl) how do we handle this for policies that don't extend
-            ##   Torch/TFPolicy template (no inference of view reqs)?
-            ## Skip columns that are not used for training.
-            #if view_col not in view_requirements or \
-            #        not view_requirements[view_col].used_for_training:
-            #    continue
             # 1) If col is not in view_requirements, we must have a direct
             # child of the base Policy that doesn't do auto-view req creation.
             # 2) Col is in view-reqs and needed for training.
@@ -467,8 +461,9 @@ class _SimpleListCollector(_SampleCollector):
                     data_list.append(self.agent_collectors[k].episode_id)
                 else:
                     if data_col not in buffers[k]:
-                        fill_value = view_req.space.sample() if isinstance(
-                            view_req.space, Space) else view_req.space
+                        fill_value = np.zeros_like(view_req.space.sample()) \
+                            if isinstance(view_req.space, Space) else \
+                            view_req.space
                         self.agent_collectors[k]._build_buffers({
                             data_col: fill_value
                         })

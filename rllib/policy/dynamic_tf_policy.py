@@ -490,6 +490,8 @@ class DynamicTFPolicy(TFPolicy):
         batch_for_postproc = UsageTrackingDict(sb)
         batch_for_postproc.count = sb.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
+        self.exploration.postprocess_trajectory(
+            self, batch_for_postproc, self._sess)
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         # Add new columns automatically to (loss) input_dict.
         if self.config["_use_trajectory_view_api"]:
