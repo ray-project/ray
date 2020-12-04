@@ -8,9 +8,9 @@ steps:
   - wait
   - label: "Run tests"
     commands: 
-      ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED; sleep 10
-      ./ci/travis/ci.sh build 
-      ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
+      - ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
+      - ./ci/travis/ci.sh build 
+      - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
     agents: 
       queue: amog-test-q
     plugins:
