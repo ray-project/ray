@@ -65,10 +65,9 @@ class GroupManager(object):
                 from ray.util.collective.util import NCCLUniqueIDStore
                 store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(store_name)
                 ray.wait([store.set_id.remote(group_uid)])
-            
+
             logger.debug('creating NCCL group: {}'.format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)
-            
+            g = NCCLGroup(world_size, rank, group_name)            
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         return self._name_group_map[group_name]
