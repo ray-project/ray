@@ -281,7 +281,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     elif framework == "jax":
         if name in ["linear", None]:
             return None
-        jax, flax = try_import_jax()
+        jax = try_import_jax()
         if name == "swish":
             return jax.nn.swish
         if name == "relu":

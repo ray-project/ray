@@ -434,6 +434,10 @@ class DynamicTFPolicy(TFPolicy):
             self, auto_remove_unneeded_view_reqs: bool = True,
             stats_fn=None) -> None:
 
+        # Create the optimizer/exploration optimizer here. Some initialization
+        # steps (e.g. exploration postprocessing) may need this.
+        self._optimizer = self.optimizer()
+
         # Test calls depend on variable init, so initialize model first.
         self._sess.run(tf1.global_variables_initializer())
 
