@@ -115,7 +115,7 @@ if [ "${CI-}" = true ]; then
     cat <<EOF >> ~/.bazelrc
 build --google_credentials="${translated_path}"
 EOF
-  elif [ -n "${BUILDKITE-}"]; then
+  elif [ -n "${BUILDKITE-}" ]; then
     echo "Using buildkite secret store"
   else
     echo "Using remote build cache in read-only mode." 1>&2
