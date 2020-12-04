@@ -10,8 +10,8 @@ steps:
     commands:
       # Setup bazel cache so re-mounting still works
       - mkdir /bazel-cache
-      - echo "build --disk_cache=/bazel-cache" >> $HOME/.bazelrc
-      - echo "build --repository_cache=/bazel-cache" >> $HOME/.bazelrc
+      - echo "build --disk_cache=/bazel-cache" >> /root/.bazelrc
+      - echo "build --repository_cache=/bazel-cache" >> /root/.bazelrc
       # Run legacy environment setup
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
@@ -34,6 +34,7 @@ steps:
   - wait
   - label: "Run Ray core test"
     commands:
+      - bazel build //:ray_pkg  # verify cache
       - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only -- //:all -rllib/...
       - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...
       - bazel test python/ray/new_dashboard/...
