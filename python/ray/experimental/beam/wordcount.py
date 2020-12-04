@@ -94,12 +94,13 @@ def run(argv=None, save_main_session=True):
     with beam.Pipeline(options=pipeline_options, runner=runner) as p:
 
         # Read the text file[pattern] into a PCollection.
-        lines = p | 'Read' >> ReadFromText(known_args.input)
+        #lines = p | 'Read' >> ReadFromText(known_args.input)
+        lines = p | 'Read' >> ReadFromText("s3://apache-beam-test/input")
 
         counts = (lines
                   | 'Split' >>
                   (beam.ParDo(WordExtractingDoFn()).with_output_types(unicode))
-                  | 'PairWIthOne' >> beam.Map(lambda x: (x, 1))
+                  | 'PairWithOne' >> beam.Map(lambda x: (x, 1))
                   | 'GroupAndSum' >> beam.CombinePerKey(sum))
 
         # Format the counts into a PCollection of strings.
@@ -107,7 +108,8 @@ def run(argv=None, save_main_session=True):
             return '%s: %d' % (word, count)
 
         output = counts | 'Format' >> beam.MapTuple(format_result)
-        output | 'Write' >> WriteToText("output")
+        #output | 'Write' >> WriteToText("output")
+        output | 'Write' >> WriteToText("s3://apache-beam-test/output")
 
 
 if __name__ == '__main__':

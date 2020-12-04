@@ -3,6 +3,7 @@ import os
 from google.protobuf import text_format
 import grpc
 import ray
+import socket
 import sys
 import threading
 
@@ -23,6 +24,10 @@ from apache_beam.runners.runner import PipelineRunner
 from apache_beam.utils import thread_pool_executor
 from apache_beam.metrics import monitoring_infos
 from apache_beam.transforms.environments import Environment
+
+
+def get_my_ip():
+    return socket.gethostname()[3:].replace("-", ".")
 
 
 @Environment.register_urn("ray_worker_env", bytes)
@@ -106,7 +111,7 @@ class RaySDKWorker(object):
       control_address,
       worker_id=None):
 
-    self._control_address = control_address
+    self._control_address = control_address.replace("localhost", get_my_ip())
     self._worker_id = worker_id
 
   def run(self):
@@ -118,7 +123,7 @@ class RaySDKWorker(object):
     beam_fn_api_pb2_grpc.add_BeamFnLoggingServicer_to_server(
         logging_servicer, logging_server)
     logging_descriptor = text_format.MessageToString(
-        endpoints_pb2.ApiServiceDescriptor(url='localhost:%s' % logging_port))
+        endpoints_pb2.ApiServiceDescriptor(url='%s:%s' % (get_my_ip(), logging_port)))
 
     control_descriptor = text_format.MessageToString(
         endpoints_pb2.ApiServiceDescriptor(url=self._control_address))
@@ -163,6 +168,8 @@ class RayWorkerHandler(GrpcWorkerHandler):
     print("Stop worker")
     self.worker_thread.join()
 
+  def host_from_worker(self):
+    return get_my_ip()
 
 class MyParallelBundleManager(BundleManager):
 
