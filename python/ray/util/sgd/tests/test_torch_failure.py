@@ -93,14 +93,22 @@ def test_resize(ray_start_2_cpus, use_local):  # noqa: F811
             use_local=use_local,
             num_workers=2)
 
-        @ray.remote
-        def try_test():
-            import time
-            time.sleep(100)
+        @ray.remote(num_cpus=1)
+        class DummyActor:
+            def get(self):
+                return 1
 
-        try_test.remote()
+        dummy_handler = DummyActor.remote()
         trainer1.train(max_retries=1)
         assert trainer1.worker_group.num_workers == 1
+        assert trainer1._num_failures == 1
+
+        ray.get(dummy_handler.get.remote())
+        ray.kill(dummy_handler)
+        time.sleep(1)
+        # trigger scale up
+        trainer1.train()
+        assert trainer1.worker_group.num_workers == 2
 
         trainer1.shutdown(force=True)
 
@@ -132,6 +140,8 @@ def test_fail_twice(ray_start_2_cpus, use_local):  # noqa: F811
 
         # MAX RETRIES SHOULD BE ON BY DEFAULT
         trainer1.train()
+        assert trainer1._num_failures == 2
+        assert trainer1.worker_group.num_workers == 2
         trainer1.shutdown(force=True)
 
 
