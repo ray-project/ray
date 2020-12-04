@@ -695,6 +695,27 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+    }],
+    indirect=True)
+def test_fetch_local(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    def put():
+        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+
+    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    remote_ref = put.remote()
+
+    ray.wait([remote_ref], timeout=1, fetch_local=False)
+    del local_ref
+    ray.get(remote_ref)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
