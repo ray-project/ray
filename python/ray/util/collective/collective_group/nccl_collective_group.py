@@ -41,7 +41,7 @@ class Rendezvous:
                 self._store = ray.get_actor(self._store_name)
             except ValueError:
                 logger.debug("Failed to meet at the store '{}'."
-                              "Trying again...".format(self._store_name))
+                             "Trying again...".format(self._store_name))
                 time.sleep(1)
                 elapsed = datetime.datetime.now() - start_time
                 continue
@@ -55,10 +55,23 @@ class Rendezvous:
     def store(self):
         return self._store
 
-    def get_nccl_id(self):
+    def get_nccl_id(self, timeout=180):
+        """Get the NCCLUniqueID from the store."""
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
-        uid = ray.get(self._store.get_id.remote())
+        uid = None
+        timeout_delta = datetime.timedelta(seconds=timeout)
+        elapsed = datetime.timedelta(seconds=0)
+        start_time = datetime.datetime.now()
+        while elapsed < timeout_delta:
+            uid = ray.get(self._store.get_id.remote())
+            if not uid:
+                time.sleep(1)
+                elapsed = datetime.datetime.now() - start_time
+                continue
+            break
+        if not uid:
+            raise RuntimeError("Unable to get the NCCLUniqueID from the store.")
         return uid
 
 
