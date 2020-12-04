@@ -828,7 +828,8 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # Now it is 1 because it showed up in last used (heart beat).
         self.waitForNodes(1)
-
+        # If node {node_id} was terminated any time then it's state will be set
+        # to terminated.
         assert autoscaler.provider.mock_nodes[
             node_id].state == "unterminatable"
 
