@@ -109,6 +109,7 @@ class GcsScheduleStrategy {
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::unique_ptr<ScheduleContext> &context) = 0;
+
  protected:
   /// Judge whether the remaining resources are sufficient for allocate.
   ///
@@ -241,6 +242,11 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
+  /// This method returns bundle locations that success to commit resources.
+  ///
+  /// \return Location of bundles that success to commit resources on a node.
+  const std::shared_ptr<BundleLocations> &GetCommittedBundleLocations() const;
+
   /// This method returns bundle locations.
   ///
   /// \return Location of bundles.
@@ -282,6 +288,9 @@ class LeaseStatusTracker {
 
   /// Location of bundles that commit requests failed.
   std::shared_ptr<BundleLocations> uncommitted_bundle_locations_;
+
+  /// Location of bundles that committed requests success.
+  std::shared_ptr<BundleLocations> committed_bundle_locations_;
 
   /// The leasing stage. This is used to know the state of current leasing context.
   LeasingState leasing_state_ = LeasingState::PREPARING;
@@ -502,6 +511,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
+  /// Acquire the bundle resources from the cluster resources.
+  void AcquireBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
+
   /// Return the bundle resources to the cluster resources.
   void ReturnBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
 
@@ -511,8 +523,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
-  /// Used to update placement group information upon creation, deletion, etc.
 
+  /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   /// Reference of GcsNodeManager.

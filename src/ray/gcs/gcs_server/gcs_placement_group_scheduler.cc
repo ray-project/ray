@@ -85,7 +85,6 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   for (auto &bundle : bundles) {
     schedule_map[bundle->BundleId()] = candidate_nodes.front().second;
   }
-
   return schedule_map;
 }
 
@@ -266,28 +265,16 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(
-        bundle, gcs_node_manager_.GetNode(node_id),
-        [this, bundle, node_id, lease_status_tracker, failure_callback,
-         success_callback](const Status &status) {
-          lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle, status);
-          if (lease_status_tracker->AllPrepareRequestsReturned()) {
-            auto on_failure = [this, failure_callback](
-                                  std::shared_ptr<GcsPlacementGroup> placement_group) {
-              scheduler_strategies_[placement_group->GetStrategy()]
-                  ->OnPlacementGroupCreationFailed();
-              failure_callback(placement_group);
-            };
-            auto on_success = [this, success_callback](
-                                  std::shared_ptr<GcsPlacementGroup> placement_group) {
-              scheduler_strategies_[placement_group->GetStrategy()]
-                  ->OnPlacementGroupCreationSuccess();
-              success_callback(placement_group);
-            };
-            OnAllBundlePrepareRequestReturned(lease_status_tracker, on_failure,
-                                              on_success);
-          }
-        });
+    PrepareResources(bundle, gcs_node_manager_.GetNode(node_id),
+                     [this, bundle, node_id, lease_status_tracker, failure_callback,
+                      success_callback](const Status &status) {
+                       lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
+                                                                        status);
+                       if (lease_status_tracker->AllPrepareRequestsReturned()) {
+                         OnAllBundlePrepareRequestReturned(
+                             lease_status_tracker, failure_callback, success_callback);
+                       }
+                     });
   }
 }
 
@@ -531,6 +518,11 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     return;
   }
 
+  // Acquire bundle resources from gcs resources manager.
+  const auto &committed_bundle_locations =
+      lease_status_tracker->GetCommittedBundleLocations();
+  AcquireBundleResources(committed_bundle_locations);
+
   if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
     // Update the state to be reschedule so that the failure handle will reschedule the
     // failed bundles.
@@ -542,10 +534,9 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     ReturnBundleResources(uncommitted_bundle_locations);
     schedule_failure_handler(placement_group);
-    return;
+  } else {
+    schedule_success_handler(placement_group);
   }
-
-  schedule_success_handler(placement_group);
 }
 
 std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
@@ -655,12 +646,21 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
   }
 }
 
+void GcsPlacementGroupScheduler::AcquireBundleResources(
+    const std::shared_ptr<BundleLocations> bundle_locations) {
+  // Acquire bundle resources from gcs resources manager.
+  for (auto &bundle : *bundle_locations) {
+    gcs_resource_manager_.AcquireResources(bundle.second.first,
+                                           bundle.second.second->GetRequiredResources());
+  }
+}
+
 void GcsPlacementGroupScheduler::ReturnBundleResources(
     const std::shared_ptr<BundleLocations> bundle_locations) {
-  for (auto &bundle_location : *bundle_locations) {
-    gcs_resource_manager_.ReleaseResource(
-        bundle_location.second.first,
-        bundle_location.second.second->GetRequiredResources());
+  // Release bundle resources to gcs resources manager.
+  for (auto &bundle : *bundle_locations) {
+    gcs_resource_manager_.ReleaseResources(bundle.second.first,
+                                           bundle.second.second->GetRequiredResources());
   }
 }
 
@@ -769,6 +769,7 @@ LeaseStatusTracker::LeaseStatusTracker(
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
   uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
+  committed_bundle_locations_ = std::make_shared<BundleLocations>();
   bundle_locations_ = std::make_shared<BundleLocations>();
   for (const auto &bundle : unplaced_bundles) {
     (*bundle_locations_)[bundle->BundleId()] =
@@ -824,6 +825,8 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
     uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+  } else {
+    committed_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
 }
 
@@ -851,6 +854,11 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
 const std::shared_ptr<BundleLocations>
     &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
+}
+
+const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetCommittedBundleLocations()
+    const {
+  return committed_bundle_locations_;
 }
 
 const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations() const {

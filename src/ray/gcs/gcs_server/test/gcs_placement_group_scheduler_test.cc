@@ -207,7 +207,6 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<GcsServerMocker::MockRayletResourceClient>> raylet_clients_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
-  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> success_placement_groups_
       GUARDED_BY(placement_group_requests_mutex_);
