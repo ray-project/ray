@@ -1,51 +1,12 @@
 """Test the collective group APIs."""
 import pytest
 import ray
-import ray.util.collective as col
-from ray.util.collective.types import Backend, ReduceOp
+from ray.util.collective.types import ReduceOp
 
 import cupy as cp
+import torch
 
-
-@ray.remote(num_gpus=1)
-class Worker:
-    def __init__(self):
-        self.buffer = cp.ones((10,), dtype=cp.float32)
-
-    def init_group(self, world_size, rank, backend=Backend.NCCL, group_name='default'):
-        col.init_collective_group(world_size, rank, backend, group_name)
-        return True
-
-    def set_buffer(self, data):
-        self.buffer = data
-
-    def do_work(self, group_name="default", op=ReduceOp.SUM):
-        col.allreduce(self.buffer, group_name, op)
-        return self.buffer
-
-    def destroy_group(self, group_name='default'):
-        col.destroy_collective_group(group_name)
-        return True
-
-    def report_rank(self, group_name='default'):
-        rank = col.get_rank(group_name)
-        return rank
-
-    def report_world_size(self, group_name='default'):
-        ws = col.get_world_size(group_name)
-        return ws
-
-    def report_nccl_availability(self):
-        avail = col.nccl_available()
-        return avail
-
-    def report_mpi_availability(self):
-        avail = col.mpi_available()
-        return avail
-
-    def report_is_group_initialized(self, group_name='default'):
-        is_init = col.is_group_initialized(group_name)
-        return is_init
+from .util import Worker
 
 
 def get_actors_group(num_workers=2, group_name='default', backend='nccl'):
@@ -244,18 +205,18 @@ def test_allreduce_different_dtype(ray_start_single_node_2_gpus, dtype):
 
 
 def test_allreduce_torch_cupy(ray_start_single_node_2_gpus):
-    import torch
+    # import torch
     world_size = 2
     actors, _ = get_actors_group(world_size)
     ray.wait([actors[1].set_buffer.remote(torch.ones(10,).cuda())])
     results = ray.get([a.do_work.remote() for a in actors])
     assert (results[0] == cp.ones((10,)) * world_size).all()
-    assert (results[1] == cp.ones((10,)) * world_size).all()
 
     ray.wait([actors[0].set_buffer.remote(torch.ones(10,))])
     ray.wait([actors[1].set_buffer.remote(cp.ones(10,))])
     with pytest.raises(RuntimeError):
         results = ray.get([a.do_work.remote() for a in actors])
+
 
 if __name__ == "__main__":
     import pytest
