@@ -13,14 +13,12 @@ except ImportError:
 
 from ray.util.collective.types import ReduceOp, torch_available
 
-
 NCCL_REDUCE_OP_MAP = {
     ReduceOp.SUM: nccl.NCCL_SUM,
     ReduceOp.PRODUCT: nccl.NCCL_PROD,
     ReduceOp.MIN: nccl.NCCL_MIN,
     ReduceOp.MAX: nccl.NCCL_MAX,
 }
-
 
 # cupy types are the same with numpy types
 NUMPY_NCCL_DTYPE_MAP = {
@@ -72,7 +70,8 @@ def get_nccl_reduce_op(reduce_op):
         Nccl_op (nccl.ncclRedOp_t)
     """
     if reduce_op not in NCCL_REDUCE_OP_MAP:
-        raise RuntimeError('NCCL does not support ReduceOp: {}'.format(reduce_op))
+        raise RuntimeError(
+            'NCCL does not support ReduceOp: {}'.format(reduce_op))
     return NCCL_REDUCE_OP_MAP[reduce_op]
 
 

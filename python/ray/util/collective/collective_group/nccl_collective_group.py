@@ -10,7 +10,6 @@ from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import AllReduceOptions, BarrierOptions, Backend
 from ray.util.collective.const import get_nccl_store_name
 
-
 logger = logging.getLogger(__name__)
 
 # TODO(Hao):
@@ -37,7 +36,8 @@ class Rendezvous:
         start_time = datetime.datetime.now()
         while elapsed < timeout_delta:
             try:
-                logger.debug("Trying to meet at the store '{}'".format(self._store_name))
+                logger.debug("Trying to meet at the store '{}'".format(
+                    self._store_name))
                 self._store = ray.get_actor(self._store_name)
             except ValueError:
                 logger.debug("Failed to meet at the store '{}'."
@@ -71,7 +71,8 @@ class Rendezvous:
                 continue
             break
         if not uid:
-            raise RuntimeError("Unable to get the NCCLUniqueID from the store.")
+            raise RuntimeError(
+                "Unable to get the NCCLUniqueID from the store.")
         return uid
 
 
@@ -102,7 +103,6 @@ class NCCLGroup(BaseGroup):
     def _init_nccl_unique_id(self):
         """Init the NCCL unique ID required for setting up NCCL communicator."""
         self._nccl_uid = self._rendezvous.get_nccl_id()
-
 
     @property
     def nccl_uid(self):
@@ -146,12 +146,7 @@ class NCCLGroup(BaseGroup):
         reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
 
         # in-place allreduce
-        comm.allReduce(ptr,
-                       ptr,
-                       n_elems,
-                       dtype,
-                       reduce_op,
-                       stream.ptr)
+        comm.allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
 
     def barrier(self, barrier_options=BarrierOptions()):
         """

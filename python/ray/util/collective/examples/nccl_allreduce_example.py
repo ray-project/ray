@@ -1,14 +1,14 @@
-
 import ray
 import cupy as cp
 
 import ray.util.collective as collective
 
+
 @ray.remote(num_gpus=1)
 class Worker:
     def __init__(self):
-        self.send = cp.ones((4,), dtype=cp.float32)
-        self.recv = cp.zeros((4,), dtype=cp.float32)
+        self.send = cp.ones((4, ), dtype=cp.float32)
+        self.recv = cp.zeros((4, ), dtype=cp.float32)
 
     def setup(self, world_size, rank):
         collective.init_collective_group('nccl', world_size, rank, 'default')
@@ -21,6 +21,7 @@ class Worker:
 
     def destroy(self):
         collective.destroy_group('')
+
 
 if __name__ == "__main__":
 

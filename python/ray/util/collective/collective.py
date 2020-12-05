@@ -19,7 +19,6 @@ try:
 except ImportError:
     _NCCL_AVAILABLE = False
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -36,16 +35,13 @@ class GroupManager(object):
     Use this class to manage the collective groups we created so far;
 
     """
+
     def __init__(self):
         """Put some necessary meta information here."""
         self._name_group_map = {}
         self._group_name_map = {}
 
-    def create_collective_group(self,
-                                backend,
-                                world_size,
-                                rank,
-                                group_name):
+    def create_collective_group(self, backend, world_size, rank, group_name):
         """
         The entry to create new collective groups and register in the manager.
 
@@ -62,11 +58,12 @@ class GroupManager(object):
                 store_name = get_nccl_store_name(group_name)
                 # Avoid a potential circular dependency in ray/actor.py
                 from ray.util.collective.util import NCCLUniqueIDStore
-                store = NCCLUniqueIDStore.options(name=store_name, lifetime="detached").remote(store_name)
+                store = NCCLUniqueIDStore.options(
+                    name=store_name, lifetime="detached").remote(store_name)
                 ray.wait([store.set_id.remote(group_uid)])
 
             logger.debug('creating NCCL group: {}'.format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)            
+            g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
         return self._name_group_map[group_name]
@@ -79,7 +76,8 @@ class GroupManager(object):
     def get_group_by_name(self, group_name):
         """Get the collective group handle by its name."""
         if not self.is_group_exist(group_name):
-            logger.warning("The group '{}' is not initialized.".format(group_name))
+            logger.warning(
+                "The group '{}' is not initialized.".format(group_name))
             return None
         return self._name_group_map[group_name]
 
@@ -143,14 +141,12 @@ def init_collective_group(world_size: int,
         raise ValueError("group_name '{}' needs to be a string."
                          .format(group_name))
 
-
-
     if _group_mgr.is_group_exist(group_name):
         raise RuntimeError('Trying to initialize a group twice.')
 
-    assert(world_size > 0)
-    assert(rank >= 0)
-    assert(rank < world_size)
+    assert (world_size > 0)
+    assert (rank >= 0)
+    assert (rank < world_size)
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
@@ -196,9 +192,7 @@ def get_world_size(group_name='default') -> int:
     return g.world_size
 
 
-def allreduce(tensor,
-              group_name: str,
-              op=types.ReduceOp.SUM):
+def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
     """
     Collective allreduce the tensor across the group with name group_name.
 

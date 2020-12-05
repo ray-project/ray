@@ -8,9 +8,13 @@ from ray.util.collective.types import Backend, ReduceOp
 @ray.remote(num_gpus=1)
 class Worker:
     def __init__(self):
-        self.buffer = cp.ones((10,), dtype=cp.float32)
+        self.buffer = cp.ones((10, ), dtype=cp.float32)
 
-    def init_group(self, world_size, rank, backend=Backend.NCCL, group_name='default'):
+    def init_group(self,
+                   world_size,
+                   rank,
+                   backend=Backend.NCCL,
+                   group_name='default'):
         col.init_collective_group(world_size, rank, backend, group_name)
         return True
 

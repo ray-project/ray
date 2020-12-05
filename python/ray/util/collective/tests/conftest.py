@@ -17,6 +17,7 @@ def clean_up():
         if actor:
             ray.kill(actor)
 
+
 @pytest.fixture
 def ray_start_single_node_2_gpus():
     # Please start this fixture in a cluster with 2 GPUs.
