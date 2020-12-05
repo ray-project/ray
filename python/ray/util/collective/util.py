@@ -1,3 +1,4 @@
+"""Some utility class for Collectives."""
 import ray
 import logging
 

@@ -8,7 +8,7 @@ import cupy
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group import BaseGroup
 from ray.util.collective.types import AllReduceOptions, BarrierOptions, Backend
-from ray.util.collective.const import NAMED_ACTOR_STORE_SUFFIX
+from ray.util.collective.const import get_nccl_store_name
 
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class Rendezvous:
         if timeout is not None and timeout < 0:
             raise ValueError("The 'timeout' argument must be nonnegative. "
                              f"Received {timeout}")
-        self._store_name = self._group_name + NAMED_ACTOR_STORE_SUFFIX
+        self._store_name = get_nccl_store_name(self._group_name)
         timeout_delta = datetime.timedelta(seconds=timeout)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
