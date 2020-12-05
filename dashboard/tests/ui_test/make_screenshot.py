@@ -25,7 +25,7 @@ async def main():
                 sys.exit(1)
 
     browser = await launch(
-        executablePath='/usr/bin/google-chrome-stable',
+        # executablePath='/usr/bin/google-chrome-stable',
         args=["--no-sandbox", '--disable-setuid-sandbox'])
     page = await browser.newPage()
     await page.setViewport({
@@ -34,8 +34,9 @@ async def main():
     })
     await page.goto('http://localhost:9999', {
         "waitUntil": 'networkidle0',
-        "timeout": 2000,
+        "timeout": 5000,
     })
+    await asyncio.sleep(5)
     await page.screenshot({'path': 'dashboard_render.png', "fullPage": "true"})
     await browser.close()
 
