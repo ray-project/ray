@@ -1169,6 +1169,18 @@ cdef class CoreWorker:
                 CCoreWorkerProcess.GetCoreWorker().
                 RemovePlacementGroup(c_placement_group_id))
 
+    def wait_placement_group_ready(self,
+                                   PlacementGroupID placement_group_id,
+                                   int32_t timeout_ms):
+        cdef CRayStatus status
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        cdef int ctimeout_ms = timeout_ms
+        with nogil:
+            status = CCoreWorkerProcess.GetCoreWorker() \
+                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
+        return status.ok()
+
     def submit_actor_task(self,
                           Language language,
                           ActorID actor_id,
