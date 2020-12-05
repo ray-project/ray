@@ -13,15 +13,13 @@ shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddr
     return it->second;
   }
   auto connection = client_factory_(address);
-  // std::shared_ptr<NodeManagerWorkerClient>(NodeManagerWorkerClient::make(address.ip_address(),
-  // address.port(), client_call_manager_));
   client_map_[raylet_id] = connection;
 
   RAY_LOG(DEBUG) << "Connected to " << address.ip_address() << ":" << address.port();
   return connection;
 }
 
-shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByID(
+optional<shared_ptr<ray::RayletClientInterface>> NodeManagerClientPool::GetOrConnectByID(
     ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);

@@ -36,7 +36,7 @@ class NodeManagerClientPool {
 
   /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
-  shared_ptr<ray::RayletClientInterface> GetOrConnectByID(ray::NodeID id);
+  optional<shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(ray::NodeID id);
 
   /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.

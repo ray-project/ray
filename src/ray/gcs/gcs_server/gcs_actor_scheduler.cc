@@ -37,7 +37,7 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
-      raylet_client_pool_(std::move(raylet_client_pool)),
+      raylet_client_pool_(raylet_client_pool),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }

@@ -29,7 +29,7 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
-      raylet_client_pool_(std::move(raylet_client_pool)) {
+      raylet_client_pool_(raylet_client_pool) {
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
