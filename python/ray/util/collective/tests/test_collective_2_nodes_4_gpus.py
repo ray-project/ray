@@ -124,7 +124,7 @@ def test_destroy_group(ray_start_distributed_2_nodes_4_gpus):
     assert actor1_is_init
     ray.wait([actors[1].destroy_group.remote("default")])
     actor1_is_init = ray.get(actors[1].report_is_group_initialized.remote())
-    assert actor1_is_init == False
+    assert not actor1_is_init
     for i in [2, 3]:
         ray.wait([actors[i].destroy_group.remote("default")])
 

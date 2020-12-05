@@ -15,8 +15,9 @@ from ray.util.collective.const import get_nccl_store_name
 logger = logging.getLogger(__name__)
 
 # TODO(Hao):
-# (1) stream management, instead of using the default stream, using a dedicate stream
-# (2) communicator management, adding a caching mechanism to enable
+# (1) stream management, instead of using the default stream,
+#     using a dedicate stream
+# (2) communicator management and support num_gpus > 2 per actor.
 
 
 class Rendezvous:
@@ -158,7 +159,7 @@ class NCCLGroup(BaseGroup):
 
     def barrier(self, barrier_options=BarrierOptions()):
         """
-        Blocks until all processes in the communicator have reached this barrier call.
+        Blocks until all processes in the communicator have reached this barrier.
 
         Args:
             barrier_options:
@@ -168,7 +169,10 @@ class NCCLGroup(BaseGroup):
         self.allreduce(self._barrier_tensor)
 
     def _get_nccl_communicator(self):
-        """Create a new NCCL communicator for the collective task, or using a cached communicator."""
+        """
+        Create or use a cached NCCL communicator for the collective task.
+
+        """
         # TODO(Hao): later change this to use device keys and query from cache.
         # TODO(Hao): implement a thin wrapper
         if not self._nccl_comm:

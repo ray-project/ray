@@ -6,7 +6,7 @@ from ray.util.collective.const import get_nccl_store_name
 
 
 def clean_up():
-    group_names = ['default', 'test', '123?34!', 'default2', 'randome']
+    group_names = ["default", "test", "123?34!", "default2", "random"]
     group_names.extend([str(i) for i in range(10)])
     for group_name in group_names:
         try:

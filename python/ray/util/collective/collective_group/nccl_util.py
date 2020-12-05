@@ -3,13 +3,11 @@ import numpy
 try:
     import cupy
     from cupy.cuda import nccl
-    from cupy.cuda.nccl import get_unique_id
     from cupy.cuda.nccl import get_version
     from cupy.cuda.nccl import get_build_version
     from cupy.cuda.nccl import NcclCommunicator
-    from cupy.cuda.nccl import NcclError
 except ImportError:
-    raise ImportError('NCCL in Ray requires Cupy being available!')
+    raise ImportError("NCCL in Ray requires Cupy being available!")
 
 from ray.util.collective.types import ReduceOp, torch_available
 
@@ -43,7 +41,7 @@ def get_nccl_build_version():
 
 
 def get_nccl_runtime_version():
-    return get_build_version()
+    return get_version()
 
 
 def create_nccl_communicator(world_size, nccl_unique_id, rank):
@@ -53,11 +51,11 @@ def create_nccl_communicator(world_size, nccl_unique_id, rank):
     TODO(Hao): verify that the call has big overhead.
 
     Returns:
-        comm(type): an NCCL communicator.
+        comm(nccl.ncclComm_t): an NCCL communicator.
 
     """
-    # TODO(Hao): make this inside the NCCLComm class, and implement the abort method.
-    #            Make it RAII
+    # TODO(Hao): make this inside the NCCLComm class,
+    #  and implement the abort method. Make it RAII.
     comm = NcclCommunicator(world_size, nccl_unique_id, rank)
     return comm
 
@@ -71,7 +69,7 @@ def get_nccl_reduce_op(reduce_op):
     """
     if reduce_op not in NCCL_REDUCE_OP_MAP:
         raise RuntimeError(
-            'NCCL does not support ReduceOp: {}'.format(reduce_op))
+            "NCCL does not support ReduceOp: '{}'".format(reduce_op))
     return NCCL_REDUCE_OP_MAP[reduce_op]
 
 
@@ -82,7 +80,7 @@ def get_nccl_tensor_dtype(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return TORCH_NCCL_DTYPE_MAP[tensor.dtype]
-    raise ValueError('Unsupported tensor type')
+    raise ValueError("Unsupported tensor type")
 
 
 def get_tensor_ptr(tensor):
@@ -94,9 +92,9 @@ def get_tensor_ptr(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             if not tensor.is_cuda:
-                raise RuntimeError('torch tensor must be on gpu.')
+                raise RuntimeError("torch tensor must be on gpu.")
             return tensor.data_ptr()
-    raise ValueError('Unsupported tensor type')
+    raise ValueError("Unsupported tensor type.")
 
 
 def get_tensor_n_elements(tensor):
@@ -106,4 +104,4 @@ def get_tensor_n_elements(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return torch.numel(tensor)
-    raise ValueError('Unsupported tensor type')
+    raise ValueError("Unsupported tensor type")
