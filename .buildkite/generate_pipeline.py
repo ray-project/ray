@@ -8,7 +8,19 @@ BAZEL_TEST_COMMANDS = [(
     "bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...",
 ), (
     "dashboard",
-    "bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/... && cd dashboard/tests/ui_test && bash run.sh",
+    """
+    apt-get update \
+    && apt-get install -y wget gnupg \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable fonts-ipafont-gothic \
+       fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+       --no-install-recommends \
+    && which google-chrome-stable \
+    && bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/... \
+    && cd dashboard/tests/ui_test \
+    && bash run.sh""".strip(),
 ), (
     "medium a-j",
     "bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...",
@@ -19,6 +31,7 @@ BAZEL_TEST_COMMANDS = [(
     "small & large",
     "bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...",
 )]
+BAZEL_TEST_COMMANDS = [BAZEL_TEST_COMMANDS[2]]
 
 if __name__ == "__main__":
     pipeline_steps = []

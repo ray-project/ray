@@ -18,7 +18,6 @@ steps:
       - ./ci/travis/ci.sh init
       - ./ci/travis/ci.sh build
       - cat /root/.bazelrc
-      - apt-get install -y -q chromium-chromedriver
       # Commit this container
       - /bin/docker tag $(docker commit --pause=false $(hostname)) 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT
       - /bin/docker push 029272617770.dkr.ecr.us-west-2.amazonaws.com/ray_test_env:$BUILDKITE_COMMIT

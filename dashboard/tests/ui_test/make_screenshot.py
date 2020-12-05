@@ -10,7 +10,9 @@ async def main():
     cluster.add_node(dashboard_port=9999)
     cluster.add_node()
 
-    browser = await launch(args=["--no-sandbox", '--disable-setuid-sandbox'])
+    browser = await launch(
+        executablePath='/usr/bin/google-chrome-stable',
+        args=["--no-sandbox", '--disable-setuid-sandbox'])
     page = await browser.newPage()
     await page.setViewport({
         "width": 1200,
