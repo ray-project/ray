@@ -31,7 +31,7 @@ def ray_start_single_node_2_gpus():
 # my own on-premise cluster before run this fixture.
 @pytest.fixture
 def ray_start_distributed_2_nodes_4_gpus():
-    ray.init('auto')
+    ray.init("auto")
     yield
     clean_up()
     ray.shutdown()

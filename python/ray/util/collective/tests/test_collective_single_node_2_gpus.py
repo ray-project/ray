@@ -9,8 +9,8 @@ import torch
 from .util import Worker
 
 
-def get_actors_group(num_workers=2, group_name='default', backend='nccl'):
-    actors = [Worker.remote() for i in range(num_workers)]
+def get_actors_group(num_workers=2, group_name="default", backend="nccl"):
+    actors = [Worker.remote() for _ in range(num_workers)]
     world_size = num_workers
     init_results = ray.get([
         actor.init_group.remote(world_size, i, backend, group_name)
@@ -19,7 +19,7 @@ def get_actors_group(num_workers=2, group_name='default', backend='nccl'):
     return actors, init_results
 
 
-@pytest.mark.parametrize("group_name", ['default', 'test', '123?34!'])
+@pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 def test_init_two_actors(ray_start_single_node_2_gpus, group_name):
     world_size = 2
     actors, results = get_actors_group(world_size, group_name)
@@ -49,8 +49,9 @@ def test_get_rank(ray_start_single_node_2_gpus):
     actor1_rank = ray.get(actors[1].report_rank.remote())
     assert actor1_rank == 1
 
-    # create a second group with a different name, and different order of ranks.
-    new_group_name = 'default2'
+    # create a second group with a different name,
+    # and different order of ranks.
+    new_group_name = "default2"
     _ = ray.get([
         actor.init_group.remote(
             world_size, world_size - 1 - i, group_name=new_group_name)
@@ -75,10 +76,10 @@ def test_availability(ray_start_single_node_2_gpus):
     actors, _ = get_actors_group(world_size)
     actor0_nccl_availability = ray.get(
         actors[0].report_nccl_availability.remote())
-    assert (actor0_nccl_availability)
+    assert actor0_nccl_availability
     actor0_mpi_availability = ray.get(
         actors[0].report_mpi_availability.remote())
-    assert (actor0_mpi_availability == False)
+    assert not actor0_mpi_availability
 
 
 def test_is_group_initialized(ray_start_single_node_2_gpus):
@@ -88,15 +89,15 @@ def test_is_group_initialized(ray_start_single_node_2_gpus):
     actor0_is_init = ray.get(actors[0].report_is_group_initialized.remote())
     assert actor0_is_init
     actor0_is_init = ray.get(
-        actors[0].report_is_group_initialized.remote('random'))
+        actors[0].report_is_group_initialized.remote("random"))
     assert not actor0_is_init
     actor0_is_init = ray.get(
-        actors[0].report_is_group_initialized.remote('123'))
+        actors[0].report_is_group_initialized.remote("123"))
     assert not actor0_is_init
     actor1_is_init = ray.get(actors[0].report_is_group_initialized.remote())
     assert actor1_is_init
     actor1_is_init = ray.get(
-        actors[0].report_is_group_initialized.remote('456'))
+        actors[0].report_is_group_initialized.remote("456"))
     assert not actor1_is_init
 
 
@@ -109,16 +110,16 @@ def test_destroy_group(ray_start_single_node_2_gpus):
     assert not actor0_is_init
 
     # should go well as the group `random` does not exist at all
-    ray.wait([actors[0].destroy_group.remote('random')])
+    ray.wait([actors[0].destroy_group.remote("random")])
 
     actor1_is_init = ray.get(actors[1].report_is_group_initialized.remote())
     assert actor1_is_init
-    ray.wait([actors[1].destroy_group.remote('random')])
+    ray.wait([actors[1].destroy_group.remote("random")])
     actor1_is_init = ray.get(actors[1].report_is_group_initialized.remote())
     assert actor1_is_init
-    ray.wait([actors[1].destroy_group.remote('default')])
+    ray.wait([actors[1].destroy_group.remote("default")])
     actor1_is_init = ray.get(actors[1].report_is_group_initialized.remote())
-    assert actor1_is_init == False
+    assert not actor1_is_init
 
     # Now reconstruct the group using the same name
     init_results = ray.get([
@@ -133,7 +134,7 @@ def test_destroy_group(ray_start_single_node_2_gpus):
     assert actor1_is_init
 
 
-@pytest.mark.parametrize("group_name", ['default', 'test', '123?34!'])
+@pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 # @pytest.mark.parametrize("group_name", ['123?34!'])
 def test_allreduce_different_name(ray_start_single_node_2_gpus, group_name):
     world_size = 2
@@ -197,7 +198,7 @@ def test_allreduce_multiple_group(ray_start_single_node_2_gpus,
             for i, actor in enumerate(actors)
         ])
     for i in range(num_groups):
-        group_name = 'default' if i == 0 else str(i)
+        group_name = "default" if i == 0 else str(i)
         results = ray.get([a.do_work.remote(group_name) for a in actors])
         assert (results[0] == cp.ones(
             (10, ), dtype=cp.float32) * (world_size**(i + 1))).all()

@@ -14,7 +14,7 @@ class Worker:
                    world_size,
                    rank,
                    backend=Backend.NCCL,
-                   group_name='default'):
+                   group_name="default"):
         col.init_collective_group(world_size, rank, backend, group_name)
         return True
 
@@ -26,15 +26,15 @@ class Worker:
         col.allreduce(self.buffer, group_name, op)
         return self.buffer
 
-    def destroy_group(self, group_name='default'):
+    def destroy_group(self, group_name="default"):
         col.destroy_collective_group(group_name)
         return True
 
-    def report_rank(self, group_name='default'):
+    def report_rank(self, group_name="default"):
         rank = col.get_rank(group_name)
         return rank
 
-    def report_world_size(self, group_name='default'):
+    def report_world_size(self, group_name="default"):
         ws = col.get_world_size(group_name)
         return ws
 
@@ -46,6 +46,6 @@ class Worker:
         avail = col.mpi_available()
         return avail
 
-    def report_is_group_initialized(self, group_name='default'):
+    def report_is_group_initialized(self, group_name="default"):
         is_init = col.is_group_initialized(group_name)
         return is_init

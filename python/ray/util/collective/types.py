@@ -7,17 +7,17 @@ _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
 
 try:
-    import numpy as np
+    import numpy as np  # noqa: F401
 except ImportError:
     _NUMPY_AVAILABLE = False
 
 try:
-    import torch as th
+    import torch as th  # noqa: F401
 except ImportError:
     _TORCH_AVAILABLE = False
 
 try:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
 except ImportError:
     _CUPY_AVAILABLE = False
 
@@ -35,15 +35,15 @@ def torch_available():
 
 
 class Backend(object):
-    """A class to represent different backends, in case the user string is too error-prone."""
-    NCCL = 'nccl'
-    MPI = 'mpi'
-    UNRECOGNIZED = 'unrecognized'
+    """A class to represent different backends."""
+    NCCL = "nccl"
+    MPI = "mpi"
+    UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
         backend = getattr(Backend, name.upper(), Backend.UNRECOGNIZED)
         if backend == Backend.UNRECOGNIZED:
-            raise ValueError("Unrecognized backend: '{}'"
+            raise ValueError("Unrecognized backend: '{}'. "
                              "Only NCCL is supported".format(name))
         if backend == Backend.MPI:
             raise NotImplementedError()
