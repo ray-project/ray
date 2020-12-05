@@ -10,7 +10,7 @@ async def main():
     cluster.add_node(dashboard_port=9999)
     cluster.add_node()
 
-    browser = await launch()
+    browser = await launch(args=["--no-sandbox"])
     page = await browser.newPage()
     await page.setViewport({
         "width": 1200,
