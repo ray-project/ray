@@ -135,6 +135,10 @@ class SyncClient:
         """Resets state."""
         pass
 
+    def close(self):
+        """Clean up hook."""
+        pass
+
 
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
@@ -179,6 +183,7 @@ class CommandBasedClient(SyncClient):
         self.sync_down_template = sync_down_template
         self.delete_template = delete_template
         self.logfile = None
+        self._closed = False
         self.cmd_process = None
 
     def set_logdir(self, logdir):
@@ -189,6 +194,16 @@ class CommandBasedClient(SyncClient):
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync_out", dir=logdir, suffix=".log", delete=False)
+        self._closed = False
+
+    def _get_logfile(self):
+        if self._closed:
+            raise RuntimeError(
+                "[internalerror] The client has been closed. "
+                "Please report this stacktrace + your cluster configuration "
+                "on Github!")
+        else:
+            return self.logfile
 
     def sync_up(self, source, target):
         return self._execute(self.sync_up_template, source, target)
@@ -203,7 +218,10 @@ class CommandBasedClient(SyncClient):
         final_cmd = self.delete_template.format(target=quote(target))
         logger.debug("Running delete: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
+            final_cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=self._get_logfile())
         return True
 
     def wait(self):
@@ -223,6 +241,13 @@ class CommandBasedClient(SyncClient):
             logger.warning("Sync process still running but resetting anyways.")
         self.cmd_process = None
 
+    def close(self):
+        if self.logfile:
+            logger.debug(f"Closing the logfile: {str(self.logfile)}")
+            self.logfile.close()
+            self.logfile = None
+            self._closed = True
+
     @property
     def is_running(self):
         """Returns whether a sync or delete process is running."""
@@ -240,7 +265,10 @@ class CommandBasedClient(SyncClient):
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
+            final_cmd,
+            shell=True,
+            stderr=subprocess.PIPE,
+            stdout=self._get_logfile())
         return True
 
     @staticmethod

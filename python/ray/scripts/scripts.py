@@ -537,6 +537,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         with cli_logger.group("Next steps"):
             cli_logger.print(
                 "To connect to this Ray runtime from another node, run")
+            # NOTE(kfstorm): Java driver rely on this line to get the address
+            # of the cluster. Please be careful when updating this line.
             cli_logger.print(
                 cf.bold("  ray start --address='{}'{}"), redis_address,
                 f" --redis-password='{redis_password}'"
