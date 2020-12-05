@@ -159,7 +159,7 @@ class NCCLGroup(BaseGroup):
 
     def barrier(self, barrier_options=BarrierOptions()):
         """
-        Blocks until all processes in the communicator have reached this barrier.
+        Blocks until all processes reach this barrier.
 
         Args:
             barrier_options:
