@@ -6,8 +6,10 @@ import ray
 import cupy
 
 from ray.util.collective.collective_group import nccl_util
-from ray.util.collective.collective_group.base_collective_group import BaseGroup
-from ray.util.collective.types import AllReduceOptions, BarrierOptions, Backend
+from ray.util.collective.collective_group.base_collective_group \
+    import BaseGroup
+from ray.util.collective.types import AllReduceOptions, \
+    BarrierOptions, Backend
 from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 class Rendezvous:
     def __init__(self, group_name):
         if not group_name:
-            raise ValueError('Empty meeting point.')
+            raise ValueError("Invalid group name.")
         self._group_name = group_name
         self._store_name = None
         self._store = None
@@ -86,10 +88,10 @@ class NCCLGroup(BaseGroup):
         self._nccl_comm = None
 
         if nccl_util.get_nccl_build_version() < 2000:
-            raise RuntimeError('NCCL in Ray requires NCCL>=2.0.')
+            raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
         # TODO(Hao): check version here
         if nccl_util.get_nccl_runtime_version() < 2704:
-            logger.warning('NCCL send/recv calls requires NCCL>=2.7.4')
+            logger.warning("NCCL send/recv calls requires NCCL>=2.7.4")
 
         self._rendezvous = Rendezvous(self.group_name)
         self._rendezvous.meet()
@@ -101,7 +103,10 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = cupy.array([1])
 
     def _init_nccl_unique_id(self):
-        """Init the NCCL unique ID required for setting up NCCL communicator."""
+        """
+        Init the NCCL unique ID required for setting up NCCL communicator.
+
+        """
         self._nccl_uid = self._rendezvous.get_nccl_id()
 
     @property
@@ -109,7 +114,10 @@ class NCCLGroup(BaseGroup):
         return self._nccl_uid
 
     def destroy_group(self):
-        """Destroy the group and release the NCCL communicators safely."""
+        """
+        Destroy the group and release the NCCL communicators safely.
+
+        """
         if self._nccl_comm is not None:
             self.barrier()
             # We also need a barrier call here.

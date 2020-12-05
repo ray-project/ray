@@ -6,16 +6,17 @@ from ray.util.collective import types
 from ray.util.collective.const import get_nccl_store_name
 
 # Get the availability information first by importing information
-_MPI_AVAILABLE = True
+_MPI_AVAILABLE = False
 _NCCL_AVAILABLE = True
 
-try:
-    from ray.util.collective.collective_group.mpi_collective_group import MPIGroup
-except ImportError:
-    _MPI_AVAILABLE = False
+# try:
+#     from ray.util.collective.collective_group.mpi_collective_group
+#     import MPIGroup
+# except ImportError:
+#     _MPI_AVAILABLE = False
 
 try:
-    from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
+    from ray.util.collective.collective_group import NCCLGroup
 except ImportError:
     _NCCL_AVAILABLE = False
 
@@ -32,7 +33,7 @@ def mpi_available():
 
 class GroupManager(object):
     """
-    Use this class to manage the collective groups we created so far;
+    Use this class to manage the collective groups we created so far.
 
     """
 
@@ -45,7 +46,8 @@ class GroupManager(object):
         """
         The entry to create new collective groups and register in the manager.
 
-        Put the registration and the group information into the manager metadata as well.
+        Put the registration and the group information into the manager
+        metadata as well.
         """
         backend = types.Backend(backend)
         if backend == types.Backend.MPI:
@@ -62,7 +64,7 @@ class GroupManager(object):
                     name=store_name, lifetime="detached").remote(store_name)
                 ray.wait([store.set_id.remote(group_uid)])
 
-            logger.debug('creating NCCL group: {}'.format(group_name))
+            logger.debug("creating NCCL group: '{}'".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
             self._group_name_map[g] = group_name
@@ -119,7 +121,7 @@ def is_group_initialized(group_name):
 def init_collective_group(world_size: int,
                           rank: int,
                           backend=types.Backend.NCCL,
-                          group_name: str = 'default'):
+                          group_name: str = "default"):
     """
     Initialize a collective group inside an actor process.
 
@@ -142,7 +144,7 @@ def init_collective_group(world_size: int,
                          .format(group_name))
 
     if _group_mgr.is_group_exist(group_name):
-        raise RuntimeError('Trying to initialize a group twice.')
+        raise RuntimeError("Trying to initialize a group twice.")
 
     assert (world_size > 0)
     assert (rank >= 0)
@@ -150,13 +152,13 @@ def init_collective_group(world_size: int,
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
-def destroy_collective_group(group_name: str = 'default') -> None:
+def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     global _group_mgr
     _group_mgr.destroy_collective_group(group_name)
 
 
-def get_rank(group_name: str = 'default') -> int:
+def get_rank(group_name: str = "default") -> int:
     """
     Return the rank of this process in the given group.
 
@@ -174,7 +176,7 @@ def get_rank(group_name: str = 'default') -> int:
     return g.rank
 
 
-def get_world_size(group_name='default') -> int:
+def get_world_size(group_name="default") -> int:
     """
     Return the size of the collective gropu with the given name.
 
@@ -238,10 +240,10 @@ def _check_backend_availability(backend: types.Backend):
     """Check whether the backend is available."""
     if backend == types.Backend.MPI:
         if not mpi_available():
-            raise RuntimeError('MPI is not available.')
+            raise RuntimeError("MPI is not available.")
     elif backend == types.Backend.NCCL:
         if not nccl_available():
-            raise RuntimeError('NCCL is not available.')
+            raise RuntimeError("NCCL is not available.")
 
 
 def _check_single_tensor_input(tensor):
