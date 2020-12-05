@@ -15,7 +15,7 @@ BAZEL_TEST_COMMANDS = [(
     && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
     && apt-get update \
     && apt-get install -y google-chrome-stable fonts-ipafont-gothic \
-       fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
+       fonts-freefont-ttf libxss1 \
        --no-install-recommends \
     && which google-chrome-stable \
     && bazel test --config=ci $(./scripts/bazel_export_options) python/ray/new_dashboard/... \
