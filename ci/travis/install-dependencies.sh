@@ -253,11 +253,11 @@ install_dependencies() {
   if [ -n "${PYTHON-}" ]; then
     # PyTorch is installed first since we are using a "-f" directive to find the wheels.
     # We want to install the CPU version only.
-    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-    case "${OSTYPE}" in
-      darwin*) pip install torch torchvision;;
-      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
-    esac
+    # local torch_url="https://download.pytorch.org/whl/torch_stable.html"
+    # case "${OSTYPE}" in
+    #   darwin*) pip install torch torchvision;;
+    #   *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
+    # esac
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case

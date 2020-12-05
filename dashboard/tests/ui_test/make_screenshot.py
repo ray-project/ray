@@ -7,10 +7,17 @@ import requests
 import sys
 
 
+@ray.remote
+def long_running_computation():
+    time.sleep(5)
+
+
 async def main():
     cluster = Cluster()
-    cluster.add_node(dashboard_port=9999)
+    head_node = cluster.add_node(dashboard_port=9999)
     cluster.add_node()
+
+    ray.init(address=head_node.address)
 
     max_try = 10
     while True:
@@ -36,10 +43,11 @@ async def main():
         "waitUntil": 'networkidle0',
         "timeout": 5000,
     })
-    await asyncio.sleep(5)
+    await long_running_computation.remote()
     await page.screenshot({'path': 'dashboard_render.png', "fullPage": "true"})
     await browser.close()
 
+    ray.shutdown()
     cluster.shutdown()
 
 

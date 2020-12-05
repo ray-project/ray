@@ -65,7 +65,8 @@ pytest-rerunfailures
 pytest-sugar
 pytest-timeout
 scikit-learn==0.22.2
-tensorflow
+# Tensorflow should be installed via TENSORFLOW_VERSION environment variable
+# tensorflow
 testfixtures
 werkzeug
 xlrd
