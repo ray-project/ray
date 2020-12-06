@@ -88,13 +88,6 @@ COMMON_CONFIG: TrainerConfigDict = {
     #   beginning to end. Data collection will not stop unless the episode
     #   terminates or a configured horizon (hard or soft) is hit.
     "batch_mode": "truncate_episodes",
-    # Which metric to use as the "batch size" when building SampleBatch or
-    # MultiAgentBatch.
-    # env_steps: Count each time the env is "stepped" (no matter how many
-    #   multi-agent actions are passed/how many mult-agent observations have
-    #   been returned in the previous step).
-    # agent_steps: Count each individual agent step as one step.
-    "rollout_fragment_unit": "env_steps",
 
     # === Settings for the Trainer process ===
     # Number of GPUs to allocate to the trainer process. Note that not all
@@ -372,6 +365,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         # agents it controls at that timestep. When replay_mode=independent,
         # transitions are replayed independently per policy.
         "replay_mode": "independent",
+        # Which metric to use as the "batch size" when building a
+        # MultiAgentBatch. The two supported values are:
+        # env_steps: Count each time the env is "stepped" (no matter how many
+        #   multi-agent actions are passed/how many multi-agent observations
+        #   have been returned in the previous step).
+        # agent_steps: Count each individual agent step as one step.
+        "count_steps_by": "env_steps",
     },
 
     # === Logger ===

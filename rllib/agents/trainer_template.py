@@ -22,10 +22,10 @@ def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
 
     # Combine experiences batches until we hit `train_batch_size` in size.
     # Then, train the policy on those experiences and update the workers.
-    train_op = rollouts \
-        .combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"])) \
-        .for_each(TrainOneStep(workers))
+    train_op = rollouts.combine(ConcatBatches(
+        min_batch_size=config["train_batch_size"],
+        count_steps_by=config["multiagent"]["count_steps_by"],
+    )).for_each(TrainOneStep(workers))
 
     # Add on the standard episode reward, etc. metrics reporting. This returns
     # a LocalIterator[metrics_dict] representing metrics for each train step.

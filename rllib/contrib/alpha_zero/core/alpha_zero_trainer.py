@@ -164,11 +164,11 @@ def execution_plan(workers, config):
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["simple_optimizer"]:
-        train_op = rollouts \
-            .combine(ConcatBatches(
-                min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(
-                workers, num_sgd_iter=config["num_sgd_iter"]))
+        train_op = rollouts.combine(ConcatBatches(
+            min_batch_size=config["train_batch_size"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
+        )).for_each(TrainOneStep(
+            workers, num_sgd_iter=config["num_sgd_iter"]))
     else:
         replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
@@ -178,9 +178,12 @@ def execution_plan(workers, config):
         replay_op = Replay(local_buffer=replay_buffer) \
             .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
             .combine(
-                ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )) \
             .for_each(TrainOneStep(
-                workers, num_sgd_iter=config["num_sgd_iter"]))
+            workers, num_sgd_iter=config["num_sgd_iter"]))
 
         train_op = Concurrently(
             [store_op, replay_op], mode="round_robin", output_indexes=[1])

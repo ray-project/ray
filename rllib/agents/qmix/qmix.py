@@ -109,10 +109,12 @@ def execution_plan(workers, config):
 
     train_op = Replay(local_buffer=replay_buffer) \
         .combine(
-            ConcatBatches(min_batch_size=config["train_batch_size"])) \
-        .for_each(TrainOneStep(workers)) \
+        ConcatBatches(
+            min_batch_size=config["train_batch_size"],
+            count_steps_by=config["multiagent"]["count_steps_by"]
+        )).for_each(TrainOneStep(workers)) \
         .for_each(UpdateTargetNetwork(
-            workers, config["target_network_update_freq"]))
+        workers, config["target_network_update_freq"]))
 
     merged_op = Concurrently(
         [store_op, train_op], mode="round_robin", output_indexes=[1])
