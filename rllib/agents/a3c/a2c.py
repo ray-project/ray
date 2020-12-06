@@ -47,10 +47,11 @@ def execution_plan(workers, config):
             .for_each(ApplyGradients(workers)))
     else:
         # In normal mode, we execute one SGD step per each train batch.
-        train_op = rollouts.combine(ConcatBatches(
-            min_batch_size=config["train_batch_size"],
-            count_steps_by=config["multiagent"]["count_steps_by"]
-        )).for_each(TrainOneStep(workers))
+        train_op = rollouts.combine(
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"][
+                    "count_steps_by"])).for_each(TrainOneStep(workers))
 
     return StandardMetricsReporting(train_op, workers, config)
 

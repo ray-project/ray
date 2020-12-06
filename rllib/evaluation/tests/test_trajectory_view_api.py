@@ -308,7 +308,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["num_sgd_iter"] = 2
         config["framework"] = "torch"
         config["rollout_fragment_length"] = 21
-        config["rollout_fragment_unit"] = "agent_steps"
         config["train_batch_size"] = 147
         config["multiagent"] = {
             "policies": {
@@ -316,6 +315,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "p1": (None, obs_space, action_space, {}),
             },
             "policy_mapping_fn": lambda aid: "p{}".format(aid),
+            "count_steps_by": "agent_steps",
         }
         tune.register_env(
             "ma_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))

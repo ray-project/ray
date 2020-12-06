@@ -78,7 +78,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # How to build per-Sampler (RolloutWorker) batches, which are then
     # usually concat'd to form the train batch. Note that "steps" below can
     # mean different things (either env- or agent-steps) and depends on the
-    # `rollout_fragment_unit` setting below.
+    # `count_steps_by` (multiagent) setting below.
     # truncate_episodes: Each produced batch (when calling
     #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
     #   steps. This mode guarantees evenly sized batches, but increases
@@ -1104,10 +1104,11 @@ class Trainer(Trainable):
                              "complete_episodes]! Got {}".format(
                                  config["batch_mode"]))
 
-        if config["rollout_fragment_unit"] not in ["env_steps", "agent_steps"]:
+        if config["multiagent"]["count_steps_by"] not in \
+                ["env_steps", "agent_steps"]:
             raise ValueError(
-                "`rollout_fragment_unit` must be one of [env_steps|"
-                "agent_steps]! Got {}".format(config["rollout_fragment_unit"]))
+                "`count_steps_by` must be one of [env_steps|agent_steps]! "
+                "Got {}".format(config["multiagent"]["count_steps_by"]))
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.

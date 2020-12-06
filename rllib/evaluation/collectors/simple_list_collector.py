@@ -308,7 +308,7 @@ class _SimpleListCollector(_SampleCollector):
                  callbacks: "DefaultCallbacks",
                  multiple_episodes_in_batch: bool = True,
                  rollout_fragment_length: int = 200,
-                 rollout_fragment_unit: str = "env_steps"):
+                 count_steps_by: str = "env_steps"):
         """Initializes a _SimpleListCollector instance.
 
         Args:
@@ -328,7 +328,7 @@ class _SimpleListCollector(_SampleCollector):
         self.callbacks = callbacks
         self.multiple_episodes_in_batch = multiple_episodes_in_batch
         self.rollout_fragment_length = rollout_fragment_length
-        self.rollout_fragment_unit = rollout_fragment_unit
+        self.count_steps_by = count_steps_by
         self.large_batch_threshold: int = max(
             1000, rollout_fragment_length *
             10) if rollout_fragment_length != float("inf") else 5000
@@ -628,7 +628,7 @@ class _SimpleListCollector(_SampleCollector):
         # (abiding to the unit used: env-steps or agent-steps).
         for episode_id, episode in self.episodes.items():
             # Measure batch size in env-steps.
-            if self.rollout_fragment_unit == "env_steps":
+            if self.count_steps_by == "env_steps":
                 built_steps = episode.batch_builder.env_steps
                 ongoing_steps = self.episode_steps[episode_id]
             # Measure batch-size in agent-steps.
@@ -638,7 +638,7 @@ class _SimpleListCollector(_SampleCollector):
 
             # Reached the fragment-len -> We should build an MA-Batch.
             if built_steps + ongoing_steps >= self.rollout_fragment_length:
-                if self.rollout_fragment_unit != "agent_steps":
+                if self.count_steps_by != "agent_steps":
                     assert built_steps + ongoing_steps == \
                            self.rollout_fragment_length
                 # If we reached the fragment-len only because of `episode_id`

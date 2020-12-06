@@ -516,7 +516,7 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
             rollout_fragment_length=301,
-            rollout_fragment_unit="env_steps",
+            count_steps_by="env_steps",
             batch_mode="truncate_episodes",
         )
         batch = ev_agent_steps.sample()
@@ -534,7 +534,7 @@ class TestRolloutWorker(unittest.TestCase):
             policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
             rollout_fragment_length=301,
-            rollout_fragment_unit="agent_steps",
+            count_steps_by="agent_steps",
             batch_mode="truncate_episodes")
         batch = ev_agent_steps.sample()
         self.assertTrue(isinstance(batch, MultiAgentBatch))
