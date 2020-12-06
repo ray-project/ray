@@ -8,7 +8,7 @@ import ray.signature as signature
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
-from ray.util.collective.util import collective_to_envs
+from ray.util.collective_utils import collective_to_envs
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor

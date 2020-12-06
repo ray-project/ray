@@ -191,7 +191,7 @@ def declare_collective_group(actors, group_options):
     
     from ray.util.collective.util import Info
     # store the information into a NamedActor that can be accessed later/
-    name = "info" + group_name
+    name = "info_" + group_name
     actors_id = [a._ray_actor_id for a in actors]
     info = Info.options(name=name, lifetime="detached").remote()
     ray.wait([info.set_info.remote(actors_id, world_size, rank, backend)])
@@ -278,7 +278,7 @@ def _check_and_get_group(group_name):
         # try loading from remote info store
         try:
             # if the information is stored in an Info object, get and create the group.
-            name = "info" + group_name
+            name = "info_" + group_name
             mgr = ray.get_actor(name=name)
             ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
             worker = ray.worker.global_worker
@@ -287,7 +287,8 @@ def _check_and_get_group(group_name):
             _group_mgr.create_collective_group(backend, world_size, r, group_name)
         except:
             # check if this group is initialized using options()
-            if os.environ["collective_group_name"] == group_name:
+            if "collective_group_name" in os.environ and\
+                    os.environ["collective_group_name"] == group_name:
                 rank = int(os.environ["collective_rank"])
                 world_size = int(os.environ["collective_world_size"])
                 backend = os.environ["collective_backend"]
