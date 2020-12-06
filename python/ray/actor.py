@@ -8,6 +8,7 @@ import ray.signature as signature
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
+from ray.util.collective.util import collective_to_envs
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -423,7 +424,8 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None):
+                override_environment_variables=None,
+                collective=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -465,7 +467,8 @@ class ActorClass:
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
                     override_environment_variables=(
-                        override_environment_variables))
+                        override_environment_variables),
+                    collective=collective)
 
         return ActorOptionWrapper()
 
@@ -486,7 +489,8 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None):
+                override_environment_variables=None,
+                collective=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -526,6 +530,7 @@ class ActorClass:
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
+            collective: what colletive configuration to use
 
         Returns:
             A handle to the newly created actor.
@@ -656,6 +661,11 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
+        
+        if collective:
+            override_environment_variables = collective_to_envs(collective,
+                    override_environment_variables)
+
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
