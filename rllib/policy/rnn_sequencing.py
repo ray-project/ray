@@ -158,7 +158,7 @@ def add_time_dimension(padded_inputs: TensorType,
 
 
 # NOTE: This function will be deprecated once chunks already come padded and
-#  correctly chopped from the _SampleCollector object (in time-major fashion
+#  correctly chopped from the SampleCollector object (in time-major fashion
 #  or not). It is already no longer user iff `_use_trajectory_view_api` = True.
 @DeveloperAPI
 def chop_into_sequences(episode_ids,

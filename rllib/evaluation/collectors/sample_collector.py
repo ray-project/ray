@@ -10,7 +10,9 @@ from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
 logger = logging.getLogger(__name__)
 
 
-class _SampleCollector(metaclass=ABCMeta):
+# yapf: disable
+# __sphinx_doc_begin__
+class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
 
     Note: This is an experimental class only used when
@@ -55,7 +57,7 @@ class _SampleCollector(metaclass=ABCMeta):
 
         Examples:
             >>> obs = env.reset()
-            >>> collector.add_init_obs(12345, 0, "pol0", obs)
+            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs)
             >>> obs, r, done, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
@@ -191,7 +193,7 @@ class _SampleCollector(metaclass=ABCMeta):
         postprocessor.
         This is usually called to collect samples for policy training.
         If not enough data has been collected yet (`rollout_fragment_length`),
-        returns None.
+        returns an empty list.
 
         Returns:
             List[Union[MultiAgentBatch, SampleBatch]]: Returns a (possibly
@@ -201,3 +203,4 @@ class _SampleCollector(metaclass=ABCMeta):
                 `self.rollout_fragment_length` has not been reached yet.
         """
         raise NotImplementedError
+# __sphinx_doc_end__

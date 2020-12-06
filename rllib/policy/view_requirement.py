@@ -34,9 +34,9 @@ class ViewRequirement:
         """Initializes a ViewRequirement object.
 
         Args:
-            data_col (): The data column name from the SampleBatch (str key).
-                If None, use the dict key under which this ViewRequirement
-                resides.
+            data_col (Optional[str]): The data column name from the
+                SampleBatch (str key). If None, use the dict key under which
+                this ViewRequirement resides.
             space (gym.Space): The gym Space used in case we need to pad data
                 in inaccessible areas of the trajectory (t<0 or t>H).
                 Default: Simple box space, e.g. rewards.

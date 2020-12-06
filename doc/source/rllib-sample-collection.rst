@@ -4,12 +4,23 @@ RLlib Sample Collection
 Sample Collector API
 --------------------
 
-When using a RolloutWorker with the `sampler` property set (i.e. the RolloutWorker
-has to collect trajectories from a live environment), the Sampler object will use
-a child class of `SampleCollector` to store and manage all collected data (from the env,
-from the model, and the additional collection stats such as timesteps, agent index, etc..).
+The `SamplerInput` class is used by RLlib's RolloutWorkers to produce
+batches of experiences from a live environment. The two implemented sub-classes
+of `SamplerInput` are `SyncSampler` and `AsyncSampler` (held by a RolloutWorker object in
+its `self.sampler` property).
+In case the "_use_trajectory_view_api" top-level config key is set to True (which is the case
+by default since ray 1.2.0), every such sampler object will itself use the
+`SampleCollector` API to store and retrieve environment-, model-, and other data
+during episode rollouts:
 
+.. literalinclude:: ../../rllib/evaluation/collectors/sample_collector.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+   :start-after: __sphinx_doc_begin2__
+   :end-before: __sphinx_doc_end2__
 
+The SampleCollector API allows
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -33,16 +44,91 @@ test text
 
 Trajectory View API
 -------------------
+**#TODO maybe we shouldn't even call this an "API", since 99% of all this happens automatically under the hood.**
 
 The trajectory view API is a common format by which Models and Policies communicate
-to each other as well as to the SampleCollector, which data to store and
-how to present it as input to the Policy's different method. In particular, these
-are a) compute_actions, b) postprocess_trajectory, and c) learn_on_batch
-(loss functions).
-The data can stem from either the environment (observations, rewards, and infos),
-the model itself (actions, state outputs, action-probs, etc..) or the Sampler (e.g.
-agent index, env ID, episode ID, timestep, etc..).
-The idea is to allow more flexibility in how a model can get a view on the ongoing
-or past episode trajectories and the introduction of such a concept is helpful with
-more complex model setups like RNNs, attention nets, observation image framestacking,
-and multi-agent communication channels.
+to each other as well as to the SampleCollector, which data to store, how to store
+and retrieve it, and how to present this data as inputs to the Policy's different methods.
+
+In particular, the methods that will receive inputs based on trajectory view rules are
+a) Policy.compute_actions_from_input_dict, b) Policy.postprocess_trajectory, and c)
+Policy.learn_on_batch (loss functions).
+
+The input data to these methods can stem from either the environment (observations, rewards, and infos),
+the model itself (previously computed actions, internal state outputs, action-probs, etc..)
+or the Sampler (e.g. agent index, env ID, episode ID, timestep, etc..).
+All data has an associated time axis, which is 0-based (the first action taken or the first reward
+received in an episode has t=0). #TODO: observations are different, the initial obs has t=-1, the first observation seen after action0 is obs0: We should probably change this as it breaks RL conventions.
+
+The idea is to allow more flexibility and standardization in how a model can define required
+"views" on the ongoing trajectory (during action computations/inference), past episodes (training
+on a batch), or even trajectories of other agents in the same episode, some of which
+may even use a different policy.  #TODO <- this is not done yet.
+
+Such a "view requirements" formalism is helpful when having to support more complex model
+setups like RNNs, attention nets, observation image framestacking (e.g. for Atari),
+and building multi-agent communication channels.
+
+
+The ViewRequirements class
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+View requirements for Models (`Model.forward`) and Policies
+(`Policy.compute_actions_from_input_dict` and `Policy.learn_on_batch`) are stored
+within the `view_requirements` properties of the `ModelV2` and `Policy` base classes:
+
+#TODO: rename model.inference_view_requirements into simply `view_requirements`.
+
+.. code-block:: python
+
+    my_simple_model = ModelV2(...)
+    print(my_simple_model.view_requirements)
+    >>>{"obs": ViewRequirement(shift=0, space=[observation space])}
+
+    my_lstm_model = LSTMModel(...)
+    print(my_lstm_model.view_requirements)
+    >>>{
+    >>>    "obs": ViewRequirement(shift=0, space=[observation space]),
+    >>>    "prev_actions": ViewRequirement(shift=-1, data_col="actions", space=[action space]),
+    >>>    "prev_rewards": ViewRequirement(shift=-1, data_col="rewards"),
+    >>>}
+
+As seen in the example above, the `view_requirements` property holds a dictionary mapping
+string keys (e.g. "actions", "rewards", "next_obs", etc..)
+to a ViewRequirement object. This ViewRequirement object determines what exact data to
+provide under that key in case a SampleBatch or an input_dict needs to be build and fed into
+one of the above ModelV2- or Policy methods.
+
+Here is a description of the constructor-settable properties of a ViewRequirement object and
+what each of these controls.
+
+.. code-block:: bash
+    data_col: An optional string key referencing the underlying data to use to
+        create the view. If not provided, assumes that there is data under the
+        dict-key under which this ViewRequirement resides.
+        Examples:
+        Policy.view_requirements = {"rewards": ViewRequirements(shift=0)}
+            implies that the underlying data to use are the collected rewards from the environment.
+        Policy.view_requirements = {"prev_rewards": ViewRequirements(data_col="rewards", shift=-1)}
+            means that the actual data used to create the "prev_rewards" column is the "rewards" data
+            from the environment (shifted by 1 timestep).
+
+    space: An optional gym.Space used as a hint for the SampleCollector to know,
+        how to fill timesteps before the episode actually started (e.g. if
+        shift=-2, we need dummy data at timesteps -2 and -1).
+
+    shift: An int, a list of ints, or a range string (e.g. "-50:-1") to indicate
+        which time offsets or ranges of the underlying data to use for the view.
+        Examples:
+        shift=0 -> Use the data under `data_col` as is.
+        shift=1 -> Use the data under `data_col`, but shifted by +1 timestep (used by e.g.
+            next_obs views).
+        shift=-1 -> Use the data under `data_col`, but shifted by -1 timestep (used by e.g.
+            prev_actions views).
+        shift=[-2, -1] -> Use the data under `data_col`, but always provide 2 values at each timestep:
+            the previous one and the current one. Could be used e.g. to feed the last two actions or
+            rewards into an LSTM.
+        shift="-50:-1" -> Use the data under `data_col`, but always provide a range of the last 50 timesteps
+
+
+

@@ -10,9 +10,9 @@ from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.collectors.sample_collector import \
-    _SampleCollector
+    SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import \
-    _SimpleListCollector
+    SimpleListCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
@@ -189,7 +189,7 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
-            self.sample_collector = _SimpleListCollector(
+            self.sample_collector = SimpleListCollector(
                 policies, clip_rewards, callbacks, multiple_episodes_in_batch,
                 rollout_fragment_length)
         else:
@@ -335,7 +335,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
-            self.sample_collector = _SimpleListCollector(
+            self.sample_collector = SimpleListCollector(
                 policies, clip_rewards, callbacks, multiple_episodes_in_batch,
                 rollout_fragment_length)
         else:
@@ -429,7 +429,7 @@ def _env_runner(
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
         _use_trajectory_view_api: bool = False,
-        _sample_collector: Optional[_SampleCollector] = None,
+        sample_collector: Optional[SampleCollector] = None,
 ) -> Iterable[SampleBatchType]:
     """This implements the common experience collection logic.
 
@@ -468,8 +468,8 @@ def _env_runner(
         _use_trajectory_view_api (bool): Whether to use the (experimental)
             `_use_trajectory_view_api` to make generic trajectory views
             available to Models. Default: False.
-        _sample_collector (Optional[_SampleCollector]): An optional
-            _SampleCollector object to use
+        sample_collector (Optional[SampleCollector]): An optional
+            SampleCollector object to use
 
     Yields:
         rollout (SampleBatch): Object containing state, action, reward,
@@ -582,7 +582,7 @@ def _env_runner(
                     soft_horizon=soft_horizon,
                     no_done_at_end=no_done_at_end,
                     observation_fn=observation_fn,
-                    _sample_collector=_sample_collector,
+                    sample_collector=sample_collector,
                 )
         else:
             active_envs, to_eval, outputs = _process_observations(
@@ -616,7 +616,7 @@ def _env_runner(
             eval_results = _do_policy_eval_w_trajectory_view_api(
                 to_eval=to_eval,
                 policies=policies,
-                _sample_collector=_sample_collector,
+                sample_collector=sample_collector,
                 active_episodes=active_episodes,
                 tf_sess=tf_sess,
             )
@@ -641,7 +641,7 @@ def _env_runner(
                 policies=policies,
                 clip_actions=clip_actions,
                 _use_trajectory_view_api=_use_trajectory_view_api,
-                _sample_collector=_sample_collector,
+                sample_collector=sample_collector,
             )
         perf_stats.action_processing_time += time.time() - t3
 
@@ -956,7 +956,7 @@ def _process_observations_w_trajectory_view_api(
         soft_horizon: bool,
         no_done_at_end: bool,
         observation_fn: "ObservationFunction",
-        _sample_collector: _SampleCollector,
+        sample_collector: SampleCollector,
 ) -> Tuple[Set[EnvID], Dict[PolicyID, List[PolicyEvalData]], List[Union[
         RolloutMetrics, SampleBatchType]]]:
     """Trajectory View API version of `_process_observations()`.
@@ -975,7 +975,7 @@ def _process_observations_w_trajectory_view_api(
         episode: MultiAgentEpisode = active_episodes[env_id]
 
         if not is_new_episode:
-            _sample_collector.episode_step(episode.episode_id)
+            sample_collector.episode_step(episode.episode_id)
             episode._add_agent_rewards(rewards[env_id])
 
         # Check episode termination conditions.
@@ -1039,7 +1039,7 @@ def _process_observations_w_trajectory_view_api(
 
             # Record transition info if applicable.
             if last_observation is None:
-                _sample_collector.add_init_obs(episode, agent_id, env_id,
+                sample_collector.add_init_obs(episode, agent_id, env_id,
                                                policy_id, episode.length - 1,
                                                filtered_obs)
             else:
@@ -1068,7 +1068,7 @@ def _process_observations_w_trajectory_view_api(
                 # Env infos for this agent.
                 if "infos" in pol.view_requirements:
                     values_dict["infos"] = agent_infos
-                _sample_collector.add_action_reward_next_obs(
+                sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
 
@@ -1100,7 +1100,7 @@ def _process_observations_w_trajectory_view_api(
             # MultiAgentBatch from a single episode and add it to "outputs".
             # Otherwise, just postprocess and continue collecting across
             # episodes.
-            ma_sample_batch = _sample_collector.postprocess_episode(
+            ma_sample_batch = sample_collector.postprocess_episode(
                 episode,
                 is_done=is_done or (hit_horizon and not soft_horizon),
                 check_dones=check_dones,
@@ -1159,7 +1159,7 @@ def _process_observations_w_trajectory_view_api(
                     new_episode._set_last_observation(agent_id, filtered_obs)
 
                     # Add initial obs to buffer.
-                    _sample_collector.add_init_obs(
+                    sample_collector.add_init_obs(
                         new_episode, agent_id, env_id, policy_id,
                         new_episode.length - 1, filtered_obs)
 
@@ -1172,7 +1172,7 @@ def _process_observations_w_trajectory_view_api(
     # Try to build something.
     if multiple_episodes_in_batch:
         sample_batches = \
-            _sample_collector.try_build_truncated_episode_multi_agent_batch()
+            sample_collector.try_build_truncated_episode_multi_agent_batch()
         if sample_batches:
             outputs.extend(sample_batches)
 
@@ -1268,7 +1268,7 @@ def _do_policy_eval_w_trajectory_view_api(
         *,
         to_eval: Dict[PolicyID, List[PolicyEvalData]],
         policies: Dict[PolicyID, Policy],
-        _sample_collector,
+        sample_collector,
         active_episodes: Dict[str, MultiAgentEpisode],
         tf_sess: Optional["tf.Session"] = None,
 ) -> Dict[PolicyID, Tuple[TensorStructType, StateBatch, dict]]:
@@ -1280,7 +1280,7 @@ def _do_policy_eval_w_trajectory_view_api(
             be the batch's items for the model forward pass).
         policies (Dict[PolicyID, Policy]): Mapping from policy ID to Policy
             obj.
-        _sample_collector (SampleCollector): The SampleCollector object to use.
+        sample_collector (SampleCollector): The SampleCollector object to use.
         tf_sess (Optional[tf.Session]): Optional tensorflow session to use for
             batching TF policy evaluations.
 
@@ -1302,7 +1302,7 @@ def _do_policy_eval_w_trajectory_view_api(
 
     for policy_id, eval_data in to_eval.items():
         policy: Policy = _get_or_raise(policies, policy_id)
-        input_dict = _sample_collector.get_inference_input_dict(policy_id)
+        input_dict = sample_collector.get_inference_input_dict(policy_id)
         eval_results[policy_id] = \
             policy.compute_actions_from_input_dict(
                 input_dict,
@@ -1332,7 +1332,7 @@ def _process_policy_eval_results(
         policies: Dict[PolicyID, Policy],
         clip_actions: bool,
         _use_trajectory_view_api: bool = False,
-        _sample_collector=None,
+        sample_collector=None,
 ) -> Dict[EnvID, Dict[AgentID, EnvActionType]]:
     """Process the output of policy neural network evaluation.
 

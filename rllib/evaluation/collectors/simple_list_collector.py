@@ -4,7 +4,7 @@ import numpy as np
 from typing import Any, List, Dict, Tuple, TYPE_CHECKING, Union
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
+from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
@@ -289,7 +289,7 @@ class _PolicyCollectorGroup:
         self.count = 0
 
 
-class _SimpleListCollector(_SampleCollector):
+class SimpleListCollector(SampleCollector):
     """Util to build SampleBatches for each policy in a multi-agent env.
 
     Input data is per-agent, while output data is per-policy. There is an M:N
@@ -304,7 +304,7 @@ class _SimpleListCollector(_SampleCollector):
                  callbacks: "DefaultCallbacks",
                  multiple_episodes_in_batch: bool = True,
                  rollout_fragment_length: int = 200):
-        """Initializes a _SimpleListCollector instance.
+        """Initializes a SimpleListCollector instance.
 
         Args:
             policy_map (Dict[str, Policy]): Maps policy ids to policy
@@ -343,7 +343,7 @@ class _SimpleListCollector(_SampleCollector):
         # Maps episode ID to MultiAgentEpisode.
         self.episodes: Dict[EpisodeID, MultiAgentEpisode] = {}
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def episode_step(self, episode_id: EpisodeID) -> None:
         episode = self.episodes[episode_id]
         self.episode_steps[episode_id] += 1
@@ -370,7 +370,7 @@ class _SimpleListCollector(_SampleCollector):
                  "does at some point."
                  if not self.multiple_episodes_in_batch else ""))
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
                      env_id: EnvID, policy_id: PolicyID, t: int,
                      init_obs: TensorType) -> None:
@@ -404,7 +404,7 @@ class _SimpleListCollector(_SampleCollector):
 
         self._add_to_next_inference_call(agent_key)
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def add_action_reward_next_obs(self, episode_id: EpisodeID,
                                    agent_id: AgentID, env_id: EnvID,
                                    policy_id: PolicyID, agent_done: bool,
@@ -424,11 +424,11 @@ class _SimpleListCollector(_SampleCollector):
         if not agent_done:
             self._add_to_next_inference_call(agent_key)
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def total_env_steps(self) -> int:
         return sum(a.count for a in self.agent_collectors.values())
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def get_inference_input_dict(self, policy_id: PolicyID) -> \
             Dict[str, TensorType]:
         policy = self.policy_map[policy_id]
@@ -459,7 +459,7 @@ class _SimpleListCollector(_SampleCollector):
 
         return input_dict
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def postprocess_episode(self,
                             episode: MultiAgentEpisode,
                             is_done: bool = False,
@@ -587,7 +587,7 @@ class _SimpleListCollector(_SampleCollector):
 
         return ma_batch
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def try_build_truncated_episode_multi_agent_batch(self) -> \
             List[Union[MultiAgentBatch, SampleBatch]]:
         batches = []

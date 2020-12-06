@@ -527,6 +527,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
+        # Create the IOContext for this worker.
         self.io_context: IOContext = IOContext(log_dir, policy_config,
                                                worker_index, self)
         self.reward_estimators: List[OffPolicyEstimator] = []
