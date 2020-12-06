@@ -241,6 +241,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    return true;
+  }
+
+  @Override
   public BaseActorHandle getActor(ActorId actorId) {
     return actorHandles.get(actorId).copy();
   }

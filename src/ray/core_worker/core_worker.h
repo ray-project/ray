@@ -675,6 +675,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// NotFound if placement group is already removed or doesn't exist.
   Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
 
+  /// Wait for a placement group until ready asynchronously.
+  /// Returns once the placement group is created or the timeout expires.
+  ///
+  /// \param placement_group The id of a placement group to wait for.
+  /// \param timeout_ms Timeout in milliseconds.
+  /// \return Status OK if the placement group is created. TimedOut if request to GCS
+  /// server times out. NotFound if placement group is already removed or doesn't exist.
+  Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                 int timeout_ms);
+
   /// Submit an actor task.
   ///
   /// \param[in] caller_id ID of the task submitter.
