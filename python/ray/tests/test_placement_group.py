@@ -1259,16 +1259,11 @@ def test_placement_group_wait_api(ray_start_cluster):
     ray.init(address=cluster.address)
 
     placement_group = ray.util.placement_group(
-        name="name",
-        strategy="PACK",
-        bundles=[
-            {
-                "CPU": 2,
-            },
-            {
-                "CPU": 2
-            }
-        ])
+        name="name", strategy="PACK", bundles=[{
+            "CPU": 2,
+        }, {
+            "CPU": 2
+        }])
     assert placement_group.wait(10000)
 
 
