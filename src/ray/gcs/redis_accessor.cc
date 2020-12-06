@@ -694,6 +694,11 @@ Status RedisPlacementGroupInfoAccessor::AsyncGetAll(
   return Status::Invalid("Not implemented");
 }
 
+Status RedisPlacementGroupInfoAccessor::AsyncWaitUntilReady(
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
+
 }  // namespace gcs
 
 }  // namespace ray
