@@ -16,7 +16,6 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
-from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -230,7 +229,6 @@ class Trial:
            or not len(self.log_to_file) == 2:
             self.log_to_file = (None, None)
 
-        self.verbose = True
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
@@ -480,11 +478,7 @@ class Trial:
     def update_last_result(self, result, terminate=False):
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.time() - self.last_debug >
-                             DEBUG_PRINT_INTERVAL):
-            print("Result for {}:".format(self))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            self.last_debug = time.time()
+
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
         self.last_update_time = time.time()
@@ -526,9 +520,6 @@ class Trial:
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
-
-    def set_verbose(self, verbose):
-        self.verbose = verbose
 
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]

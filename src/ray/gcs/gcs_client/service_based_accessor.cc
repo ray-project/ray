@@ -1510,5 +1510,23 @@ Status ServiceBasedPlacementGroupInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status ServiceBasedPlacementGroupInfoAccessor::AsyncWaitUntilReady(
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+  RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
+                 << placement_group_id;
+  rpc::WaitPlacementGroupUntilReadyRequest request;
+  request.set_placement_group_id(placement_group_id.Binary());
+  client_impl_->GetGcsRpcClient().WaitPlacementGroupUntilReady(
+      request,
+      [placement_group_id, callback](
+          const Status &status, const rpc::WaitPlacementGroupUntilReadyReply &reply) {
+        callback(status);
+        RAY_LOG(DEBUG)
+            << "Finished waiting placement group until ready, placement group id = "
+            << placement_group_id;
+      });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray
