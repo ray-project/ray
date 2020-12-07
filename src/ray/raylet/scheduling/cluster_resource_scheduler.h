@@ -205,8 +205,7 @@ class ClusterResourceScheduler {
   ///
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
-  void AddLocalResource(
-                              const std::string &resource_name, double resource_total);
+  void AddLocalResource(const std::string &resource_name, double resource_total);
 
   /// Update total capacity of a given resource of a given node.
   ///

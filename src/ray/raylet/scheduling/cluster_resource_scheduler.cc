@@ -329,9 +329,8 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
-void ClusterResourceScheduler::AddLocalResource(
-                                                      const std::string &resource_name,
-                                                      double resource_total) {
+void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
+                                                double resource_total) {
   string_to_int_map_.Insert(resource_name);
   int64_t resource_id = string_to_int_map_.Get(resource_name);
 
@@ -416,8 +415,7 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
   }
 }
 
-void ClusterResourceScheduler::DeleteLocalResource(
-                                              const std::string &resource_name) {
+void ClusterResourceScheduler::DeleteLocalResource(const std::string &resource_name) {
   DeleteResource(string_to_int_map_.Get(local_node_id_), resource_name);
 }
 
