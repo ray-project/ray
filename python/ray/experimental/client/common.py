@@ -98,6 +98,8 @@ class ClientActorClass:
         return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
 
     def __getattr__(self, key):
+        if key not in self.__dict__:
+            raise AttributeError("Not a class attribute")
         raise NotImplementedError("static methods")
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
