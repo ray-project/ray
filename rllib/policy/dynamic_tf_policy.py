@@ -298,14 +298,6 @@ class DynamicTFPolicy(TFPolicy):
                     action_distribution=action_dist,
                     timestep=timestep,
                     explore=explore)
-            if self.config["_use_trajectory_view_api"]:
-                self._dummy_batch[SampleBatch.ACTION_DIST_INPUTS] = \
-                    np.zeros(
-                        [1 if not s else s for s in
-                         dist_inputs.shape.as_list()])
-            self._input_dict[SampleBatch.ACTION_DIST_INPUTS] = \
-                tf1.placeholder(shape=dist_inputs.shape.as_list(),
-                                dtype=tf.float32)
 
         # Phase 1 init.
         sess = tf1.get_default_session() or tf1.Session()
@@ -446,13 +438,18 @@ class DynamicTFPolicy(TFPolicy):
                         space=view_req.space,
                         name=view_col,
                         time_axis=time_axis)
-        dummy_batch = self._get_dummy_batch_from_view_requirements()
+        dummy_batch = self._get_dummy_batch_from_view_requirements(
+            batch_size=32)
 
         return input_dict, dummy_batch
 
     def _initialize_loss_from_dummy_batch(
             self, auto_remove_unneeded_view_reqs: bool = True,
             stats_fn=None) -> None:
+
+        # Create the optimizer/exploration optimizer here. Some initialization
+        # steps (e.g. exploration postprocessing) may need this.
+        self._optimizer = self.optimizer()
 
         # Test calls depend on variable init, so initialize model first.
         self._sess.run(tf1.global_variables_initializer())
@@ -513,6 +510,8 @@ class DynamicTFPolicy(TFPolicy):
         batch_for_postproc = UsageTrackingDict(dummy_batch)
         batch_for_postproc.count = dummy_batch.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
+        self.exploration.postprocess_trajectory(self, batch_for_postproc,
+                                                self._sess)
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         # Add new columns automatically to (loss) input_dict.
         if self.config["_use_trajectory_view_api"]:
@@ -598,7 +597,8 @@ class DynamicTFPolicy(TFPolicy):
                                 batch_for_postproc.accessed_keys
             # Tag those only needed for post-processing.
             for key in batch_for_postproc.accessed_keys:
-                if key not in train_batch.accessed_keys:
+                if key not in train_batch.accessed_keys and \
+                        key not in self.model.inference_view_requirements:
                     self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
