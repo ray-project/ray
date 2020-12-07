@@ -317,35 +317,38 @@ class ActorStateReconciler:
                                "sure there are enough resources to create the "
                                "replicas.".format(time.time() - start))
 
-            done, _ = await asyncio.wait(
-                list(self.currently_starting_replicas.keys()), timeout=0)
-            for fut in done:
-                (backend_tag, replica_tag,
-                 replica_handle) = self.currently_starting_replicas.pop(fut)
-                self.backend_replicas[backend_tag][
-                    replica_tag] = replica_handle
-                try:
-                    self.backend_replicas_to_start.get(backend_tag).remove(
-                        replica_tag)
-                    if len(self.backend_replicas_to_start[backend_tag]) == 0:
-                        del self.backend_replicas_to_start[backend_tag]
-                except Exception:
-                    pass
+            if self.currently_starting_replicas:
+                done, _ = await asyncio.wait(
+                    list(self.currently_starting_replicas.keys()), timeout=0)
+                for fut in done:
+                    (backend_tag, replica_tag, replica_handle
+                     ) = self.currently_starting_replicas.pop(fut)
+                    self.backend_replicas[backend_tag][
+                        replica_tag] = replica_handle
+                    try:
+                        self.backend_replicas_to_start.get(backend_tag).remove(
+                            replica_tag)
+                        if len(self.backend_replicas_to_start[
+                                backend_tag]) == 0:
+                            del self.backend_replicas_to_start[backend_tag]
+                    except Exception:
+                        pass
+            if self.currently_stopping_replicas:
+                done_stoppping, = await asyncio.wait(
+                    list(self.currently_stopping_replicas.keys()), timeout=0)
+                for fut in done_stoppping:
+                    (backend_tag,
+                     replica_tag) = self.currently_stopping_replicas.pop(fut)
+                    try:
+                        self.backend_replicas_to_stop.get(backend_tag).remove(
+                            replica_tag)
+                        if len(self.backend_replicas_to_stop[
+                                backend_tag]) == 0:
+                            del self.backend_replicas_to_stop[backend_tag]
+                    except Exception:
+                        pass
 
-            done_stoppping, = await asyncio.wait(
-                list(self.currently_stopping_replicas.keys()), timeout=0)
-            for fut in done_stoppping:
-                (backend_tag,
-                 replica_tag) = self.currently_stopping_replicas.pop(fut)
-                try:
-                    self.backend_replicas_to_stop.get(backend_tag).remove(
-                        replica_tag)
-                    if len(self.backend_replicas_to_stop[backend_tag]) == 0:
-                        del self.backend_replicas_to_stop[backend_tag]
-                except Exception:
-                    pass
-
-            asyncio.sleep(1)
+                asyncio.sleep(1)
 
     def _start_routers_if_needed(self, http_host: str, http_port: str,
                                  http_middlewares: List[Any]) -> None:
