@@ -1104,7 +1104,7 @@ class Trainer(Trainable):
                              "complete_episodes]! Got {}".format(
                                  config["batch_mode"]))
 
-        if config["multiagent"]["count_steps_by"] not in \
+        if config["multiagent"].get("count_steps_by", "env_steps") not in \
                 ["env_steps", "agent_steps"]:
             raise ValueError(
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
