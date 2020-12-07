@@ -23,3 +23,5 @@ RUN mkdir /bazel-cache; \
 
 COPY ecr_password.txt /ecr_password.txt
 RUN cat ecr_password.txt | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
+
+RUN locale -a

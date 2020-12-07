@@ -38,7 +38,7 @@ steps:
       CI: "true"
       RAY_DEFAULT_BUILD: "1"
     agents:
-      queue: simon-build-farm-q
+      queue: simon-agent-q
   - wait
   - label: "Generate Test Suites"
     commands:
