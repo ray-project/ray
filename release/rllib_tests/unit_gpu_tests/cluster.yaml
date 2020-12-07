@@ -31,7 +31,7 @@ head_node:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - sudo apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1 curl unzip gcc python3-dev
+    - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1 curl unzip gcc python3-dev
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

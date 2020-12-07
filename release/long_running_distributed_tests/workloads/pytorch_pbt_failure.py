@@ -78,8 +78,10 @@ ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
 
 CustomTrainingOperator = TrainingOperator.from_creators(
-    model_creator=ResNet18, optimizer_creator=optimizer_creator,
-    data_creator=cifar_creator, loss_creator=nn.CrossEntropyLoss)
+    model_creator=ResNet18,
+    optimizer_creator=optimizer_creator,
+    data_creator=cifar_creator,
+    loss_creator=nn.CrossEntropyLoss)
 
 TorchTrainable = TorchTrainer.as_trainable(
     training_operator_cls=CustomTrainingOperator,
