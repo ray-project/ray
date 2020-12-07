@@ -160,13 +160,21 @@ class _AgentCollector:
                     count = int(
                         math.ceil((len(np_data[data_col]) - self.shift_before)
                                   / view_req.batch_repeat_value))
-                    repeat_count = (view_req.shift_to -
-                                    view_req.shift_from + 1)
+                    #repeat_count = (view_req.shift_to -
+                    #                view_req.shift_from + 1)
+                    #data = np.asarray([
+                    #    np_data[data_col]
+                    #    [self.shift_before + (i * repeat_count) +
+                    #     view_req.shift_from +
+                    #     obs_shift:self.shift_before + (i * repeat_count) +
+                    #     view_req.shift_to + 1 + obs_shift]
+                    #    for i in range(count)
+                    #])
                     data = np.asarray([
                         np_data[data_col]
-                        [self.shift_before + (i * repeat_count) +
+                        [self.shift_before + (i * view_req.batch_repeat_value) +
                          view_req.shift_from +
-                         obs_shift:self.shift_before + (i * repeat_count) +
+                         obs_shift:self.shift_before + (i * view_req.batch_repeat_value) +
                          view_req.shift_to + 1 + obs_shift]
                         for i in range(count)
                     ])
