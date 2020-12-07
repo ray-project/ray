@@ -9,12 +9,11 @@ from ray.rllib.evaluation.collectors.sample_collector import _SampleCollector
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import summarize
-from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \
-    TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.typing import AgentID, EpisodeID, EnvID, PolicyID, \
+    TensorType, ViewRequirementsDict
 from ray.util.debug import log_once
 
 _, tf, _ = try_import_tf()
@@ -55,8 +54,7 @@ class _AgentCollector:
         self.count = 0
 
     def add_init_obs(self, episode_id: EpisodeID, agent_index: int,
-                     env_id: EnvID, t: int, init_obs: TensorType,
-                     view_requirements: Dict[str, ViewRequirement]) -> None:
+                     env_id: EnvID, t: int, init_obs: TensorType) -> None:
         """Adds an initial observation (after reset) to the Agent's trajectory.
 
         Args:
@@ -69,7 +67,6 @@ class _AgentCollector:
                 ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs (TensorType): The initial observation tensor (after
             `env.reset()`).
-            view_requirements (Dict[str, ViewRequirements])
         """
         if SampleBatch.OBS not in self.buffers:
             self._build_buffers(
@@ -110,9 +107,7 @@ class _AgentCollector:
             self.buffers[k].append(v)
         self.count += 1
 
-    def build(self, view_requirements: Dict[str, ViewRequirement],
-              inference_view_requirements: Dict[str, ViewRequirement]
-              ) -> SampleBatch:
+    def build(self, view_requirements: ViewRequirementsDict) -> SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
 
         If the episode/trajectory has no DONE=True at the end, will copy
@@ -122,13 +117,10 @@ class _AgentCollector:
         by a Policy.
 
         Args:
-            view_requirements (Dict[str, ViewRequirement]: The view
+            view_requirements (ViewRequirementsDict): The view
                 requirements dict needed to build the SampleBatch from the raw
                 buffers (which may have data shifts as well as mappings from
                 view-col to data-col in them).
-            inference_view_requirements (Dict[str, ViewRequirement]: The view
-                requirements dict needed to build an input dict for a ModelV2
-                forward call.
 
         Returns:
             SampleBatch: The built SampleBatch for this agent, ready to go into
@@ -172,8 +164,8 @@ class _AgentCollector:
         batch = SampleBatch(batch_data)
 
         # Add EPS_ID and UNROLL_ID to batch.
-        batch.data[SampleBatch.EPS_ID] = np.repeat(
-            self.episode_id, batch.count)
+        batch.data[SampleBatch.EPS_ID] = np.repeat(self.episode_id,
+                                                   batch.count)
         if SampleBatch.UNROLL_ID not in batch.data:
             # TODO: (sven) Once we have the additional
             #  model.preprocess_train_batch in place (attention net PR), we
@@ -250,13 +242,13 @@ class _PolicyCollector:
 
     def add_postprocessed_batch_for_training(
             self, batch: SampleBatch,
-            view_requirements: Dict[str, ViewRequirement]) -> None:
+            view_requirements: ViewRequirementsDict) -> None:
         """Adds a postprocessed SampleBatch (single agent) to our buffers.
 
         Args:
             batch (SampleBatch): A single agent (one trajectory) SampleBatch
                 to be added to the Policy's buffers.
-            view_requirements (Dict[str, ViewRequirement]: The view
+            view_requirements (DViewRequirementsDict): The view
                 requirements for the policy. This is so we know, whether a
                 view-column needs to be copied at all (not needed for
                 training).
@@ -390,9 +382,6 @@ class _SimpleListCollector(_SampleCollector):
             self.agent_key_to_policy_id[agent_key] = policy_id
         else:
             assert self.agent_key_to_policy_id[agent_key] == policy_id
-        policy = self.policy_map[policy_id]
-        view_reqs = policy.model.inference_view_requirements if \
-            getattr(policy, "model", None) else policy.view_requirements
 
         # Add initial obs to Trajectory.
         assert agent_key not in self.agent_collectors
@@ -403,8 +392,7 @@ class _SimpleListCollector(_SampleCollector):
             agent_index=episode._agent_index(agent_id),
             env_id=env_id,
             t=t,
-            init_obs=init_obs,
-            view_requirements=view_reqs)
+            init_obs=init_obs)
 
         self.episodes[episode.episode_id] = episode
         if episode.batch_builder is None:
@@ -494,10 +482,7 @@ class _SimpleListCollector(_SampleCollector):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
-            model_view_reqs = policy.model.inference_view_requirements if \
-                getattr(policy, "model", None) else policy.view_requirements
-            pre_batch = collector.build(policy.view_requirements,
-                                        model_view_reqs)
+            pre_batch = collector.build(policy.view_requirements)
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.
@@ -535,8 +520,8 @@ class _SimpleListCollector(_SampleCollector):
             del other_batches[agent_id]
             pid = self.agent_key_to_policy_id[(episode_id, agent_id)]
             policy = self.policy_map[pid]
-            if any(pre_batch[SampleBatch.DONES][:-1]) or len(set(
-                    pre_batch[SampleBatch.EPS_ID])) > 1:
+            if any(pre_batch[SampleBatch.DONES][:-1]) or len(
+                    set(pre_batch[SampleBatch.EPS_ID])) > 1:
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "
                     "from a single trajectory.", pre_batch)

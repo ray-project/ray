@@ -568,7 +568,6 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.OBS,
                 shift=1,
                 space=self.observation_space),
-
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             # For backward compatibility with custom Models that don't specify
             # these explicitly (will be removed by Policy if not used).
@@ -576,7 +575,6 @@ class Policy(metaclass=ABCMeta):
                 data_col=SampleBatch.ACTIONS,
                 shift=-1,
                 space=self.action_space),
-
             SampleBatch.REWARDS: ViewRequirement(),
             # For backward compatibility with custom Models that don't specify
             # these explicitly (will be removed by Policy if not used).
@@ -629,8 +627,7 @@ class Policy(metaclass=ABCMeta):
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
         batch_for_postproc = UsageTrackingDict(self._dummy_batch)
         batch_for_postproc.count = self._dummy_batch.count
-        self.exploration.postprocess_trajectory(
-            self, batch_for_postproc)
+        self.exploration.postprocess_trajectory(self, batch_for_postproc)
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]

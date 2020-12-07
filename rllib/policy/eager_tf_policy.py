@@ -406,7 +406,7 @@ def build_eager_tf_policy(name,
                         timestep=timestep, explore=explore)
 
                     if action_distribution_fn:
-                        dist_inputs, dist_class, state_out = \
+                        dist_inputs, self.dist_class, state_out = \
                             action_distribution_fn(
                                 self, self.model,
                                 input_dict[SampleBatch.CUR_OBS],
@@ -414,11 +414,10 @@ def build_eager_tf_policy(name,
                                 timestep=timestep,
                                 is_training=False)
                     else:
-                        dist_class = self.dist_class
                         dist_inputs, state_out = self.model(
                             input_dict, state_batches, seq_lens)
 
-                    action_dist = dist_class(dist_inputs, self.model)
+                    action_dist = self.dist_class(dist_inputs, self.model)
 
                     # Get the exploration action from the forward results.
                     actions, logp = self.exploration.get_exploration_action(
