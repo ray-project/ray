@@ -288,7 +288,7 @@ class GTrXLNet(RecurrentNetwork):
         # current one (0))
         # 1 to `num_transformer_units`: Memory data (one per transformer unit).
         for i in range(self.num_transformer_units):
-            space = Box(-1.0, 1.0, shape=(self.attn_dim,))
+            space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
@@ -377,9 +377,14 @@ class GTrXLNet(RecurrentNetwork):
             if view_col.startswith("state_in_"):
                 idx = index if index >= 0 else len(sample_batch[view_col]) - 1
                 data_col = view_req.data_col
-                hang_time_steps = len(sample_batch[data_col]) % self.memory_training
-                input_dict[view_col] = np.array([np.concatenate(
-                    [sample_batch[view_col][idx,hang_time_steps:], sample_batch[data_col][-hang_time_steps:]])])
+                hang_time_steps = len(
+                    sample_batch[data_col]) % self.memory_training
+                input_dict[view_col] = np.array([
+                    np.concatenate([
+                        sample_batch[view_col][idx, hang_time_steps:],
+                        sample_batch[data_col][-hang_time_steps:]
+                    ])
+                ])
             # Index range.
             elif isinstance(index, tuple):
                 data = sample_batch[view_col][index[0]:index[1] + 1]

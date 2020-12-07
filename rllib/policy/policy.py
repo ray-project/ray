@@ -728,20 +728,13 @@ class Policy(metaclass=ABCMeta):
                 # Single index.
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):
-                        ret[view_col] = np.zeros_like(
-                            [view_req.space.sample() for _ in
-                             range(batch_size)])
+                        ret[view_col] = np.zeros_like([
+                            view_req.space.sample() for _ in range(batch_size)
+                        ])
                     else:
-                        ret[view_col] = [view_req.space for _ in
-                                         range(batch_size)]
-
-        ## Handle input-dict requests (point to same ret here).
-        #_input_dict = {k: v for k, v in ret.items()}
-        #for view_col, view_req in self.view_requirements.items():
-        #    if view_req.is_input_dict:
-        #        ret[view_col] = _input_dict
-        #        ret[view_col]["seq_lens"] = np.array(
-        #            [1 for _ in range(batch_size)], dtype=np.int32)
+                        ret[view_col] = [
+                            view_req.space for _ in range(batch_size)
+                        ]
 
         return SampleBatch(ret, _dont_check_lens=True)
 

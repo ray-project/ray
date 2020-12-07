@@ -185,8 +185,8 @@ class DynamicTFPolicy(TFPolicy):
                 self._state_inputs = [
                     get_placeholder(
                         space=vr.space,
-                        time_axis=not isinstance(vr.shift, int)) for k,
-                    vr in self.model.inference_view_requirements.items()
+                        time_axis=not isinstance(vr.shift, int)) for k, vr in
+                    self.model.inference_view_requirements.items()
                     if k.startswith("state_in_")
                 ]
             else:
@@ -198,9 +198,6 @@ class DynamicTFPolicy(TFPolicy):
         # Use default settings.
         # Add NEXT_OBS, STATE_IN_0.., and others.
         self.view_requirements = self._get_default_view_requirements()
-        ## Update this Policy's ViewRequirements (if function given).
-        #if callable(view_requirements_fn):
-        #    self.view_requirements.update(view_requirements_fn(self))
         # Combine view_requirements for Model and Policy.
         self.view_requirements.update(self.model.inference_view_requirements)
 
@@ -498,9 +495,6 @@ class DynamicTFPolicy(TFPolicy):
             for k, v in self.extra_compute_action_fetches().items():
                 dummy_batch[k] = fake_array(v)
             dummy_batch = SampleBatch(dummy_batch)
-
-        ## Postprocessing might depend on variable init, so run it first here.
-        #self._sess.run(tf1.global_variables_initializer())
 
         batch_for_postproc = UsageTrackingDict(dummy_batch)
         batch_for_postproc.count = dummy_batch.count

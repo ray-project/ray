@@ -162,18 +162,19 @@ class _AgentCollector:
                         math.ceil((len(np_data[data_col]) - self.shift_before)
                                   / view_req.batch_repeat_value))
                     data = np.asarray([
-                        np_data[data_col]
-                        [self.shift_before + (i * view_req.batch_repeat_value) +
-                         view_req.shift_from +
-                         obs_shift:self.shift_before + (i * view_req.batch_repeat_value) +
-                         view_req.shift_to + 1 + obs_shift]
+                        np_data[data_col][self.shift_before +
+                                          (i * view_req.batch_repeat_value) +
+                                          view_req.shift_from +
+                                          obs_shift:self.shift_before +
+                                          (i * view_req.batch_repeat_value) +
+                                          view_req.shift_to + 1 + obs_shift]
                         for i in range(count)
                     ])
                 else:
-                    data = np_data[data_col][
-                        self.shift_before + view_req.shift_from +
-                        obs_shift:self.shift_before +
-                        view_req.shift_to + 1 + obs_shift]
+                    data = np_data[data_col][self.shift_before +
+                                             view_req.shift_from +
+                                             obs_shift:self.shift_before +
+                                             view_req.shift_to + 1 + obs_shift]
             # Set of (probably non-consecutive) indices.
             elif isinstance(view_req.shift, np.ndarray):
                 data = np_data[data_col][self.shift_before + obs_shift +
@@ -190,8 +191,8 @@ class _AgentCollector:
                         self.buffers[data_col][self.shift_before + shift:] + [
                             np.zeros(
                                 shape=view_req.space.shape,
-                                dtype=view_req.space.dtype) for _ in
-                            range(shift)
+                                dtype=view_req.space.dtype)
+                            for _ in range(shift)
                         ])
                 # Shift is negative: Shift into the already existing and
                 # 0-padded "before" area of our buffers.
@@ -306,8 +307,6 @@ class _PolicyCollector:
             if view_col not in view_requirements or \
                     view_requirements[view_col].used_for_training:
                 self.buffers[view_col].extend(data)
-            #assert view_requirements[view_col].is_input_dict is False
-            #self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.count += batch.count
         # Adjust the seq-lens array depending on the incoming agent sequences.
@@ -558,10 +557,7 @@ class _SimpleListCollector(_SampleCollector):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
-            #model_view_reqs = policy.model.inference_view_requirements if \
-            #    getattr(policy, "model", None) else policy.view_requirements
             pre_batch = collector.build(policy.view_requirements)
-                                        #model_view_reqs)
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.
