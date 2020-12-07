@@ -82,8 +82,7 @@ public class GlobalStateAccessor {
 
   public byte[] getPlacementGroupInfo(PlacementGroupId placementGroupId) {
     synchronized (GlobalStateAccessor.class) {
-      Preconditions.checkNotNull(placementGroupId,
-          "PlacementGroupId can't be null when get placement group info.");
+      validateGlobalStateAccessorPointer();
       return nativeGetPlacementGroupInfo(globalStateAccessorNativePointer,
         placementGroupId.getBytes());
     }

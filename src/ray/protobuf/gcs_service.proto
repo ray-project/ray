@@ -527,20 +527,28 @@ message GetAllPlacementGroupReply {
   repeated PlacementGroupTableData placement_group_table_data = 2;
 }
 
+message WaitPlacementGroupUntilReadyRequest {
+  bytes placement_group_id = 1;
+}
+
+message WaitPlacementGroupUntilReadyReply {
+  GcsStatus status = 1;
+}
+
 // Service for placement group info access.
 service PlacementGroupInfoGcsService {
   // Create placement group via gcs service.
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
-
   // Remove placement group via gcs service.
   rpc RemovePlacementGroup(RemovePlacementGroupRequest)
       returns (RemovePlacementGroupReply);
-
   // Get placement group information via gcs service.
   rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
-
   // Get information of all placement group from GCS Service.
   rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
       returns (GetAllPlacementGroupReply);
+  // Wait for placement group until ready.
+  rpc WaitPlacementGroupUntilReady(WaitPlacementGroupUntilReadyRequest)
+      returns (WaitPlacementGroupUntilReadyReply);
 }

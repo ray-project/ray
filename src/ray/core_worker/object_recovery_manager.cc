@@ -18,23 +18,16 @@
 
 namespace ray {
 
-bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
+Status ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   // Check the ReferenceCounter to see if there is a location for the object.
-  bool owned_by_us;
   NodeID pinned_at;
   bool spilled;
-  bool ref_exists = reference_counter_->IsPlasmaObjectPinnedOrSpilled(
-      object_id, &owned_by_us, &pinned_at, &spilled);
-  if (!ref_exists) {
-    // References that have gone out of scope cannot be recovered.
-    return false;
-  }
-
+  bool owned_by_us =
+      reference_counter_->IsPlasmaObjectPinnedOrSpilled(object_id, &pinned_at, &spilled);
   if (!owned_by_us) {
-    RAY_LOG(INFO) << "Reconstruction for borrowed objects (" << object_id
-                  << ") is not supported";
-    reconstruction_failure_callback_(object_id, /*pin_object=*/false);
-    return true;
+    return Status::Invalid(
+        "Object reference no longer exists or is not owned by us. Either lineage pinning "
+        "is disabled or this object ID is borrowed.");
   }
 
   bool already_pending_recovery = true;
@@ -56,7 +49,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
           RAY_LOG(INFO) << "Recovery complete for object " << object_id;
         });
     // Lookup the object in the GCS to find another copy.
-    RAY_CHECK_OK(object_lookup_(
+    RAY_RETURN_NOT_OK(object_lookup_(
         object_id,
         [this](const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
           PinOrReconstructObject(object_id, locations);
@@ -64,7 +57,7 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   } else {
     RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
   }
-  return true;
+  return Status::OK();
 }
 
 void ObjectRecoveryManager::PinOrReconstructObject(
@@ -137,8 +130,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   if (status.ok()) {
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
-      auto recovered = RecoverObject(dep);
-      if (!recovered) {
+      auto status = RecoverObject(dep);
+      if (!status.ok()) {
         RAY_LOG(INFO) << "Failed to reconstruct object " << dep << ": "
                       << status.message();
         // We do not pin the dependency because we may not be the owner.

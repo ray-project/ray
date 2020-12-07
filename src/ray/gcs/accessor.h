@@ -749,7 +749,7 @@ class PlacementGroupInfoAccessor {
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback) = 0;
 
-  /// Remove a placement group to GCS synchronously.
+  /// Remove a placement group to GCS asynchronously.
   ///
   /// \param placement_group_id The id for the placement group to remove.
   /// \param callback Callback that will be called after the placement group is
@@ -757,6 +757,14 @@ class PlacementGroupInfoAccessor {
   /// \return Status
   virtual Status AsyncRemovePlacementGroup(const PlacementGroupID &placement_group_id,
                                            const StatusCallback &callback) = 0;
+
+  /// Wait for a placement group until ready asynchronously.
+  ///
+  /// \param placement_group_id The id for the placement group to wait for until ready.
+  /// \param callback Callback that will be called after the placement group is created.
+  /// \return Status
+  virtual Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
+                                     const StatusCallback &callback) = 0;
 
  protected:
   PlacementGroupInfoAccessor() = default;
