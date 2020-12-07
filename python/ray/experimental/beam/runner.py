@@ -27,7 +27,10 @@ from apache_beam.transforms.environments import Environment
 
 
 def get_my_ip():
-    return socket.gethostname()[3:].replace("-", ".")
+    if sys.platform == "darwin":
+        return "localhost"
+    else:
+        return socket.gethostname()[3:].replace("-", ".")
 
 
 @Environment.register_urn("ray_worker_env", bytes)
