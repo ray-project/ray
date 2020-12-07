@@ -143,6 +143,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch" if args.torch else "tf",
+        "_use_trajectory_view_api": True,
     }
 
     stop = {
