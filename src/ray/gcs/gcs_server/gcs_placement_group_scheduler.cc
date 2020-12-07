@@ -647,7 +647,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
 }
 
 void GcsPlacementGroupScheduler::AcquireBundleResources(
-    const std::shared_ptr<BundleLocations> bundle_locations) {
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
   // Acquire bundle resources from gcs resources manager.
   for (auto &bundle : *bundle_locations) {
     gcs_resource_manager_.AcquireResources(bundle.second.first,
@@ -656,7 +656,7 @@ void GcsPlacementGroupScheduler::AcquireBundleResources(
 }
 
 void GcsPlacementGroupScheduler::ReturnBundleResources(
-    const std::shared_ptr<BundleLocations> bundle_locations) {
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
   // Release bundle resources to gcs resources manager.
   for (auto &bundle : *bundle_locations) {
     gcs_resource_manager_.ReleaseResources(bundle.second.first,
@@ -764,16 +764,17 @@ void BundleLocationIndex::AddNodes(
 
 LeaseStatusTracker::LeaseStatusTracker(
     std::shared_ptr<GcsPlacementGroup> placement_group,
-    std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
-    ScheduleMap &schedule_map)
+    const std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
+    const ScheduleMap &schedule_map)
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
   uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
   committed_bundle_locations_ = std::make_shared<BundleLocations>();
   bundle_locations_ = std::make_shared<BundleLocations>();
   for (const auto &bundle : unplaced_bundles) {
-    (*bundle_locations_)[bundle->BundleId()] =
-        std::make_pair(schedule_map[bundle->BundleId()], bundle);
+    const auto &iter = schedule_map.find(bundle->BundleId());
+    RAY_CHECK(iter != schedule_map.end());
+    (*bundle_locations_)[bundle->BundleId()] = std::make_pair(iter->second, bundle);
   }
 }
 

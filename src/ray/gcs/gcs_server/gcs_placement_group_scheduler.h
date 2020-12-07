@@ -170,9 +170,10 @@ enum class LeasingState {
 /// status.
 class LeaseStatusTracker {
  public:
-  LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
-                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
-                     ScheduleMap &schedule_map);
+  LeaseStatusTracker(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      const std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
+      const ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
@@ -512,10 +513,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Acquire the bundle resources from the cluster resources.
-  void AcquireBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
+  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Return the bundle resources to the cluster resources.
-  void ReturnBundleResources(const std::shared_ptr<BundleLocations> bundle_locations);
+  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
