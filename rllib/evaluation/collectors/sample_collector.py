@@ -191,7 +191,7 @@ class _SampleCollector(metaclass=ABCMeta):
         postprocessor.
         This is usually called to collect samples for policy training.
         If not enough data has been collected yet (`rollout_fragment_length`),
-        returns None.
+        returns an empty list.
 
         Returns:
             List[Union[MultiAgentBatch, SampleBatch]]: Returns a (possibly
