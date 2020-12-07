@@ -1,7 +1,6 @@
 import argparse
 import numpy as np
 import os
-import random
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
@@ -10,11 +9,10 @@ import torchvision.transforms as transforms
 
 import ray
 from ray import tune
-from ray.autoscaler._private.commands import kill_node
 from ray.tune import CLIReporter
-from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils.util import merge_dicts
+from ray.tune.utils.mock import FailureInjectorCallback
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
@@ -26,23 +24,6 @@ parser.add_argument(
     default=False,
     help="Finish quickly for training.")
 args = parser.parse_args()
-
-
-class FailureInjectorExecutor(RayTrialExecutor):
-    """Adds random failure injection to the TrialExecutor."""
-
-    def on_step_begin(self, trial_runner):
-        """Before step(), update available resources and inject failure."""
-        self._update_avail_resources()
-        # With 10% probability inject failure to a worker.
-        if random.random() < 0.1 and not args.smoke_test:
-            # With 10% probability fully terminate the node.
-            should_terminate = random.random() < 0.1
-            kill_node(
-                "/root/ray_bootstrap_config.yaml",
-                yes=True,
-                hard=should_terminate,
-                override_cluster_name=None)
 
 
 def initialization_hook():
@@ -96,8 +77,6 @@ def optimizer_creator(model, config):
 ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
 
-executor = FailureInjectorExecutor(queue_trials=True)
-
 CustomTrainingOperator = TrainingOperator.from_creators(
     model_creator=ResNet18, optimizer_creator=optimizer_creator,
     data_creator=cifar_creator, loss_creator=nn.CrossEntropyLoss)
@@ -150,7 +129,8 @@ analysis = tune.run(
     checkpoint_freq=2,  # used for fault tolerance
     progress_reporter=reporter,
     scheduler=pbt_scheduler,
-    trial_executor=executor,
+    callbacks=[FailureInjectorCallback()],
+    queue_trials=True,
     stop={"training_iteration": 1} if args.smoke_test else None)
 
 print(analysis.get_best_config(metric="val_loss", mode="min"))

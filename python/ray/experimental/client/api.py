@@ -31,7 +31,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def call_remote(self, f, *args, **kwargs):
+    def call_remote(self, f, kind, *args, **kwargs):
         pass
 
     @abstractmethod
@@ -55,8 +55,8 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, f, *args, **kwargs):
-        return self.worker.call_remote(f, *args, **kwargs)
+    def call_remote(self, f, kind, *args, **kwargs):
+        return self.worker.call_remote(f, kind, *args, **kwargs)
 
     def close(self, *args, **kwargs):
         return self.worker.close()

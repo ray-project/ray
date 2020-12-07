@@ -627,6 +627,7 @@ def with_parameters(fn, **kwargs):
         parameter_registry.put(prefix + k, v)
 
     use_checkpoint = detect_checkpoint_function(fn)
+    keys = list(kwargs.keys())
 
     def inner(config, checkpoint_dir=None):
         fn_kwargs = {}
@@ -638,7 +639,7 @@ def with_parameters(fn, **kwargs):
                           or default
             fn_kwargs["checkpoint_dir"] = default
 
-        for k in kwargs:
+        for k in keys:
             fn_kwargs[k] = parameter_registry.get(prefix + k)
         fn(config, **fn_kwargs)
 
