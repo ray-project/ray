@@ -1058,7 +1058,6 @@ def _process_observations_w_trajectory_view_api(
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     "t": episode.length - 1,
-                    "eps_id": episode.episode_id,
                     "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.

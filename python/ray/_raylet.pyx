@@ -335,6 +335,7 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
@@ -456,7 +457,23 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
+                        if debugger_breakpoint != b"":
+                            ray.util.pdb.set_trace(
+                                breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
+                        next_breakpoint = (
+                            ray.worker.global_worker.debugger_breakpoint)
+                        if next_breakpoint != b"":
+                            # If this happens, the user typed "remote" and
+                            # there were no more remote calls left in this
+                            # task. In that case we just exit the debugger.
+                            ray.experimental.internal_kv._internal_kv_put(
+                                "RAY_PDB_{}".format(next_breakpoint),
+                                "{\"exit_debugger\": true}")
+                            ray.experimental.internal_kv._internal_kv_del(
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
+                            )
+                            ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
                 except KeyboardInterrupt as e:
                     raise TaskCancelledError(
@@ -522,6 +539,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
@@ -531,7 +549,7 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
-                             returns)
+                             debugger_breakpoint, returns)
             except Exception:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -1040,6 +1058,7 @@ cdef class CoreWorker:
                     PlacementGroupID placement_group_id,
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
+                    c_string debugger_breakpoint,
                     override_environment_variables):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1066,7 +1085,8 @@ cdef class CoreWorker:
                     &return_ids, max_retries,
                     c_pair[CPlacementGroupID, int64_t](
                         c_placement_group_id, placement_group_bundle_index),
-                    placement_group_capture_child_tasks)
+                    placement_group_capture_child_tasks,
+                    debugger_breakpoint)
 
             return VectorToObjectRefs(return_ids)
 
@@ -1411,8 +1431,16 @@ cdef class CoreWorker:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
                 data_sizes.push_back(serialized_object.total_bytes)
-                metadatas.push_back(
-                    string_to_buffer(serialized_object.metadata))
+                metadata = serialized_object.metadata
+                if ray.worker.global_worker.debugger_get_breakpoint:
+                    breakpoint = (
+                        ray.worker.global_worker.debugger_get_breakpoint())
+                    metadata += (
+                        b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
+                        breakpoint.encode())
+                    # Reset debugging context of this worker.
+                    ray.worker.global_worker.debugger_get_breakpoint = b""
+                metadatas.push_back(string_to_buffer(metadata))
                 serialized_objects.append(serialized_object)
                 contained_ids.push_back(
                     ObjectRefsToVector(serialized_object.contained_object_refs)
