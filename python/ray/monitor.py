@@ -403,5 +403,4 @@ if __name__ == "__main__":
                    f"following error:\n{traceback_str}")
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
-        logger.error(message)
         raise e
