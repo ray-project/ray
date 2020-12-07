@@ -853,6 +853,7 @@ def custom_excepthook(type, value, tb):
         worker_type = ray.gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
+        ray.state.state._check_connected()
         ray.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
