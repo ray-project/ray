@@ -53,7 +53,7 @@ class ViewRequirement:
                 fashion, you can set `data_col="obs"` and
                 `shift=[-3, -2, -1, 0]`.
                 Example: For the obs input to an attention net, you can specify
-                a range via a str: `data_rel_pos="-100:0"`, which will pass in
+                a range via a str: `shift="-100:0"`, which will pass in
                 the past 100 observations plus the current one.
             index (Optional[int]): An optional absolute position arg,
                 used e.g. for the location of a requested inference dict within

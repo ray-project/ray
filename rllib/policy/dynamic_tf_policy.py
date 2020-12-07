@@ -190,7 +190,7 @@ class DynamicTFPolicy(TFPolicy):
                 self._state_inputs = [
                     get_placeholder(
                         space=vr.space,
-                        time_axis=not isinstance(vr.data_rel_pos, int)) for k,
+                        time_axis=not isinstance(vr.shift, int)) for k,
                     vr in self.model.inference_view_requirements.items()
                     if k.startswith("state_in_")
                 ]
@@ -438,7 +438,7 @@ class DynamicTFPolicy(TFPolicy):
                 input_dict[view_col] = existing_inputs[view_col]
             # All others.
             else:
-                time_axis = not isinstance(view_req.data_rel_pos, int)
+                time_axis = not isinstance(view_req.shift, int)
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).

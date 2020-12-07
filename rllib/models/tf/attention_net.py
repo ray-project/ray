@@ -291,7 +291,7 @@ class GTrXLNet(RecurrentNetwork):
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    data_rel_pos="-{}:-1".format(self.memory_inference),
+                    shift="-{}:-1".format(self.memory_inference),
                     # Repeat the incoming state every max-seq-len times.
                     batch_repeat_value=self.max_seq_len,
                     space=Box(-1.0, 1.0, shape=(self.attn_dim,)))

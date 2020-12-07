@@ -700,17 +700,17 @@ class Policy(metaclass=ABCMeta):
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
                 # Range of indices on time-axis, make sure to create
-                if view_req.data_rel_pos_from is not None:
+                if view_req.shift_from is not None:
                     ret[view_col] = np.zeros_like([[
                         view_req.space.sample()
-                        for _ in range(view_req.data_rel_pos_to -
-                                       view_req.data_rel_pos_from + 1)
+                        for _ in range(view_req.shift_to -
+                                       view_req.shift_from + 1)
                     ] for b in range(batch_size)])
                 # Set of (probably non-consecutive) indices.
-                elif isinstance(view_req.data_rel_pos, (list, tuple)):
+                elif isinstance(view_req.shift, (list, tuple)):
                     ret[view_col] = np.zeros_like([[
                         view_req.space.sample()
-                        for t in range(len(view_req.data_rel_pos))
+                        for t in range(len(view_req.shift))
                     ] for b in range(batch_size)])
                 # Single index.
                 else:

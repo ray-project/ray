@@ -149,7 +149,7 @@ class _AgentCollector:
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
 
-            #shift = view_req.data_rel_pos - \
+            #shift = view_req.shift - \
             #    (1 if data_col == SampleBatch.OBS else 0)
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
@@ -176,12 +176,12 @@ class _AgentCollector:
                         obs_shift:self.shift_before +
                         view_req.shift_to + 1 + obs_shift]
             # Set of (probably non-consecutive) indices.
-            elif isinstance(view_req.data_rel_pos, np.ndarray):
+            elif isinstance(view_req.shift, np.ndarray):
                 data = np_data[data_col][self.shift_before + obs_shift +
-                                         view_req.data_rel_pos]
+                                         view_req.shift]
             # Single index.
             else:
-                shift = view_req.data_rel_pos + obs_shift
+                shift = view_req.shift + obs_shift
                 # Shift is exactly 0: Use trajectory as is.
                 if shift == 0:
                     data = np_data[data_col][self.shift_before:]
