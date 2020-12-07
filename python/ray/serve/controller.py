@@ -540,7 +540,7 @@ class ServeController:
         # NOTE(ilr) We have to delete this *after* we return to avoid a
         # situation where the controller crashes *after* deleting and before
         # returning to the API (and user).
-        asyncio.get_event_loop().create_task(
+        asyncio.get_event_loop().call_soon(
             lambda: self.inflight_results.pop(uuid))
         return result
 
