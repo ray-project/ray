@@ -33,8 +33,7 @@ class ViewRequirement:
                  shift: Union[int, str, List[int]] = 0,
                  index: Optional[int] = None,
                  batch_repeat_value: int = 1,
-                 used_for_training: bool = True,
-                 is_input_dict: bool = False):
+                 used_for_training: bool = True):
         """Initializes a ViewRequirement object.
 
         Args:
@@ -86,6 +85,8 @@ class ViewRequirement:
         self.batch_repeat_value = batch_repeat_value
 
         self.used_for_training = used_for_training
+
+        #self.view_whole_buffer = view_whole_buffer
 
         ## Whether the "view" is an entire (inference) input dict based on the
         ## Model's `self.inference_view_requirements`.

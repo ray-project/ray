@@ -594,7 +594,8 @@ class DynamicTFPolicy(TFPolicy):
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys and \
                         key not in self.model.inference_view_requirements:
-                    self.view_requirements[key].used_for_training = False
+                    if key in self.view_requirements:
+                        self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed

@@ -145,15 +145,13 @@ class _AgentCollector:
             # -> skip.
             if data_col not in self.buffers:
                 continue
+
             # OBS are already shifted by -1 (the initial obs starts one ts
             # before all other data columns).
             obs_shift = -1 if data_col == SampleBatch.OBS else 0
 
             # Keep an np-array cache so we don't have to regenerate the
             # np-array for different view_cols using to the same data_col.
-
-            #shift = view_req.shift - \
-            #    (1 if data_col == SampleBatch.OBS else 0)
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
 
@@ -163,16 +161,6 @@ class _AgentCollector:
                     count = int(
                         math.ceil((len(np_data[data_col]) - self.shift_before)
                                   / view_req.batch_repeat_value))
-                    #repeat_count = (view_req.shift_to -
-                    #                view_req.shift_from + 1)
-                    #data = np.asarray([
-                    #    np_data[data_col]
-                    #    [self.shift_before + (i * repeat_count) +
-                    #     view_req.shift_from +
-                    #     obs_shift:self.shift_before + (i * repeat_count) +
-                    #     view_req.shift_to + 1 + obs_shift]
-                    #    for i in range(count)
-                    #])
                     data = np.asarray([
                         np_data[data_col]
                         [self.shift_before + (i * view_req.batch_repeat_value) +
@@ -341,7 +329,7 @@ class _PolicyCollector:
         """
         # Create batch from our buffers.
         batch = SampleBatch(
-            self.buffers, _seq_lens=self.seq_lens)#, _dont_check_lens=True)
+            self.buffers, _seq_lens=self.seq_lens, _dont_check_lens=True)
         # Clear buffers for future samples.
         self.buffers.clear()
         # Reset count to 0 and seq-lens to empty list.
