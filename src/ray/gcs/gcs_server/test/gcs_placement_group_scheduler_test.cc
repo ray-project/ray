@@ -610,13 +610,14 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 
   // Filter out the nodes not scheduled by this placement group.
-  int node_index_not_scheduled;
+  int node_index_not_scheduled = -1;
   for (int index = 0; index < node_count; ++index) {
     if (raylet_clients_[index]->commit_callbacks.empty()) {
       node_index_not_scheduled = index;
       break;
     }
   }
+  RAY_CHECK(node_index_not_scheduled != -1);
 
   // Commit bundle resources.
   for (int index = 0; index < node_count; ++index) {
