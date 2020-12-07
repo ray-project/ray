@@ -328,7 +328,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
                             function_descriptor, JobID::Nil(), TaskID::Nil(), 0,
                             TaskID::Nil(), empty_address, 1, resources, resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true);
+                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
   return builder.Build();
 }
 

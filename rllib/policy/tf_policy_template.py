@@ -214,6 +214,8 @@ def build_tf_policy(
                 else:
                     policy._extra_action_fetches = extra_action_fetches_fn(
                         policy)
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
 
             DynamicTFPolicy.__init__(
                 self,

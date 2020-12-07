@@ -558,7 +558,8 @@ class DynamicTFPolicy(TFPolicy):
             for i, si in enumerate(self._state_inputs):
                 train_batch["state_in_{}".format(i)] = si
         else:
-            train_batch = UsageTrackingDict(self._input_dict)
+            train_batch = UsageTrackingDict(
+                dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:
             train_batch["seq_lens"] = self._seq_lens

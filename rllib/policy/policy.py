@@ -564,14 +564,13 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.OBS: ViewRequirement(space=self.observation_space),
             SampleBatch.NEXT_OBS: ViewRequirement(
                 data_col=SampleBatch.OBS,
-                data_rel_pos=1,
+                shift=1,
                 space=self.observation_space),
             SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
             SampleBatch.REWARDS: ViewRequirement(),
             SampleBatch.DONES: ViewRequirement(),
             SampleBatch.INFOS: ViewRequirement(),
             SampleBatch.EPS_ID: ViewRequirement(),
-            SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             "t": ViewRequirement(),
@@ -695,9 +694,6 @@ class Policy(metaclass=ABCMeta):
         """
         ret = {}
         for view_col, view_req in self.view_requirements.items():
-            # Skip input_dicts for now.
-            if view_req.is_input_dict:
-                continue
             if isinstance(view_req.space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(view_req.space)
                 ret[view_col] = \
@@ -744,7 +740,7 @@ class Policy(metaclass=ABCMeta):
             model.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    data_rel_pos=-1,
+                    shift=-1,
                     batch_repeat_value=self.config["model"]["max_seq_len"],
                     space=Box(-1.0, 1.0, shape=state.shape))
             model.inference_view_requirements["state_out_{}".format(i)] = \

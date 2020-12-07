@@ -51,8 +51,8 @@ class _AgentCollector:
 
     def __init__(self, view_reqs):
         self.shift_before = -min(
-            [(int(vr.data_rel_pos.split(":")[0])
-              if isinstance(vr.data_rel_pos, str) else vr.data_rel_pos) +
+            [(int(vr.shift.split(":")[0])
+              if isinstance(vr.shift, str) else vr.shift) +
              (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0)
              for k, vr in view_reqs.items()])
         self.buffers: Dict[str, List] = {}
@@ -112,9 +112,8 @@ class _AgentCollector:
             self.buffers[k].append(v)
         self.count += 1
 
-    def build(self, view_requirements: Dict[str, ViewRequirement],
-              inference_view_requirements: Dict[str, ViewRequirement]
-              ) -> SampleBatch:
+    def build(self, view_requirements: Dict[str, ViewRequirement]) -> \
+            SampleBatch:
         """Builds a SampleBatch from the thus-far collected agent data.
 
         If the episode/trajectory has no DONE=True at the end, will copy
@@ -128,10 +127,6 @@ class _AgentCollector:
                 requirements dict needed to build the SampleBatch from the raw
                 buffers (which may have data shifts as well as mappings from
                 view-col to data-col in them).
-            inference_view_requirements (Dict[str, ViewRequirement]: The view
-                requirements dict needed to build an input dict for a ModelV2
-                forward call.
-
         Returns:
             SampleBatch: The built SampleBatch for this agent, ready to go into
                 postprocessing.
@@ -140,12 +135,6 @@ class _AgentCollector:
         batch_data = {}
         np_data = {}
         for view_col, view_req in view_requirements.items():
-            # Is an input_dict. Build it using the inference view requirements.
-            if view_req.is_input_dict:
-                batch_data[view_col] = self._get_input_dict(
-                    inference_view_requirements, abs_pos=view_req.abs_pos)
-                continue
-
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
 
@@ -166,26 +155,26 @@ class _AgentCollector:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
 
             # Range of indices on time-axis, make sure to create
-            if view_req.data_rel_pos_from is not None:
+            if view_req.shift_from is not None:
                 if view_req.batch_repeat_value > 1:
                     count = int(
                         math.ceil((len(np_data[data_col]) - self.shift_before)
                                   / view_req.batch_repeat_value))
-                    repeat_count = (view_req.data_rel_pos_to -
-                                    view_req.data_rel_pos_from + 1)
+                    repeat_count = (view_req.shift_to -
+                                    view_req.shift_from + 1)
                     data = np.asarray([
                         np_data[data_col]
                         [self.shift_before + (i * repeat_count) +
-                         view_req.data_rel_pos_from +
+                         view_req.shift_from +
                          obs_shift:self.shift_before + (i * repeat_count) +
-                         view_req.data_rel_pos_to + 1 + obs_shift]
+                         view_req.shift_to + 1 + obs_shift]
                         for i in range(count)
                     ])
                 else:
                     data = np_data[data_col][
-                        self.shift_before + view_req.data_rel_pos_from +
+                        self.shift_before + view_req.shift_from +
                         obs_shift:self.shift_before +
-                        view_req.data_rel_pos_to + 1 + obs_shift]
+                        view_req.shift_to + 1 + obs_shift]
             # Set of (probably non-consecutive) indices.
             elif isinstance(view_req.data_rel_pos, np.ndarray):
                 data = np_data[data_col][self.shift_before + obs_shift +
@@ -211,8 +200,7 @@ class _AgentCollector:
                     data = np_data[data_col][self.shift_before + shift:shift]
             if len(data) > 0:
                 batch_data[view_col] = data
-
-        batch = SampleBatch(batch_data, _dont_check_lens=True)
+        batch = SampleBatch(batch_data)
 
         if SampleBatch.UNROLL_ID not in batch.data:
             # TODO: (sven) Once we have the additional
@@ -269,43 +257,6 @@ class _AgentCollector:
                         [np.zeros(shape=shape, dtype=dtype)
                          for _ in range(shift)]
 
-    def _get_input_dict(self, view_reqs, abs_pos: int = -1) -> \
-            Dict[str, TensorType]:
-
-        if abs_pos < 0:
-            abs_pos = len(self.buffers[SampleBatch.OBS]) - 1
-        else:
-            abs_pos = self.shift_before + abs_pos
-
-        input_dict = {}
-        for view_col, view_req in view_reqs.items():
-            # Skip input_dict view-reqs.
-            if view_req.is_input_dict:
-                continue
-
-            # Create the batch of data from the different buffers.
-            data_col = view_req.data_col or view_col
-            # Range of shifts, e.g. "-100:0". Note: This includes index 0!
-            if view_req.data_rel_pos_from is not None:
-                time_indices = (abs_pos + view_req.data_rel_pos_from + 1,
-                                abs_pos + view_req.data_rel_pos_to + 1)
-            # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
-            else:
-                time_indices = abs_pos + view_req.data_rel_pos
-
-            if isinstance(time_indices, tuple):
-                data = self.buffers[data_col][time_indices[0]:time_indices[1] +
-                                              1]
-            else:
-                data = self.buffers[data_col][time_indices]
-            # Create batches of 1 (single-agent input-dict).
-            input_dict[view_col] = np.array([data])
-
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
-
 
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
@@ -348,10 +299,10 @@ class _PolicyCollector:
         for view_col, data in batch.items():
             # Skip columns that are not used for training.
             if view_col not in view_requirements or \
-                    not view_requirements[view_col].used_for_training:
-                continue
-            assert view_requirements[view_col].is_input_dict is False
-            self.buffers[view_col].extend(data)
+                    view_requirements[view_col].used_for_training:
+                self.buffers[view_col].extend(data)
+            #assert view_requirements[view_col].is_input_dict is False
+            #self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.count += batch.count
         # Adjust the seq-lens array depending on the incoming agent sequences.
@@ -542,10 +493,6 @@ class _SimpleListCollector(_SampleCollector):
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
-            # Skip input_dict view-reqs.
-            if view_req.is_input_dict:
-                continue
-
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [
@@ -553,12 +500,12 @@ class _SimpleListCollector(_SampleCollector):
                 SampleBatch.AGENT_INDEX
             ] else 0
             # Range of shifts, e.g. "-100:0". Note: This includes index 0!
-            if view_req.data_rel_pos_from is not None:
-                time_indices = (view_req.data_rel_pos_from + delta,
-                                view_req.data_rel_pos_to + delta)
+            if view_req.shift_from is not None:
+                time_indices = (view_req.shift_from + delta,
+                                view_req.shift_to + delta)
             # Single shift (e.g. -1) or list of shifts, e.g. [-4, -1, 0].
             else:
-                time_indices = view_req.data_rel_pos + delta
+                time_indices = view_req.shift + delta
             data_list = []
             # Loop through agents and add-up their data (batch).
             for k in keys:
@@ -601,10 +548,10 @@ class _SimpleListCollector(_SampleCollector):
                 continue
             pid = self.agent_key_to_policy_id[(eps_id, agent_id)]
             policy = self.policy_map[pid]
-            model_view_reqs = policy.model.inference_view_requirements if \
-                getattr(policy, "model", None) else policy.view_requirements
-            pre_batch = collector.build(policy.view_requirements,
-                                        model_view_reqs)
+            #model_view_reqs = policy.model.inference_view_requirements if \
+            #    getattr(policy, "model", None) else policy.view_requirements
+            pre_batch = collector.build(policy.view_requirements)
+                                        #model_view_reqs)
             pre_batches[agent_id] = (policy, pre_batch)
 
         # Apply reward clipping before calling postprocessing functions.

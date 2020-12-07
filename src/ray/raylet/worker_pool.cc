@@ -656,6 +656,29 @@ void WorkerPool::PopIOWorkerInternal(
   }
 }
 
+void WorkerPool::PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
+  if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    PushRestoreWorker(worker);
+  } else {
+    PushSpillWorker(worker);
+  }
+}
+
+void WorkerPool::PopDeleteWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  auto &state = GetStateForLanguage(Language::PYTHON);
+  // Choose an I/O worker with more idle workers.
+  size_t num_spill_idle_workers = state.spill_io_worker_state.idle_io_workers.size();
+  size_t num_restore_idle_workers = state.restore_io_worker_state.idle_io_workers.size();
+
+  if (num_restore_idle_workers < num_spill_idle_workers) {
+    PopSpillWorker(callback);
+  } else {
+    PopRestoreWorker(callback);
+  }
+}
+
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
