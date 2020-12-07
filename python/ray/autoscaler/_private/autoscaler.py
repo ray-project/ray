@@ -22,7 +22,7 @@ from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    ResourceDemandScheduler, NodeType, NodeID
+    get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
@@ -169,12 +169,20 @@ class StandardAutoscaler:
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
-        for node_id in self._sort_based_on_last_used(nodes, last_used):
+        sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
+        # Account for request_resources().
+        nodes_allowed_to_terminate = {}
+        if self.resource_demand_vector:
+            nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
+                sorted_node_ids)
+
+        for node_id in sorted_node_ids:
             # Make sure to not kill idle node types if the number of workers
-            # of that type is lower/equal to the min_workers of that type.
-            if self._keep_min_worker_of_node_type(
-                    node_id,
-                    node_type_counts) and self.launch_config_ok(node_id):
+            # of that type is lower/equal to the min_workers of that type
+            # or it is needed for request_resources().
+            if (self._keep_min_worker_of_node_type(node_id, node_type_counts)
+                    or not nodes_allowed_to_terminate.get(
+                        node_id, True)) and self.launch_config_ok(node_id):
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
@@ -266,14 +274,16 @@ class StandardAutoscaler:
                                  last_used: Dict[str, float]) -> List[NodeID]:
         """Sort the nodes based on the last time they were used.
 
-        The first item in the return list is the least recently used.
+        The first item in the return list is the most recently used.
         """
         updated_last_used = copy.deepcopy(last_used)
-        now = time.time()
+        # Add the unconnected nodes as the least recently used (the end of
+        # list). This prioritizes connected nodes.
+        least_recently_used = min(last_used.values())
         for node_id in nodes:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip not in updated_last_used:
-                updated_last_used[node_ip] = now
+                updated_last_used[node_ip] = least_recently_used - 1
 
         def last_time_used(node_id: NodeID):
             node_ip = self.provider.internal_ip(node_id)
@@ -281,9 +291,48 @@ class StandardAutoscaler:
 
         return sorted(nodes, key=last_time_used, reverse=True)
 
-    def _keep_min_worker_of_node_type(self, node_id: NodeID,
-                                      node_type_counts: Dict[NodeType, int]):
-        """Returns if workers of node_type should be terminated.
+    def _get_nodes_allowed_to_terminate(
+            self, sorted_node_ids: List[NodeID]) -> Dict[NodeID, bool]:
+        """Returns the nodes allowed to terminate for request_resources().
+
+        Args:
+            sorted_node_ids: the node ids sorted based on last used (LRU last).
+
+        Returns:
+            nodes_allowed_to_terminate: whether the node id is allowed to
+                terminate or not.
+        """
+        nodes_allowed_to_terminate = {}
+        max_node_resources = []
+        resource_demand_vector_node_ids = []
+        # Get max resources on all the non terminated nodes.
+        for node_id in sorted_node_ids:
+            tags = self.provider.node_tags(node_id)
+            if TAG_RAY_USER_NODE_TYPE in tags:
+                node_type = tags[TAG_RAY_USER_NODE_TYPE]
+                max_node_resources.append(
+                    copy.deepcopy(
+                        self.available_node_types[node_type]["resources"]))
+                resource_demand_vector_node_ids.append(node_id)
+        # Since it is sorted based on last used, we "keep" nodes that are
+        # most recently used when we binpack.
+        unfulfilled_resource_requests, used_resource_requests = \
+            get_bin_pack_residual(
+                max_node_resources, self.resource_demand_vector)
+        for i, node_id in enumerate(resource_demand_vector_node_ids):
+            if unfulfilled_resource_requests:
+                nodes_allowed_to_terminate[node_id] = False
+            elif used_resource_requests[i] != max_node_resources[i]:
+                nodes_allowed_to_terminate[node_id] = False
+            else:
+                nodes_allowed_to_terminate[node_id] = True
+        return nodes_allowed_to_terminate
+
+    def _keep_min_worker_of_node_type(
+            self, node_id: NodeID,
+            node_type_counts: Dict[NodeType, int]) -> bool:
+        """Returns if workers of node_type can be terminated.
+        The worker cannot be terminated to respect min_workers constraint.
 
         Receives the counters of running nodes so far and determines if idle
         node_id should be terminated or not. It also updates the counters
@@ -293,7 +342,7 @@ class StandardAutoscaler:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
         Returns:
-            bool: if workers of node_types should be terminated or not.
+            bool: if workers of node_types can be terminated or not.
         """
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_USER_NODE_TYPE in tags:
