@@ -115,7 +115,9 @@ class SampleBatch:
                 [s[k] for s in concat_samples],
                 time_major=concat_samples[0].time_major)
         return SampleBatch(
-            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
+            out,
+            _seq_lens=np.array(seq_lens, dtype=np.int32),
+            _time_major=concat_samples[0].time_major)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -154,7 +156,8 @@ class SampleBatch:
         """
         return SampleBatch(
             {k: np.array(v, copy=True)
-             for (k, v) in self.data.items()})
+             for (k, v) in self.data.items()},
+            _seq_lens=self.seq_lens)
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:
