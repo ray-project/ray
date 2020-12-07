@@ -88,8 +88,8 @@ def do_test_log_likelihood(run,
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
                     preprocessed_obs_batch,
-                    prev_action_batch=np.array([prev_a]),
-                    prev_reward_batch=np.array([prev_r]))
+                    prev_action_batch=np.array([prev_a]) if prev_a else None,
+                    prev_reward_batch=np.array([prev_r]) if prev_r else None)
                 check(logp, expected_logp[0], rtol=0.2)
         # Test all available actions for their logp values.
         else:
