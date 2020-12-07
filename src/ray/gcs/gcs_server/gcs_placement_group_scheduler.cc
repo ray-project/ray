@@ -193,7 +193,15 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     return schedule_map;
   }
 
+  // Filter out the nodes already scheduled by this placement group.
   absl::flat_hash_map<NodeID, ResourceSet> allocated_resources;
+  if (context->bundle_locations_.has_value()) {
+    const auto &bundle_locations = context->bundle_locations_.value();
+    for (auto &bundle : *bundle_locations) {
+      allocated_resources[bundle.second.first] = ResourceSet();
+    }
+  }
+
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
     auto iter = candidate_nodes.begin();
