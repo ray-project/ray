@@ -39,14 +39,14 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
-    bool placement_group_capture_child_tasks,
+    bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      override_environment_variables);
+      debugger_breakpoint, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1294,7 +1294,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries,
                             BundleID placement_options,
-                            bool placement_group_capture_child_tasks) {
+                            bool placement_group_capture_child_tasks,
+                            const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1320,7 +1321,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
                       placement_options, placement_group_capture_child_tasks,
-                      override_environment_variables);
+                      debugger_breakpoint, override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1376,6 +1377,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources, &return_ids,
                       actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
+                      "", /* debugger_breakpoint */
                       override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.dynamic_worker_options,
@@ -1504,6 +1506,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       required_resources, return_ids,
                       std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
+                      "",   /* debugger_breakpoint */
                       override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
   // ignored in the actor because we should always follow the actor's option.
@@ -1802,7 +1805,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
-      return_ids, return_objects);
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
