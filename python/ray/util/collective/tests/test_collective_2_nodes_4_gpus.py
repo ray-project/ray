@@ -55,7 +55,7 @@ def test_get_rank(ray_start_distributed_2_nodes_4_gpus, world_size):
     # create a second group with a different name, and different
     # orders of ranks.
     new_group_name = "default2"
-    ranks = [i for i in range(world_size)]
+    ranks = list(range(world_size))
     shuffle(ranks)
     _ = ray.get([
         actor.init_group.remote(

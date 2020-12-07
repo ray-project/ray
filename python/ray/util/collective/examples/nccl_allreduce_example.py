@@ -36,7 +36,7 @@ if __name__ == "__main__":
         w = Worker.remote()
         workers.append(w)
         init_rets.append(w.setup.remote(num_workers, i))
-    # m = ray.get(init_rets)
+    _ = ray.get(init_rets)
     results = ray.get([w.compute.remote() for w in workers])
     # print(results)
     ray.shutdown()
