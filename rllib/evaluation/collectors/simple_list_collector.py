@@ -212,7 +212,7 @@ class _AgentCollector:
             if len(data) > 0:
                 batch_data[view_col] = data
 
-        batch = SampleBatch(batch_data)
+        batch = SampleBatch(batch_data, _dont_check_lens=True)
 
         # Add EPS_ID and UNROLL_ID to batch.
         batch.data[SampleBatch.EPS_ID] = np.repeat(self.episode_id,
