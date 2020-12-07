@@ -32,8 +32,12 @@ from apache_beam.io import WriteToText
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
-
 from runner import RayWorkerEnvironment
+
+import ray
+ray.init()
+
+NUM_WORKERS = ray.available_resources()["CPU"]
 
 
 class WordExtractingDoFn(beam.DoFn):
@@ -50,6 +54,10 @@ class WordExtractingDoFn(beam.DoFn):
     Returns:
       The processed element.
     """
+        import time
+        start = time.time()
+        while time.time() - start < 0.1:
+            pass
         import re
         return re.findall(r'[\w\']+', element, re.UNICODE)
 
@@ -64,8 +72,8 @@ def run(argv=None, save_main_session=True):
         help='Input file to process.')
     known_args, pipeline_args = parser.parse_known_args(argv)
     pipeline_args.append('--runner=ray.experimental.beam.runner.RayRunner')
-    pipeline_args.append('--direct_num_workers=4')
-#    pipeline_args.append('--direct_running_mode=multi_processing')
+    pipeline_args.append('--direct_num_workers={}'.format(int(NUM_WORKERS)))
+    #    pipeline_args.append('--direct_running_mode=multi_processing')
     #pipeline_args.append('--runner=BundleBasedDirectRunner')
 
     # We use the save_main_session option because one or more DoFn's in this
@@ -77,9 +85,9 @@ def run(argv=None, save_main_session=True):
     from apache_beam.portability import python_urns
     import sys
 
-#    env = beam_runner_api_pb2.Environment(urn="ray_worker")
-#    print(env)
-#    runner = FnApiRunner(default_environment=env)
+    #    env = beam_runner_api_pb2.Environment(urn="ray_worker")
+    #    print(env)
+    #    runner = FnApiRunner(default_environment=env)
     cmd = 'python -m apache_beam.runners.worker.sdk_worker_main'
 
     runner = FnApiRunner(default_environment=RayWorkerEnvironment(cmd))
@@ -87,15 +95,13 @@ def run(argv=None, save_main_session=True):
     pipeline_options.view_as(
         SetupOptions).save_main_session = save_main_session
 
-    import ray
-    ray.init()
-
     # The pipeline will be run on exiting the with block.
     with beam.Pipeline(options=pipeline_options, runner=runner) as p:
 
         # Read the text file[pattern] into a PCollection.
         #lines = p | 'Read' >> ReadFromText(known_args.input)
-        lines = p | 'Read' >> ReadFromText("s3://apache-beam-test/input")
+        #lines = p | 'Read' >> ReadFromText("s3://apache-beam-test/input/wordcount.txt")
+        lines = p | 'Read' >> ReadFromText("s3://apache-beam-test/input/")
 
         counts = (lines
                   | 'Split' >>
