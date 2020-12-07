@@ -50,7 +50,7 @@ def test_placement_group_pack(ray_start_cluster):
                 "CPU": 2
             }
         ])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -96,7 +96,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -142,7 +142,7 @@ def test_placement_group_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -192,7 +192,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -1177,7 +1177,7 @@ def test_create_placement_group_after_gcs_server_restart(
 
     # Create placement group 1 successfully.
     placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group1.ready(), timeout=10)
+    assert placement_group1.wait(10000)
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
@@ -1187,7 +1187,7 @@ def test_create_placement_group_after_gcs_server_restart(
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group2.ready(), timeout=10)
+    assert placement_group2.wait(10000)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
 
@@ -1250,7 +1250,21 @@ def test_create_placement_group_during_gcs_server_restart(
     cluster.head_node.start_gcs_server()
 
     for i in range(0, 100):
-        ray.get(placement_groups[i].ready())
+        assert placement_groups[i].wait(10000)
+
+
+def test_placement_group_wait_api(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name", strategy="PACK", bundles=[{
+            "CPU": 2,
+        }, {
+            "CPU": 2
+        }])
+    assert placement_group.wait(10000)
 
 
 if __name__ == "__main__":
