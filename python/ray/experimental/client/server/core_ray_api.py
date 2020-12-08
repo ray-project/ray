@@ -8,6 +8,7 @@
 # making into the core-ray module are contained and well-defined.
 
 import ray
+from ray import cloudpickle
 
 from ray.experimental.client.api import APIImpl
 from ray.experimental.client.common import ClientActorNameRef
@@ -37,7 +38,8 @@ class CoreRayAPI(APIImpl):
         return instance._get_ray_remote_impl().remote(*args, **kwargs)
 
     def get_actor_from_object(self, actor_id: ClientActorNameRef):
-        return ray.get_actor(actor_id.id.hex())
+        actorhandle = cloudpickle.loads(actor_id.id)
+        return actorhandle
 
     def close(self, *args, **kwargs):
         return None

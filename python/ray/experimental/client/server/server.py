@@ -1,7 +1,6 @@
 import logging
 from concurrent import futures
 import grpc
-import uuid
 from ray import cloudpickle
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -35,13 +34,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def PutObject(self, request, context=None) -> ray_client_pb2.PutResponse:
         obj = cloudpickle.loads(request.data)
-        return self._put_and_retain_obj(obj)
+        objectref = self._put_and_retain_obj(obj)
+        return ray_client_pb2.PutResponse(id=objectref.binary())
 
-    def _put_and_retain_obj(self, obj) -> ray_client_pb2.PutResponse:
+    def _put_and_retain_obj(self, obj) -> ray.ObjectRef:
         objectref = ray.put(obj)
         self.object_refs[objectref.binary()] = objectref
         logger.info("put: %s" % objectref)
-        return ray_client_pb2.PutResponse(id=objectref.binary())
+        return objectref
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = [cloudpickle.loads(o) for o in request.object_refs]
@@ -120,10 +120,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 self.registered_actor_classes[task.payload_id] = reg_class
             remote_class = self.registered_actor_classes[task.payload_id]
             arglist = _convert_args(task.args, prepared_args)
-            bin_id = uuid.uuid4().bytes
-            actor = remote_class.options(name=bin_id.hex()).remote(*arglist)
-            self.actor_refs[bin_id] = actor
-        return ray_client_pb2.ClientTaskTicket(return_id=bin_id)
+            actor = remote_class.remote(*arglist)
+            actorhandle = cloudpickle.dumps(actor)
+            self.actor_refs[actorhandle] = actor
+        return ray_client_pb2.ClientTaskTicket(return_id=actorhandle)
 
     def _schedule_function(
             self,
