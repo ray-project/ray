@@ -127,18 +127,6 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
                                      UpdateActorInfoReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddActorCheckpoint(const AddActorCheckpointRequest &request,
-                                        AddActorCheckpointReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetActorCheckpoint(const GetActorCheckpointRequest &request,
-                                        GetActorCheckpointReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest &request,
-                                          GetActorCheckpointIDReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ActorInfoGcsService`.
@@ -164,9 +152,6 @@ class ActorInfoGrpcService : public GrpcService {
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpoint);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpointID);
   }
 
  private:
@@ -489,6 +474,11 @@ class PlacementGroupInfoGcsServiceHandler {
   virtual void HandleGetAllPlacementGroup(const GetAllPlacementGroupRequest &request,
                                           GetAllPlacementGroupReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleWaitPlacementGroupUntilReady(
+      const WaitPlacementGroupUntilReadyRequest &request,
+      WaitPlacementGroupUntilReadyReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `PlacementGroupInfoGcsService`.
@@ -511,6 +501,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetAllPlacementGroup);
+    PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(WaitPlacementGroupUntilReady);
   }
 
  private:

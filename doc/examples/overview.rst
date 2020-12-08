@@ -18,6 +18,7 @@ Ray Examples
    testing-tips.rst
    progress_bar.rst
    plot_streaming.rst
+   placement-group.rst
 
 .. customgalleryitem::
    :tooltip: Tips for first time users.
@@ -35,6 +36,10 @@ Ray Examples
 .. customgalleryitem::
    :tooltip: Implement a simple streaming application using Ray’s actors.
    :description: :doc:`/auto_examples/plot_streaming`
+
+.. customgalleryitem::
+   :tooltip: Learn placement group use cases with examples.
+   :description: :doc:`/auto_examples/placement-group`
 
 .. raw:: html
 

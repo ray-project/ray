@@ -187,13 +187,18 @@ WORKER_PROCESS_TYPE_SPILL_WORKER = (
     f"ray::SPILL_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
 WORKER_PROCESS_TYPE_RESTORE_WORKER = (
     f"ray::RESTORE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
+WORKER_PROCESS_TYPE_SPILL_WORKER_DELETE = (
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
 # type of the object (see types below) or an integer, which is interpreted
-# as an error value.
+# as an error value. The second part is optional and if present has the
+# form DEBUG:<breakpoint_id>, it is used for implementing the debugger.
 
 # A constant used as object metadata to indicate the object is cross language.
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
@@ -208,6 +213,9 @@ OBJECT_METADATA_TYPE_RAW = b"RAW"
 # TODO(fyrestone): Serialize the ActorHandle via the custom type feature
 # of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
+
+# A constant indicating the debugging part of the metadata (see above).
+OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

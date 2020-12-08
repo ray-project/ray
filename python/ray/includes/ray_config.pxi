@@ -115,3 +115,7 @@ cdef class Config:
     @staticmethod
     def enable_timeline():
         return RayConfig.instance().enable_timeline()
+
+    @staticmethod
+    def automatic_object_deletion_enabled():
+        return RayConfig.instance().automatic_object_deletion_enabled()
