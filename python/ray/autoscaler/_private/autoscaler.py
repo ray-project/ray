@@ -172,7 +172,7 @@ class StandardAutoscaler:
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
         # Don't terminate nodes needed by request_resources()
-        nodes_allowed_to_terminate = {}
+        nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
         if self.resource_demand_vector:
             nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
                 sorted_node_ids)
@@ -317,6 +317,8 @@ class StandardAutoscaler:
                 "resources"])
         if not head_node_resources:
             # Legacy yaml might include {} in the resources field.
+            # TODO(ameer): this is somewhat duplicated in
+            # resource_demand_scheduler.py.
             head_id: List[NodeID] = self.provider.non_terminated_nodes({
                 TAG_RAY_NODE_KIND: NODE_KIND_HEAD
             })
