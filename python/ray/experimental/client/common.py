@@ -30,13 +30,18 @@ class ClientActorNameRef(ClientBaseRef):
     pass
 
 
-class ClientRemoteFunc:
+class ClientStub:
+    pass
+
+
+class ClientRemoteFunc(ClientStub):
     """
     A stub created on the Ray Client to represent a remote
-    function that can be exectued on the cluster. This class
-    is allowed to be passed around between remote functions.
+    function that can be exectued on the cluster.
 
-    Attributes:
+    This class is allowed to be passed around between remote functions.
+
+    Args:
         _func: The actual function to execute remotely
         _name: The original name of the function
         _ref: The ClientObjectRef of the pickled code of the function, _func
@@ -83,12 +88,12 @@ class ClientRemoteFunc:
         return task
 
 
-class ClientActorClass:
-    """
-    A stub created on the Ray Client to represent an actor class
-    wrapped by ray.remote and can be executed on the cluster.
+class ClientActorClass(ClientStub):
+    """ A stub created on the Ray Client to represent an actor class.
 
-    Attributes:
+    It is wrapped by ray.remote and can be executed on the cluster.
+
+    Args:
         actor_cls: The actual class to execute remotely
         _name: The original name of the class
         _ref: The ClientObjectRef of the pickled `actor_cls`
@@ -141,17 +146,20 @@ class ClientActorClass:
         return task
 
 
-class ClientActorHandle:
-    """
-    A stub created on the Ray Client to represent a remote
-    actor that has been started on the cluster. This class
-    is allowed to be passed around between remote functions.
+class ClientActorHandle(ClientStub):
+    """Client-side stub for instantiated actor.
 
-    Attributes:
-        actor_id: A reference to the running actor given to the client
+    A stub created on the Ray Client to represent a remote actor that
+    has been started on the cluster.  This class is allowed to be passed
+    around between remote functions.
+
+    Args:
+        actor_id: A reference to the running actor given to the client. This
+          is a serialized version of the actual handle as an opaque token.
         actor_class: A reference to the ClientActorClass that this actor was
-            instantiated from
-        _real_actor_handle: The Raylet-side ray.actor.ActorHandle
+          instantiated from.
+        _real_actor_handle: Cached copy of the Raylet-side ray.actor.ActorHandle
+          contained in the actor_id ref.
     """
 
     def __init__(self, actor_id: ClientActorNameRef,
@@ -182,18 +190,18 @@ class ClientActorHandle:
         return ClientRemoteMethod(self, key)
 
     def __repr__(self):
-        return "ClientActorHandle(%s, %s, %s)" % (
-            self.actor_id, self.actor_class, self._real_actor_handle)
+        return "ClientActorHandle(%s)" % (self.actor_class)
 
 
-class ClientRemoteMethod:
-    """
-    A stub for a method on a remote actor. Can be annotated with exection
-    options.
+class ClientRemoteMethod(ClientStub):
+    """A stub for a method on a remote actor.
 
-    actor_handle: A reference to the ClientActorHandle that generated
-        this method and will have this method called upon it.
-    method_name: The name of this method
+    Can be annotated with exection options.
+
+    Args:
+        actor_handle: A reference to the ClientActorHandle that generated
+          this method and will have this method called upon it.
+        method_name: The name of this method
     """
 
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):

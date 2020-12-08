@@ -11,6 +11,11 @@
 
 from abc import ABC
 from abc import abstractmethod
+from typing import TYPE_CHECKING, Any
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
+    from ray.experimental.client.common import ClientActorNameRef
+    from ray.experimental.client.common import ClientStub
 
 
 class APIImpl(ABC):
@@ -20,12 +25,13 @@ class APIImpl(ABC):
     """
 
     @abstractmethod
-    def get(self, *args, **kwargs):
+    def get(self, *args, **kwargs) -> Any:
         """
         get is the hook stub passed on to replace `ray.get`
 
-        :param args: opaque arguments
-        :param kwargs: opaque keyword arguments
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
         """
         pass
 
@@ -34,8 +40,9 @@ class APIImpl(ABC):
         """
         put is the hook stub passed on to replace `ray.put`
 
-        :param args: opaque arguments
-        :param kwargs: opaque keyword arguments
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
         """
         pass
 
@@ -44,8 +51,9 @@ class APIImpl(ABC):
         """
         wait is the hook stub passed on to replace `ray.wait`
 
-        :param args: opaque arguments
-        :param kwargs: opaque keyword arguments
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
         """
         pass
 
@@ -53,40 +61,47 @@ class APIImpl(ABC):
     def remote(self, *args, **kwargs):
         """
         remote is the hook stub passed on to replace `ray.remote`.
-        This sets up remote functions or actors.
 
-        :param args: opaque arguments
-        :param kwargs: opaque keyword arguments
+        This sets up remote functions or actors, as the decorator,
+        but does not execute them.
+
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
         """
         pass
 
     @abstractmethod
-    def call_remote(self, instance, *args, **kwargs):
+    def call_remote(self, instance: 'ClientStub', *args, **kwargs):
         """
-        call_remote is called by Client stub objects when they are going to
-        be executed remotely, eg, `f.remote()` or `actor_cls.remote()`.
-        This allows the client stub objects to be passed around and be
+        call_remote is called by stub objects to execute them remotely.
+
+        This is used by stub objects in situations where they're called
+        with .remote, eg, `f.remote()` or `actor_cls.remote()`.
+        This allows the client stub objects to delegate execution to be
         implemented in the most effective way whether it's in the client,
         clientserver, or raylet worker.
 
-        :param instance: The Client-side stub reference to a remote object
-        :param args: opaque arguments
-        :param kwargs: opaque keyword arguments
+        Args:
+            instance: The Client-side stub reference to a remote object
+            args: opaque arguments
+            kwargs: opaque keyword arguments
         """
         pass
 
     @abstractmethod
-    def get_actor_from_object(self, id):
+    def get_actor_from_object(self, id: 'ClientActorNameRef') -> 'ActorHandle':
         """
-        get_actor_from_object returns a reference to an actor
-        from an opaque actor ID, passed in as bytes.
+        get_actor_from_object returns a reference to an actor given an
+        opaque id.
 
-        :param id: Client-side actor ref to retrieve a Ray reference to
+        Args:
+            id: Client-side actor ref to retrieve
         """
         pass
 
     @abstractmethod
-    def close(self, *args, **kwargs):
+    def close(self):
         """
         close cleans up an API connection by closing any channels or
         shutting down any servers gracefully.
@@ -121,7 +136,7 @@ class ClientAPI(APIImpl):
     def get_actor_from_object(self, id):
         raise Exception("Calling get_actor_from_object on the client side")
 
-    def close(self, *args, **kwargs):
+    def close(self):
         return self.worker.close()
 
     def __getattr__(self, key: str):

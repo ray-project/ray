@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 # * Both will be set if we're running both (as in a test)
 # * Neither should be set if we're inside the raylet (but we still need to shim
 #       from the client API surface to the Ray API)
+#
+# The job of RayAPIStub (below) delegates to the appropriate one of these
+# depending on what's set or not. Then, all users importing the ray object
+# from this package get the stub which routes them to the appropriate APIImpl.
 _client_api: Optional[APIImpl] = None
 _server_api: Optional[APIImpl] = None
 

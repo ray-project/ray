@@ -41,7 +41,7 @@ class CoreRayAPI(APIImpl):
         actorhandle = cloudpickle.loads(actor_id.id)
         return actorhandle
 
-    def close(self, *args, **kwargs):
+    def close(self):
         return None
 
     # Allow for generic fallback to ray.* in remote methods. This allows calls
@@ -61,6 +61,7 @@ class RayServerAPI(CoreRayAPI):
     def __init__(self, server_instance):
         self.server = server_instance
 
+    # Wrap single item into list if needed before calling server put.
     def put(self, vals, *args, **kwargs):
         to_put = []
         single = False
