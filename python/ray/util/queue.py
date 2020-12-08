@@ -246,9 +246,8 @@ class _QueueActor:
     def put_nowait_batch(self, items):
         # If maxsize is 0, queue is unbounded, so no need to check size.
         if self.maxsize > 0 and len(items) + self.qsize() > self.maxsize:
-            raise Full("Cannot add " + str(len(items)) +
-                       " items to queue of size " + str(self.qsize()) +
-                       " and maxsize " + str(self.maxsize))
+            raise Full(f"Cannot add {len(items)} items to queue of size "
+                       f"{self.qsize()} and maxsize {self.maxsize}.")
         for item in items:
             self.queue.put_nowait(item)
 
@@ -257,6 +256,6 @@ class _QueueActor:
 
     def get_nowait_batch(self, num_items):
         if num_items > self.qsize():
-            raise Empty("Cannot get " + str(num_items) +
-                        " items from queue of size " + str(self.qsize()))
+            raise Empty(f"Cannot get {num_items} items from queue of size "
+                        f"{self.qsize()}.")
         return [self.queue.get_nowait() for _ in range(num_items)]
