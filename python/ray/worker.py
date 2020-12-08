@@ -1446,7 +1446,8 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
         num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
-        fetch_local (bool): Fetch the object to local node if it's not.
+        fetch_local (bool): If this is true, the call will only return a ref as
+             ready once the object is fetched to the local node
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
