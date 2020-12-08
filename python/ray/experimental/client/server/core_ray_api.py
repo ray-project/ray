@@ -11,7 +11,7 @@ import ray
 from ray import cloudpickle
 
 from ray.experimental.client.api import APIImpl
-from ray.experimental.client.common import ClientActorNameRef
+from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientObjectRef
 
 
@@ -36,10 +36,6 @@ class CoreRayAPI(APIImpl):
 
     def call_remote(self, instance, *args, **kwargs):
         return instance._get_ray_remote_impl().remote(*args, **kwargs)
-
-    def get_actor_from_object(self, actor_id: ClientActorNameRef):
-        actorhandle = cloudpickle.loads(actor_id.id)
-        return actorhandle
 
     def close(self):
         return None
@@ -79,9 +75,6 @@ class RayServerAPI(CoreRayAPI):
     def _put(self, val):
         resp = self.server._put_and_retain_obj(val)
         return ClientObjectRef(resp.id)
-
-    def get_actor_from_object(self, ref: ClientActorNameRef):
-        return self.server.actor_refs[ref.id]
 
     def call_remote(self, instance, *args, **kwargs):
         task = instance._prepare_client_task()

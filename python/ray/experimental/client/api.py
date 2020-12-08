@@ -14,7 +14,6 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.experimental.client.common import ClientActorNameRef
     from ray.experimental.client.common import ClientStub
 
 
@@ -90,17 +89,6 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def get_actor_from_object(self, id: "ClientActorNameRef") -> "ActorHandle":
-        """
-        get_actor_from_object returns a reference to an actor given an
-        opaque id.
-
-        Args:
-            id: Client-side actor ref to retrieve
-        """
-        pass
-
-    @abstractmethod
     def close(self):
         """
         close cleans up an API connection by closing any channels or
@@ -132,9 +120,6 @@ class ClientAPI(APIImpl):
 
     def call_remote(self, f, *args, **kwargs):
         return self.worker.call_remote(f, *args, **kwargs)
-
-    def get_actor_from_object(self, id):
-        raise Exception("Calling get_actor_from_object on the client side")
 
     def close(self):
         return self.worker.close()

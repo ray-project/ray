@@ -26,7 +26,7 @@ class ClientObjectRef(ClientBaseRef):
     pass
 
 
-class ClientActorNameRef(ClientBaseRef):
+class ClientActorRef(ClientBaseRef):
     pass
 
 
@@ -54,12 +54,16 @@ class ClientRemoteFunc(ClientStub):
         self._name = f.__name__
         self.id = None
 
-        # self._ref can be lazily instantiated. Rather than
-        # eagerly creating function data objects in the server
-        # we can put them just before we execute the function,
-        # especially in cases where many @ray.remote functions exist in
-        # a library and only a handful are ever executed by a user
-        # of the library.
+        # self._ref can be lazily instantiated. Rather than eagerly creating
+        # function data objects in the server we can put them just before we
+        # execute the function, especially in cases where many @ray.remote
+        # functions exist in a library and only a handful are ever executed by a
+        # user of the library.
+        #
+        # TODO(barakmich): This ref might actually be better as a serialized
+        # ObjectRef. This requires being able to serialize the ref without
+        # pinning it (as the lifetime of the ref is tied with the server, not
+        # the client)
         self._ref = None
         self._raylet_remote = None
 
@@ -126,7 +130,7 @@ class ClientActorClass(ClientStub):
     def remote(self, *args, **kwargs):
         # Actually instantiate the actor
         ref = ray.call_remote(self, *args, **kwargs)
-        return ClientActorHandle(ClientActorNameRef(ref.id), self)
+        return ClientActorHandle(ClientActorRef(ref.id), self)
 
     def __repr__(self):
         return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
@@ -154,7 +158,7 @@ class ClientActorHandle(ClientStub):
     around between remote functions.
 
     Args:
-        actor_id: A reference to the running actor given to the client. This
+        actor_ref: A reference to the running actor given to the client. This
           is a serialized version of the actual handle as an opaque token.
         actor_class: A reference to the ClientActorClass that this actor was
           instantiated from.
@@ -162,27 +166,27 @@ class ClientActorHandle(ClientStub):
           contained in the actor_id ref.
     """
 
-    def __init__(self, actor_id: ClientActorNameRef,
+    def __init__(self, actor_ref: ClientActorRef,
                  actor_class: ClientActorClass):
-        self.actor_id = actor_id
+        self.actor_ref = actor_ref
         self.actor_class = actor_class
         self._real_actor_handle = None
 
     def _get_ray_remote_impl(self):
         if self._real_actor_handle is None:
-            self._real_actor_handle = ray.get_actor_from_object(self.actor_id)
+            self._real_actor_handle = cloudpickle.loads(self.actor_ref.id)
         return self._real_actor_handle
 
     def __getstate__(self) -> Dict:
         state = {
-            "actor_id": self.actor_id,
+            "actor_ref": self.actor_ref,
             "actor_class": self.actor_class,
             "_real_actor_handle": self._real_actor_handle,
         }
         return state
 
     def __setstate__(self, state: Dict) -> None:
-        self.actor_id = state["actor_id"]
+        self.actor_ref = state["actor_ref"]
         self.actor_class = state["actor_class"]
         self._real_actor_handle = state["_real_actor_handle"]
 
@@ -190,7 +194,7 @@ class ClientActorHandle(ClientStub):
         return ClientRemoteMethod(self, key)
 
     def __repr__(self):
-        return "ClientActorHandle(%s)" % (self.actor_class)
+        return "ClientActorHandle(%s)" % (self.actor_ref.id.hex())
 
 
 class ClientRemoteMethod(ClientStub):
