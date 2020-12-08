@@ -913,7 +913,7 @@ def print_logs(redis_client, threads_stopped, job_id):
                     job_id.binary()) != data["job"]:
                 continue
 
-            print_file = sys.stderr if data["is_err"] else sys.stdout
+            print_file = sys.stderr
 
             def color_for(data):
                 if data["pid"] == "raylet":

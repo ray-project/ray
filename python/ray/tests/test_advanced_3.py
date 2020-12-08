@@ -529,7 +529,7 @@ def test_invalid_unicode_in_worker_log(shutdown_only):
 
     # Wait till first worker log file is created.
     while True:
-        log_file_paths = glob.glob(f"{logs_dir}/worker*.out")
+        log_file_paths = glob.glob(f"{logs_dir}/worker*.log")
         if len(log_file_paths) == 0:
             time.sleep(0.2)
         else:
@@ -567,13 +567,13 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure no log files are in the "old" directory before the actors
     # are killed.
-    assert len(glob.glob(f"{logs_dir}/old/worker*.out")) == 0
+    assert len(glob.glob(f"{logs_dir}/old/worker*.log")) == 0
 
     # Now kill the actors so the files get moved to logs/old/.
     [a.__ray_terminate__.remote() for a in actors]
 
     while True:
-        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.out")
+        log_file_paths = glob.glob(f"{logs_dir}/old/worker*.log")
         if len(log_file_paths) > 0:
             with open(log_file_paths[0], "r") as f:
                 assert "function f finished\n" in f.readlines()

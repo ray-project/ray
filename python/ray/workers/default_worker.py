@@ -176,17 +176,13 @@ if __name__ == "__main__":
     # Redirect stdout and stderr to the default worker interceptor logger.
     # NOTE: We deprecated redirect_worker_output arg,
     # so we don't need to handle here.
-    stdout_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(args, is_for_stdout=True),
-        intercept_stdout=True)
-    stderr_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(args, is_for_stdout=False),
-        intercept_stdout=False)
+    std_stream_interceptor = StandardStreamInterceptor(
+        setup_and_get_worker_interceptor_logger(args))
     # Although the os level fd is duplicated already, we should overwrite
     # the python level stdout/stderr object.
     # Otherwise, buffers won't be flushed.
-    sys.stdout = stdout_interceptor
-    sys.stderr = stderr_interceptor
+    sys.stdout = std_stream_interceptor
+    sys.stderr = std_stream_interceptor
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()

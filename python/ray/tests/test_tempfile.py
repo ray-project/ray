@@ -98,7 +98,8 @@ def test_raylet_tempfiles(shutdown_only):
     assert socket_files == expected_socket_files
     ray.shutdown()
 
-    ray.init(num_cpus=2)
+    num_workers = 2
+    ray.init(num_cpus=num_workers)
     node = ray.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
@@ -108,8 +109,8 @@ def test_raylet_tempfiles(shutdown_only):
     assert log_files.issuperset(log_files_expected)
 
     # Check numbers of worker log file.
-    assert sum(
-        1 for filename in log_files if filename.startswith("worker")) == 4
+    assert sum(1 for filename in log_files
+               if filename.startswith("worker")) == num_workers
 
     socket_files = set(os.listdir(node.get_sockets_dir_path()))
     assert socket_files == expected_socket_files
