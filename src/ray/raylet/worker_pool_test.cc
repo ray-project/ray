@@ -732,6 +732,44 @@ TEST_P(WorkerPoolTest, MaxSpillRestoreWorkersIntegrationTest) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2 * MAX_IO_WORKER_SIZE);
 }
 
+TEST_P(WorkerPoolTest, DeleteWorkerPushPop) {
+  /// Make sure delete workers always pop an I/O worker that has more idle worker in their
+  /// pools.
+  // 2 spill worker and 1 restore worker.
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_workers;
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+  spill_workers.insert(CreateSpillWorker(Process::CreateNewDummy()));
+
+  std::unordered_set<std::shared_ptr<WorkerInterface>> restore_workers;
+  restore_workers.insert(CreateRestoreWorker(Process::CreateNewDummy()));
+
+  for (const auto &worker : spill_workers) {
+    worker_pool_->PushSpillWorker(worker);
+  }
+  for (const auto &worker : restore_workers) {
+    worker_pool_->PushRestoreWorker(worker);
+  }
+
+  // PopDeleteWorker should pop a spill worker in this case.
+  worker_pool_->PopDeleteWorker([this](std::shared_ptr<WorkerInterface> worker) {
+    ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::SPILL_WORKER);
+    worker_pool_->PushDeleteWorker(worker);
+  });
+
+  // Add 2 more restore workers. Now we have 2 spill workers and 3 restore workers.
+  for (int i = 0; i < 2; i++) {
+    auto restore_worker = CreateRestoreWorker(Process::CreateNewDummy());
+    restore_workers.insert(restore_worker);
+    worker_pool_->PushRestoreWorker(restore_worker);
+  }
+
+  // PopDeleteWorker should pop a spill worker in this case.
+  worker_pool_->PopDeleteWorker([this](std::shared_ptr<WorkerInterface> worker) {
+    ASSERT_EQ(worker->GetWorkerType(), rpc::WorkerType::RESTORE_WORKER);
+    worker_pool_->PushDeleteWorker(worker);
+  });
+}
+
 INSTANTIATE_TEST_CASE_P(WorkerPoolMultiTenancyTest, WorkerPoolTest,
                         ::testing::Values(true, false));
 

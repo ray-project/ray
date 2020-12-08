@@ -38,7 +38,7 @@ DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
-    # The GAE(lambda) parameter.
+    # The GAE (lambda) parameter.
     "lambda": 1.0,
     # Initial coefficient for KL divergence.
     "kl_coeff": 0.2,
@@ -89,10 +89,6 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
-
-    # Use the new "trajectory view API" to collect samples and produce
-    # model- and policy inputs.
-    "_use_trajectory_view_api": True,
 })
 
 # __sphinx_doc_end__

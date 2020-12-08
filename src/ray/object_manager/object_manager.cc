@@ -27,7 +27,8 @@ namespace object_manager_protocol = ray::object_manager::protocol;
 namespace ray {
 
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
-                                     SpillObjectsCallback spill_objects_callback) {
+                                     SpillObjectsCallback spill_objects_callback,
+                                     std::function<void()> object_store_full_callback) {
   if (config.object_store_memory > 0) {
     plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
         config.store_socket_name, config.object_store_memory, config.huge_pages,
@@ -35,7 +36,7 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
     // Initialize object store.
     store_thread_ =
         std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
-                    spill_objects_callback);
+                    spill_objects_callback, object_store_full_callback);
     // Sleep for sometime until the store is working. This can suppress some
     // connection warnings.
     std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -54,12 +55,13 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                              const ObjectManagerConfig &config,
                              std::shared_ptr<ObjectDirectoryInterface> object_directory,
                              RestoreSpilledObjectCallback restore_spilled_object,
-                             SpillObjectsCallback spill_objects_callback)
+                             SpillObjectsCallback spill_objects_callback,
+                             std::function<void()> object_store_full_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(std::move(object_directory)),
-      object_store_internal_(config, spill_objects_callback),
+      object_store_internal_(config, spill_objects_callback, object_store_full_callback),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
@@ -90,12 +92,14 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
 
-  pull_retry_timer_.async_wait([this](const boost::system::error_code& e) {
-                                 RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: " << e << ". Please file a bug report on here: https://github.com/ray-project/ray/issues";
+  pull_retry_timer_.async_wait([this](const boost::system::error_code &e) {
+    RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: "
+                  << e
+                  << ". Please file a bug report on here: "
+                     "https://github.com/ray-project/ray/issues";
 
-                                 Tick();
-                               }
-    );
+    Tick();
+  });
 
   if (plasma::plasma_store_runner) {
     store_notification_ = std::make_shared<ObjectStoreNotificationManager>(main_service);

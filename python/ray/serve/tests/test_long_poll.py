@@ -2,6 +2,7 @@ import sys
 import functools
 import time
 import asyncio
+import os
 from typing import Dict
 
 import pytest
@@ -38,34 +39,41 @@ def test_host_standalone(serve_instance):
     assert "key_2" in result
 
 
-@pytest.mark.skip(
-    "Skip until https://github.com/ray-project/ray/issues/11683 fixed "
-    "since async actor retries is broken.")
-def test_long_pull_restarts(serve_instance):
+def test_long_poll_restarts(serve_instance):
     @ray.remote(
         max_restarts=-1,
-        # max_task_retries=-1,
+        max_task_retries=-1,
     )
     class RestartableLongPollerHost:
         def __init__(self) -> None:
             print("actor started")
             self.host = LongPollerHost()
             self.host.notify_changed("timer", time.time())
+            self.should_exit = False
 
         async def listen_for_change(self, key_to_ids):
-            await asyncio.sleep(0.5)
+            print("listening for change ", key_to_ids)
             return await self.host.listen_for_change(key_to_ids)
 
-        async def exit(self):
-            sys.exit(1)
+        async def set_exit(self):
+            self.should_exit = True
+
+        async def exit_if_set(self):
+            if self.should_exit:
+                print("actor exit")
+                os._exit(1)
 
     host = RestartableLongPollerHost.remote()
     updated_values = ray.get(host.listen_for_change.remote({"timer": -1}))
     timer: UpdatedObject = updated_values["timer"]
 
     on_going_ref = host.listen_for_change.remote({"timer": timer.snapshot_id})
-    host.exit.remote()
-    on_going_ref = host.listen_for_change.remote({"timer": timer.snapshot_id})
+    ray.get(host.set_exit.remote())
+    # This task should trigger the actor to exit.
+    # But the retried task will not because self.should_exit is false.
+    host.exit_if_set.remote()
+
+    # on_going_ref should return succesfully with a differnt value.
     new_timer: UpdatedObject = ray.get(on_going_ref)["timer"]
     assert new_timer.snapshot_id != timer.snapshot_id + 1
     assert new_timer.object_snapshot != timer.object_snapshot

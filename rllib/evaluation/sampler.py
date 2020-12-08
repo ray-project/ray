@@ -1040,12 +1040,12 @@ def _process_observations_w_trajectory_view_api(
             # Record transition info if applicable.
             if last_observation is None:
                 _sample_collector.add_init_obs(episode, agent_id, env_id,
-                                               policy_id, filtered_obs)
+                                               policy_id, episode.length - 1,
+                                               filtered_obs)
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     "t": episode.length - 1,
-                    "eps_id": episode.episode_id,
                     "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
@@ -1062,7 +1062,8 @@ def _process_observations_w_trajectory_view_api(
                 # Add extra-action-fetches to collectors.
                 pol = policies[policy_id]
                 for key, value in episode.last_pi_info_for(agent_id).items():
-                    values_dict[key] = value
+                    if key in pol.view_requirements:
+                        values_dict[key] = value
                 # Env infos for this agent.
                 if "infos" in pol.view_requirements:
                     values_dict["infos"] = agent_infos
@@ -1158,7 +1159,8 @@ def _process_observations_w_trajectory_view_api(
 
                     # Add initial obs to buffer.
                     _sample_collector.add_init_obs(
-                        new_episode, agent_id, env_id, policy_id, filtered_obs)
+                        new_episode, agent_id, env_id, policy_id,
+                        new_episode.length - 1, filtered_obs)
 
                     item = PolicyEvalData(
                         env_id, agent_id, filtered_obs,
