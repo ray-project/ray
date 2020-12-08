@@ -72,7 +72,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def call_remote(self, instance: 'ClientStub', *args, **kwargs):
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
         """
         call_remote is called by stub objects to execute them remotely.
 
@@ -90,7 +90,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def get_actor_from_object(self, id: 'ClientActorNameRef') -> 'ActorHandle':
+    def get_actor_from_object(self, id: "ClientActorNameRef") -> "ActorHandle":
         """
         get_actor_from_object returns a reference to an actor given an
         opaque id.
