@@ -118,16 +118,6 @@ class HTTPProxy:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
-        # handle = RayServeHandle(
-        #     self.controller_handle,
-        #     endpoint_name,
-        #     sync=True,
-        #     method_name=headers.get("X-SERVE-CALL-METHOD".lower(), None),
-        #     shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
-        #     http_method=scope["method"].upper(),
-        #     http_headers=headers)
-
-        # TODO(architkulkarni): method, shard key
         handle = self.client.get_handle(endpoint_name).options(
             method_name=headers.get("X-SERVE-CALL-METHOD".lower(), None),
             shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
