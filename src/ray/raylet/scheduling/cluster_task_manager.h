@@ -159,5 +159,5 @@ class ClusterTaskManager {
   void AddToBacklog(const Task &task);
   void RemoveFromBacklog(const Task &task);
 };
-}  // namespace ray
 }  // namespace raylet
+}  // namespace ray

@@ -522,8 +522,7 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
 void ClusterTaskManager::AddToBacklog(const Task &task) {
   if (report_worker_backlog_) {
     auto cls = task.GetTaskSpecification().GetSchedulingClass();
-    backlog_tracker_[cls] +=
-        task.BacklogSize();
+    backlog_tracker_[cls] += task.BacklogSize();
   }
 }
 

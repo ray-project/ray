@@ -492,7 +492,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
 
   std::shared_ptr<MockWorker> worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
   for (int i = 0; i < 10; i++) {
