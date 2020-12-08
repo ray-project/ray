@@ -70,8 +70,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
-      pull_retry_timer_(*main_service_, boost::posix_time::seconds(config.pull_timeout_ms))
-{
+      pull_retry_timer_(*main_service_,
+                        boost::posix_time::seconds(config.pull_timeout_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
   const auto &object_is_local = [this](const ObjectID &object_id) {
