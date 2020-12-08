@@ -37,6 +37,7 @@ class Queue:
         >>> for item in items:
         >>>     assert item == q.get()
     """
+
     def __init__(self, maxsize: int = 0) -> None:
         self.maxsize = maxsize
         self.actor = _QueueActor.remote(self.maxsize)
