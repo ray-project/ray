@@ -261,8 +261,13 @@ class SampleBatch:
             for i, seq_len in enumerate(self.seq_lens):
                 count += seq_len
                 if count >= end:
-                    data["state_in_0"] = self.data["state_in_0"][state_start:
-                                                                 i + 1]
+                    state_idx = 0
+                    state_key = "state_in_{}".format(state_idx)
+                    while state_key in self.data:
+                        data[state_key] = self.data[state_key][state_start:
+                                                               i + 1]
+                        state_idx += 1
+                        state_key = "state_in_{}".format(state_idx)
                     seq_lens = list(self.seq_lens[state_start:i]) + [
                         seq_len - (count - end)
                     ]
