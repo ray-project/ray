@@ -10,8 +10,7 @@ PullManager::PullManager(
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       restore_spilled_object_(restore_spilled_object),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count())
-{}
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
