@@ -57,7 +57,6 @@ def test_actor_groups(ray_start_with_dashboard):
             foo_entry = entries[0]
             assert type(foo_entry["gpus"]) is list
             assert "timestamp" in foo_entry
-            assert "nodeId" in foo_entry
             assert "actorConstructor" in foo_entry
             assert "actorClass" in foo_entry
             assert "actorId" in foo_entry
