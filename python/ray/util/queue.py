@@ -38,33 +38,33 @@ class Queue:
         >>>     assert item == q.get()
     """
 
-    def __init__(self, maxsize: int = 0):
+    def __init__(self, maxsize: int = 0) -> None:
         self.maxsize = maxsize
         self.actor = _QueueActor.remote(self.maxsize)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.size()
 
-    def size(self):
+    def size(self) -> int:
         """The size of the queue."""
         return ray.get(self.actor.qsize.remote())
 
-    def qsize(self):
+    def qsize(self) -> int:
         """The size of the queue."""
         return self.size()
 
-    def empty(self):
+    def empty(self) -> bool:
         """Whether the queue is empty."""
         return ray.get(self.actor.empty.remote())
 
-    def full(self):
+    def full(self) -> bool:
         """Whether the queue is full."""
         return ray.get(self.actor.full.remote())
 
     def put(self,
             item: Any,
             block: bool = True,
-            timeout: Optional[float] = None):
+            timeout: Optional[float] = None) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full, blocks until the queue is no
@@ -92,7 +92,7 @@ class Queue:
     async def put_async(self,
                         item: Any,
                         block: bool = True,
-                        timeout: Optional[float] = None):
+                        timeout: Optional[float] = None) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full,
@@ -117,7 +117,7 @@ class Queue:
             else:
                 await self.actor.put.remote(item, timeout)
 
-    def get(self, block: bool = True, timeout: Optional[float] = None):
+    def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
         """Gets an item from the queue.
 
         If block is True and the queue is empty, blocks until the queue is no
@@ -147,7 +147,7 @@ class Queue:
 
     async def get_async(self,
                         block: bool = True,
-                        timeout: Optional[float] = None):
+                        timeout: Optional[float] = None) -> Any:
         """Gets an item from the queue.
 
         There is no guarantee of order if multiple consumers get from the
@@ -171,7 +171,7 @@ class Queue:
             else:
                 return await self.actor.get.remote(timeout)
 
-    def put_nowait(self, item: Any):
+    def put_nowait(self, item: Any) -> None:
         """Equivalent to put(item, block=False).
 
         Raises:
@@ -179,7 +179,7 @@ class Queue:
         """
         return self.put(item, block=False)
 
-    def put_nowait_batch(self, items: Iterable):
+    def put_nowait_batch(self, items: Iterable) -> None:
         """Takes in a list of items and puts them into the queue in order.
 
         Raises:
@@ -190,7 +190,7 @@ class Queue:
 
         ray.get(self.actor.put_nowait_batch.remote(items))
 
-    def get_nowait(self):
+    def get_nowait(self) -> Any:
         """Equivalent to get(block=False).
 
         Raises:
@@ -198,7 +198,7 @@ class Queue:
         """
         return self.get(block=False)
 
-    def get_nowait_batch(self, num_items: int):
+    def get_nowait_batch(self, num_items: int) -> List[Any]:
         """Gets items from the queue and returns them in a
         list in order.
 
