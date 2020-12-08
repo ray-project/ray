@@ -84,7 +84,7 @@ class Client:
             self._shutdown = True
 
     @_ensure_connected
-    def get_result(self, result_object_id: ray.ObjectRef) -> FutureResult:
+    def _get_result(self, result_object_id: ray.ObjectRef) -> FutureResult:
         result_id: str = ray.get(result_object_id)
         result = ray.get(self._controller.wait_for_event.remote(result_id))
         logger.debug(f"Getting result_id ({result_id}) with result: {result}")
@@ -144,7 +144,7 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        self.get_result(
+        self._get_result(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
 
@@ -156,7 +156,7 @@ class Client:
         """
         if endpoint in self._handle_cache:
             del self._handle_cache[endpoint]
-        self.get_result(self._controller.delete_endpoint.remote(endpoint))
+        self._get_result(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
@@ -200,7 +200,7 @@ class Client:
                 "config_options must be a BackendConfig or dictionary.")
         if isinstance(config_options, dict):
             config_options = BackendConfig.parse_obj(config_options)
-        self.get_result(
+        self._get_result(
             self._controller.update_backend_config.remote(
                 backend_tag, config_options))
 
@@ -297,7 +297,7 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        self.get_result(
+        self._get_result(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))
 
@@ -315,7 +315,7 @@ class Client:
 
         The backend must not currently be used by any endpoints.
         """
-        self.get_result(self._controller.delete_backend.remote(backend_tag))
+        self._get_result(self._controller.delete_backend.remote(backend_tag))
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
@@ -334,7 +334,7 @@ class Client:
             traffic_policy_dictionary (dict): a dictionary maps backend names
                 to their traffic weights. The weights must sum to 1.
         """
-        self.get_result(
+        self._get_result(
             self._controller.set_traffic.remote(endpoint_name,
                                                 traffic_policy_dictionary))
 
@@ -360,7 +360,7 @@ class Client:
                           (float, int)) or not 0 <= proportion <= 1:
             raise TypeError("proportion must be a float from 0 to 1.")
 
-        self.get_result(
+        self._get_result(
             self._controller.shadow_traffic.remote(endpoint_name, backend_tag,
                                                    proportion))
 

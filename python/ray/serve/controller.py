@@ -433,8 +433,7 @@ class FutureResult:
     # Goal requested when this future was created
     requested_goal: Dict[str, Any]
     # Goal state that supercedes (cancels) the requested goal
-    successor_goal: Optional[Dict[str, Any]] = field(
-        default_factory=lambda: None)
+    successor_goal: Optional[Dict[str, Any]] = None
 
 
 @ray.remote
@@ -500,6 +499,7 @@ class ServeController:
             self.http_host, self.http_port, self.http_middlewares)
 
         # Map of awaiting results
+        # TODO(ilr): Checkpoint this once this becomes asynchronous
         self.inflight_results: Dict[ResultId, asyncio.Future] = dict()
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
@@ -544,10 +544,10 @@ class ServeController:
             lambda: self.inflight_results.pop(uuid))
         return result
 
-    def _create_and_set_result(self, result: bool,
-                               goal_state: Dict[str, any]) -> ResultId:
+    def _create_event_with_result(self, is_success: bool,
+                                  goal_state: Dict[str, any]) -> ResultId:
         fut = asyncio.get_event_loop().create_future()
-        fut.set_result(FutureResult(result, goal_state))
+        fut.set_result(FutureResult(is_success, goal_state))
         uuid = get_random_letters(length=20)
         self.inflight_results[uuid] = fut
         return uuid
@@ -724,8 +724,8 @@ class ServeController:
         async with self.write_lock:
             traffic_policy = await self._set_traffic(endpoint_name,
                                                      traffic_dict)
-        return self._create_and_set_result(True,
-                                           {endpoint_name: traffic_policy})
+        return self._create_event_with_result(True,
+                                              {endpoint_name: traffic_policy})
 
     async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
                              proportion: float) -> ResultId:
@@ -751,8 +751,8 @@ class ServeController:
             # update.
             self._checkpoint()
             self.notify_traffic_policies_changed()
-            return self._create_and_set_result(True,
-                                               {endpoint_name: traffic_policy})
+            return self._create_event_with_result(
+                True, {endpoint_name: traffic_policy})
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
@@ -801,7 +801,7 @@ class ServeController:
                 router.set_route_table.remote(self.current_state.routes)
                 for router in self.actor_reconciler.router_handles()
             ])
-            return self._create_and_set_result(True, {
+            return self._create_event_with_result(True, {
                 route: (endpoint, methods),
                 endpoint: traffic_policy
             })
@@ -842,7 +842,7 @@ class ServeController:
                 router.set_route_table.remote(self.current_state.routes)
                 for router in self.actor_reconciler.router_handles()
             ])
-            return self._create_and_set_result(True, {
+            return self._create_event_with_result(True, {
                 route_to_delete: None,
                 endpoint: None
             })
@@ -895,8 +895,8 @@ class ServeController:
             # Set the backend config inside the router
             # (particularly for max_concurrent_queries).
             self.notify_backend_configs_changed()
-            return self._create_and_set_result(True,
-                                               {backend_tag: backend_info})
+            return self._create_event_with_result(True,
+                                                  {backend_tag: backend_info})
 
     async def delete_backend(self, backend_tag: BackendTag) -> ResultId:
         async with self.write_lock:
@@ -936,7 +936,7 @@ class ServeController:
             await self.actor_reconciler._stop_pending_backend_replicas()
 
             self.notify_replica_handles_changed()
-            return self._create_and_set_result(True, {backend_tag: None})
+            return self._create_event_with_result(True, {backend_tag: None})
 
     async def update_backend_config(self, backend_tag: BackendTag,
                                     config_options: BackendConfig) -> ResultId:
@@ -974,8 +974,8 @@ class ServeController:
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
-            return self._create_and_set_result(True,
-                                               {backend_tag: backend_info})
+            return self._create_event_with_result(True,
+                                                  {backend_tag: backend_info})
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
