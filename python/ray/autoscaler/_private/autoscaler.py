@@ -22,7 +22,8 @@ from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID
+    get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, \
+    ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
@@ -302,8 +303,8 @@ class StandardAutoscaler:
             nodes_allowed_to_terminate: whether the node id is allowed to
                 terminate or not.
         """
-        nodes_allowed_to_terminate = {}
-        max_node_resources = []
+        nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
+        max_node_resources: List[ResourceDict] = []
         resource_demand_vector_node_ids = []
         # Get max resources on all the non terminated nodes.
         for node_id in sorted_node_ids:
@@ -315,17 +316,18 @@ class StandardAutoscaler:
                         self.available_node_types[node_type]["resources"]))
                 resource_demand_vector_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
-        # most recently used when we binpack.
-        unfulfilled_resource_requests, used_resource_requests = \
+        # most recently used when we binpack. We assume get_bin_pack_residual
+        # is following the given order here.
+        used_resource_requests: List[ResourceDict]
+        _, used_resource_requests = \
             get_bin_pack_residual(
                 max_node_resources, self.resource_demand_vector)
         for i, node_id in enumerate(resource_demand_vector_node_ids):
-            if unfulfilled_resource_requests:
-                nodes_allowed_to_terminate[node_id] = False
-            elif used_resource_requests[i] != max_node_resources[i]:
-                nodes_allowed_to_terminate[node_id] = False
-            else:
+            if used_resource_requests[i] == max_node_resources[i]:
+                # No resources of the node are used.
                 nodes_allowed_to_terminate[node_id] = True
+            else:
+                nodes_allowed_to_terminate[node_id] = False
         return nodes_allowed_to_terminate
 
     def _keep_min_worker_of_node_type(

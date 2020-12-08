@@ -644,7 +644,8 @@ def _utilization_score(node_resources: ResourceDict,
 
 def get_bin_pack_residual(node_resources: List[ResourceDict],
                           resource_demands: List[ResourceDict],
-                          strict_spread: bool = False) -> List[ResourceDict]:
+                          strict_spread: bool = False
+                          ) -> (List[ResourceDict], List[ResourceDict]):
     """Return a subset of resource_demands that cannot fit in the cluster.
 
     TODO(ekl): this currently does not guarantee the resources will be packed
@@ -659,7 +660,7 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
             placed on a different entry in `node_resources`.
 
     Returns:
-        List[ResourceDict] the residual list resources that do not fit.
+        List[ResourceDict]: the residual list resources that do not fit.
         List[ResourceDict]: The updated node_resources after the method.
     """
 
