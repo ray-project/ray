@@ -18,6 +18,7 @@ class APIImpl(ABC):
     APIImpl is the interface to implement for whichever version of the core
     Ray API that needs abstracting when run in client mode.
     """
+
     @abstractmethod
     def get(self, *args, **kwargs):
         """
@@ -75,7 +76,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def get_actor_from_object(self, id: 'ClientActorNameRef'):
+    def get_actor_from_object(self, id):
         """
         get_actor_from_object returns a reference to an actor
         from an opaque actor ID, passed in as bytes.
@@ -98,6 +99,7 @@ class ClientAPI(APIImpl):
     The Client-side methods corresponding to the ray API. Delegates
     to the Client Worker that contains the connection to the ClientServer.
     """
+
     def __init__(self, worker):
         self.worker = worker
 
@@ -116,7 +118,7 @@ class ClientAPI(APIImpl):
     def call_remote(self, f, *args, **kwargs):
         return self.worker.call_remote(f, *args, **kwargs)
 
-    def get_actor_from_object(self, id: 'ClientActorNameRef'):
+    def get_actor_from_object(self, id):
         raise Exception("Calling get_actor_from_object on the client side")
 
     def close(self, *args, **kwargs):

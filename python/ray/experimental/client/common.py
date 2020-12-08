@@ -43,6 +43,7 @@ class ClientRemoteFunc:
         _raylet_remote: The Raylet-side ray.remote_function.RemoteFunction
             for this object
     """
+
     def __init__(self, f):
         self._func = f
         self._name = f.__name__
@@ -93,6 +94,7 @@ class ClientActorClass:
         _ref: The ClientObjectRef of the pickled `actor_cls`
         _raylet_remote: The Raylet-side ray.ActorClass for this object
     """
+
     def __init__(self, actor_cls):
         self.actor_cls = actor_cls
         self._name = actor_cls.__name__
@@ -151,6 +153,7 @@ class ClientActorHandle:
             instantiated from
         _real_actor_handle: The Raylet-side ray.actor.ActorHandle
     """
+
     def __init__(self, actor_id: ClientActorNameRef,
                  actor_class: ClientActorClass):
         self.actor_id = actor_id
@@ -192,6 +195,7 @@ class ClientRemoteMethod:
         this method and will have this method called upon it.
     method_name: The name of this method
     """
+
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):
         self.actor_handle = actor_handle
         self.method_name = method_name

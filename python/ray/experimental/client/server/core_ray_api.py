@@ -20,6 +20,7 @@ class CoreRayAPI(APIImpl):
     Core Ray API. Primarily used inside of Ray Workers as a trampoline back to
     core ray when passed client stubs.
     """
+
     def get(self, *args, **kwargs):
         return ray.get(*args, **kwargs)
 
@@ -54,6 +55,7 @@ class RayServerAPI(CoreRayAPI):
     Ray API calls, but also accepts scheduling calls from functions running
     inside of other remote functions that need to create more work.
     """
+
     def __init__(self, server_instance):
         self.server = server_instance
 
