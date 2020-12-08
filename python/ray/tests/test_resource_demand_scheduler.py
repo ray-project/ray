@@ -256,19 +256,19 @@ def test_add_min_workers_nodes():
     }
     assert _add_min_workers_nodes([],
                                   {},
-                                  types) == \
+                                  types, None, None) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
             {"m2.large": 50, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*5,
                                   {"m2.large": 5},
-                                  types) == \
+                                  types, None, None) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
             {"m2.large": 45, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*60,
                                   {"m2.large": 60},
-                                  types) == \
+                                  types, None, None) == \
         ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
             {"gpu": 99999})
 
@@ -279,7 +279,7 @@ def test_add_min_workers_nodes():
     }] * 99999, {
         "m2.large": 50,
         "gpu": 99999
-    }, types) == ([{
+    }, types, None, None) == ([{
         "CPU": 2
     }] * 50 + [{
         "GPU": 1
@@ -288,17 +288,18 @@ def test_add_min_workers_nodes():
         "gpu": 99999
     }, {})
 
-    assert _add_min_workers_nodes([], {},
-                                  {"gpubla": types["gpubla"]}) == ([], {}, {})
+    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
+                                  None) == ([], {}, {})
 
     types["gpubla"]["max_workers"] = 10
-    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}) == ([{
-        "GPU": 1
-    }] * 10, {
-        "gpubla": 10
-    }, {
-        "gpubla": 10
-    })
+    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
+                                  None) == ([{
+                                      "GPU": 1
+                                  }] * 10, {
+                                      "gpubla": 10
+                                  }, {
+                                      "gpubla": 10
+                                  })
 
 
 def test_get_nodes_to_launch_with_min_workers():

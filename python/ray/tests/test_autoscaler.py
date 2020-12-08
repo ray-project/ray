@@ -1087,12 +1087,22 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         assert autoscaler.pending_launches.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 3
+        # This actually remained 4 instead of 3, because the other 2 nodes
+        # are not connected and hence we rely more on connected nodes for
+        # min_workers. When the "pending" nodes show up as connected,
+        # then we can terminate the ones connected before.
+        assert len(self.provider.non_terminated_nodes({})) == 4
         lm.last_used_time_by_ip["172.0.0.2"] = 0
         lm.last_used_time_by_ip["172.0.0.3"] = 0
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 1
+        # 2 nodes and not 1 because 1 is needed for min_worker and the other 1
+        # is still not connected.
+        self.waitForNodes(2)
+        # when we connect it, we will see 1 node.
+        lm.last_used_time_by_ip["172.0.0.4"] = 0
+        autoscaler.update()
+        self.waitForNodes(1)
 
     def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()

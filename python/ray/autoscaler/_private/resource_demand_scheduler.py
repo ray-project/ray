@@ -148,9 +148,9 @@ class ResourceDemandScheduler:
         logger.info("Cluster resources: {}".format(node_resources))
         logger.info("Node counts: {}".format(node_type_counts))
         # Step 2: add nodes to add to satisfy min_workers for each type
-        node_resources,
-        node_type_counts,
-        min_workers_or_resources_nodes_to_add = \
+        (node_resources,
+         node_type_counts,
+         min_workers_or_resources_nodes_to_add) = \
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types,
                 self.max_workers, ensure_min_cluster_size)
@@ -193,6 +193,7 @@ class ResourceDemandScheduler:
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
         total_nodes_to_add = {}
+
         for node_type in self.node_types:
             nodes_to_add = (min_workers_or_resources_nodes_to_add.get(
                 node_type, 0) + placement_group_nodes_to_add.get(node_type, 0)
