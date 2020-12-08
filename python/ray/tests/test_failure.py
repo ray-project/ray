@@ -956,7 +956,6 @@ def test_raylet_crash_when_get(ray_start_regular):
     thread.join()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
