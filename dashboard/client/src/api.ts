@@ -112,7 +112,7 @@ export type NodeDetails = {
 } & BaseNodeInfo;
 
 export type RayletData = {
-  // Merger of GCSNodeStats and GetNodeStatsReply
+  // Merger of GCSNodeInfo and GetNodeStatsReply
   // GetNodeStatsReply fields.
   // Note workers are in an array in NodeDetails
   objectStoreUsedMemory: number;

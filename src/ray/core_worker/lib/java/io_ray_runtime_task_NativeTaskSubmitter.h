@@ -71,6 +71,17 @@ JNIEXPORT void JNICALL
 Java_io_ray_runtime_task_NativeTaskSubmitter_nativeRemovePlacementGroup(JNIEnv *, jclass,
                                                                         jbyteArray);
 
+/*
+ * Class:     io_ray_runtime_task_NativeTaskSubmitter
+ * Method:    nativeWaitPlacementGroupReady
+ * Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_io_ray_runtime_task_NativeTaskSubmitter__nativeWaitPlacementGroupReady(JNIEnv *,
+                                                                            jclass,
+                                                                            jbyteArray,
+                                                                            jint);
+
 #ifdef __cplusplus
 }
 #endif

@@ -80,7 +80,7 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
                                  required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true);
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "");
 
   for (int i = 0; i < num_args; i++) {
     ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);
