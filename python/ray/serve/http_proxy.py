@@ -28,6 +28,7 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name))
     # blocks forever
     """
+
     def __init__(self, controller_name):
         # Set the controller name so that serve.connect() will connect to the
         # controller instance this proxy is running in.
