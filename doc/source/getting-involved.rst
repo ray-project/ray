@@ -139,7 +139,7 @@ You can run the following locally:
 
 .. code-block:: shell
 
-    ray/scripts/format.sh
+    ./ci/travis/format.sh
 
 An output like the following indicates failure:
 
