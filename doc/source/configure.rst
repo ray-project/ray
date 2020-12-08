@@ -62,7 +62,7 @@ If using the command line, connect to the Ray cluster as follow:
     In multi-worker setting, we want one thread per worker instead of many threads
     per worker to avoid contention. Some other libraries may have their own way to configure
     parallelism. For example, if you're using OpenCV, you should manually set the number of
-    threads using cv2.setNumThreads().
+    threads using cv2.setNumThreads(num_threads) (set to 0 to disable multi-threading).
 
 
 .. _temp-dir-log-files:
