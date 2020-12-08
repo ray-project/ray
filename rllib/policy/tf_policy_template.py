@@ -170,6 +170,9 @@ def build_tf_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the DynamicTFPolicy class.
+        view_requirements_fn (Callable[[Policy],
+            Dict[str, ViewRequirement]]): An optional callable to retrieve
+            additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
@@ -206,6 +209,8 @@ def build_tf_policy(
                 if extra_action_fetches_fn is None:
                     policy._extra_action_fetches = {}
                 else:
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
                     policy._extra_action_fetches = extra_action_fetches_fn(
                         policy)
 

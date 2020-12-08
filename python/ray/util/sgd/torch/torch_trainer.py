@@ -300,7 +300,7 @@ class TorchTrainer:
             wrap_ddp=self.wrap_ddp)
 
         worker_args = {
-            "max_workers": num_workers,
+            "max_workers": self.max_replicas,
             "params": params,
             "dist_params": dist_params,
             "initialization_hook": self.initialization_hook,
