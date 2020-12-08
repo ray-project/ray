@@ -370,6 +370,7 @@ def test_ray_options(shutdown_only):
         assert without_options[key] != with_options[key], key
     assert without_options != with_options
 
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -716,6 +717,7 @@ def test_nonascii_in_function_body(ray_start_shared_local_modes):
         return "φ"
 
     assert ray.get(return_a_greek_char.remote()) == "φ"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

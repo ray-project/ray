@@ -1507,21 +1507,13 @@ void NodeManager::ProcessWaitRequestMessage(
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
-  int64_t wait_ms = message->timeout();
-  uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
-  ray::Status status = object_manager_.Wait(
-      object_ids, owner_addresses, wait_ms, num_required_objects,
-      [this, resolve_objects, was_blocked, client, current_task_id](
-          std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
-        // Write the data.
-        flatbuffers::FlatBufferBuilder fbb;
-        flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
-            fbb, to_flatbuf(fbb, found), to_flatbuf(fbb, remaining));
-        fbb.Finish(wait_reply);
-
-        auto status =
-            client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
-                                 fbb.GetSize(), fbb.GetBufferPointer());
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
+      fbb, to_flatbuf(fbb, object_ids), to_flatbuf(fbb, std::vector<ObjectID>()));
+  fbb.Finish(wait_reply);
+  client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::WaitReply), fbb.GetSize(),
+      fbb.GetBufferPointer(), [this, client, current_task_id, was_blocked, resolve_objects](const ray::Status &status) {
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
@@ -1532,7 +1524,6 @@ void NodeManager::ProcessWaitRequestMessage(
           ProcessDisconnectClientMessage(client);
         }
       });
-  RAY_CHECK_OK(status);
 }
 
 void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
