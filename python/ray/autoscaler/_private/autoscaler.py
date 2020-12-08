@@ -302,6 +302,8 @@ class StandardAutoscaler:
 
     def _get_nodes_allowed_to_terminate(
             self, sorted_node_ids: List[NodeID]) -> Dict[NodeID, bool]:
+        # TODO(ameer): try merging this with resource_demand_scheduler
+        # code responsible for adding nodes for request_resources().
         """Returns the nodes allowed to terminate for request_resources().
 
         Args:
@@ -327,7 +329,7 @@ class StandardAutoscaler:
                 static_nodes: Dict[
                     NodeIP,
                     ResourceDict] = \
-                        self.load_metrics.get_static_node_resources_by_ip()
+                    self.load_metrics.get_static_node_resources_by_ip()
                 head_node_resources = static_nodes[head_ip]
             else:
                 head_node_resources = {}
