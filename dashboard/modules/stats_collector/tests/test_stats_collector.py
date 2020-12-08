@@ -257,7 +257,7 @@ def test_logs(enable_test_module, disable_aiohttp_cache,
         assert node_logs["result"]
         assert type(node_logs["data"]["logs"]) is dict
         assert all(
-            [pid in node_logs["data"]["logs"] for pid in (la_pid, la2_pid)])
+            pid in node_logs["data"]["logs"] for pid in (la_pid, la2_pid))
         assert len(node_logs["data"]["logs"][la2_pid]) == 1
 
         actor_one_logs_response = requests.get(
