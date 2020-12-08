@@ -185,7 +185,8 @@ class DynamicTFPolicy(TFPolicy):
                 self._state_inputs = [
                     get_placeholder(
                         space=vr.space,
-                        time_axis=not isinstance(vr.shift, int)) for k, vr in
+                        time_axis=not isinstance(vr.shift, int),
+                    ) for k, vr in
                     self.model.inference_view_requirements.items()
                     if k.startswith("state_in_")
                 ]

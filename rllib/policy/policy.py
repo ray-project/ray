@@ -712,20 +712,20 @@ class Policy(metaclass=ABCMeta):
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
-                # Range of indices on time-axis, make sure to create
+                # Range of indices on time-axis, e.g. "-50:-1".
                 if view_req.shift_from is not None:
                     ret[view_col] = np.zeros_like([[
                         view_req.space.sample()
                         for _ in range(view_req.shift_to -
                                        view_req.shift_from + 1)
-                    ] for b in range(batch_size)])
+                    ] for _ in range(batch_size)])
                 # Set of (probably non-consecutive) indices.
                 elif isinstance(view_req.shift, (list, tuple)):
                     ret[view_col] = np.zeros_like([[
                         view_req.space.sample()
                         for t in range(len(view_req.shift))
-                    ] for b in range(batch_size)])
-                # Single index.
+                    ] for _ in range(batch_size)])
+                # Single shift int value.
                 else:
                     if isinstance(view_req.space, gym.spaces.Space):
                         ret[view_col] = np.zeros_like([
@@ -736,6 +736,8 @@ class Policy(metaclass=ABCMeta):
                             view_req.space for _ in range(batch_size)
                         ]
 
+        # Due to different view requirements for the different columns,
+        # columns in the resulting batch may not all have the same batch size.
         return SampleBatch(ret, _dont_check_lens=True)
 
     def _update_model_inference_view_requirements_from_init_state(self):

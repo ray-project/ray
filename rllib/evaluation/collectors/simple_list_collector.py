@@ -50,12 +50,17 @@ class _AgentCollector:
     _next_unroll_id = 0  # disambiguates unrolls within a single episode
 
     def __init__(self, view_reqs):
+        # Determine the size of the buffer we need for data before the actual
+        # episode starts. This is used for 0-buffering of e.g. prev-actions,
+        # or internal state inputs.
         self.shift_before = -min(
             [(int(vr.shift.split(":")[0])
               if isinstance(vr.shift, str) else vr.shift) +
              (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0)
              for k, vr in view_reqs.items()])
+        # The actual data buffers (lists holding each timestep's data).
         self.buffers: Dict[str, List] = {}
+        # The episode ID for the agent for which we collect data.
         self.episode_id = None
         # The simple timestep count for this agent. Gets increased by one
         # each time a (non-initial!) observation is added.
@@ -155,7 +160,13 @@ class _AgentCollector:
             if data_col not in np_data:
                 np_data[data_col] = to_float_np_array(self.buffers[data_col])
 
-            # Range of indices on time-axis, make sure to create
+            # Range of indices on time-axis, e.g. "-50:-1". Together with
+            # the `batch_repeat_value`, this determines the data produced.
+            # Example:
+            #  batch_repeat_value=10, shift_from=-3, shift_to=-1
+            #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+            #  resulting data=[[-3, -2, -1], [7, 8, 9]]
+            #  Range of 3 consecutive items repeats every 10 timesteps.
             if view_req.shift_from is not None:
                 if view_req.batch_repeat_value > 1:
                     count = int(
@@ -176,10 +187,15 @@ class _AgentCollector:
                                              obs_shift:self.shift_before +
                                              view_req.shift_to + 1 + obs_shift]
             # Set of (probably non-consecutive) indices.
+            # Example:
+            #  shift=[-3, 0]
+            #  buffer=[-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+            #  resulting data=[[-3, 0], [-2, 1], [-1, 2], [0, 3], [1, 4], ...]
             elif isinstance(view_req.shift, np.ndarray):
                 data = np_data[data_col][self.shift_before + obs_shift +
                                          view_req.shift]
-            # Single index.
+            # Single shift int value. Use the trajectory as-is, and if
+            # `shift` != 0: shifted by that value.
             else:
                 shift = view_req.shift + obs_shift
                 # Shift is exactly 0: Use trajectory as is.
@@ -198,9 +214,12 @@ class _AgentCollector:
                 # 0-padded "before" area of our buffers.
                 else:
                     data = np_data[data_col][self.shift_before + shift:shift]
+
             if len(data) > 0:
                 batch_data[view_col] = data
 
+        # Due to possible batch-repeats > 1, columns in the resulting batch
+        # may not all have the same batch size.
         batch = SampleBatch(batch_data, _dont_check_lens=True)
 
         # Add EPS_ID and UNROLL_ID to batch.
