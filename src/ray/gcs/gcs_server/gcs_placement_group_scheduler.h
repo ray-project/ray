@@ -64,6 +64,8 @@ class GcsPlacementGroupSchedulerInterface {
       const NodeID &node_id) = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
+  ///
+  /// \param placement_group_id The id of the placement group to be destroyed.
   virtual void DestroyPlacementGroupBundleResourcesIfExists(
       const PlacementGroupID &placement_group_id) = 0;
 
@@ -168,8 +170,10 @@ enum class LeasingState {
 /// status.
 class LeaseStatusTracker {
  public:
-  LeaseStatusTracker(std::shared_ptr<GcsPlacementGroup> placement_group,
-                     std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles);
+  LeaseStatusTracker(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      const std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
+      const ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
@@ -239,6 +243,16 @@ class LeaseStatusTracker {
   /// \return Location of bundles that failed to commit resources on a node.
   const std::shared_ptr<BundleLocations> &GetUnCommittedBundleLocations() const;
 
+  /// This method returns bundle locations that success to commit resources.
+  ///
+  /// \return Location of bundles that success to commit resources on a node.
+  const std::shared_ptr<BundleLocations> &GetCommittedBundleLocations() const;
+
+  /// This method returns bundle locations.
+  ///
+  /// \return Location of bundles.
+  const std::shared_ptr<BundleLocations> &GetBundleLocations() const;
+
   /// Return the leasing state.
   ///
   /// \return Leasing state.
@@ -276,6 +290,9 @@ class LeaseStatusTracker {
   /// Location of bundles that commit requests failed.
   std::shared_ptr<BundleLocations> uncommitted_bundle_locations_;
 
+  /// Location of bundles that committed requests success.
+  std::shared_ptr<BundleLocations> committed_bundle_locations_;
+
   /// The leasing stage. This is used to know the state of current leasing context.
   LeasingState leasing_state_ = LeasingState::PREPARING;
 
@@ -288,6 +305,9 @@ class LeaseStatusTracker {
 
   /// Bundles to schedule.
   std::vector<std::shared_ptr<BundleSpecification>> bundles_to_schedule_;
+
+  /// Location of bundles.
+  std::shared_ptr<BundleLocations> bundle_locations_;
 };
 
 /// A data structure that helps fast bundle location lookup.
@@ -492,14 +512,20 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
+  /// Acquire the bundle resources from the cluster resources.
+  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
+  /// Return the bundle resources to the cluster resources.
+  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+
   /// Generate schedule context.
   std::unique_ptr<ScheduleContext> GetScheduleContext(
       const PlacementGroupID &placement_group_id);
 
   /// A timer that ticks every cancel resource failure milliseconds.
   boost::asio::deadline_timer return_timer_;
-  /// Used to update placement group information upon creation, deletion, etc.
 
+  /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
   /// Reference of GcsNodeManager.
