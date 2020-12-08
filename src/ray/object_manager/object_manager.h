@@ -390,6 +390,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
 
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service *main_service_;
+
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -399,10 +403,6 @@ class ObjectManager : public ObjectManagerInterface,
   // we will decide its type at runtime, and we would pass it to Plasma Store.
   std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
   ObjectBufferPool buffer_pool_;
-
-  /// Weak reference to main service. We ensure this object is destroyed before
-  /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   boost::asio::io_service rpc_service_;
@@ -459,7 +459,8 @@ class ObjectManager : public ObjectManagerInterface,
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// Pull manager retry timer .
-  std::unique_ptr<boost::asio::deadline_timer> pull_retry_timer_;
+  /* std::unique_ptr<boost::asio::deadline_timer> pull_retry_timer_; */
+  boost::asio::deadline_timer pull_retry_timer_;
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;
