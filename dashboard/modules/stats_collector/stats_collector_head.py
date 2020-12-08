@@ -150,7 +150,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         pid = str(req.query.get("pid", ""))
         node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
         if pid:
-            node_logs = {str(pid): node_logs.get(pid, [])} 
+            node_logs = {str(pid): node_logs.get(pid, [])}
         return dashboard_utils.rest_response(
             success=True, message="Fetched logs.", logs=node_logs)
 
@@ -160,7 +160,7 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         pid = str(req.query.get("pid", ""))
         node_errors = DataSource.ip_and_pid_to_errors.get(ip, {})
         if pid:
-            node_errors = {str(pid): node_errors.get(pid, [])} 
+            node_errors = {str(pid): node_errors.get(pid, [])}
         return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
