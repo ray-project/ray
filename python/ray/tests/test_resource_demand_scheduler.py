@@ -1572,6 +1572,195 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
 
+    def testRequestResources(self):
+        """Test request_resources() with and without idle timeout."""
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["max_workers"] = 4
+        config["idle_timeout_minutes"] = 0
+        config["available_node_types"] = {
+            "def_head": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2
+                },
+                "max_workers": 1
+            },
+            "def_worker": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "WORKER": 1
+                },
+                "max_workers": 3
+            }
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        non_terminated_nodes = autoscaler.provider.non_terminated_nodes({})
+        assert len(non_terminated_nodes) == 1
+        node_id = non_terminated_nodes[0]
+        node_ip = autoscaler.provider.non_terminated_node_ips({})[0]
+
+        # A hack to check if the node was terminated when it shouldn't.
+        autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        # this fits on request_resources()!
+        self.waitForNodes(1)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}] * 2)
+        autoscaler.update()
+        self.waitForNodes(2)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"], {}, {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        self.waitForNodes(2)
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        # Still 2 as the second node did not show up a heart beat.
+        self.waitForNodes(2)
+        # If node {node_id} was terminated any time then it's state will be set
+        # to terminated.
+        assert autoscaler.provider.mock_nodes[
+            node_id].state == "unterminatable"
+        lm.update(
+            "172.0.0.1",
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        # Now it is 1 because it showed up in last used (heart beat).
+        # The remaining one is 127.0.0.1.
+        self.waitForNodes(1)
+
+    def testRequestResourcesRaceConditions(self):
+        """Test request_resources(), race conditions & demands/min_workers."""
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["max_workers"] = 4
+        config["idle_timeout_minutes"] = 0
+        config["available_node_types"] = {
+            "def_head": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2
+                },
+                "max_workers": 1
+            },
+            "def_worker": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "WORKER": 1
+                },
+                "max_workers": 3,
+                "min_workers": 1
+            }
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.update()
+        # 1 min worker for both min_worker and request_resources()
+        self.waitForNodes(1)
+        non_terminated_nodes = autoscaler.provider.non_terminated_nodes({})
+        assert len(non_terminated_nodes) == 1
+        node_id = non_terminated_nodes[0]
+        node_ip = autoscaler.provider.non_terminated_node_ips({})[0]
+
+        # A hack to check if the node was terminated when it shouldn't.
+        autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}] * 2)
+        autoscaler.update()
+        # 2 requested_resource, 1 min worker, 1 free node -> 2 nodes total
+        self.waitForNodes(2)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.update()
+        # Still 2 because the second one is not connected and hence
+        # request_resources occupies the connected node.
+        self.waitForNodes(2)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}] * 3)
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"], {}, {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }] * 3)
+        autoscaler.update()
+        self.waitForNodes(3)
+        autoscaler.request_resources([])
+
+        lm.update("172.0.0.1",
+                  config["available_node_types"]["def_worker"]["resources"],
+                  config["available_node_types"]["def_worker"]["resources"],
+                  {})
+        lm.update("172.0.0.2",
+                  config["available_node_types"]["def_worker"]["resources"],
+                  config["available_node_types"]["def_worker"]["resources"],
+                  {})
+        lm.update(node_ip,
+                  config["available_node_types"]["def_worker"]["resources"],
+                  {}, {})
+        autoscaler.update()
+        self.waitForNodes(1)
+        # If node {node_id} was terminated any time then it's state will be set
+        # to terminated.
+        assert autoscaler.provider.mock_nodes[
+            node_id].state == "unterminatable"
+
 
 if __name__ == "__main__":
     import sys
