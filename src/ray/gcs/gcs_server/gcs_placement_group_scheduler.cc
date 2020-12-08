@@ -193,7 +193,15 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     return schedule_map;
   }
 
+  // Filter out the nodes already scheduled by this placement group.
   absl::flat_hash_map<NodeID, ResourceSet> allocated_resources;
+  if (context->bundle_locations_.has_value()) {
+    const auto &bundle_locations = context->bundle_locations_.value();
+    for (auto &bundle : *bundle_locations) {
+      allocated_resources[bundle.second.first] = ResourceSet();
+    }
+  }
+
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
     auto iter = candidate_nodes.begin();
@@ -253,7 +261,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   }
 
   auto lease_status_tracker =
-      std::make_shared<LeaseStatusTracker>(placement_group, bundles);
+      std::make_shared<LeaseStatusTracker>(placement_group, bundles, selected_nodes);
   RAY_CHECK(placement_group_leasing_in_progress_
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
@@ -280,10 +288,18 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
     const PlacementGroupID &placement_group_id) {
-  // There could be leasing bundles and committed bundles at the same time if placement
-  // groups are rescheduling.
-  DestroyPlacementGroupPreparedBundleResources(placement_group_id);
-  DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+  auto &bundle_locations =
+      committed_bundle_location_index_.GetBundleLocations(placement_group_id);
+  if (bundle_locations.has_value()) {
+    // There could be leasing bundles and committed bundles at the same time if placement
+    // groups are rescheduling, so we need to destroy prepared bundles and committed
+    // bundles at the same time.
+    DestroyPlacementGroupPreparedBundleResources(placement_group_id);
+    DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+
+    // Return destroyed bundles resources to the cluster resource.
+    ReturnBundleResources(bundle_locations.value());
+  }
 }
 
 void GcsPlacementGroupScheduler::MarkScheduleCancelled(
@@ -448,6 +464,7 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     auto it = placement_group_leasing_in_progress_.find(placement_group_id);
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
+    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
     schedule_failure_handler(placement_group);
     return;
   }
@@ -496,12 +513,23 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                       prepared_bundle_locations);
 
-  // If the placement group scheduling has been cancelled, destroy them.
+  // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
+  // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
+  // state of placement group as `CANCELLED` and it will also destroy all prepared and
+  // committed bundles of the placement group.
+  // However, it cannot destroy the newly submitted bundles in this scheduling, so we need
+  // to destroy them separately.
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
-    DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+    DestroyPlacementGroupCommittedBundleResources(placement_group_id);
+    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
     schedule_failure_handler(placement_group);
     return;
   }
+
+  // Acquire bundle resources from gcs resources manager.
+  const auto &committed_bundle_locations =
+      lease_status_tracker->GetCommittedBundleLocations();
+  AcquireBundleResources(committed_bundle_locations);
 
   if (!lease_status_tracker->AllCommitRequestsSuccessful()) {
     // Update the state to be reschedule so that the failure handle will reschedule the
@@ -512,11 +540,11 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
       placement_group->GetMutableBundle(bundle.first.second)->clear_node_id();
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+    ReturnBundleResources(uncommitted_bundle_locations);
     schedule_failure_handler(placement_group);
-    return;
+  } else {
+    schedule_success_handler(placement_group);
   }
-
-  schedule_success_handler(placement_group);
 }
 
 std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
@@ -626,6 +654,24 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
   }
 }
 
+void GcsPlacementGroupScheduler::AcquireBundleResources(
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
+  // Acquire bundle resources from gcs resources manager.
+  for (auto &bundle : *bundle_locations) {
+    gcs_resource_manager_.AcquireResources(bundle.second.first,
+                                           bundle.second.second->GetRequiredResources());
+  }
+}
+
+void GcsPlacementGroupScheduler::ReturnBundleResources(
+    const std::shared_ptr<BundleLocations> &bundle_locations) {
+  // Release bundle resources to gcs resources manager.
+  for (auto &bundle : *bundle_locations) {
+    gcs_resource_manager_.ReleaseResources(bundle.second.first,
+                                           bundle.second.second->GetRequiredResources());
+  }
+}
+
 void BundleLocationIndex::AddBundleLocations(
     const PlacementGroupID &placement_group_id,
     std::shared_ptr<BundleLocations> bundle_locations) {
@@ -726,10 +772,18 @@ void BundleLocationIndex::AddNodes(
 
 LeaseStatusTracker::LeaseStatusTracker(
     std::shared_ptr<GcsPlacementGroup> placement_group,
-    std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles)
+    const std::vector<std::shared_ptr<BundleSpecification>> &unplaced_bundles,
+    const ScheduleMap &schedule_map)
     : placement_group_(placement_group), bundles_to_schedule_(unplaced_bundles) {
   preparing_bundle_locations_ = std::make_shared<BundleLocations>();
   uncommitted_bundle_locations_ = std::make_shared<BundleLocations>();
+  committed_bundle_locations_ = std::make_shared<BundleLocations>();
+  bundle_locations_ = std::make_shared<BundleLocations>();
+  for (const auto &bundle : unplaced_bundles) {
+    const auto &iter = schedule_map.find(bundle->BundleId());
+    RAY_CHECK(iter != schedule_map.end());
+    (*bundle_locations_)[bundle->BundleId()] = std::make_pair(iter->second, bundle);
+  }
 }
 
 bool LeaseStatusTracker::MarkPreparePhaseStarted(
@@ -780,6 +834,8 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
   const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
     uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+  } else {
+    committed_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
   }
 }
 
@@ -807,6 +863,15 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
 const std::shared_ptr<BundleLocations>
     &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
+}
+
+const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetCommittedBundleLocations()
+    const {
+  return committed_bundle_locations_;
+}
+
+const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations() const {
+  return bundle_locations_;
 }
 
 const std::vector<std::shared_ptr<BundleSpecification>>

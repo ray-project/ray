@@ -177,6 +177,7 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
+            _use_trajectory_view_api: bool = True,
             policy: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
@@ -295,6 +296,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            _use_trajectory_view_api (bool): Whether to collect samples through
+                the experimental Trajectory View API.
             policy: Obsoleted arg. Use `policy_spec` instead.
         """
         # Deprecated arg.
@@ -459,6 +462,14 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
+        # Update Policy's view requirements from Model, only if Policy directly
+        # inherited from base `Policy` class. At this point here, the Policy
+        # must have it's Model (if any) defined and ready to output an initial
+        # state.
+        for pol in self.policy_map.values():
+            if not pol._model_init_state_automatically_added:
+                pol._update_model_inference_view_requirements_from_init_state()
+
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
@@ -568,8 +579,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=policy_config.get(
-                    "_use_trajectory_view_api", False))
+                _use_trajectory_view_api=_use_trajectory_view_api,
+            )
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -590,8 +601,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=policy_config.get(
-                    "_use_trajectory_view_api", False))
+                _use_trajectory_view_api=_use_trajectory_view_api,
+            )
 
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)

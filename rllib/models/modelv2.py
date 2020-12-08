@@ -61,8 +61,7 @@ class ModelV2:
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
         self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(
-                data_rel_pos=0, space=self.obs_space),
+            SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory
@@ -314,6 +313,29 @@ class ModelV2:
                 format.
         """
         return self.time_major is True
+
+    # TODO: (sven) Experimental method.
+    def get_input_dict(self, sample_batch,
+                       index: int = -1) -> Dict[str, TensorType]:
+        if index < 0:
+            index = sample_batch.count - 1
+
+        input_dict = {}
+        for view_col, view_req in self.inference_view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+
+            # Index range.
+            if isinstance(index, tuple):
+                data = sample_batch[view_col][index[0]:index[1] + 1]
+                input_dict[view_col] = np.array([data])
+            # Single index.
+            else:
+                input_dict[view_col] = sample_batch[view_col][index:index + 1]
+
+        # Add valid `seq_lens`, just in case RNNs need it.
+        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
+
+        return input_dict
 
 
 class NullContextManager:
