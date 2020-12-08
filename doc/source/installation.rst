@@ -311,7 +311,7 @@ Troubleshooting
 If importing Ray (``python3 -c "import ray"``) in your development clone results
 in this error:
 
-.. code-block
+.. code-block:: python
 
   Traceback (most recent call last):
     File "<string>", line 1, in <module>
