@@ -62,6 +62,7 @@ message GetResponse {
   bool valid = 1;
   bytes data = 2;
 }
+
 message WaitRequest {
   repeated bytes object_refs = 1;
   int64 num_returns = 2;
@@ -74,6 +75,48 @@ message WaitResponse {
   repeated bytes remaining_object_ids = 3;
 }
 
+
+enum ClusterInfoType {
+  CURRENT_NODE_ID = 0;
+  JOBS = 1;
+  NODES = 2;
+  WORKERS = 3;
+  NODE_IDS = 4;
+  ACTORS = 5;
+  OBJECTS = 6;
+  CLUSTER_RESOURCES = 7;
+  AVAILABLE_RESOURCES = 8;
+}
+
+message ClusterInfoRequest {
+  ClusterInfoType type = 1;
+
+  // Optional, used for ACTORS and OBJECTS info.
+  // If empty, returns the entire table for those entities.
+  repeated bytes client_ids = 2;
+}
+
+message ClusterInfoResponse {
+  ClusterInfoType type = 1;
+  // One of the following will be filled in, depending on type
+  // It's not a proto3 oneof because maps aren't allowed in oneofs.
+  string id = 2;
+  string debug_table_json = 3;
+  map<string, int64> resource_table = 4;
+}
+
+message TerminateRequest {
+  oneof terminate_type {
+    bytes task_object_id = 1;
+    bytes actor_id = 2;
+  }
+}
+
+message TerminateResponse {
+  bool ok = 1;
+  string error_msg = 2;
+}
+
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
@@ -82,5 +125,9 @@ service RayletDriver {
   rpc WaitObject(WaitRequest) returns (WaitResponse) {
   }
   rpc Schedule(ClientTask) returns (ClientTaskTicket) {
+  }
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {
+  }
+  rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
   }
 }
