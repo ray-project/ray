@@ -10,10 +10,16 @@
 import ray
 
 from ray.experimental.client.api import APIImpl
+from ray.experimental.client.common import ClientActorNameRef
 from ray.experimental.client.common import ClientObjectRef
 
 
 class CoreRayAPI(APIImpl):
+    """
+    Implements the equivalent client-side Ray API by simply passing along to the
+    Core Ray API. Primarily used inside of Ray Workers as a trampoline back to
+    core ray when passed client stubs.
+    """
     def get(self, *args, **kwargs):
         return ray.get(*args, **kwargs)
 
@@ -26,10 +32,10 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
-    def call_remote(self, instance, kind: int, *args, **kwargs):
+    def call_remote(self, instance, *args, **kwargs):
         return instance._get_ray_remote_impl().remote(*args, **kwargs)
 
-    def get_actor_from_object(self, actor_id):
+    def get_actor_from_object(self, actor_id: ClientActorNameRef):
         return ray.get_actor(actor_id.id.hex())
 
     def close(self, *args, **kwargs):
@@ -42,7 +48,12 @@ class CoreRayAPI(APIImpl):
         return getattr(ray, key)
 
 
-class CoreRayServerAPI(CoreRayAPI):
+class RayServerAPI(CoreRayAPI):
+    """
+    Ray Client server-side API shim. By default, simply calls the default Core
+    Ray API calls, but also accepts scheduling calls from functions running
+    inside of other remote functions that need to create more work.
+    """
     def __init__(self, server_instance):
         self.server = server_instance
 
@@ -64,10 +75,10 @@ class CoreRayServerAPI(CoreRayAPI):
         resp = self.server._put_and_retain_obj(val)
         return ClientObjectRef(resp.id)
 
-    def get_actor_from_object(self, id: bytes):
-        return self.server.actor_refs[id]
+    def get_actor_from_object(self, ref: ClientActorNameRef):
+        return self.server.actor_refs[ref.id]
 
-    def call_remote(self, instance, kind: int, *args, **kwargs):
+    def call_remote(self, instance, *args, **kwargs):
         task = instance._prepare_client_task()
         ticket = self.server.Schedule(task, prepared_args=args)
         return ClientObjectRef(ticket.return_id)

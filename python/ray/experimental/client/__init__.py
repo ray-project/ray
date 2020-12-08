@@ -7,15 +7,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# _client_api has to be external to the API stub, below.
-# Otherwise, ray.remote() that contains ray.remote()
-# contains a reference to the RayAPIStub, therefore a
-# reference to the _client_api, and then tries to pickle
-# the thing.
+# About these global variables: Ray 1.0 uses exported module functions to
+# provide its API, and we need to match that. However, we want different
+# behaviors depending on where, exactly, in the client stack this is running.
+#
+# The reason for these differences depends on what's being pickled and passed
+# to functions, or functions inside functions. So there are three cases to care
+# about
+#
+# (Python Client)-->(Python ClientServer)-->(Internal Raylet Process)
+#
+# * _client_api should be set if we're inside the client
+# * _server_api should be set if we're inside the clientserver
+# * Both will be set if we're running both (as in a test)
+# * Neither should be set if we're inside the raylet (but we still need to shim
+#       from the client API surface to the Ray API)
 _client_api: Optional[APIImpl] = None
-
 _server_api: Optional[APIImpl] = None
 
+# The reason for _is_server is a hack around the above comment while running
+# tests. If we have both a client and a server trying to control these static
+# variables then we need a way to decide which to use. In this case, both
+# _client_api and _server_api are set.
+# This boolean flips between the two
 _is_server: bool = False
 
 

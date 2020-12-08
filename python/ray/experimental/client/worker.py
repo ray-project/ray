@@ -131,7 +131,7 @@ class Worker:
             raise TypeError("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
-    def call_remote(self, instance, kind, *args, **kwargs):
+    def call_remote(self, instance, *args, **kwargs):
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg)

@@ -31,10 +31,29 @@ class ClientActorNameRef(ClientBaseRef):
 
 
 class ClientRemoteFunc:
+    """
+    A stub created on the Ray Client to represent a remote
+    function that can be exectued on the cluster. This class
+    is allowed to be passed around between remote functions.
+
+    Attributes:
+        _func: The actual function to execute remotely
+        _name: The original name of the function
+        _ref: The ClientObjectRef of the pickled code of the function, _func
+        _raylet_remote: The Raylet-side ray.remote_function.RemoteFunction
+            for this object
+    """
     def __init__(self, f):
         self._func = f
         self._name = f.__name__
         self.id = None
+
+        # self._ref can be lazily instantiated. Rather than
+        # eagerly creating function data objects in the server
+        # we can put them just before we execute the function,
+        # especially in cases where many @ray.remote functions exist in
+        # a library and only a handful are ever executed by a user
+        # of the library.
         self._ref = None
         self._raylet_remote = None
 
@@ -43,8 +62,7 @@ class ClientRemoteFunc:
                         "Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, ray_client_pb2.ClientTask.FUNCTION, *args,
-                               **kwargs)
+        return ray.call_remote(self, *args, **kwargs)
 
     def _get_ray_remote_impl(self):
         if self._raylet_remote is None:
@@ -52,7 +70,7 @@ class ClientRemoteFunc:
         return self._raylet_remote
 
     def __repr__(self):
-        return "ClientRemoteFunc(%s, %s)" % (self._name, self.id)
+        return "ClientRemoteFunc(%s, %s)" % (self._name, self._ref)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         if self._ref is None:
@@ -65,6 +83,16 @@ class ClientRemoteFunc:
 
 
 class ClientActorClass:
+    """
+    A stub created on the Ray Client to represent an actor class
+    wrapped by ray.remote and can be executed on the cluster.
+
+    Attributes:
+        actor_cls: The actual class to execute remotely
+        _name: The original name of the class
+        _ref: The ClientObjectRef of the pickled `actor_cls`
+        _raylet_remote: The Raylet-side ray.ActorClass for this object
+    """
     def __init__(self, actor_cls):
         self.actor_cls = actor_cls
         self._name = actor_cls.__name__
@@ -90,8 +118,7 @@ class ClientActorClass:
 
     def remote(self, *args, **kwargs):
         # Actually instantiate the actor
-        ref = ray.call_remote(self, ray_client_pb2.ClientTask.ACTOR, *args,
-                              **kwargs)
+        ref = ray.call_remote(self, *args, **kwargs)
         return ClientActorHandle(ClientActorNameRef(ref.id), self)
 
     def __repr__(self):
@@ -113,6 +140,17 @@ class ClientActorClass:
 
 
 class ClientActorHandle:
+    """
+    A stub created on the Ray Client to represent a remote
+    actor that has been started on the cluster. This class
+    is allowed to be passed around between remote functions.
+
+    Attributes:
+        actor_id: A reference to the running actor given to the client
+        actor_class: A reference to the ClientActorClass that this actor was
+            instantiated from
+        _real_actor_handle: The Raylet-side ray.actor.ActorHandle
+    """
     def __init__(self, actor_id: ClientActorNameRef,
                  actor_class: ClientActorClass):
         self.actor_id = actor_id
@@ -146,6 +184,14 @@ class ClientActorHandle:
 
 
 class ClientRemoteMethod:
+    """
+    A stub for a method on a remote actor. Can be annotated with exection
+    options.
+
+    actor_handle: A reference to the ClientActorHandle that generated
+        this method and will have this method called upon it.
+    method_name: The name of this method
+    """
     def __init__(self, actor_handle: ClientActorHandle, method_name: str):
         self.actor_handle = actor_handle
         self.method_name = method_name
@@ -170,8 +216,7 @@ class ClientRemoteMethod:
         self.method_name = state["method_name"]
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, ray_client_pb2.ClientTask.METHOD, *args,
-                               **kwargs)
+        return ray.call_remote(self, *args, **kwargs)
 
     def __repr__(self):
         name = "%s.%s" % (self.actor_handle.actor_class._name,

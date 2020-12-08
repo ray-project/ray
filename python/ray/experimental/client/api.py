@@ -14,36 +14,90 @@ from abc import abstractmethod
 
 
 class APIImpl(ABC):
+    """
+    APIImpl is the interface to implement for whichever version of the core
+    Ray API that needs abstracting when run in client mode.
+    """
     @abstractmethod
     def get(self, *args, **kwargs):
+        """
+        get is the hook stub passed on to replace `ray.get`
+
+        :param args: opaque arguments
+        :param kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def put(self, *args, **kwargs):
+        """
+        put is the hook stub passed on to replace `ray.put`
+
+        :param args: opaque arguments
+        :param kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def wait(self, *args, **kwargs):
+        """
+        wait is the hook stub passed on to replace `ray.wait`
+
+        :param args: opaque arguments
+        :param kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def remote(self, *args, **kwargs):
+        """
+        remote is the hook stub passed on to replace `ray.remote`.
+        This sets up remote functions or actors.
+
+        :param args: opaque arguments
+        :param kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def call_remote(self, instance, kind: int, *args, **kwargs):
+    def call_remote(self, instance, *args, **kwargs):
+        """
+        call_remote is called by Client stub objects when they are going to
+        be executed remotely, eg, `f.remote()` or `actor_cls.remote()`.
+        This allows the client stub objects to be passed around and be
+        implemented in the most effective way whether it's in the client,
+        clientserver, or raylet worker.
+
+        :param instance: The Client-side stub reference to a remote object
+        :param args: opaque arguments
+        :param kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def get_actor_from_object(self, id):
+    def get_actor_from_object(self, id: 'ClientActorNameRef'):
+        """
+        get_actor_from_object returns a reference to an actor
+        from an opaque actor ID, passed in as bytes.
+
+        :param id: Client-side actor ref to retrieve a Ray reference to
+        """
         pass
 
     @abstractmethod
     def close(self, *args, **kwargs):
+        """
+        close cleans up an API connection by closing any channels or
+        shutting down any servers gracefully.
+        """
         pass
 
 
 class ClientAPI(APIImpl):
+    """
+    The Client-side methods corresponding to the ray API. Delegates
+    to the Client Worker that contains the connection to the ClientServer.
+    """
     def __init__(self, worker):
         self.worker = worker
 
@@ -59,10 +113,10 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, f, kind, *args, **kwargs):
-        return self.worker.call_remote(f, kind, *args, **kwargs)
+    def call_remote(self, f, *args, **kwargs):
+        return self.worker.call_remote(f, *args, **kwargs)
 
-    def get_actor_from_object(self, id):
+    def get_actor_from_object(self, id: 'ClientActorNameRef'):
         raise Exception("Calling get_actor_from_object on the client side")
 
     def close(self, *args, **kwargs):

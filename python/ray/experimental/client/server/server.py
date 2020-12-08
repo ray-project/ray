@@ -11,7 +11,7 @@ import inspect
 from ray.experimental.client import stash_api_for_tests, _set_server_api
 from ray.experimental.client.common import convert_from_arg
 from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.server.core_ray_api import CoreRayServerAPI
+from ray.experimental.client.server.core_ray_api import RayServerAPI
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,7 @@ def _convert_args(arg_list, prepared_args=None):
 def serve(connection_str, test_mode=False):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer(test_mode=test_mode)
-    _set_server_api(CoreRayServerAPI(task_servicer))
+    _set_server_api(RayServerAPI(task_servicer))
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     server.add_insecure_port(connection_str)
