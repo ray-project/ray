@@ -5,13 +5,13 @@ namespace ray {
 PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-    const std::function<int(int)> get_rand_int,
     const RestoreSpilledObjectCallback restore_spilled_object)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
-      get_rand_int_(get_rand_int),
-      restore_spilled_object_(restore_spilled_object) {}
+      restore_spilled_object_(restore_spilled_object),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count())
+{}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
@@ -88,7 +88,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
 
   // Choose a random client to pull the object from.
   // Generate a random index.
-  int node_index = get_rand_int_(node_vector.size());
+  int node_index = GetRandInt(node_vector.size());
   NodeID node_id = node_vector[node_index];
   // If the object manager somehow ended up choosing itself, choose a different
   // object manager.
@@ -127,5 +127,10 @@ void PullManager::Tick() {
 }
 
 int PullManager::NumActiveRequests() const { return pull_requests_.size(); }
+
+int PullManager::GetRandInt(int upper_bound) {
+  std::uniform_int_distribution<int> distribution(0, upper_bound - 1);
+  return distribution(gen_);
+}
 
 }  // namespace ray

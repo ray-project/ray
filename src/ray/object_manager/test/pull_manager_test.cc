@@ -12,14 +12,12 @@ class PullManagerTest : public ::testing::Test {
       : self_node_id_(NodeID::FromRandom()),
         object_is_local_(false),
         num_send_pull_request_calls_(0),
-        rand_int_(0),
         num_restore_spilled_object_calls_(0),
         pull_manager_(self_node_id_,
                       [this](const ObjectID &object_id) { return object_is_local_; },
                       [this](const ObjectID &object_id, const NodeID &node_id) {
                         num_send_pull_request_calls_++;
                       },
-                      [this](int) { return rand_int_; },
                       [this](const ObjectID &, const std::string &,
                              std::function<void(const ray::Status &)>) {
                         num_restore_spilled_object_calls_++;
@@ -28,7 +26,6 @@ class PullManagerTest : public ::testing::Test {
   NodeID self_node_id_;
   bool object_is_local_;
   int num_send_pull_request_calls_;
-  int rand_int_;
   int num_restore_spilled_object_calls_;
   PullManager pull_manager_;
 };

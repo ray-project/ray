@@ -440,9 +440,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// and rpc thread.
   std::mutex profile_mutex_;
 
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
-
   /// The gPRC server.
   rpc::GrpcServer object_manager_server_;
 

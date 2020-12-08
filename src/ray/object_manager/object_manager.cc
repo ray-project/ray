@@ -64,7 +64,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       object_store_internal_(config, spill_objects_callback, object_store_full_callback),
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
@@ -81,12 +80,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                                          const NodeID &client_id) {
     SendPullRequest(object_id, client_id);
   };
-  const auto &get_rand_int = [this](int upper_bound) {
-    std::uniform_int_distribution<int> distribution(0, upper_bound - 1);
-    return distribution(gen_);
-  };
   pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
-                                      get_rand_int, restore_spilled_object_));
+                                      restore_spilled_object_));
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
