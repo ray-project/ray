@@ -757,8 +757,10 @@ class Policy(metaclass=ABCMeta):
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
                 "state_out_{}".format(i),
                 shift=-1,
-                batch_repeat_value=self.config["model"]["max_seq_len"],
+                batch_repeat_value=self.config.get("model", {}).get(
+                    "max_seq_len", 1),
                 space=space)
+            #TODO: check, whether we can set: used_for_training=False here.
             view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space)
 
 
