@@ -39,14 +39,14 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     std::vector<ObjectID> *return_ids, const ray::BundleID &bundle_id,
-    bool placement_group_capture_child_tasks,
+    bool placement_group_capture_child_tasks, const std::string debugger_breakpoint,
     const std::unordered_map<std::string, std::string> &override_environment_variables) {
   // Build common task spec.
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      override_environment_variables);
+      debugger_breakpoint, override_environment_variables);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -411,11 +411,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket, local_raylet_client_, reference_counter_,
       options_.check_signals,
-      /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
       /*warmup=*/
       (options_.worker_type != ray::WorkerType::SPILL_WORKER &&
        options_.worker_type != ray::WorkerType::RESTORE_WORKER),
-      /*on_store_full=*/boost::bind(&CoreWorker::TriggerGlobalGC, this),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &object, const ObjectID &object_id) {
@@ -1301,7 +1299,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                             const TaskOptions &task_options,
                             std::vector<ObjectID> *return_ids, int max_retries,
                             BundleID placement_options,
-                            bool placement_group_capture_child_tasks) {
+                            bool placement_group_capture_child_tasks,
+                            const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1327,7 +1326,7 @@ void CoreWorker::SubmitTask(const RayFunction &function,
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, return_ids,
                       placement_options, placement_group_capture_child_tasks,
-                      override_environment_variables);
+                      debugger_breakpoint, override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);
@@ -1383,6 +1382,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources, &return_ids,
                       actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
+                      "", /* debugger_breakpoint */
                       override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
                                    actor_creation_options.dynamic_worker_options,
@@ -1451,7 +1451,7 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
   // Synchronously wait for placement group removal.
   RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
       placement_group_id,
-      [status_promise](Status status) { status_promise->set_value(status); }));
+      [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
   if (status_future.wait_for(std::chrono::seconds(
           RayConfig::instance().gcs_server_request_timeout_seconds())) !=
@@ -1461,6 +1461,24 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
            << placement_group_id
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
+    return Status::TimedOut(stream.str());
+  }
+  return status_future.get();
+}
+
+Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                           int timeout_ms) {
+  std::shared_ptr<std::promise<Status>> status_promise =
+      std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
+      placement_group_id,
+      [status_promise](const Status &status) { status_promise->set_value(status); }));
+  auto status_future = status_promise->get_future();
+  if (status_future.wait_for(std::chrono::milliseconds(timeout_ms)) !=
+      std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "There was timeout in waiting for placement group " << placement_group_id
+           << " creation.";
     return Status::TimedOut(stream.str());
   }
   return status_future.get();
@@ -1493,6 +1511,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                       required_resources, return_ids,
                       std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
+                      "",   /* debugger_breakpoint */
                       override_environment_variables);
   // NOTE: placement_group_capture_child_tasks and override_environment_variables will be
   // ignored in the actor because we should always follow the actor's option.
@@ -1791,7 +1810,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   status = options_.task_execution_callback(
       task_type, task_spec.GetName(), func,
       task_spec.GetRequiredResources().GetResourceMap(), args, arg_reference_ids,
-      return_ids, return_objects);
+      return_ids, task_spec.GetDebuggerBreakpoint(), return_objects);
 
   absl::optional<rpc::Address> caller_address(
       options_.is_local_mode ? absl::optional<rpc::Address>()
