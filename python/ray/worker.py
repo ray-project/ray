@@ -102,6 +102,13 @@ class Worker:
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
+        # If this is set, the next .remote call should drop into the
+        # debugger, at the specified breakpoint ID.
+        self.debugger_breakpoint = b""
+        # If this is set, ray.get calls invoked on the object ID returned
+        # by the worker should drop into the debugger at the specified
+        # breakpoint ID.
+        self.debugger_get_breakpoint = b""
 
     @property
     def connected(self):
@@ -280,6 +287,10 @@ class Worker:
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
+        Returns:
+            list: List of deserialized objects
+            bytes: UUID of the debugger breakpoint we should drop
+                into or b"" if there is no breakpoint.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -291,7 +302,16 @@ class Worker:
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms)
-        return self.deserialize_objects(data_metadata_pairs, object_refs)
+        debugger_breakpoint = b""
+        for (data, metadata) in data_metadata_pairs:
+            if metadata:
+                metadata_fields = metadata.split(b",")
+                if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
+                    debugger_breakpoint = metadata_fields[1][len(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
+        return self.deserialize_objects(data_metadata_pairs,
+                                        object_refs), debugger_breakpoint
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -1345,7 +1365,8 @@ def get(object_refs, *, timeout=None):
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1358,6 +1379,14 @@ def get(object_refs, *, timeout=None):
 
         if is_individual_id:
             values = values[0]
+
+        if debugger_breakpoint != b"":
+            frame = sys._getframe().f_back
+            rdb = ray.util.pdb.connect_ray_pdb(
+                None, None, False, None,
+                debugger_breakpoint.decode() if debugger_breakpoint else None)
+            rdb.set_trace(frame=frame)
+
         return values
 
 

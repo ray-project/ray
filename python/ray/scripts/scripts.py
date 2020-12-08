@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 import sys
+from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse
@@ -150,6 +151,35 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
                 from None
 
 
+def continue_debug_session():
+    """Continue active debugging session.
+
+    This function will connect 'ray debug' to the right debugger
+    when a user is stepping between Ray tasks.
+    """
+    active_sessions = ray.experimental.internal_kv._internal_kv_list(
+        "RAY_PDB_")
+
+    for active_session in active_sessions:
+        if active_session.startswith(b"RAY_PDB_CONTINUE"):
+            print("Continuing pdb session in different process...")
+            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
+            while True:
+                data = ray.experimental.internal_kv._internal_kv_get(key)
+                if data:
+                    session = json.loads(data)
+                    if "exit_debugger" in session:
+                        ray.experimental.internal_kv._internal_kv_del(key)
+                        return
+                    host, port = session["pdb_address"].split(":")
+                    with Telnet(host, int(port)) as tn:
+                        tn.interact()
+                    ray.experimental.internal_kv._internal_kv_del(key)
+                    continue_debug_session()
+                    return
+                time.sleep(1.0)
+
+
 @cli.command()
 @click.option(
     "--address",
@@ -158,12 +188,13 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     help="Override the address to connect to.")
 def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
-    from telnetlib import Telnet
     if not address:
         address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
+    ray.init(address=address, log_to_driver=False)
     while True:
+        continue_debug_session()
+
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
         print("Active breakpoints:")
@@ -537,6 +568,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         with cli_logger.group("Next steps"):
             cli_logger.print(
                 "To connect to this Ray runtime from another node, run")
+            # NOTE(kfstorm): Java driver rely on this line to get the address
+            # of the cluster. Please be careful when updating this line.
             cli_logger.print(
                 cf.bold("  ray start --address='{}'{}"), redis_address,
                 f" --redis-password='{redis_password}'"
