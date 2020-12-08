@@ -189,11 +189,11 @@ class StandardAutoscaler:
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
                 logger.info("StandardAutoscaler: "
-                            "{}: Terminating idle node".format(node_id))
+                            "{}: Terminating idle node.".format(node_id))
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
                 logger.info("StandardAutoscaler: "
-                            "{}: Terminating outdated node".format(node_id))
+                            "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
@@ -207,7 +207,7 @@ class StandardAutoscaler:
                len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
             to_terminate = nodes.pop()
             logger.info("StandardAutoscaler: "
-                        "{}: Terminating unneeded node".format(to_terminate))
+                        "{}: Terminating unneeded node.".format(to_terminate))
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
@@ -235,15 +235,23 @@ class StandardAutoscaler:
             if not updater.is_alive():
                 completed.append(node_id)
         if completed:
+            nodes_to_terminate = []
             for node_id in completed:
                 if self.updaters[node_id].exitcode == 0:
                     self.num_successful_updates[node_id] += 1
+                    # Mark the node as active to prevent the node recovery
+                    # logic immediately trying to restart Ray on the new node.
+                    self.load_metrics.mark_active(
+                        self.provider.internal_ip(node_id))
                 else:
+                    logger.error(f"StandardAutoscaler: {node_id}: Terminating "
+                                 "failed to setup/initialize node.")
+                    nodes_to_terminate.append(node_id)
                     self.num_failed_updates[node_id] += 1
                 del self.updaters[node_id]
-            # Mark the node as active to prevent the node recovery logic
-            # immediately trying to restart Ray on the new node.
-            self.load_metrics.mark_active(self.provider.internal_ip(node_id))
+            if nodes_to_terminate:
+                self.provider.terminate_nodes(nodes_to_terminate)
+
             nodes = self.workers()
             self.log_info_string(nodes)
 

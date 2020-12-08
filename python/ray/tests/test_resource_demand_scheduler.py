@@ -1407,7 +1407,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1433,6 +1433,7 @@ class AutoscalingTest(unittest.TestCase):
         sleep(0.1)
         runner.assert_has_call(self.provider.mock_nodes[1].internal_ip,
                                "new_worker_setup_command")
+
         runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
                                    "setup_cmd")
         runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
@@ -1599,6 +1600,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         lm = LoadMetrics()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -1696,6 +1698,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1786,6 +1789,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1829,6 +1833,7 @@ class AutoscalingTest(unittest.TestCase):
         }, 1)
 
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,

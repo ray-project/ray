@@ -535,6 +535,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
@@ -558,6 +559,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(11)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -896,6 +898,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1038,6 +1041,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         lm = LoadMetrics()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(5)])
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
