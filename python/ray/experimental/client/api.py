@@ -13,7 +13,6 @@ from abc import ABC
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
-    from ray.actor import ActorHandle
     from ray.experimental.client.common import ClientStub
 
 

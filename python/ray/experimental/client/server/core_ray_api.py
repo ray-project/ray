@@ -8,10 +8,8 @@
 # making into the core-ray module are contained and well-defined.
 
 import ray
-from ray import cloudpickle
 
 from ray.experimental.client.api import APIImpl
-from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientObjectRef
 
 

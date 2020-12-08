@@ -244,7 +244,7 @@ class ClientRemoteMethod(ClientStub):
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.METHOD
         task.name = self.method_name
-        task.payload_id = self.actor_handle.actor_id.id
+        task.payload_id = self.actor_handle.actor_ref.id
         return task
 
 
