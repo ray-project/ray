@@ -11,7 +11,6 @@ from ray.util import metrics
 from ray.serve.utils import _get_logger
 from ray.serve.http_util import Response, build_flask_request
 from ray.serve.router import Router
-from ray.serve.handle import RayServeHandle
 
 # The maximum number of times to retry a request due to actor failure.
 # TODO(edoakes): this should probably be configurable.
