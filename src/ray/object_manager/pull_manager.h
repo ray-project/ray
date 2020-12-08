@@ -80,9 +80,7 @@ class PullManager {
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
-    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
-    bool timer_set;
+    PullRequest() : client_locations() {}
     std::vector<NodeID> client_locations;
   };
 

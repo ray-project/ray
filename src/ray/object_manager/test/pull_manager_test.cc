@@ -47,14 +47,18 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  client_ids.insert(NodeID::FromRandom());
-  pull_manager_.OnLocationChange(ObjectID::FromRandom(), client_ids, "");
+  pull_manager_.CancelPull(obj1);
 
-  // Now we're getting a notification about an object we aren't trying to pull.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 
-  pull_manager_.CancelPull(obj1);
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(obj1, client_ids, "");
+
+  // Now we're getting a notification about an object that was already cancelled.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 }
 

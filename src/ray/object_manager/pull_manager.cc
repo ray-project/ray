@@ -83,7 +83,6 @@ void PullManager::TryPull(const ObjectID &object_id) {
                      << "already has the object. The object may have been evicted. It is "
                      << "most likely due to memory pressure, object pull has been "
                      << "requested before object location is updated.";
-    it->second.timer_set = false;
     return;
   }
 
