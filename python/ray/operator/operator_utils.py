@@ -3,9 +3,11 @@ import logging
 import os
 from typing import Any, Dict, Iterator, List
 
-from kubernetes import watch
+from kubernetes.watch import Watch
+from kubernetes.client.models.v1_owner_reference import V1OwnerReference
 
-from ray.autoscaler._private.kubernetes import core_api, custom_objects_api
+from ray.autoscaler._private.kubernetes import (auth_api, core_api,
+                                                custom_objects_api)
 
 RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 
@@ -36,6 +38,64 @@ PROVIDER_CONFIG = {
 
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
+"""
+ownerReferences:
+  - apiVersion: apps/v1
+    controller: true
+    blockOwnerDeletion: true
+    kind: ReplicaSet
+    name: my-repset
+    uid: d9607e19-f88f-11e6-a518-42010a800195
+"""
+
+
+def fill_operator_ownerrefs() -> None:
+    pod = core_api().read_namespaced_pod(
+        namespace=RAY_NAMESPACE, name="ray-operator-pod")
+    ref = get_owner_reference("Pod", pod.metadata.name, pod.metadata.uid)
+
+    service_account = core_api().read_namespaced_service_account(
+        namespace=RAY_NAMESPACE, name="ray-operator-serviceaccount")
+    role = auth_api().read_namespaced_role(
+        namespace=RAY_NAMESPACE, name="ray-operator-role")
+    role_binding = auth_api().read_namespaced_role_binding(
+        namespace=RAY_NAMESPACE, name="ray-operator-rolebinding")
+
+    service_account.metadata.owner_references = [ref]
+    role.metadata.owner_references = [ref]
+    role_binding.metadata.owner_references = [ref]
+
+    core_api().patch_namespaced_service_account(
+        namespace=RAY_NAMESPACE,
+        name="ray-operator-serviceaccount",
+        body=service_account)
+    auth_api().patch_namespaced_role(
+        namespace=RAY_NAMESPACE, name="ray-operator-role", body=role)
+    auth_api().patch_namespaced_role_binding(
+        namespace=RAY_NAMESPACE,
+        name="ray-operator-rolebinding",
+        body=role_binding)
+
+
+def get_owner_reference(kind, name, uid):
+    return V1OwnerReference(
+        api_version="apps/v1",
+        controller=True,
+        block_owner_deletion=True,
+        kind=kind,
+        name=name,
+        uid=uid)
+
+
+def get_owner_reference_dict(kind, name, uid):
+    return {
+        "apiVersion": "apps/v1",
+        "controller": "true",
+        "blockOwnerDeletion": "true",
+        "kind": kind,
+        "name": name,
+        "uid": uid
+    }
 
 
 def config_path(cluster_name: str) -> str:
@@ -44,7 +104,7 @@ def config_path(cluster_name: str) -> str:
 
 
 def cluster_cr_stream() -> Iterator:
-    w = watch.Watch()
+    w = Watch()
     return w.stream(
         custom_objects_api().list_namespaced_custom_object,
         namespace=RAY_NAMESPACE,
@@ -55,15 +115,21 @@ def cluster_cr_stream() -> Iterator:
 
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     cr_spec = cluster_resource["spec"]
+    cluster_name = cluster_resource["metadata"]["name"]
+    cluster_uid = cluster_resource["metadata"]["uid"]
     config = translate(cr_spec, dictionary=CONFIG_FIELDS)
     pod_types = cr_spec["podTypes"]
-    config["available_node_types"] = get_node_types(pod_types)
-    config["cluster_name"] = cluster_resource["metadata"]["name"]
+    config["available_node_types"] = get_node_types(pod_types, cluster_name,
+                                                    cluster_uid)
+    config["cluster_name"] = cluster_name
     config["provider"] = PROVIDER_CONFIG
     return config
 
 
-def get_node_types(pod_types: List[Dict[str, Any]]) -> Dict[str, Any]:
+def get_node_types(pod_types: List[Dict[str, Any]], cluster_name: str,
+                   cluster_uid: str) -> Dict[str, Any]:
+    cluster_owner_reference = get_owner_reference_dict(
+        kind="RayCluster", name=cluster_name, uid=cluster_uid)
     node_types = {}
     for pod_type in pod_types:
         name = pod_type["name"]
@@ -71,6 +137,9 @@ def get_node_types(pod_types: List[Dict[str, Any]]) -> Dict[str, Any]:
         pod_type_copy.pop("name")
         node_types[name] = translate(
             pod_type_copy, dictionary=NODE_TYPE_FIELDS)
+        node_types[name]["node_config"]["metadata"].update({
+            "ownerReferences": [cluster_owner_reference]
+        })
     return node_types
 
 

@@ -92,7 +92,7 @@ class RayCluster():
         self.mtr.run()
 
     def tear_down(self) -> None:
-        self.do_in_subprocess(self._tear_down, wait_to_finish=True)
+        # self.do_in_subprocess(self._tear_down, wait_to_finish=True)
         self.clean_up_logging()
 
     def _tear_down(self) -> None:
@@ -130,6 +130,8 @@ def cluster_action(cluster_config: Dict[str, Any], event_type: str) -> None:
 
 
 def main() -> None:
+    operator_utils.fill_operator_ownerrefs()
+    return
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)
     stream = operator_utils.cluster_cr_stream()
