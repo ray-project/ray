@@ -304,8 +304,11 @@ class StandardAutoscaler:
                 terminate or not.
         """
         nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
-        max_node_resources: List[ResourceDict] = []
-        resource_demand_vector_node_ids = []
+        head_node_resources: ResourceDict = copy.deepcopy(
+            self.available_node_types[self.config["head_node_type"]][
+                "resources"])
+        max_node_resources: List[ResourceDict] = [head_node_resources]
+        resource_demand_vector_worker_node_ids = []
         # Get max resources on all the non terminated nodes.
         for node_id in sorted_node_ids:
             tags = self.provider.node_tags(node_id)
@@ -314,15 +317,19 @@ class StandardAutoscaler:
                 max_node_resources.append(
                     copy.deepcopy(
                         self.available_node_types[node_type]["resources"]))
-                resource_demand_vector_node_ids.append(node_id)
+                resource_demand_vector_worker_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
         # most recently used when we binpack. We assume get_bin_pack_residual
         # is following the given order here.
         used_resource_requests: List[ResourceDict]
         _, used_resource_requests = \
-            get_bin_pack_residual(
-                max_node_resources, self.resource_demand_vector)
-        for i, node_id in enumerate(resource_demand_vector_node_ids):
+            get_bin_pack_residual(max_node_resources,
+                                  self.resource_demand_vector)
+        # Remove the first entry (the head node).
+        max_node_resources.pop(0)
+        # Remove the first entry (the head node).
+        used_resource_requests.pop(0)
+        for i, node_id in enumerate(resource_demand_vector_worker_node_ids):
             if used_resource_requests[i] == max_node_resources[i]:
                 # No resources of the node are used.
                 nodes_allowed_to_terminate[node_id] = True
