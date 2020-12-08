@@ -535,9 +535,9 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -614,6 +614,70 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0)
         autoscaler.update()
         self.waitForNodes(0)
+
+    def testLegacyYamlWithRequestResources(self):
+        """Test when using legacy yamls request_resources() adds workers.
+
+        Makes sure that requested resources are added for legacy yamls when
+        necessary. So if requested resources for instance fit on the headnode
+        we don't add more nodes. But we add more nodes when they don't fit.
+        """
+        config = SMALL_CLUSTER.copy()
+        config["min_workers"] = 0
+        config["max_workers"] = 100
+        config["idle_timeout_minutes"] = 0
+        config["upscaling_speed"] = 1
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
+        head_ip = self.provider.non_terminated_node_ips(
+            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_HEAD}, )[0]
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
+
+        lm = LoadMetrics()
+        lm.local_ip = head_ip
+        lm.update(head_ip, {"CPU": 1}, {"CPU": 1}, {})
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_launch_batch=5,
+            max_concurrent_launches=5,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        # 1 head node.
+        self.waitForNodes(1)
+        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.update()
+        # still 1 head node because request_resources fits in the headnode.
+        self.waitForNodes(1)
+        autoscaler.request_resources([{"CPU": 1}] + [{"CPU": 2}] * 9)
+        autoscaler.update()
+        self.waitForNodes(2)  # Adds a single worker to get its resources.
+        autoscaler.update()
+        self.waitForNodes(2)  # Still 1 worker because its resources
+        # aren't known.
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
+        autoscaler.update()
+        self.waitForNodes(10)  # 9 workers and 1 head node, scaled immediately.
+        lm.update(
+            "172.0.0.1", {"CPU": 2}, {"CPU": 2}, {},
+            waiting_bundles=[{
+                "CPU": 2
+            }] * 9,
+            infeasible_bundles=[{
+                "CPU": 1
+            }] * 1)
+        autoscaler.update()
+        # Make sure that if all the resources fit on the exising nodes not
+        # to add any more.
+        self.waitForNodes(10)
 
     def testAggressiveAutoscaling(self):
         config = SMALL_CLUSTER.copy()

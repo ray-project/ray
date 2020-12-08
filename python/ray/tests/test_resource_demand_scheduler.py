@@ -1672,7 +1672,12 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(1)
 
     def testRequestResourcesRaceConditionsLong(self):
-        """Test request_resources(), race conditions & demands/min_workers."""
+        """Test request_resources(), race conditions & demands/min_workers.
+
+        Tests when request_resources() is called simultaneously with resource
+        demands and min_workers constraint in multiple orders upscaling and
+        downscaling.
+        """
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["max_workers"] = 4
         config["idle_timeout_minutes"] = 0
@@ -1765,7 +1770,11 @@ class AutoscalingTest(unittest.TestCase):
             node_id].state == "unterminatable"
 
     def testRequestResourcesRaceConditionWithMinWorker(self):
-        """Test request_resources() with min_workers."""
+        """Test request_resources() with min_workers.
+
+        Tests when request_resources() is called simultaneously with adding
+        min_workers constraint.
+        """
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"] = {
             "empty_node": {
@@ -1803,7 +1812,11 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
 
     def testRequestResourcesRaceConditionWithResourceDemands(self):
-        """Test request_resources() with resource_demands."""
+        """Test request_resources() with resource_demands.
+
+        Tests when request_resources() is called simultaneously with resource
+        demands in multiple orders.
+        """
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"].update({
             "empty_node": {

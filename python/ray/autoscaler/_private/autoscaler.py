@@ -13,16 +13,16 @@ import collections
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
-from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
-                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
-                                 NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+from ray.autoscaler.tags import (
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, NODE_KIND_WORKER,
+    NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler._private.resource_demand_scheduler import \
-    get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, \
+    get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
@@ -165,13 +165,13 @@ class StandardAutoscaler:
         last_used = self.load_metrics.last_used_time_by_ip
         horizon = now - (60 * self.config["idle_timeout_minutes"])
 
-        nodes_to_terminate = []
+        nodes_to_terminate: Dict[NodeID, bool] = []
         node_type_counts = collections.defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
-        # Account for request_resources().
+        # Don't terminate nodes needed by request_resources()
         nodes_allowed_to_terminate = {}
         if self.resource_demand_vector:
             nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
@@ -235,7 +235,7 @@ class StandardAutoscaler:
             if not updater.is_alive():
                 completed.append(node_id)
         if completed:
-            nodes_to_terminate = []
+            nodes_to_terminate: List[NodeID] = []
             for node_id in completed:
                 if self.updaters[node_id].exitcode == 0:
                     self.num_successful_updates[node_id] += 1
@@ -315,6 +315,21 @@ class StandardAutoscaler:
         head_node_resources: ResourceDict = copy.deepcopy(
             self.available_node_types[self.config["head_node_type"]][
                 "resources"])
+        if not head_node_resources:
+            # Legacy yaml might include {} in the resources field.
+            head_id: List[NodeID] = self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD
+            })
+            if head_id:
+                head_ip = self.provider.internal_ip(head_id[0])
+                static_nodes: Dict[
+                    NodeIP,
+                    ResourceDict] = \
+                        self.load_metrics.get_static_node_resources_by_ip()
+                head_node_resources = static_nodes[head_ip]
+            else:
+                head_node_resources = {}
+
         max_node_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
         # Get max resources on all the non terminated nodes.
@@ -322,9 +337,17 @@ class StandardAutoscaler:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
-                max_node_resources.append(
-                    copy.deepcopy(
-                        self.available_node_types[node_type]["resources"]))
+                node_resources: ResourceDict = copy.deepcopy(
+                    self.available_node_types[node_type]["resources"])
+                if not node_resources:
+                    # Legacy yaml might include {} in the resources field.
+                    static_nodes: Dict[
+                        NodeIP,
+                        ResourceDict] = \
+                            self.load_metrics.get_static_node_resources_by_ip()
+                    node_ip = self.provider.internal_ip(node_id)
+                    node_resources = static_nodes.get(node_ip, {})
+                max_node_resources.append(node_resources)
                 resource_demand_vector_worker_node_ids.append(node_id)
         # Since it is sorted based on last used, we "keep" nodes that are
         # most recently used when we binpack. We assume get_bin_pack_residual
@@ -338,8 +361,11 @@ class StandardAutoscaler:
         # Remove the first entry (the head node).
         used_resource_requests.pop(0)
         for i, node_id in enumerate(resource_demand_vector_worker_node_ids):
-            if used_resource_requests[i] == max_node_resources[i]:
-                # No resources of the node are used.
+            if used_resource_requests[i] == max_node_resources[i] \
+                    and max_node_resources[i]:
+                # No resources of the node were needed for request_resources().
+                # max_node_resources[i] is an empty dict for legacy yamls
+                # before the node is connected.
                 nodes_allowed_to_terminate[node_id] = True
             else:
                 nodes_allowed_to_terminate[node_id] = False

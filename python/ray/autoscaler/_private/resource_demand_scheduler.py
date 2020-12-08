@@ -150,7 +150,7 @@ class ResourceDemandScheduler:
         # Step 2: add nodes to add to satisfy min_workers for each type
         (node_resources,
          node_type_counts,
-         min_workers_or_resources_nodes_to_add) = \
+         adjusted_min_workers) = \
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types,
                 self.max_workers, ensure_min_cluster_size)
@@ -195,7 +195,7 @@ class ResourceDemandScheduler:
         total_nodes_to_add = {}
 
         for node_type in self.node_types:
-            nodes_to_add = (min_workers_or_resources_nodes_to_add.get(
+            nodes_to_add = (adjusted_min_workers.get(
                 node_type, 0) + placement_group_nodes_to_add.get(node_type, 0)
                             + nodes_to_add_based_on_demand.get(node_type, 0))
             if nodes_to_add > 0:
@@ -204,7 +204,7 @@ class ResourceDemandScheduler:
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
             total_nodes_to_add, unused_resources_by_ip.keys(), nodes,
-            launching_nodes, min_workers_or_resources_nodes_to_add)
+            launching_nodes, adjusted_min_workers)
 
         logger.info("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
@@ -282,7 +282,7 @@ class ResourceDemandScheduler:
             connected_nodes: List[NodeIP],
             non_terminated_nodes: List[NodeID],
             pending_launches_nodes: Dict[NodeType, int],
-            min_workers_or_resources_nodes_to_add: Dict[NodeType, int],
+            adjusted_min_workers: Dict[NodeType, int],
     ) -> Dict[NodeType, int]:
         """Updates the max concurrent resources to launch for each node type.
 
@@ -302,7 +302,7 @@ class ResourceDemandScheduler:
             connected_nodes: Running nodes (from LoadMetrics).
             non_terminated_nodes: Non terminated nodes (pending/running).
             pending_launches_nodes: Nodes that are in the launch queue.
-            min_workers_or_resources_nodes_to_add: Nodes to launch to satisfy
+            adjusted_min_workers: Nodes to launch to satisfy
                 min_workers and request_resources(). This overrides the launch
                 limits since the user is hinting to immediately scale up to
                 this size.
@@ -329,7 +329,7 @@ class ResourceDemandScheduler:
 
                 # Allow more nodes if this is to respect min_workers or
                 # request_resources().
-                min_workers_or_resources_nodes_to_add.get(node_type, 0))
+                adjusted_min_workers.get(node_type, 0))
 
             if upper_bound > 0:
                 updated_nodes_to_launch[node_type] = min(
