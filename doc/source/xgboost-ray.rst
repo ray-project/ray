@@ -143,21 +143,3 @@ the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/exa
   * `[download dataset (2.6 GB)] <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`__
 * `HIGGS classification example with Parquet <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs_parquet.py>`__ (uses the same dataset)
 * `Test data classification <https://github.com/ray-project/xgboost_ray/tree/master/examples/train_on_test_data.py>`__ (uses a self-generated dataset)
-
-Package Reference
------------------
-
-
-Training/Validation
-~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.util.xgboost.RayParams
-
-.. autofunction:: ray.util.xgboost.train
-
-.. autofunction:: ray.util.xgboost.predict
-
-RayDMatrix
-~~~~~~~~~~
-
-.. autoclass:: ray.util.xgboost.RayDMatrix

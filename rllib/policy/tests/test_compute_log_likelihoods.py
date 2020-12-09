@@ -2,6 +2,7 @@ import numpy as np
 from scipy.stats import norm
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
@@ -87,8 +88,8 @@ def do_test_log_likelihood(run,
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
                     preprocessed_obs_batch,
-                    prev_action_batch=np.array([prev_a]),
-                    prev_reward_batch=np.array([prev_r]))
+                    prev_action_batch=np.array([prev_a]) if prev_a else None,
+                    prev_reward_batch=np.array([prev_r]) if prev_r else None)
                 check(logp, expected_logp[0], rtol=0.2)
         # Test all available actions for their logp values.
         else:
@@ -98,12 +99,20 @@ def do_test_log_likelihood(run,
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
                     preprocessed_obs_batch,
-                    prev_action_batch=np.array([prev_a]),
-                    prev_reward_batch=np.array([prev_r]))
+                    prev_action_batch=np.array([prev_a]) if prev_a else None,
+                    prev_reward_batch=np.array([prev_r]) if prev_r else None)
                 check(np.exp(logp), expected_prob, atol=0.2)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_dqn(self):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
         config = dqn.DEFAULT_CONFIG.copy()

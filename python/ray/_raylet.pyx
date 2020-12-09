@@ -1434,7 +1434,7 @@ cdef class CoreWorker:
                 metadata = serialized_object.metadata
                 if ray.worker.global_worker.debugger_get_breakpoint:
                     breakpoint = (
-                        ray.worker.global_worker.debugger_get_breakpoint())
+                        ray.worker.global_worker.debugger_get_breakpoint)
                     metadata += (
                         b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
                         breakpoint.encode())
