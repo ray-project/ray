@@ -201,6 +201,7 @@ async def test_asyncio_double_await(ray_start_regular_shared):
 @pytest.mark.asyncio
 async def test_asyncio_exit_actor(ray_start_regular_shared):
     # https://github.com/ray-project/ray/issues/12649
+    # The test should just hang without the fix.
 
     @ray.remote
     class Actor:
