@@ -27,7 +27,8 @@ class CoreRayAPI(APIImpl):
     def get(self, *args, **kwargs):
         return ray.get(*args, **kwargs)
 
-    def put(self, vals: Any, *args, **kwargs) -> Union[ClientObjectRef, ray._raylet.ObjectRef]:
+    def put(self, vals: Any, *args,
+            **kwargs) -> Union[ClientObjectRef, ray._raylet.ObjectRef]:
         return ray.put(vals, *args, **kwargs)
 
     def wait(self, *args, **kwargs):

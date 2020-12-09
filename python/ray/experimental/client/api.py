@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from ray.experimental.client.common import ClientObjectRef
     from ray._raylet import ObjectRef
 
+    # Use the imports for type checking.  This is a python 3.6 limitation.
+    # See https://www.python.org/dev/peps/pep-0563/
+    PutType = Union[ClientObjectRef, ObjectRef]
+
 
 class APIImpl(ABC):
     """
@@ -36,7 +40,8 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def put(self, vals: Any, *args, **kwargs) -> Union['ClientObjectRef', 'ObjectRef']:
+    def put(self, vals: Any, *args,
+            **kwargs) -> Union["ClientObjectRef", "ObjectRef"]:
         """
         put is the hook stub passed on to replace `ray.put`
 
