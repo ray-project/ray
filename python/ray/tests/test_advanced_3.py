@@ -34,8 +34,8 @@ def attempt_to_load_balance(remote_function,
                             num_attempts=100):
     attempts = 0
     while attempts < num_attempts:
-        locations = ray.get(
-            [remote_function.remote(*args) for _ in range(total_tasks)])
+        refs = [remote_function.remote(*args) for _ in range(total_tasks)]
+        locations = ray.get(refs)
         names = set(locations)
         counts = [locations.count(name) for name in names]
         logger.info(f"Counts are {counts}.")
@@ -43,6 +43,8 @@ def attempt_to_load_balance(remote_function,
                 and all(count >= minimum_count for count in counts)):
             break
         attempts += 1
+        print(refs)
+        print([(name, locations.count(name)) for name in names])
     assert attempts < num_attempts
 
 
@@ -99,6 +101,29 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
     for _ in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def f(x):
+        time.sleep(0.010)
+        return ray.worker.global_worker.node.unique_id
+
+    # This object will be local to one of the raylets. Make sure
+    # this doesn't prevent tasks from being scheduled on other raylets.
+    x = ray.put(np.zeros(1000000))
+
+    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
+
+
+def test_load_balancing_with_dependencies_disable_light_heartbeat(ray_start_cluster):
+    # This test ensures that tasks are being assigned to all raylets in a
+    # roughly equal manner even when the tasks have dependencies.
+    cluster = ray_start_cluster
+    num_nodes = 3
+    cluster.add_node(_system_config={"light_heartbeat_enabled": False},
+                num_cpus=1)
+    for _ in range(num_nodes - 1):
         cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
