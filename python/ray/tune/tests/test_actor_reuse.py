@@ -87,6 +87,7 @@ def create_resettable_function(num_resets: defaultdict):
 class ActorReuseTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=1, num_gpus=0)
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
 
     def tearDown(self):
         ray.shutdown()

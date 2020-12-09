@@ -2,16 +2,23 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
-from typing import List, Tuple
+import inspect
+import logging
+from typing import List
+from typing import Tuple
 
 import ray.cloudpickle as cloudpickle
+from ray.util.inspect import is_cython
 import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
+from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientRemoteFunc
+
+logger = logging.getLogger(__name__)
 
 
 class Worker:
@@ -87,7 +94,7 @@ class Worker:
              *,
              num_returns: int = 1,
              timeout: float = None
-             ) -> (List[ClientObjectRef], List[ClientObjectRef]):
+             ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
         assert isinstance(object_refs, list)
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
@@ -112,19 +119,24 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    def remote(self, func):
-        return ClientRemoteFunc(func)
+    def remote(self, function_or_class, *args, **kwargs):
+        # TODO(barakmich): Arguments to ray.remote
+        # get captured here.
+        if (inspect.isfunction(function_or_class)
+                or is_cython(function_or_class)):
+            return ClientRemoteFunc(function_or_class)
+        elif inspect.isclass(function_or_class):
+            return ClientActorClass(function_or_class)
+        else:
+            raise TypeError("The @ray.remote decorator must be applied to "
+                            "either a function or to a class.")
 
-    def call_remote(self, func, *args, **kwargs):
-        if not isinstance(func, ClientRemoteFunc):
-            raise TypeError("Client not passing a ClientRemoteFunc stub")
-        func_ref = self._put(func)
-        task = ray_client_pb2.ClientTask()
-        task.name = func._name
-        task.payload_id = func_ref.id
+    def call_remote(self, instance, *args, **kwargs):
+        task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
+        logging.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
         return ClientObjectRef(ticket.return_id)
 

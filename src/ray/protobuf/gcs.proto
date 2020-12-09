@@ -26,7 +26,7 @@ enum TablePrefix {
   UNUSED = 1;
   TASK = 2;
   RAYLET_TASK = 3;
-  CLIENT = 4;
+  NODE = 4;
   OBJECT = 5;
   ACTOR = 6;
   FUNCTION = 7;
@@ -36,8 +36,6 @@ enum TablePrefix {
   JOB = 11;
   PROFILE = 12;
   TASK_LEASE = 13;
-  ACTOR_CHECKPOINT = 14;
-  ACTOR_CHECKPOINT_ID = 15;
   NODE_RESOURCE = 16;
   DIRECT_ACTOR = 17;
   // WORKER is already used in WorkerType, so use WORKERS here.
@@ -54,7 +52,7 @@ enum TablePubsub {
   NO_PUBLISH = 1;
   TASK_PUBSUB = 2;
   RAYLET_TASK_PUBSUB = 3;
-  CLIENT_PUBSUB = 4;
+  NODE_PUBSUB = 4;
   OBJECT_PUBSUB = 5;
   ACTOR_PUBSUB = 6;
   HEARTBEAT_PUBSUB = 7;
@@ -231,7 +229,7 @@ message ResourceTableData {
 }
 
 message AvailableResources {
-  // Node manager client id.
+  // Node id.
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
@@ -302,8 +300,8 @@ message PlacementGroupLoad {
 }
 
 message HeartbeatTableData {
-  // Node manager client id
-  bytes client_id = 1;
+  // Node id.
+  bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
   // Indicates whether avaialbe resources is changed. Only used when
@@ -323,8 +321,8 @@ message HeartbeatTableData {
 }
 
 message ResourcesData {
-  // Node manager client id
-  bytes client_id = 1;
+  // Node id.
+  bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
   // Indicates whether avaialbe resources is changed. Only used when
@@ -356,7 +354,7 @@ message HeartbeatBatchTableData {
 message TaskLeaseData {
   // The task ID.
   bytes task_id = 1;
-  // Node manager client ID.
+  // Node manager ID.
   bytes node_manager_id = 2;
   // The time that the lease was last acquired at. NOTE(swang): This is the
   // system clock time according to the node that added the entry and is not
@@ -392,38 +390,6 @@ message JobTableData {
   int64 driver_pid = 5;
   // The config of this job.
   JobConfig config = 6;
-}
-
-// This table stores the actor checkpoint data. An actor checkpoint
-// is the snapshot of an actor's state in the actor registration.
-// See `actor_registration.h` for more detailed explanation of these fields.
-message ActorCheckpointData {
-  // ID of this checkpoint.
-  bytes checkpoint_id = 1;
-  // ID of this actor.
-  bytes actor_id = 2;
-  // The dummy object ID of actor's most recently executed task.
-  bytes execution_dependency = 3;
-  // A list of IDs of this actor's handles.
-  repeated bytes handle_ids = 4;
-  // The task counters of the above handles.
-  repeated uint64 task_counters = 5;
-  // The frontier dependencies of the above handles.
-  repeated bytes frontier_dependencies = 6;
-  // A list of unreleased dummy objects from this actor.
-  repeated bytes unreleased_dummy_objects = 7;
-  // The numbers of dependencies for the above unreleased dummy objects.
-  repeated uint32 num_dummy_object_dependencies = 8;
-}
-
-// This table stores the actor-to-available-checkpoint-ids mapping.
-message ActorCheckpointIdData {
-  // ID of this actor.
-  bytes actor_id = 1;
-  // IDs of this actor's available checkpoints.
-  repeated bytes checkpoint_ids = 2;
-  // A list of the timestamps for each of the above `checkpoint_ids`.
-  repeated uint64 timestamps = 3;
 }
 
 message WorkerTableData {

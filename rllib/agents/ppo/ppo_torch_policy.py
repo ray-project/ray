@@ -210,22 +210,36 @@ class ValueNetworkMixin:
         # When doing GAE, we need the value function estimate on the
         # observation.
         if config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            if config["_use_trajectory_view_api"]:
 
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                        np.asarray([ob]), self.device),
-                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                        np.asarray([prev_action]), self.device),
-                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                        np.asarray([prev_reward]), self.device),
-                    "is_training": False,
-                }, [
-                    convert_to_torch_tensor(np.asarray([s]), self.device)
-                    for s in state
-                ], convert_to_torch_tensor(np.asarray([1]), self.device))
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                def value(**input_dict):
+                    model_out, _ = self.model.from_batch(
+                        convert_to_torch_tensor(input_dict, self.device),
+                        is_training=False)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
+
+            # TODO: (sven) Remove once trajectory view API is all-algo default.
+            else:
+
+                def value(ob, prev_action, prev_reward, *state):
+                    model_out, _ = self.model({
+                        SampleBatch.CUR_OBS: convert_to_torch_tensor(
+                            np.asarray([ob]), self.device),
+                        SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
+                            np.asarray([prev_action]), self.device),
+                        SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
+                            np.asarray([prev_reward]), self.device),
+                        "is_training": False,
+                    }, [
+                        convert_to_torch_tensor(np.asarray([s]), self.device)
+                        for s in state
+                    ], convert_to_torch_tensor(np.asarray([1]), self.device))
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:

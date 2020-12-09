@@ -147,20 +147,22 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
     @routes.get("/node_logs")
     async def get_logs(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
-        pid = req.query.get("pid")
-        node_logs = DataSource.ip_and_pid_to_logs[ip]
-        payload = node_logs.get(pid, []) if pid else node_logs
+        pid = str(req.query.get("pid", ""))
+        node_logs = DataSource.ip_and_pid_to_logs.get(ip, {})
+        if pid:
+            node_logs = {str(pid): node_logs.get(pid, [])}
         return dashboard_utils.rest_response(
-            success=True, message="Fetched logs.", logs=payload)
+            success=True, message="Fetched logs.", logs=node_logs)
 
     @routes.get("/node_errors")
     async def get_errors(self, req) -> aiohttp.web.Response:
         ip = req.query["ip"]
-        pid = req.query.get("pid")
-        node_errors = DataSource.ip_and_pid_to_errors[ip]
-        filtered_errs = node_errors.get(pid, []) if pid else node_errors
+        pid = str(req.query.get("pid", ""))
+        node_errors = DataSource.ip_and_pid_to_errors.get(ip, {})
+        if pid:
+            node_errors = {str(pid): node_errors.get(pid, [])}
         return dashboard_utils.rest_response(
-            success=True, message="Fetched errors.", errors=filtered_errs)
+            success=True, message="Fetched errors.", errors=node_errors)
 
     async def _update_actors(self):
         # Subscribe actor channel.

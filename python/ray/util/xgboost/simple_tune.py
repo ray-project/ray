@@ -1,7 +1,7 @@
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
 
-from ray.util.xgboost import RayDMatrix, train
+from ray.util.xgboost import RayDMatrix, RayParams, train
 
 # __train_begin__
 num_cpus_per_actor = 1
@@ -25,8 +25,8 @@ def train_model(config):
         evals=[(test_set, "eval")],
         evals_result=evals_result,
         verbose_eval=False,
-        num_actors=num_actors,
-        cpus_per_actor=num_cpus_per_actor)
+        ray_params=RayParams(
+            num_actors=num_actors, cpus_per_actor=num_cpus_per_actor))
     bst.save_model("model.xgb")
 
 
