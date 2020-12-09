@@ -81,7 +81,8 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
 
     # PPO sub-flow.
     ppo_train_op = r2.for_each(SelectExperiences(["ppo_policy"])) \
-        .combine(ConcatBatches(min_batch_size=200)) \
+        .combine(ConcatBatches(
+            min_batch_size=200, count_steps_by="env_steps")) \
         .for_each(add_ppo_metrics) \
         .for_each(StandardizeFields(["advantages"])) \
         .for_each(TrainOneStep(
@@ -143,6 +144,7 @@ if __name__ == "__main__":
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "framework": "torch" if args.torch else "tf",
+        "_use_trajectory_view_api": True,
     }
 
     stop = {
