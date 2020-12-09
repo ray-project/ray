@@ -214,7 +214,21 @@ class HyperOptSearch(Searcher):
                             a.obj for a in space_dict[key].pos_args[1:]
                             if a.name == "literal"
                         ]
-                        idx = categories.index(config_dict[key])
+                        try:
+                            idx = categories.index(config_dict[key])
+                        except ValueError as exc:
+                            msg = f"Did not find category with value " \
+                                  f"{config_dict[key]} in hyperopt parameter. "
+
+                            if isinstance(config_dict[key], int):
+                                msg += "In previous versions, a numerical " \
+                                       "index was expected, but in the " \
+                                       "current version you should pass the " \
+                                       "category value directly. "
+
+                            msg += "Please make sure the specified category " \
+                                   "is valid."
+                            raise ValueError(msg) from exc
                         config_dict[key] = idx
 
         for k in config:
