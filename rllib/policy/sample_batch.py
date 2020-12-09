@@ -115,7 +115,9 @@ class SampleBatch:
                 [s[k] for s in concat_samples],
                 time_major=concat_samples[0].time_major)
         return SampleBatch(
-            out, _seq_lens=seq_lens, _time_major=concat_samples[0].time_major)
+            out,
+            _seq_lens=np.array(seq_lens, dtype=np.int32),
+            _time_major=concat_samples[0].time_major)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -154,7 +156,8 @@ class SampleBatch:
         """
         return SampleBatch(
             {k: np.array(v, copy=True)
-             for (k, v) in self.data.items()})
+             for (k, v) in self.data.items()},
+            _seq_lens=self.seq_lens)
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:
@@ -414,16 +417,17 @@ class MultiAgentBatch:
         Args:
             policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
                 ids to SampleBatches of experiences.
-            env_steps (int): The number of timesteps in the environment this
-                batch contains. This will be less than the number of
+            env_steps (int): The number of environment steps in the environment
+                this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
         """
 
         for v in policy_batches.values():
             assert isinstance(v, SampleBatch)
         self.policy_batches = policy_batches
-        # Called count for uniformity with SampleBatch. Prefer to access this
-        # via the env_steps() method when possible for clarity.
+        # Called "count" for uniformity with SampleBatch.
+        # Prefer to access this via the `env_steps()` method when possible
+        # for clarity.
         self.count = env_steps
 
     @PublicAPI
@@ -523,7 +527,8 @@ class MultiAgentBatch:
         """
         if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
             return policy_batches[DEFAULT_POLICY_ID]
-        return MultiAgentBatch(policy_batches, env_steps)
+        return MultiAgentBatch(
+            policy_batches=policy_batches, env_steps=env_steps)
 
     @staticmethod
     @PublicAPI

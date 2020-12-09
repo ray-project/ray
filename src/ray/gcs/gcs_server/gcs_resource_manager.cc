@@ -34,7 +34,6 @@ void GcsResourceManager::RemoveResources(const NodeID &node_id) {
 bool GcsResourceManager::AcquireResources(const NodeID &node_id,
                                           const ResourceSet &required_resources) {
   auto iter = cluster_resources_.find(node_id);
-  //
   RAY_CHECK(iter != cluster_resources_.end()) << "Node " << node_id << " not exist.";
   if (!required_resources.IsSubset(iter->second)) {
     return false;

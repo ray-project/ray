@@ -129,6 +129,7 @@ class SyncSampler(SamplerInput):
                  obs_filters: Dict[PolicyID, Filter],
                  clip_rewards: bool,
                  rollout_fragment_length: int,
+                 count_steps_by: str = "env_steps",
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
                  multiple_episodes_in_batch: bool = False,
@@ -190,8 +191,12 @@ class SyncSampler(SamplerInput):
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
-                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
-                rollout_fragment_length)
+                policies,
+                clip_rewards,
+                callbacks,
+                multiple_episodes_in_batch,
+                rollout_fragment_length,
+                count_steps_by=count_steps_by)
         else:
             self.sample_collector = None
 
@@ -254,6 +259,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  obs_filters: Dict[PolicyID, Filter],
                  clip_rewards: bool,
                  rollout_fragment_length: int,
+                 count_steps_by: str = "env_steps",
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
                  multiple_episodes_in_batch: bool = False,
@@ -282,6 +288,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
+            count_steps_by (str): Either "env_steps" or "agent_steps".
+                Refers to the unit of `rollout_fragment_length`.
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
@@ -336,8 +344,12 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
-                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
-                rollout_fragment_length)
+                policies,
+                clip_rewards,
+                callbacks,
+                multiple_episodes_in_batch,
+                rollout_fragment_length,
+                count_steps_by=count_steps_by)
         else:
             self.sample_collector = None
 
@@ -1046,7 +1058,6 @@ def _process_observations_w_trajectory_view_api(
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     "t": episode.length - 1,
-                    "eps_id": episode.episode_id,
                     "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
