@@ -141,7 +141,8 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
       } else {
         // A hard constraint has been violated, so we cannot schedule
         // this task request.
-        RAY_LOG(DEBUG) << "Node " << node_id << " does not have enough available resources to schedule task";
+        RAY_LOG(DEBUG) << "Node " << node_id
+                       << " does not have enough available resources to schedule task";
         return -1;
       }
     }
@@ -853,8 +854,7 @@ void ClusterResourceScheduler::Heartbeat(
          "https://github.com/ray-project/ray/issues/new.";
 
   if (light_heartbeat_enabled && last_report_resources_ &&
-      resources == *last_report_resources_.get() &&
-      !remote_resources_dirty_) {
+      resources == *last_report_resources_.get() && !remote_resources_dirty_) {
     return;
   } else {
     RAY_LOG(DEBUG) << "Reporting heartbeat " << resources.DebugString(string_to_int_map_);
