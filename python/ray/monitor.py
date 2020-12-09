@@ -178,11 +178,14 @@ class Monitor:
             data: a resource request as JSON, e.g. {"CPU": 1}
         """
 
+        resource_request = json.loads(data)
+        self.load_metrics.set_resource_requests(resource_request)
+
         if not self.autoscaler:
             return
 
         try:
-            self.autoscaler.request_resources(json.loads(data))
+            self.autoscaler.request_resources(resource_request)
         except Exception:
             # We don't want this to kill the monitor.
             traceback.print_exc()

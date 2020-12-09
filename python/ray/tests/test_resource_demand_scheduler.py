@@ -973,10 +973,91 @@ class LoadMetricsTest(unittest.TestCase):
                 strategy=PlacementStrategy.SPREAD,
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
+        print("----")
+        print(pending_placement_groups[0] == pending_placement_groups[1])
         lm.update(
             "1.1.1.1", {}, {}, {},
             pending_placement_groups=pending_placement_groups)
         assert lm.get_pending_placement_groups() == pending_placement_groups
+
+    def testSummary(self):
+        lm = LoadMetrics(local_ip="1.1.1.1")
+        pending_placement_groups = [
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING,
+                strategy=PlacementStrategy.PACK,
+                bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
+            PlacementGroupTableData(
+                state=PlacementGroupTableData.RESCHEDULING,
+                strategy=PlacementStrategy.PACK,
+                bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
+        ]
+        lm.update("1.1.1.1", {"CPU": 64}, {"CPU": 2}, {})
+        lm.update("1.1.1.2", {
+            "CPU": 64,
+            "GPU": 8,
+            "accelerator_type:V100": 1
+        }, {
+            "CPU": 0,
+            "GPU": 1,
+            "accelerator_type:V100": 1
+        }, {})
+        lm.update("1.1.1.3", {
+            "CPU": 64,
+            "GPU": 8,
+            "accelerator_type:V100": 1
+        }, {
+            "CPU": 0,
+            "GPU": 0,
+            "accelerator_type:V100": 0.92
+        }, {})
+        lm.update(
+            "1.1.1.4", {"CPU": 2}, {"CPU": 2}, {},
+            waiting_bundles=[{
+                "GPU": 2
+            }] * 10,
+            infeasible_bundles=[{
+                "CPU": 16
+            }, {
+                "GPU": 2
+            }, {
+                "CPU": 16,
+                "GPU": 2
+            }],
+            pending_placement_groups=pending_placement_groups)
+
+        lm.set_resource_requeests([{"CPU": 64}, {"GPU": 8}, {"GPU": 8}])
+
+        summary = lm.summary()
+
+        assert summary.head_ip == "1.1.1.1"
+
+        assert summary.usage["CPU"] == (190, 194)
+        assert summary.usage["GPU"] == (15, 16)
+        assert summary.usage["accelerator_type:V100"][1] == 2, \
+            "Not comparing the usage value due to floating point error."
+
+        assert ({"GPU": 2}, 11) in summary.resource_demand
+        assert ({"CPU": 16}, 1) in summary.resource_demand
+        assert ({"CPU": 16, "GPU": 2}, 1) in summary.resource_demand
+        assert len(summary.resource_demand) == 3
+
+        assert ({
+            "Bundles": [{
+                "GPU": 2
+            }] * 2,
+            "Strategy": "PACK"
+        }, 2) in summary.pg_demand
+        assert len(summary.pg_demand) == 1
+
+        assert ({"GPU": 8}, 2) in summary.request_demand
+        assert ({"CPU": 64}, 1) in summary.request_demand
+        assert len(summary.request_demand) == 2
+
+        # TODO (Alex): This set of nodes won't be very useful in practice
+        # because the node:xxx.xxx.xxx.xxx resources means that no 2 nodes
+        # should ever have the same set of resources.
+        assert len(summary.node_types) == 3
 
 
 class AutoscalingTest(unittest.TestCase):

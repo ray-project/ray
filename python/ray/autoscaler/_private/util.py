@@ -5,7 +5,7 @@ import json
 import jsonschema
 import os
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import ray
 import ray._private.services as services
@@ -244,3 +244,28 @@ def hash_runtime_conf(file_mounts,
         file_mounts_contents_hash = None
 
     return (_hash_cache[conf_str], file_mounts_contents_hash)
+
+
+def add_resources(dict1: Dict[str, float],
+                  dict2: Dict[str, float]) -> Dict[str, float]:
+    """Given 2 dictionaries, combine them into a new dictionary. Handle collisions
+    by adding the values.
+
+    """
+    new_dict = dict1.copy()
+    for k, v in dict2.items():
+        new_dict[k] = v + new_dict.get(k, 0)
+    return new_dict
+
+
+def freq_of_dicts(dicts: List[Dict],
+                  serializer=lambda d: frozenset(d.items()),
+                  deserializer=dict):
+    """Summarize a list of dictionaries. This is somewhat annoying because mutable
+    data structures aren't hashable, and set/dict keys must be hashable.
+    """
+    freqs = collections.Counter(map(lambda d: serializer(d), dicts))
+    as_list = []
+    for as_set, count in freqs.items():
+        as_list.append((deserializer(as_set), count))
+    return as_list

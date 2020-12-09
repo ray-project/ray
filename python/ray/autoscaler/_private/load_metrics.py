@@ -1,3 +1,5 @@
+from collections import namedtuple
+from functools import reduce
 import logging
 import time
 from typing import Dict, List
@@ -5,11 +7,18 @@ from typing import Dict, List
 import numpy as np
 import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.autoscaler._private.util import add_resources, freq_of_dicts
 from ray.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.resource_demand_scheduler import \
     NodeIP, ResourceDict
+from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
+
+LoadMetricsSummary = namedtuple("LoadMetricsSummary", [
+    "head_ip", "usage", "resource_demand", "pg_demand", "request_demand",
+    "node_types"
+])
 
 
 class LoadMetrics:
@@ -31,6 +40,7 @@ class LoadMetrics:
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
+        self.resource_requests = []
 
     def update(self,
                ip: str,
@@ -156,8 +166,63 @@ class LoadMetrics:
     def get_resource_demand_vector(self):
         return self.waiting_bundles + self.infeasible_bundles
 
+    def get_resource_requests(self):
+        return self.resource_requests
+
     def get_pending_placement_groups(self):
         return self.pending_placement_groups
+
+    def summary(self):
+        available_resources = reduce(add_resources,
+                                     self.dynamic_resources_by_ip.values())
+        total_resources = reduce(add_resources,
+                                 self.static_resources_by_ip.values())
+        usage_dict = {}
+        for key in total_resources:
+            total = total_resources[key]
+            usage_dict[key] = (total - available_resources[key], total)
+
+        summarized_demand_vector = freq_of_dicts(
+            self.get_resource_demand_vector())
+        summarized_resource_requests = freq_of_dicts(
+            self.get_resource_requests())
+
+        def placement_group_serializer(pg):
+            bundles = tuple(
+                frozenset(bundle.unit_resources.items())
+                for bundle in pg.bundles)
+            return (bundles, pg.strategy)
+
+        def placement_group_deserializer(pg_tuple):
+            # We marshal this as a dictionary so that we can easily json.dumps
+            # it later.
+            # TODO (Alex): Would there be a benefit to properly
+            # marshalling this (into a protobuf)?
+            bundles = list(map(dict, pg_tuple[0]))
+            return {
+                "Bundles": bundles,
+                "Strategy": PlacementStrategy.Name(pg_tuple[1])
+            }
+
+        summarized_placement_groups = freq_of_dicts(
+            self.get_pending_placement_groups(),
+            serializer=placement_group_serializer,
+            deserializer=placement_group_deserializer)
+        nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
+
+        return LoadMetricsSummary(
+            head_ip=self.local_ip,
+            usage=usage_dict,
+            resource_demand=summarized_demand_vector,
+            pg_demand=summarized_placement_groups,
+            request_demand=summarized_resource_requests,
+            node_types=nodes_summary)
+
+    def set_resource_requeests(self, requested_resources):
+        if requested_resources:
+            logger.info("resource_requests={requested_resources}")
+        assert isinstance(requested_resources, list), requested_resources
+        self.resource_requests = requested_resources
 
     def info_string(self):
         return " - " + "\n - ".join(
