@@ -1,17 +1,19 @@
 RLlib Sample Collection
 =======================
 
-Sample Collector API
---------------------
+The SampleCollector Class is Used to Store and Retrieve Temporary Data
+----------------------------------------------------------------------
 
-The `SamplerInput` class is used by RLlib's RolloutWorkers to produce
-batches of experiences from a live environment. The two implemented sub-classes
-of `SamplerInput` are `SyncSampler` and `AsyncSampler` (held by a RolloutWorker object in
-its `self.sampler` property).
-In case the "_use_trajectory_view_api" top-level config key is set to True (which is the case
-by default since ray 1.2.0), every such sampler object will itself use the
-`SampleCollector` API to store and retrieve environment-, model-, and other data
-during episode rollouts:
+RLlib's RolloutWorkers, when running against a live environment,
+use the `SamplerInput` class to produce batches of experiences from this environment.
+The two implemented sub-classes of `SamplerInput` are `SyncSampler` and `AsyncSampler`
+(residing under the `RolloutWorker.sampler` property).
+In case the "_use_trajectory_view_api" top-level config key is set to True, which is the case
+by default since version >=1.2.0, every such sampler object will itself use the
+`SampleCollector` API to store and retrieve temporary environment-, model-, and other data
+during episode rollouts.
+The exact duration (number of transitions) of a single such rollout is determined
+by the "rollout_fragment_length" as well as the "batch_mode" config keys.
 
 .. literalinclude:: ../../rllib/evaluation/collectors/sample_collector.py
    :language: python
@@ -20,26 +22,8 @@ during episode rollouts:
    :start-after: __sphinx_doc_begin2__
    :end-before: __sphinx_doc_end2__
 
-The SampleCollector API allows
+The methods of the SampleCollector API are:
 
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. note::
-
-    Some note
-
-test text
-
-.. code-block:: bash
-
-    $ rllib train
-        --run=PG \
-        --env=CartPole-v0 \
-        --config='{"output": "/tmp/cartpole-out", "output_max_file_size": 5000000}' \
-        --stop='{"timesteps_total": 100000}'
-
-
-**bold text**
 
 
 Trajectory View API
@@ -52,7 +36,7 @@ and retrieve it, and how to present this data as inputs to the Policy's differen
 
 In particular, the methods that will receive inputs based on trajectory view rules are
 a) Policy.compute_actions_from_input_dict, b) Policy.postprocess_trajectory, and c)
-Policy.learn_on_batch (loss functions).
+Policy.learn_on_batch (and consecutively: the Policy's loss function).
 
 The input data to these methods can stem from either the environment (observations, rewards, and infos),
 the model itself (previously computed actions, internal state outputs, action-probs, etc..)
@@ -69,6 +53,12 @@ Such a "view requirements" formalism is helpful when having to support more comp
 setups like RNNs, attention nets, observation image framestacking (e.g. for Atari),
 and building multi-agent communication channels.
 
+The way to define a set of rules used for making Policies and Models see certain
+data is through a view requirements dict. Both Policy and Model hold such a dict
+and the Policy's view requirements dict usually contains the one of the Model.
+These dicts simply map strings (column names), such as "obs" or "actions" to
+a ViewRequirement object, which defines the exact conditions by which this column
+should be populated with data.
 
 The ViewRequirements class
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -78,6 +68,8 @@ View requirements for Models (`Model.forward`) and Policies
 within the `view_requirements` properties of the `ModelV2` and `Policy` base classes:
 
 #TODO: rename model.inference_view_requirements into simply `view_requirements`.
+
+You can acccess these properties like this:
 
 .. code-block:: python
 
@@ -93,7 +85,7 @@ within the `view_requirements` properties of the `ModelV2` and `Policy` base cla
     >>>    "prev_rewards": ViewRequirement(shift=-1, data_col="rewards"),
     >>>}
 
-As seen in the example above, the `view_requirements` property holds a dictionary mapping
+The `view_requirements` properties hold a dictionary mapping
 string keys (e.g. "actions", "rewards", "next_obs", etc..)
 to a ViewRequirement object. This ViewRequirement object determines what exact data to
 provide under that key in case a SampleBatch or an input_dict needs to be build and fed into
@@ -129,6 +121,3 @@ what each of these controls.
             the previous one and the current one. Could be used e.g. to feed the last two actions or
             rewards into an LSTM.
         shift="-50:-1" -> Use the data under `data_col`, but always provide a range of the last 50 timesteps
-
-
-
