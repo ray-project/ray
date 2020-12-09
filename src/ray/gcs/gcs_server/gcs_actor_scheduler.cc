@@ -45,7 +45,18 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  auto node = SelectNodeRandomly();
+  std::shared_ptr<rpc::GcsNodeInfo> node;
+
+  // If the actor is non-detached, try to schedule it on the same node as the owner if
+  // possible.
+  if (!actor->IsDetached()) {
+    auto maybe_node = gcs_node_manager_.GetNode(actor->GetOwnerNodeID());
+    node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
+    ;
+  } else {
+    node = SelectNodeRandomly();
+  }
+
   if (node == nullptr) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
