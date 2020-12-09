@@ -157,6 +157,7 @@ class Client:
                     }).remote(
                         "http://{}:{}/-/routes".format(self._http_host,
                                                        self._http_port),
+                        check_ready=check_ready,
                         timeout=HTTP_PROXY_TIMEOUT)
                 futures.append(future)
             try:
