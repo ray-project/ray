@@ -187,12 +187,9 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
 }
 
 TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
-  RAY_LOG(INFO) << "wangtao aaa";
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
-  RAY_LOG(INFO) << "wangtao bbb";
   rpc::ResourceUsageBatchData resource_usage_batch_data;
   resource_usage_batch_data.ParseFromString(*resources.get());
-  RAY_LOG(INFO) << "wangtao 193";
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
@@ -200,10 +197,8 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
       *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
   WaitReady(promise.get_future(), timeout_ms_);
-  RAY_LOG(INFO) << "wangtao 201";
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), 1);
-  RAY_LOG(INFO) << "wangtao 204";
 
   // Report resource usage first time.
   std::promise<bool> promise1;
@@ -212,11 +207,9 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
       resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
   WaitReady(promise1.get_future(), timeout_ms_);
-  RAY_LOG(INFO) << "wangtao 213";
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
-  RAY_LOG(INFO) << "wangtao 217";
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
 
   // Report changed resource usage.
@@ -230,10 +223,8 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
       heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
   WaitReady(promise2.get_future(), timeout_ms_);
-  RAY_LOG(INFO) << "wangtao 231";
 
   resources = global_state_->GetAllResourceUsage();
-  RAY_LOG(INFO) << "wangtao 234";
   resource_usage_batch_data.ParseFromString(*resources.get());
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
   auto resources_data = resource_usage_batch_data.mutable_batch()->at(0);
@@ -252,11 +243,9 @@ TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   (*heartbeat3->mutable_resources_available())["GPU"] = 6;
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
       heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
-  RAY_LOG(INFO) << "wangtao 253";
   WaitReady(promise3.get_future(), timeout_ms_);
 
   resources = global_state_->GetAllResourceUsage();
-  RAY_LOG(INFO) << "wangtao 257";
   resource_usage_batch_data.ParseFromString(*resources.get());
   ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
   resources_data = resource_usage_batch_data.mutable_batch()->at(0);

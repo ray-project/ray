@@ -622,10 +622,10 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportResourceUsage(
     const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
-  rpc::ReportResourceUsageRequest request;
-  request.mutable_resources()->CopyFrom(*data_ptr);
+  absl::MutexLock lock(&mutex_);
+  cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportResourceUsage(
-      request,
+      cached_resource_usage_,
       [callback](const Status &status, const rpc::ReportResourceUsageReply &reply) {
         if (callback) {
           callback(status);
