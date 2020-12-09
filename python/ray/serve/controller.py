@@ -328,7 +328,7 @@ class ActorStateReconciler:
         self.backend_replicas_to_stop.clear()
 
     def _start_http_proxies_if_needed(self, http_host: str, http_port: str,
-                                 http_middlewares: List[Any]) -> None:
+                                      http_middlewares: List[Any]) -> None:
         """Start an HTTP proxy on every node if it doesn't already exist."""
         if http_host is None:
             return
@@ -337,10 +337,10 @@ class ActorStateReconciler:
             if node_id in self.http_proxy_cache:
                 continue
 
-            name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.controller_name, node_id)
+            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
+                                     node_id)
             try:
-                http_proxy = ray.get_actor(name)
+                proxy = ray.get_actor(name)
             except ValueError:
                 logger.info("Starting HTTP proxy with name '{}' on node '{}' "
                             "listening on '{}:{}'".format(
@@ -373,8 +373,8 @@ class ActorStateReconciler:
         to_stop = []
         for node_id in self.http_proxy_cache:
             if node_id not in all_node_ids:
-                logger.info(
-                    "Removing HTTP proxy on removed node '{}'.".format(node_id))
+                logger.info("Removing HTTP proxy on removed node '{}'.".format(
+                    node_id))
                 to_stop.append(node_id)
 
         for node_id in to_stop:
@@ -387,8 +387,8 @@ class ActorStateReconciler:
     def _recover_actor_handles(self) -> None:
         # Refresh the RouterCache
         for node_id in self.http_proxy_cache.keys():
-            name = format_actor_name(SERVE_PROXY_NAME,
-                                            self.controller_name, node_id)
+            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
+                                     node_id)
             self.http_proxy_cache[node_id] = ray.get_actor(name)
 
         # Fetch actor handles for all of the backend replicas in the system.
@@ -637,7 +637,8 @@ class ServeController:
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
-    def _all_replica_handles(self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    def _all_replica_handles(
+            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
         return self.actor_reconciler.backend_replicas
 
@@ -911,6 +912,10 @@ class ServeController:
         assert (self.current_state.get_backend(backend_tag)
                 ), "Backend {} is not registered.".format(backend_tag)
         return self.current_state.get_backend(backend_tag).backend_config
+
+    def get_http_config(self):
+        """Return the HTTP proxy configuration."""
+        return self.http_host, self.http_port
 
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
