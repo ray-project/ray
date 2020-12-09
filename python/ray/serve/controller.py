@@ -497,7 +497,7 @@ class ServeController:
 
         # Map of awaiting results
         # TODO(ilr): Checkpoint this once this becomes asynchronous
-        self.inflight_results: Dict[uuid4, asyncio.Future] = dict()
+        self.inflight_results: Dict[uuid4, asyncio.Event] = dict()
         self._serializable_inflight_results: Dict[uuid4, FutureResult] = dict()
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
@@ -535,22 +535,27 @@ class ServeController:
     async def wait_for_event(self, uuid: uuid4) -> bool:
         if uuid not in self.inflight_results:
             return True
-        future = self.inflight_results[uuid]
-        result = await future
+        event = self.inflight_results[uuid]
+        await event.wait()
         self.inflight_results.pop(uuid)
         self._serializable_inflight_results.pop(uuid)
-        self._checkpoint()
+        async with self.write_lock:
+            self._checkpoint()
 
-        return result
+        return True
 
-    def _create_event_with_result(self, goal_state: Dict[str, any],
-                                  recreation_uuid: Optional[uuid4]) -> uuid4:
+    def _create_event_with_result(
+            self,
+            goal_state: Dict[str, any],
+            recreation_uuid: Optional[uuid4] = None) -> uuid4:
         # NOTE(ilr) Must be called before checkpointing!
-        fut = asyncio.get_event_loop().create_future()
-        fut.set_result(FutureResult(goal_state))
+        event = asyncio.Event()
+        event.result = FutureResult(goal_state)
+        event.set()
         uuid_val = recreation_uuid or uuid4()
-        self.inflight_results[uuid_val] = fut
-        self._serializable_inflight_results[uuid_val] = fut
+        print(uuid_val)
+        self.inflight_results[uuid_val] = event
+        self._serializable_inflight_results[uuid_val] = event.result
         return uuid_val
 
     async def _num_inflight_results(self) -> int:
@@ -638,7 +643,7 @@ class ServeController:
         # Recreate self.inflight_requests!
         self._serializable_inflight_results = restored_checkpoint.inflight_reqs
         for uuid, fut_result in self._serializable_inflight_results.items():
-            self._create_event_with_result(self.inflight_results[uuid], uuid)
+            self._create_event_with_result(fut_result.requested_goal, uuid)
 
         self.autoscaling_policies = await self.actor_reconciler.\
             _recover_from_checkpoint(self.current_state, self)
@@ -717,8 +722,9 @@ class ServeController:
         traffic_policy = TrafficPolicy(traffic_dict)
         self.current_state.traffic_policies[endpoint_name] = traffic_policy
 
-        return_uuid = self._create_event_with_result(
-            True, {endpoint_name: traffic_policy})
+        return_uuid = self._create_event_with_result({
+            endpoint_name: traffic_policy
+        })
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
         # update.
@@ -753,8 +759,9 @@ class ServeController:
 
             traffic_policy = self.current_state.traffic_policies[endpoint_name]
 
-            return_uuid = self._create_event_with_result(
-                True, {endpoint_name: traffic_policy})
+            return_uuid = self._create_event_with_result({
+                endpoint_name: traffic_policy
+            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
@@ -838,11 +845,10 @@ class ServeController:
 
             self.actor_reconciler.endpoints_to_remove.append(endpoint)
 
-            return_uuid = self._create_event_with_result(
-                True, {
-                    route_to_delete: None,
-                    endpoint: None
-                })
+            return_uuid = self._create_event_with_result({
+                route_to_delete: None,
+                endpoint: None
+            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # updates to the routers to avoid inconsistent state if we crash
             # after pushing the update.
@@ -890,8 +896,9 @@ class ServeController:
                 del self.current_state.backends[backend_tag]
                 raise e
 
-            return_uuid = self._create_event_with_result(
-                True, {backend_tag: backend_info})
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
@@ -937,8 +944,7 @@ class ServeController:
             # Add the intention to remove the backend from the router.
             self.actor_reconciler.backends_to_remove.append(backend_tag)
 
-            return_uuid = self._create_event_with_result(
-                True, {backend_tag: None})
+            return_uuid = self._create_event_with_result({backend_tag: None})
             # NOTE(edoakes): we must write a checkpoint before removing the
             # backend from the router to avoid inconsistent state if we crash
             # after pushing the update.
@@ -970,8 +976,9 @@ class ServeController:
                 self.current_state.backends, backend_tag,
                 backend_config.num_replicas)
 
-            return_uuid = self._create_event_with_result(
-                True, {backend_tag: backend_info})
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
