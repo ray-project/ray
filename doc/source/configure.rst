@@ -60,7 +60,9 @@ If using the command line, connect to the Ray cluster as follow:
     override this by explicitly setting ``OMP_NUM_THREADS``. ``OMP_NUM_THREADS`` is commonly
     used in numpy, PyTorch, and Tensorflow to perform multit-threaded linear algebra.
     In multi-worker setting, we want one thread per worker instead of many threads
-    per worker to avoid contention.
+    per worker to avoid contention. Some other libraries may have their own way to configure
+    parallelism. For example, if you're using OpenCV, you should manually set the number of
+    threads using cv2.setNumThreads(num_threads) (set to 0 to disable multi-threading).
 
 
 .. _temp-dir-log-files:

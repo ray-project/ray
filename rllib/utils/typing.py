@@ -67,6 +67,10 @@ EnvInfoDict = dict
 # Represents a File object
 FileType = Any
 
+# Represents a ViewRequirements dict mapping column names (str) to
+# ViewRequirement objects.
+ViewRequirementsDict = Dict[str, "ViewRequirement"]
+
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
 

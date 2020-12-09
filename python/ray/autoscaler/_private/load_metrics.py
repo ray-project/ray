@@ -87,7 +87,8 @@ class LoadMetrics:
                                 unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
             if unwanted:
-                logger.info(
+                # TODO (Alex): Change this back to info after #12138.
+                logger.debug(
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
