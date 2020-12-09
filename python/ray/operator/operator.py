@@ -131,8 +131,6 @@ def cluster_action(cluster_config: Dict[str, Any], event_type: str) -> None:
 
 
 def main() -> None:
-    # Fill owner reference fields for garbage collection
-    operator_utils.fill_operator_ownerrefs()
     # Make directory for ray cluster configs
     if not os.path.isdir(operator_utils.RAY_CONFIG_DIR):
         os.mkdir(operator_utils.RAY_CONFIG_DIR)

@@ -4,10 +4,8 @@ import os
 from typing import Any, Dict, Iterator, List
 
 from kubernetes.watch import Watch
-from kubernetes.client.models.v1_owner_reference import V1OwnerReference
 
-from ray.autoscaler._private.kubernetes import (auth_api, core_api,
-                                                custom_objects_api)
+from ray.autoscaler._private.kubernetes import custom_objects_api
 
 RAY_NAMESPACE = os.environ.get("RAY_OPERATOR_POD_NAMESPACE")
 
@@ -49,59 +47,6 @@ ownerReferences:
 """
 
 
-def fill_operator_ownerrefs() -> None:
-    """Fills metadata.ownerReferences field for resources associated to the
-    operator. This ensures that all of these resources are cleaned up when the
-    operator pod is deleted."""
-    pod = core_api().read_namespaced_pod(
-        namespace=RAY_NAMESPACE, name="ray-operator-pod")
-    pod_owner_reference = get_owner_reference("Pod", pod.metadata.name,
-                                              pod.metadata.uid)
-
-    service_account = core_api().read_namespaced_service_account(
-        namespace=RAY_NAMESPACE, name="ray-operator-serviceaccount")
-    role = auth_api().read_namespaced_role(
-        namespace=RAY_NAMESPACE, name="ray-operator-role")
-    role_binding = auth_api().read_namespaced_role_binding(
-        namespace=RAY_NAMESPACE, name="ray-operator-rolebinding")
-
-    service_account.metadata.owner_references = [pod_owner_reference]
-    role.metadata.owner_references = [pod_owner_reference]
-    role_binding.metadata.owner_references = [pod_owner_reference]
-
-    core_api().patch_namespaced_service_account(
-        namespace=RAY_NAMESPACE,
-        name="ray-operator-serviceaccount",
-        body=service_account)
-    auth_api().patch_namespaced_role(
-        namespace=RAY_NAMESPACE, name="ray-operator-role", body=role)
-    auth_api().patch_namespaced_role_binding(
-        namespace=RAY_NAMESPACE,
-        name="ray-operator-rolebinding",
-        body=role_binding)
-
-
-def get_owner_reference(kind: str, name: str, uid: str) -> V1OwnerReference:
-    return V1OwnerReference(
-        api_version="apps/v1",
-        controller=True,
-        block_owner_deletion=True,
-        kind=kind,
-        name=name,
-        uid=uid)
-
-
-def get_owner_reference_dict(kind: str, name: str, uid: str) -> Dict[str, Any]:
-    return {
-        "apiVersion": "apps/v1",
-        "controller": True,
-        "blockOwnerDeletion": True,
-        "kind": kind,
-        "name": name,
-        "uid": uid
-    }
-
-
 def config_path(cluster_name: str) -> str:
     file_name = cluster_name + CONFIG_SUFFIX
     return os.path.join(RAY_CONFIG_DIR, file_name)
@@ -121,21 +66,20 @@ def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
     """Convert RayCluster custom resource to a ray cluster config for use by the
     autoscaler."""
     cr_spec = cluster_resource["spec"]
-    cluster_name = cluster_resource["metadata"]["name"]
-    cluster_uid = cluster_resource["metadata"]["uid"]
+    cr_meta = cluster_resource["metadata"]
     config = translate(cr_spec, dictionary=CONFIG_FIELDS)
     pod_types = cr_spec["podTypes"]
-    config["available_node_types"] = get_node_types(pod_types, cluster_name,
-                                                    cluster_uid)
-    config["cluster_name"] = cluster_name
+    config["available_node_types"] = get_node_types(
+        pod_types, cluster_name=cr_meta["name"], cluster_uid=cr_meta["uid"])
+    config["cluster_name"] = cr_meta["name"]
     config["provider"] = PROVIDER_CONFIG
     return config
 
 
 def get_node_types(pod_types: List[Dict[str, Any]], cluster_name: str,
                    cluster_uid: str) -> Dict[str, Any]:
-    cluster_owner_reference = get_owner_reference_dict(
-        kind="RayCluster", name=cluster_name, uid=cluster_uid)
+    cluster_owner_reference = get_cluster_owner_reference(
+        cluster_name, cluster_uid)
     node_types = {}
     for pod_type in pod_types:
         name = pod_type["name"]
@@ -148,6 +92,18 @@ def get_node_types(pod_types: List[Dict[str, Any]], cluster_name: str,
             "ownerReferences": [cluster_owner_reference]
         })
     return node_types
+
+
+def get_cluster_owner_reference(cluster_name: str,
+                                cluster_uid: str) -> Dict[str, Any]:
+    return {
+        "apiVersion": "apps/v1",
+        "controller": True,
+        "blockOwnerDeletion": True,
+        "kind": "RayCluster",
+        "name": cluster_name,
+        "uid": cluster_uid
+    }
 
 
 def translate(configuration: Dict[str, Any],
