@@ -50,9 +50,13 @@ ownerReferences:
 
 
 def fill_operator_ownerrefs() -> None:
+    """Fills metadata.ownerReferences field for resources associated to the
+    operator. This ensures that all of these resources are cleaned up when the
+    operator pod is deleted."""
     pod = core_api().read_namespaced_pod(
         namespace=RAY_NAMESPACE, name="ray-operator-pod")
-    ref = get_owner_reference("Pod", pod.metadata.name, pod.metadata.uid)
+    pod_owner_reference = get_owner_reference("Pod", pod.metadata.name,
+                                              pod.metadata.uid)
 
     service_account = core_api().read_namespaced_service_account(
         namespace=RAY_NAMESPACE, name="ray-operator-serviceaccount")
@@ -61,9 +65,9 @@ def fill_operator_ownerrefs() -> None:
     role_binding = auth_api().read_namespaced_role_binding(
         namespace=RAY_NAMESPACE, name="ray-operator-rolebinding")
 
-    service_account.metadata.owner_references = [ref]
-    role.metadata.owner_references = [ref]
-    role_binding.metadata.owner_references = [ref]
+    service_account.metadata.owner_references = [pod_owner_reference]
+    role.metadata.owner_references = [pod_owner_reference]
+    role_binding.metadata.owner_references = [pod_owner_reference]
 
     core_api().patch_namespaced_service_account(
         namespace=RAY_NAMESPACE,
@@ -77,7 +81,7 @@ def fill_operator_ownerrefs() -> None:
         body=role_binding)
 
 
-def get_owner_reference(kind, name, uid):
+def get_owner_reference(kind: str, name: str, uid: str) -> V1OwnerReference:
     return V1OwnerReference(
         api_version="apps/v1",
         controller=True,
@@ -87,11 +91,11 @@ def get_owner_reference(kind, name, uid):
         uid=uid)
 
 
-def get_owner_reference_dict(kind, name, uid):
+def get_owner_reference_dict(kind: str, name: str, uid: str) -> Dict[str, Any]:
     return {
         "apiVersion": "apps/v1",
-        "controller": "true",
-        "blockOwnerDeletion": "true",
+        "controller": True,
+        "blockOwnerDeletion": True,
         "kind": kind,
         "name": name,
         "uid": uid
@@ -114,6 +118,8 @@ def cluster_cr_stream() -> Iterator:
 
 
 def cr_to_config(cluster_resource: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert RayCluster custom resource to a ray cluster config for use by the
+    autoscaler."""
     cr_spec = cluster_resource["spec"]
     cluster_name = cluster_resource["metadata"]["name"]
     cluster_uid = cluster_resource["metadata"]["uid"]
@@ -137,6 +143,7 @@ def get_node_types(pod_types: List[Dict[str, Any]], cluster_name: str,
         pod_type_copy.pop("name")
         node_types[name] = translate(
             pod_type_copy, dictionary=NODE_TYPE_FIELDS)
+        # Deleting a RayCluster CR will also delete the associated pods.
         node_types[name]["node_config"]["metadata"].update({
             "ownerReferences": [cluster_owner_reference]
         })
@@ -146,13 +153,3 @@ def get_node_types(pod_types: List[Dict[str, Any]], cluster_name: str,
 def translate(configuration: Dict[str, Any],
               dictionary: Dict[str, str]) -> Dict[str, Any]:
     return {dictionary[field]: configuration[field] for field in configuration}
-
-
-def get_ray_head_pod_ip(config: Dict[str, Any]) -> str:
-    cluster_name = config["cluster_name"]
-    label_selector = f"ray-node-type=head,ray-cluster-name={cluster_name}"
-    pods = core_api().list_namespaced_pod(
-        namespace=RAY_NAMESPACE, label_selector=label_selector).items
-    assert (len(pods)) == 1
-    head_pod = pods.pop()
-    return head_pod.status.pod_ip
