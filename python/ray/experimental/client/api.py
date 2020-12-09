@@ -166,10 +166,10 @@ class ClientAPI(APIImpl):
     def close(self) -> None:
         return self.worker.close()
 
-    def kill(self, actor: 'ClientActorHandle', *, no_restart=True):
+    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
         return self.worker.terminate_actor(actor, no_restart)
 
-    def cancel(self, obj: 'ClientObjectRef', *, force=False, recursive=True):
+    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
         return self.worker.terminate_task(obj, force, recursive)
 
     # Various metadata methods for the client that are defined in the protocol.
@@ -179,7 +179,8 @@ class ClientAPI(APIImpl):
         Returns:
             Information about the Ray clients in the cluster.
         """
-        return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODES)
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.NODES)
 
     def actors(self, actor_id: Optional[str] = None):
         """Fetch actor info for one or more actor IDs (for debugging only).
@@ -225,7 +226,8 @@ class ClientAPI(APIImpl):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
 
     def available_resources(self):
         """Get the current available cluster resources.
@@ -239,10 +241,11 @@ class ClientAPI(APIImpl):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 
     @property
-    def state(self) -> 'ClientStateAPI':
+    def state(self) -> "ClientStateAPI":
         return ClientStateAPI(self)
 
     def __getattr__(self, key: str):
@@ -258,6 +261,7 @@ class ClientStateAPI:
     """
     Shim class to match the `ray.state` import path with an eqivalent client version.
     """
+
     def __init__(self, parent_api: ClientAPI):
         self.api = parent_api
 
@@ -271,7 +275,8 @@ class ClientStateAPI:
         Returns:
             Id of the current node.
         """
-        return self.api.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID)
+        return self.api.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID)
 
     def node_ids(self):
         """Get a list of the node ids in the cluster.
@@ -283,7 +288,8 @@ class ClientStateAPI:
         Returns:
             List of the node resource ids.
         """
-        return self.api.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODE_IDS)
+        return self.api.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.NODE_IDS)
 
     def workers(self):
         """Get a list of the workers in the cluster.
@@ -291,4 +297,5 @@ class ClientStateAPI:
         Returns:
             Information about the Ray workers in the cluster.
         """
-        return self.api.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.WORKERS)
+        return self.api.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.WORKERS)

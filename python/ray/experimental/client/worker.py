@@ -146,14 +146,16 @@ class Worker:
     def close(self):
         self.channel.close()
 
-    def terminate_actor(self, actor: ClientActorHandle, no_restart: bool) -> None:
+    def terminate_actor(self, actor: ClientActorHandle,
+                        no_restart: bool) -> None:
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart
         term = ray_client_pb2.TerminateRequest(actor=term_actor)
         self.server.Terminate(term)
 
-    def terminate_task(self, obj: ClientObjectRef, force: bool, recursive: bool) -> None:
+    def terminate_task(self, obj: ClientObjectRef, force: bool,
+                       recursive: bool) -> None:
         term_object = ray_client_pb2.TerminateRequest.TaskObjectTerminate()
         term_object.id = obj.id
         term_object.force = force
@@ -161,10 +163,9 @@ class Worker:
         term = ray_client_pb2.TerminateRequest(task_object=term_object)
         self.server.Terminate(term)
 
-    def get_cluster_info(
-        self,
-        type: ray_client_pb2.ClusterInfoType.TypeEnum,
-        client_id: Optional[bytes] = None):
+    def get_cluster_info(self,
+                         type: ray_client_pb2.ClusterInfoType.TypeEnum,
+                         client_id: Optional[bytes] = None):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
         if client_id is not None:

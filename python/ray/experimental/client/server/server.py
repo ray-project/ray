@@ -25,7 +25,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self._test_mode = test_mode
 
-    def ClusterInfo(self, request, context=None) -> ray_client_pb2.ClusterInfoResponse:
+    def ClusterInfo(self, request,
+                    context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
         resp.type = request.type
         if request.type == ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID:
@@ -35,17 +36,20 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             # Normalize resources into floats
             # (the function may return values that are ints)
             float_resources = {k: float(v) for k, v in resources.items()}
-            resp.resource_table.CopyFrom(ray_client_pb2.ClusterInfoResponse.ResourceTable(
-                table=float_resources))
+            resp.resource_table.CopyFrom(
+                ray_client_pb2.ClusterInfoResponse.ResourceTable(
+                    table=float_resources))
         elif request.type == ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES:
             resources = ray.available_resources()
             # Normalize resources into floats
             # (the function may return values that are ints)
             float_resources = {k: float(v) for k, v in resources.items()}
-            resp.resource_table.CopyFrom(ray_client_pb2.ClusterInfoResponse.ResourceTable(
-                table=float_resources))
+            resp.resource_table.CopyFrom(
+                ray_client_pb2.ClusterInfoResponse.ResourceTable(
+                    table=float_resources))
         else:
-            resp.debug_table_json = self._return_debug_cluster_info(request, context)
+            resp.debug_table_json = self._return_debug_cluster_info(
+                request, context)
         return resp
 
     def _return_debug_cluster_info(self, request, context=None) -> str:
@@ -77,7 +81,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def TerminateRequest(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":
             obj = self.object_refs[request.task_object.id]
-            ray.cancel(obj, force=request.task_object.force, recursive=request.task_object.recursive)
+            ray.cancel(
+                obj,
+                force=request.task_object.force,
+                recursive=request.task_object.recursive)
             del self.object_refs[request.task_object.id]
         elif request.WhichOneof("terminate_type") == "actor":
             actor = self.actor_refs[request.actor.id]
@@ -85,7 +92,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             del self.actor_refs[request.actor_id]
         else:
             raise RuntimeError(
-                "Client requested termination without providing a valid terminate_type")
+                "Client requested termination without providing a valid terminate_type"
+            )
         return ray_client_pb2.TerminateResponse(ok=True)
 
     def GetObject(self, request, context=None):
