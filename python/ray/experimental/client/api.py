@@ -13,6 +13,7 @@ from abc import ABC
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Union
 if TYPE_CHECKING:
+    from ray.experimental.client.common import ClientActorHandle
     from ray.experimental.client.common import ClientStub
     from ray.experimental.client.common import ClientObjectRef
     from ray._raylet import ObjectRef
@@ -130,6 +131,12 @@ class ClientAPI(APIImpl):
 
     def close(self) -> None:
         return self.worker.close()
+
+    def kill(self, actor: 'ClientActorHandle', *, no_restart=True):
+        return self.worker.terminate_actor(actor, no_restart)
+
+    def cancel(self, obj: 'ClientObjectRef', *, force=False, recursive=True):
+        return self.worker.terminate_task(obj, force, recursive)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):

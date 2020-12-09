@@ -16,6 +16,7 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorClass
+from ray.experimental.client.common import ClientActorHandle
 from ray.experimental.client.common import ClientRemoteFunc
 
 logger = logging.getLogger(__name__)
@@ -142,3 +143,19 @@ class Worker:
 
     def close(self):
         self.channel.close()
+
+    def terminate_actor(self, actor: ClientActorHandle, no_restart: bool) -> None:
+        term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
+        term_actor.id = actor.actor_ref.id
+        term_actor.no_restart = no_restart
+        term = ray_client_pb2.TerminateRequest(actor=term_actor)
+        self.server.Terminate(term)
+
+    def terminate_task(self, obj: ClientObjectRef, force: bool, recursive: bool) -> None:
+        term_object = ray_client_pb2.TerminateRequest.TaskObjectTerminate()
+        term_object.id = obj.id
+        term_object.force = force
+        term_object.recursive = recursive
+        term = ray_client_pb2.TerminateRequest(task_object=term_object)
+        self.server.Terminate(term)
+

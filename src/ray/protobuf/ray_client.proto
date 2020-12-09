@@ -106,15 +106,24 @@ message ClusterInfoResponse {
 }
 
 message TerminateRequest {
+  message ActorTerminate {
+    bytes id = 1;
+    bool no_restart = 2;
+  }
+  message TaskObjectTerminate {
+    bytes id = 1;
+    bool force = 2;
+    bool recursive = 3;
+  }
+
   oneof terminate_type {
-    bytes task_object_id = 1;
-    bytes actor_id = 2;
+    ActorTerminate actor = 1;
+    TaskObjectTerminate task_object = 2;
   }
 }
 
 message TerminateResponse {
   bool ok = 1;
-  string error_msg = 2;
 }
 
 service RayletDriver {

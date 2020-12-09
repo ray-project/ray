@@ -23,6 +23,23 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self._test_mode = test_mode
 
+    def ClusterInfo(self, request, context=None):
+        pass
+
+    def TerminateRequest(self, request, context=None):
+        if request.WhichOneof("terminate_type") == "task_object":
+            obj = self.object_refs[request.task_object.id]
+            ray.cancel(obj, force=request.task_object.force, recursive=request.task_object.recursive)
+            def self.object_refs[request.task_object.id]
+        elif request.WhichOneof("terminate_type") == "actor":
+            actor = self.actor_refs[request.actor.id]
+            ray.kill(actor, no_restart=request.actor.no_restart)
+            del self.actor_refs[request.actor_id]
+        else:
+            raise RuntimeError(
+                "Client requested termination without providing a valid terminate_type")
+        return ray_client_pb2.TerminateResponse(ok=True)
+
     def GetObject(self, request, context=None):
         if request.id not in self.object_refs:
             return ray_client_pb2.GetResponse(valid=False)
