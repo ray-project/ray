@@ -981,6 +981,34 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
 }
 
+TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
+  std::unordered_map<std::string, double> resource_spec({{"CPU", 1}});
+  ClusterResourceScheduler cluster_resources("local", {});
+  for (int i = 0; i < 100; i++) {
+    cluster_resources.AddOrUpdateNode(std::to_string(i), {}, {});
+  }
+
+  // No feasible nodes.
+  int64_t total_violations;
+  ASSERT_EQ(
+      cluster_resources.GetBestSchedulableNode(resource_spec, false, &total_violations),
+      "");
+
+  // Feasible remote node, but doesn't currently have resources available. We
+  // should spill there.
+  cluster_resources.AddOrUpdateNode("remote_feasible", resource_spec, {{"CPU", 0.}});
+  ASSERT_EQ(
+      cluster_resources.GetBestSchedulableNode(resource_spec, false, &total_violations),
+      "remote_feasible");
+
+  // Feasible remote node, and it currently has resources available. We should
+  // prefer to spill there.
+  cluster_resources.AddOrUpdateNode("remote_available", resource_spec, resource_spec);
+  ASSERT_EQ(
+      cluster_resources.GetBestSchedulableNode(resource_spec, false, &total_violations),
+      "remote_available");
+}
+
 TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
   vector<int64_t> cust_ids{1, 2, 3, 4, 5};
 
@@ -1055,6 +1083,33 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
   }
+}
+
+TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
+  ClusterResourceScheduler cluster_resources("local", {{"CPU", 2}});
+
+  std::unordered_map<std::string, double> task_request = {{"CPU", 1}, {"custom123", 2}};
+  int64_t t;
+
+  std::string result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_TRUE(result.empty());
+
+  cluster_resources.AddLocalResource("custom123", 5);
+
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_FALSE(result.empty());
+
+  task_request["custom123"] = 6;
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_TRUE(result.empty());
+
+  cluster_resources.AddLocalResource("custom123", 5);
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_FALSE(result.empty());
+
+  cluster_resources.DeleteLocalResource("custom123");
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_TRUE(result.empty());
 }
 
 }  // namespace ray

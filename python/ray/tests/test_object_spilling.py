@@ -569,6 +569,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="flaky")
 def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
