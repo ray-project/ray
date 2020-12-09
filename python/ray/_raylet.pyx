@@ -351,6 +351,13 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
+    # Helper method used to exit current asyncio actor
+    def exit_current_actor_if_asyncio():
+        if core_worker.current_actor_is_asyncio():
+            error = SystemExit(0)
+            error.is_ray_terminate = True
+            raise error
+
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
 
@@ -476,6 +483,7 @@ cdef execute_task(
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
                 except KeyboardInterrupt as e:
+                    exit_current_actor_if_asyncio()
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
@@ -483,6 +491,7 @@ cdef execute_task(
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
+                exit_current_actor_if_asyncio()
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
