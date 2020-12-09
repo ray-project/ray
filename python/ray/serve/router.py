@@ -6,11 +6,7 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.constants import (
-    LONG_POLL_KEY_BACKEND_CONFIGS,
-    LONG_POLL_KEY_REPLICA_HANDLES,
-    LONG_POLL_KEY_TRAFFIC_POLICIES,
-)
+from ray.serve.constants import LongPollKey
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollerAsyncClient
@@ -186,9 +182,9 @@ class Router:
         # requires async context.
         self.long_pull_client = LongPollerAsyncClient(
             self.controller, {
-                LONG_POLL_KEY_TRAFFIC_POLICIES: self._update_traffic_policies,
-                LONG_POLL_KEY_REPLICA_HANDLES: self._update_replica_handles,
-                LONG_POLL_KEY_BACKEND_CONFIGS: self._update_backend_configs,
+                LongPollKey.TRAFFIC_POLICIES: self._update_traffic_policies,
+                LongPollKey.REPLICA_HANDLES: self._update_replica_handles,
+                LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
             })
 
     async def _update_traffic_policies(self, traffic_policies):

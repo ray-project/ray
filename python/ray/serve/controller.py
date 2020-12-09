@@ -12,10 +12,8 @@ import ray
 import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_replica
-from ray.serve.constants import (
-    ASYNC_CONCURRENCY, SERVE_PROXY_NAME, LONG_POLL_KEY_REPLICA_HANDLES,
-    LONG_POLL_KEY_TRAFFIC_POLICIES, LONG_POLL_KEY_BACKEND_CONFIGS,
-    LONG_POLL_KEY_ROUTE_TABLE)
+from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
+                                 LongPollKey)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
@@ -525,7 +523,7 @@ class ServeController:
 
     def notify_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
-            LONG_POLL_KEY_REPLICA_HANDLES, {
+            LongPollKey.REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
                 for backend_tag, replica_dict in
                 self.actor_reconciler.backend_replicas.items()
@@ -533,17 +531,17 @@ class ServeController:
 
     def notify_traffic_policies_changed(self):
         self.long_poll_host.notify_changed(
-            LONG_POLL_KEY_TRAFFIC_POLICIES,
+            LongPollKey.TRAFFIC_POLICIES,
             self.current_state.traffic_policies,
         )
 
     def notify_backend_configs_changed(self):
         self.long_poll_host.notify_changed(
-            LONG_POLL_KEY_BACKEND_CONFIGS,
+            LongPollKey.BACKEND_CONFIGS,
             self.current_state.get_backend_configs())
 
     def notify_route_table_changed(self):
-        self.long_poll_host.notify_changed(LONG_POLL_KEY_ROUTE_TABLE,
+        self.long_poll_host.notify_changed(LongPollKey.ROUTE_TABLE,
                                            self.current_state.routes)
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):

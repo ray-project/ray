@@ -1,3 +1,5 @@
+from enum import auto, Enum
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -38,14 +40,12 @@ DEFAULT_LATENCY_BUCKET_MS = [
 #: Name of backend reconfiguration method implemented by user.
 BACKEND_RECONFIGURE_METHOD = "reconfigure"
 
-#: Long poll key for replica handles.
-LONG_POLL_KEY_REPLICA_HANDLES = "replica_handles"
 
-#: Long poll key for traffic policies.
-LONG_POLL_KEY_TRAFFIC_POLICIES = "traffic_policies"
+class LongPollKey(Enum):
+    def __repr__(self):
+        return f"{self.__class__.__name__}.{self.name}"
 
-#: Long poll key for backend configs.
-LONG_POLL_KEY_BACKEND_CONFIGS = "backend_configs"
-
-#: Long poll key for route table.
-LONG_POLL_KEY_ROUTE_TABLE = "route_table"
+    REPLICA_HANDLES = auto()
+    TRAFFIC_POLICIES = auto()
+    BACKEND_CONFIGS = auto()
+    ROUTE_TABLE = auto()

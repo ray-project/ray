@@ -6,7 +6,7 @@ import uvicorn
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.serve.constants import LONG_POLL_KEY_ROUTE_TABLE
+from ray.serve.constants import LongPollKey
 from ray.serve.context import TaskContext
 from ray.util import metrics
 from ray.serve.utils import _get_logger, get_random_letters
@@ -30,7 +30,7 @@ class HTTPProxy:
         controller = ray.get_actor(controller_name)
         self.router = Router(controller)
         self.long_poll_client = LongPollerAsyncClient(controller, {
-            LONG_POLL_KEY_ROUTE_TABLE: self._update_route_table,
+            LongPollKey.ROUTE_TABLE: self._update_route_table,
         })
 
         self.request_counter = metrics.Count(
