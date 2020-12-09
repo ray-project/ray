@@ -233,10 +233,10 @@ However, should you need to build from source, follow :ref:`these instructions f
 Docker Source Images
 --------------------
 
-Most users should pull a Docker image from the Ray Docker Hub.
+Most users should pull a Docker image from the `Ray Docker Hub. <https://hub.docker.com/r/rayproject/>`_
 
-- The ``rayproject/ray`` image has ray and all required dependencies. It comes with anaconda and Python 3.7.
-- The ``rayproject/autoscaler`` image has the above features as well as many additional libraries.
+- The ``rayproject/ray`` `image has ray and all required dependencies. It comes with anaconda and Python 3.7. <https://hub.docker.com/r/rayproject/ray>`_
+- The ``rayproject/ray-ml`` `image has the above features as well as many additional libraries. <https://hub.docker.com/r/rayproject/ray-ml>`_
 - The ``rayproject/base-deps`` and ``rayproject/ray-deps`` are for the linux and python dependencies respectively.
 
 These images are tagged by their release number (or commit hash for nightlies) as well as a ``"-gpu"`` if they are GPU compatible.
