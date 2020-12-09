@@ -14,7 +14,7 @@ assignees: ''
 *Ray version and other system information (Python version, TensorFlow version, OS):*
 
 ### Reproduction (REQUIRED)
-Please provide a short code snippet (less than 50 lines) that can be copy-pasted to reproduce the issue. The snippet should have **no external library dependencies** (i.e., use fake or mock data / environments):
+Please provide a short code snippet (less than 50 lines if possible) that can be copy-pasted to reproduce the issue. The snippet should have **no external library dependencies** (i.e., use fake or mock data / environments):
 
 If the code snippet cannot be run by itself, the issue will be closed with "needs-repro-script".
 
