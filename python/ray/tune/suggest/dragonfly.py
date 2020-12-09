@@ -68,11 +68,11 @@ class DragonflySearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list of lists): A list of points you'd like to run
-            first before sampling from the optimiser, e.g. these could be
-            parameter configurations you already know work well to help
-            the optimiser select good values. Each point is a list of the
-            parameters using the order definition given by parameter_names.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         evaluated_rewards (list): If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
@@ -142,7 +142,7 @@ class DragonflySearch(Searcher):
                  space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[List]] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
@@ -166,7 +166,9 @@ class DragonflySearch(Searcher):
                 space = self.convert_search_space(space)
 
         self._space = space
-        self._points_to_evaluate = points_to_evaluate
+        self._points_to_evaluate = [
+            config["point"] for config in points_to_evaluate
+        ]
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}

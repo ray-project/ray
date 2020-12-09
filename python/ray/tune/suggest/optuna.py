@@ -62,6 +62,11 @@ class OptunaSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
 
@@ -109,6 +114,7 @@ class OptunaSearch(Searcher):
                  space: Optional[Union[Dict, List[Tuple]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  sampler: Optional[BaseSampler] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")

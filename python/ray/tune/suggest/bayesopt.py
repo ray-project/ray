@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import pickle
 import json
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
 from ray.tune.result import DEFAULT_METRIC
@@ -59,6 +59,11 @@ class BayesOptSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         utility_kwargs (dict): Parameters to define the utility function.
             The default value is a dictionary with three keys:
             - kind: ucb (Upper Confidence Bound)
@@ -112,6 +117,7 @@ class BayesOptSearch(Searcher):
                  space: Optional[Dict] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  utility_kwargs: Optional[Dict] = None,
                  random_state: int = 42,
                  random_search_steps: int = 10,

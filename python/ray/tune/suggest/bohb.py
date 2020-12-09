@@ -3,7 +3,7 @@
 import copy
 import logging
 import math
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import ConfigSpace
 from ray.tune.result import DEFAULT_METRIC
@@ -51,6 +51,11 @@ class TuneBOHB(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         seed (int): Optional random seed to initialize the random number
             generator. Setting this should lead to identical initial
             configurations at each run.
@@ -107,6 +112,7 @@ class TuneBOHB(Searcher):
                  max_concurrent: int = 10,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  seed: Optional[int] = None):
         from hpbandster.optimizers.config_generators.bohb import BOHB
         assert BOHB is not None, """HpBandSter must be installed!

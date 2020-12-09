@@ -1,6 +1,6 @@
 import copy
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ray
 import ray.cloudpickle as pickle
@@ -119,6 +119,11 @@ class ZOOptSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         parallel_num (int): How many workers to parallel. Note that initial
             phase may start less workers than this number. More details can
             be found in zoopt package.
@@ -132,6 +137,7 @@ class ZOOptSearch(Searcher):
                  dim_dict: Optional[Dict] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  **kwargs):
         assert zoopt is not None, "ZOOpt not found - please install zoopt " \
                                   "by `pip install -U zoopt`."

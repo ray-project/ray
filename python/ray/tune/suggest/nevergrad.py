@@ -53,9 +53,9 @@ class NevergradSearch(Searcher):
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
-            you want hyperopt to run first to help the TPE algorithm
-            make better suggestions for future parameters. Needs to be
-            a list of dict of hyperopt-named variables.
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
 
@@ -113,8 +113,8 @@ class NevergradSearch(Searcher):
                  space: Optional[Union[Dict, Parameter]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 max_concurrent: Optional[int] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
+                 max_concurrent: Optional[int] = None,
                  **kwargs):
         assert ng is not None, """Nevergrad must be installed!
             You can install Nevergrad with the command:

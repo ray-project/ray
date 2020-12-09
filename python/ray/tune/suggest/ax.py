@@ -50,6 +50,11 @@ class AxSearch(Searcher):
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute. Defaults to "max".
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dict containing the
+            configurations.
         parameter_constraints (list[str]): Parameter constraints, such as
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
@@ -110,6 +115,7 @@ class AxSearch(Searcher):
                  space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  parameter_constraints: Optional[List] = None,
                  outcome_constraints: Optional[List] = None,
                  ax_client: Optional[AxClient] = None,
