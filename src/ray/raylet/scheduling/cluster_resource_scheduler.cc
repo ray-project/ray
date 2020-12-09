@@ -369,6 +369,33 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
+void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,
+                                                double resource_total) {
+  string_to_int_map_.Insert(resource_name);
+  int64_t resource_id = string_to_int_map_.Get(resource_name);
+
+  if (local_resources_.custom_resources.contains(resource_id)) {
+    FixedPoint total(resource_total);
+    auto &instances = local_resources_.custom_resources[resource_id];
+    instances.total[0] += total;
+    instances.available[0] += total;
+    auto &capacity = nodes_[local_node_id_].custom_resources[resource_id];
+    capacity.available += total;
+    capacity.total += total;
+  } else {
+    ResourceInstanceCapacities capacity;
+    capacity.total.resize(1);
+    capacity.total[0] = resource_total;
+    capacity.available.resize(1);
+    capacity.available[0] = resource_total;
+    local_resources_.custom_resources.emplace(resource_id, capacity);
+    std::string node_id_string = string_to_int_map_.Get(local_node_id_);
+    RAY_CHECK(string_to_int_map_.Get(node_id_string) == local_node_id_);
+    UpdateResourceCapacity(node_id_string, resource_name, resource_total);
+    UpdateLocalAvailableResourcesFromResourceInstances();
+  }
+}
+
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
@@ -407,7 +434,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
       it->second.predefined_resources[idx].total = 0;
     }
   } else {
-    int64_t resource_id = string_to_int_map_.Insert(resource_name);
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
     auto itr = it->second.custom_resources.find(resource_id);
     if (itr != it->second.custom_resources.end()) {
       auto diff_capacity = resource_total_fp - itr->second.total;
@@ -425,6 +453,10 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
       it->second.custom_resources.emplace(resource_id, resource_capacity);
     }
   }
+}
+
+void ClusterResourceScheduler::DeleteLocalResource(const std::string &resource_name) {
+  DeleteResource(string_to_int_map_.Get(local_node_id_), resource_name);
 }
 
 void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
@@ -447,12 +479,22 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   };
   if (idx != -1) {
     it->second.predefined_resources[idx].total = 0;
+
+    if (node_id == local_node_id_) {
+      local_resources_.predefined_resources[idx].total.clear();
+      local_resources_.predefined_resources[idx].available.clear();
+    }
   } else {
     int64_t resource_id = string_to_int_map_.Get(resource_name);
     auto itr = it->second.custom_resources.find(resource_id);
     if (itr != it->second.custom_resources.end()) {
       string_to_int_map_.Remove(resource_id);
       it->second.custom_resources.erase(itr);
+    }
+
+    if (node_id == local_node_id_) {
+      local_resources_.custom_resources[resource_id].total.clear();
+      local_resources_.custom_resources[resource_id].available.clear();
     }
   }
 }
