@@ -160,8 +160,8 @@ def test_batch(ray_start_regular_shared):
         q.get_nowait_batch(1)
 
     big_q = Queue(100)
-    big_q.put_nowait_batch([i for i in range(100)])
-    assert big_q.get_nowait_batch(100) == [i for i in range(100)]
+    big_q.put_nowait_batch(range(100))
+    assert big_q.get_nowait_batch(100) == range(100)
 
 
 def test_qsize(ray_start_regular_shared):
