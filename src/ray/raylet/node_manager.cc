@@ -535,8 +535,12 @@ void NodeManager::ReportResourceUsage() {
     should_local_gc_ = false;
   }
 
-  RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportResourceUsage(resources_data, /*done*/ nullptr));
+  if (resources_data->resources_total_size() > 0 ||
+      resources_data->resources_available_changed() ||
+      resources_data->resource_load_changed() || resources_data->should_global_gc()) {
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().AsyncReportResourceUsage(resources_data, /*done*/ nullptr));
+  }
 
   // Reset the timer.
   report_resources_timer_.expires_from_now(report_resources_period_);
