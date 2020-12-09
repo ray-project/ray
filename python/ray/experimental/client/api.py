@@ -179,39 +179,7 @@ class ClientAPI(APIImpl):
         Returns:
             Information about the Ray clients in the cluster.
         """
-        return self.worker.get_cluster_info(ray_client_pb2.NODES)
-
-    def workers(self):
-        """Get a list of the workers in the cluster.
-
-        Returns:
-            Information about the Ray workers in the cluster.
-        """
-        return self.worker.get_cluster_info(ray_client_pb2.WORKERS)
-
-    def current_node_id(self):
-        """Return the node id of the current node.
-
-        For example, "node:172.10.5.34". This can be used as a custom resource,
-        e.g., {node_id: 1} to reserve the whole node, or {node_id: 0.001} to
-        just force placement on the node.
-
-        Returns:
-            Id of the current node.
-        """
-        return self.worker.get_cluster_info(ray_client_pb2.CURRENT_NODE_ID)
-
-    def node_ids(self):
-        """Get a list of the node ids in the cluster.
-
-        For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
-        as custom resources, e.g., {node_id: 1} to reserve the whole node, or
-        {node_id: 0.001} to just force placement on the node.
-
-        Returns:
-            List of the node resource ids.
-        """
-        return self.worker.get_cluster_info(ray_client_pb2.NODE_IDS)
+        return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODES)
 
     def actors(self, actor_id: Optional[str] = None):
         """Fetch actor info for one or more actor IDs (for debugging only).
@@ -228,9 +196,9 @@ class ClientAPI(APIImpl):
             client_id = bytes.fromhex(actor_id)
 
         return self.worker.get_cluster_info(
-            ray_client_pb2.ACTORS, client_id=client_id)
+            ray_client_pb2.ClusterInfoType.ACTORS, client_id=client_id)
 
-    def objects(self, object_ref: Optional[ClientObjectRef] = None):
+    def objects(self, object_ref: Optional[str] = None):
         """Fetch and parse the object table info for one or more object refs.
 
         Args:
@@ -242,10 +210,10 @@ class ClientAPI(APIImpl):
         """
         client_id = None
         if object_ref is not None:
-            client_id = object_ref.id
+            client_id = bytes.fromhex(object_ref)
 
         return self.worker.get_cluster_info(
-            ray_client_pb2.OBJECTS, client_id=client_id)
+            ray_client_pb2.ClusterInfoType.OBJECTS, client_id=client_id)
 
     def cluster_resources(self):
         """Get the current total cluster resources.
@@ -257,7 +225,7 @@ class ClientAPI(APIImpl):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        return self.worker.get_cluster_info(ray_client_pb2.CLUSTER_RESOURCES)
+        return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
 
     def available_resources(self):
         """Get the current available cluster resources.
@@ -271,7 +239,11 @@ class ClientAPI(APIImpl):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
-        return self.worker.get_cluster_info(ray_client_pb2.AVAILABLE_RESOURCES)
+        return self.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
+
+    @property
+    def state(self) -> 'ClientStateAPI':
+        return ClientStateAPI(self)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):
@@ -280,3 +252,43 @@ class ClientAPI(APIImpl):
                 "available within Ray remote functions and is not yet "
                 "implemented in the client API.".format(key))
         return self.__getattribute__(key)
+
+
+class ClientStateAPI:
+    """
+    Shim class to match the `ray.state` import path with an eqivalent client version.
+    """
+    def __init__(self, parent_api: ClientAPI):
+        self.api = parent_api
+
+    def current_node_id(self):
+        """Return the node id of the current node.
+
+        For example, "node:172.10.5.34". This can be used as a custom resource,
+        e.g., {node_id: 1} to reserve the whole node, or {node_id: 0.001} to
+        just force placement on the node.
+
+        Returns:
+            Id of the current node.
+        """
+        return self.api.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID)
+
+    def node_ids(self):
+        """Get a list of the node ids in the cluster.
+
+        For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
+        as custom resources, e.g., {node_id: 1} to reserve the whole node, or
+        {node_id: 0.001} to just force placement on the node.
+
+        Returns:
+            List of the node resource ids.
+        """
+        return self.api.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.NODE_IDS)
+
+    def workers(self):
+        """Get a list of the workers in the cluster.
+
+        Returns:
+            Information about the Ray workers in the cluster.
+        """
+        return self.api.worker.get_cluster_info(ray_client_pb2.ClusterInfoType.WORKERS)

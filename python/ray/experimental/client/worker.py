@@ -161,14 +161,17 @@ class Worker:
         term = ray_client_pb2.TerminateRequest(task_object=term_object)
         self.server.Terminate(term)
 
-    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType, client_id: Optional[bytes] = None):
+    def get_cluster_info(
+        self,
+        type: ray_client_pb2.ClusterInfoType.TypeEnum,
+        client_id: Optional[bytes] = None):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
         if client_id is not None:
             req.client_id = client_id
         resp = self.server.ClusterInfo(req)
-        if resp.HasField("id"):
+        if resp.WhichOneof("response_type") == "id":
             return resp.id
-        elif resp.HasField("resource_table"):
-            return resp.resource_table
+        elif resp.WhichOneof("response_type") == "resource_table":
+            return resp.resource_table.table
         return json.loads(resp.debug_table_json)

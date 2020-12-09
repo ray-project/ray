@@ -3,6 +3,7 @@ from concurrent import futures
 import grpc
 from ray import cloudpickle
 import ray
+import ray.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
@@ -27,36 +28,46 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def ClusterInfo(self, request, context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
         resp.type = request.type
-        if request.type == ray_client_pb2.CURRENT_NODE_ID:
-            resp.id = ray.current_node_id()
-        elif request.type == ray_client_pb2.CLUSTER_RESOURCES:
-            resp.resource_table = ray.cluster_resources()
-        elif request.type == ray_client_pb2.AVAILABLE_RESOURCES:
-            resp.resource_table = ray.available_resources()
+        if request.type == ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID:
+            resp.id = ray.state.current_node_id()
+        elif request.type == ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES:
+            resources = ray.cluster_resources()
+            # Normalize resources into floats
+            # (the function may return values that are ints)
+            float_resources = {k: float(v) for k, v in resources.items()}
+            resp.resource_table.CopyFrom(ray_client_pb2.ClusterInfoResponse.ResourceTable(
+                table=float_resources))
+        elif request.type == ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES:
+            resources = ray.available_resources()
+            # Normalize resources into floats
+            # (the function may return values that are ints)
+            float_resources = {k: float(v) for k, v in resources.items()}
+            resp.resource_table.CopyFrom(ray_client_pb2.ClusterInfoResponse.ResourceTable(
+                table=float_resources))
         else:
             resp.debug_table_json = self._return_debug_cluster_info(request, context)
         return resp
 
-    def _return_debug_cluster_info(request, context=None) -> str:
+    def _return_debug_cluster_info(self, request, context=None) -> str:
         data = None
-        if request.type == ray_client_pb2.JOBS:
+        if request.type == ray_client_pb2.ClusterInfoType.JOBS:
             data = ray.jobs()
-        elif request.type == ray_client_pb2.NODES:
+        elif request.type == ray_client_pb2.ClusterInfoType.NODES:
             data = ray.nodes()
-        elif request.type == ray_client_pb2.WORKERS:
-            data = ray.workers()
-        elif request.type == ray_client_pb2.NODE_IDS:
-            data = ray.node_ids()
-        elif request.type == ray_client_pb2.ACTORS:
-            if request.HasField("client_id"):
+        elif request.type == ray_client_pb2.ClusterInfoType.WORKERS:
+            data = ray.state.workers()
+        elif request.type == ray_client_pb2.ClusterInfoType.NODE_IDS:
+            data = ray.state.node_ids()
+        elif request.type == ray_client_pb2.ClusterInfoType.ACTORS:
+            if len(request.client_id) != 0:
                 actor = self.actor_refs[request.client_id]
                 data = ray.actors(actor._actor_id.hex())
             else:
                 data = ray.actors()
-        elif request.type == ray_client_pb2.OBJECTS:
-            if request.HasField("client_id"):
+        elif request.type == ray_client_pb2.ClusterInfoType.OBJECTS:
+            if len(request.client_id) != 0:
                 ref = self.object_refs[request.client_id]
-                data = ray.objects(ref)
+                data = ray.objects(ref.binary().hex())
             else:
                 data = ray.objects()
         else:
@@ -67,7 +78,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if request.WhichOneof("terminate_type") == "task_object":
             obj = self.object_refs[request.task_object.id]
             ray.cancel(obj, force=request.task_object.force, recursive=request.task_object.recursive)
-            def self.object_refs[request.task_object.id]
+            del self.object_refs[request.task_object.id]
         elif request.WhichOneof("terminate_type") == "actor":
             actor = self.actor_refs[request.actor.id]
             ray.kill(actor, no_restart=request.actor.no_restart)

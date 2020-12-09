@@ -75,33 +75,38 @@ message WaitResponse {
   repeated bytes remaining_object_ids = 3;
 }
 
-
-enum ClusterInfoType {
-  CURRENT_NODE_ID = 0;
-  JOBS = 1;
-  NODES = 2;
-  WORKERS = 3;
-  NODE_IDS = 4;
-  ACTORS = 5;
-  OBJECTS = 6;
-  CLUSTER_RESOURCES = 7;
-  AVAILABLE_RESOURCES = 8;
+message ClusterInfoType {
+  // Namespace the enum, as it collides in the overall package.
+  enum TypeEnum {
+    CURRENT_NODE_ID = 0;
+    JOBS = 1;
+    NODES = 2;
+    WORKERS = 3;
+    NODE_IDS = 4;
+    ACTORS = 5;
+    OBJECTS = 6;
+    CLUSTER_RESOURCES = 7;
+    AVAILABLE_RESOURCES = 8;
+  }
 }
 
 message ClusterInfoRequest {
-  ClusterInfoType type = 1;
+  ClusterInfoType.TypeEnum type = 1;
 
   // Optional, used for ACTORS and OBJECTS info.
   bytes client_id = 2;
 }
 
 message ClusterInfoResponse {
-  ClusterInfoType type = 1;
-  // One of the following will be filled in, depending on type
-  // It's not a proto3 oneof because maps aren't allowed in oneofs.
-  string id = 2;
-  string debug_table_json = 3;
-  map<string, int64> resource_table = 4;
+  message ResourceTable {
+    map<string, double> table = 1;
+  }
+  ClusterInfoType.TypeEnum type = 1;
+  oneof response_type {
+    string id = 2;
+    string debug_table_json = 3;
+    ResourceTable resource_table = 4;
+  }
 }
 
 message TerminateRequest {

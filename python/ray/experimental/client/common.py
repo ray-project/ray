@@ -190,6 +190,10 @@ class ClientActorHandle(ClientStub):
         self.actor_class = state["actor_class"]
         self._real_actor_handle = state["_real_actor_handle"]
 
+    @property
+    def _actor_id(self):
+        return self.actor_ref.id
+
     def __getattr__(self, key):
         return ClientRemoteMethod(self, key)
 
