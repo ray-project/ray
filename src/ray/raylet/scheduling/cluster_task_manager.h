@@ -49,7 +49,8 @@ class ClusterTaskManager {
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
-  /// (according to our ownership model). \param gcs_client: A gcs client.
+  /// (according to our ownership model).
+  /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,

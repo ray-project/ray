@@ -701,6 +701,7 @@ void NodeManager::GetObjectManagerProfileInfo() {
 }
 
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
+  // SANG-TODO Add logic for new scheduler here.
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
@@ -833,6 +834,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
 
 void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
+  // SANG-TODO Update this method.
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
@@ -856,6 +858,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
 
+  // SANG-TODO Update this method.
   if (node_id == self_node_id_) {
     // The resource update is on the local node, check if we can reschedule tasks.
     TryLocalInfeasibleTaskScheduling();
