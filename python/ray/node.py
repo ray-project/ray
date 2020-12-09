@@ -340,10 +340,6 @@ class Node:
         return self._ray_params.redis_password
 
     @property
-    def load_code_from_local(self):
-        return self._ray_params.load_code_from_local
-
-    @property
     def object_ref_seed(self):
         """Get the seed for deterministic generation of object refs"""
         return self._ray_params.object_ref_seed
@@ -723,7 +719,6 @@ class Node:
             stderr_file=stderr_file,
             config=self._config,
             java_worker_options=self._ray_params.java_worker_options,
-            load_code_from_local=self._ray_params.load_code_from_local,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,

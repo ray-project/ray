@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 
 import ray
 from ray.streaming import StreamingContext
@@ -34,7 +35,8 @@ def test_hybrid_stream():
     print("java_worker_options", java_worker_options)
     assert not ray.is_initialized()
     ray.init(
-        _load_code_from_local=True, _java_worker_options=java_worker_options)
+        job_config=ray.job_config.JobConfig(code_search_path=sys.path),
+        _java_worker_options=java_worker_options)
 
     sink_file = "/tmp/ray_streaming_test_hybrid_stream.txt"
     if os.path.exists(sink_file):

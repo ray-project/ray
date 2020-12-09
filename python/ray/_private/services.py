@@ -1253,7 +1253,6 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  config=None,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
@@ -1367,7 +1366,8 @@ def start_raylet(redis_address,
         f"--object-store-name={plasma_store_name}",
         f"--raylet-name={raylet_name}", f"--redis-address={redis_address}",
         f"--config-list={config_str}", f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}"
+        f"--metrics-agent-port={metrics_agent_port}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
@@ -1382,9 +1382,6 @@ def start_raylet(redis_address,
 
     if max_worker_port is None:
         max_worker_port = 0
-
-    if load_code_from_local:
-        start_worker_command += ["--load-code-from-local"]
 
     # Create agent command
     agent_command = [

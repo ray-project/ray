@@ -13,7 +13,6 @@ import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,11 +173,10 @@ public class RayConfig {
     if (config.hasPath("ray.job.code-search-path")) {
       codeSearchPathString = config.getString("ray.job.code-search-path");
     }
-    if (!StringUtils.isEmpty(codeSearchPathString)) {
-      codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
-    } else {
-      codeSearchPath = Collections.emptyList();
+    if (StringUtils.isEmpty(codeSearchPathString)) {
+      codeSearchPathString = System.getProperty("java.class.path");
     }
+    codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
