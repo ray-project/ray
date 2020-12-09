@@ -20,6 +20,7 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.metrics_agent import MetricsAgent
 import psutil
+import platform
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +31,13 @@ except ImportError:
     logger.warning(
         "Install gpustat with 'pip install gpustat' to enable GPU monitoring.")
 
-if os.uname()[4] == 'aarch64': 
+if platform.uname()[4] == "aarch64":
     try:
-        from jtop import jtop 
+        from jtop import jtop
     except ImportError:
         jtop = None
         logger.warning(
-            "Install jetson_stats with 'pip install -U jetson-stats' to enable GPU monitoring on jetson machine.")
+            "Install jetson_stats with 'pip install jetson-stats' to enable GPU monitoring.")
 
 
 def recursive_asdict(o):
@@ -118,7 +119,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     def _get_gpu_usage(self):
         gpu_utilizations = []
-        if os.uname()[4] != 'aarch64':
+        if platform.uname()[4] != "aarch64":
             if gpustat is None:
                 return []
             gpus = []
@@ -134,9 +135,9 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     for key, val in gpu.entry.items()
                 }
                 gpu_utilizations.append(gpu_data)
-        else: 
-            if jtop is None: 
-                return [] 
+        else:
+            if jtop is None:
+                return []
             gpu_utilizations = self._get_gpu_usage_jetson()
 
         return gpu_utilizations
@@ -147,12 +148,12 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         gpu_data = {}
         with jtop() as jetson:
             gpu_data['index'] = 0
-            #This is a bit of dirty hack. For some reason, Jetson's gpu 
+            # This is a bit of dirty hack. For some reason, Jetson's gpu
             # can't be recognized when utilization is 0. 
-            gpu_data['utilization_gpu'] = jetson.gpu['val'] + 1
-            gpu_data['memory_used'] = jetson.ram['use'] /1000
-            gpu_data['memory_total'] = jetson.ram['tot'] /1000
-            gpu_data['processes'] = []
+            gpu_data["utilization_gpu"] = jetson.gpu["val"] + 1
+            gpu_data["memory_used"] = jetson.ram["use"] /1000
+            gpu_data["memory_total"] = jetson.ram["tot"] /1000
+            gpu_data["processes"] = []
         
         gpu_utilizations_jetson.append(gpu_data)
         return gpu_utilizations_jetson
