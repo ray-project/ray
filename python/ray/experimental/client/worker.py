@@ -3,9 +3,11 @@ It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
 import inspect
+import json
 import logging
 from typing import List
 from typing import Tuple
+from typing import Optional
 
 import ray.cloudpickle as cloudpickle
 from ray.util.inspect import is_cython
@@ -158,3 +160,15 @@ class Worker:
         term_object.recursive = recursive
         term = ray_client_pb2.TerminateRequest(task_object=term_object)
         self.server.Terminate(term)
+
+    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType, client_id: Optional[bytes] = None):
+        req = ray_client_pb2.ClusterInfoRequest()
+        req.type = type
+        if client_id is not None:
+            req.client_id = client_id
+        resp = self.server.ClusterInfo(req)
+        if resp.HasField("id"):
+            return resp.id
+        elif resp.HasField("resource_table"):
+            return resp.resource_table
+        return json.loads(resp.debug_table_json)

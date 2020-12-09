@@ -11,7 +11,8 @@
 
 from abc import ABC
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Union, Optional
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
 if TYPE_CHECKING:
     from ray.experimental.client.common import ClientActorHandle
     from ray.experimental.client.common import ClientStub
@@ -104,6 +105,39 @@ class APIImpl(ABC):
         """
         pass
 
+    @abstractmethod
+    def kill(self, actor, *, no_restart=True):
+        """
+        kill forcibly stops an actor running in the cluster
+
+        Args:
+            no_restart: Whether this actor should be restarted if it's a
+              restartable actor.
+        """
+        pass
+
+    @abstractmethod
+    def cancel(self, obj, *, force=False, recursive=True):
+        """
+        Cancels a task on the cluster.
+
+        If the specified task is pending execution, it will not be executed. If
+        the task is currently executing, the behavior depends on the ``force``
+        flag, as per `ray.cancel()`
+
+        Only non-actor tasks can be canceled. Canceled tasks will not be
+        retried (max_retries will not be respected).
+
+        Args:
+            object_ref (ObjectRef): ObjectRef returned by the task
+                that should be canceled.
+            force (boolean): Whether to force-kill a running task by killing
+                the worker that is running the task.
+            recursive (boolean): Whether to try to cancel tasks submitted by the
+                task specified.
+        """
+        pass
+
 
 class ClientAPI(APIImpl):
     """
@@ -137,6 +171,107 @@ class ClientAPI(APIImpl):
 
     def cancel(self, obj: 'ClientObjectRef', *, force=False, recursive=True):
         return self.worker.terminate_task(obj, force, recursive)
+
+    # Various metadata methods for the client that are defined in the protocol.
+    def nodes(self):
+        """Get a list of the nodes in the cluster (for debugging only).
+
+        Returns:
+            Information about the Ray clients in the cluster.
+        """
+        return self.worker.get_cluster_info(ray_client_pb2.NODES)
+
+    def workers(self):
+        """Get a list of the workers in the cluster.
+
+        Returns:
+            Information about the Ray workers in the cluster.
+        """
+        return self.worker.get_cluster_info(ray_client_pb2.WORKERS)
+
+    def current_node_id(self):
+        """Return the node id of the current node.
+
+        For example, "node:172.10.5.34". This can be used as a custom resource,
+        e.g., {node_id: 1} to reserve the whole node, or {node_id: 0.001} to
+        just force placement on the node.
+
+        Returns:
+            Id of the current node.
+        """
+        return self.worker.get_cluster_info(ray_client_pb2.CURRENT_NODE_ID)
+
+    def node_ids(self):
+        """Get a list of the node ids in the cluster.
+
+        For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
+        as custom resources, e.g., {node_id: 1} to reserve the whole node, or
+        {node_id: 0.001} to just force placement on the node.
+
+        Returns:
+            List of the node resource ids.
+        """
+        return self.worker.get_cluster_info(ray_client_pb2.NODE_IDS)
+
+    def actors(self, actor_id: Optional[str] = None):
+        """Fetch actor info for one or more actor IDs (for debugging only).
+
+        Args:
+            actor_id: A hex string of the actor ID to fetch information about. If
+                this is None, then all actor information is fetched.
+
+        Returns:
+            Information about the actors.
+        """
+        client_id = None
+        if actor_id is not None:
+            client_id = bytes.fromhex(actor_id)
+
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ACTORS, client_id=client_id)
+
+    def objects(self, object_ref: Optional[ClientObjectRef] = None):
+        """Fetch and parse the object table info for one or more object refs.
+
+        Args:
+            object_ref: An object ref to fetch information about. If this is None,
+                then the entire object table is fetched.
+
+        Returns:
+            Information from the object table.
+        """
+        client_id = None
+        if object_ref is not None:
+            client_id = object_ref.id
+
+        return self.worker.get_cluster_info(
+            ray_client_pb2.OBJECTS, client_id=client_id)
+
+    def cluster_resources(self):
+        """Get the current total cluster resources.
+
+        Note that this information can grow stale as nodes are added to or removed
+        from the cluster.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        return self.worker.get_cluster_info(ray_client_pb2.CLUSTER_RESOURCES)
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return idle
+        (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        return self.worker.get_cluster_info(ray_client_pb2.AVAILABLE_RESOURCES)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):
