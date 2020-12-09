@@ -84,8 +84,8 @@ class LoadMetrics:
             for unwanted_key in unwanted:
                 # TODO (Alex): Change this back to info after #12138.
                 logger.debug("LoadMetrics: "
-                            "Removed mapping: {} - {}".format(
-                                unwanted_key, mapping[unwanted_key]))
+                             "Removed mapping: {} - {}".format(
+                                 unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
             if unwanted:
                 # TODO (Alex): Change this back to info after #12138.
