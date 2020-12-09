@@ -57,8 +57,8 @@ class ClientRemoteFunc(ClientStub):
         # self._ref can be lazily instantiated. Rather than eagerly creating
         # function data objects in the server we can put them just before we
         # execute the function, especially in cases where many @ray.remote
-        # functions exist in a library and only a handful are ever executed by a
-        # user of the library.
+        # functions exist in a library and only a handful are ever executed by
+        # a user of the library.
         #
         # TODO(barakmich): This ref might actually be better as a serialized
         # ObjectRef. This requires being able to serialize the ref without
@@ -162,8 +162,8 @@ class ClientActorHandle(ClientStub):
           is a serialized version of the actual handle as an opaque token.
         actor_class: A reference to the ClientActorClass that this actor was
           instantiated from.
-        _real_actor_handle: Cached copy of the Raylet-side ray.actor.ActorHandle
-          contained in the actor_id ref.
+        _real_actor_handle: Cached copy of the Raylet-side
+          ray.actor.ActorHandle contained in the actor_id ref.
     """
 
     def __init__(self, actor_ref: ClientActorRef,

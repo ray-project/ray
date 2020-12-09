@@ -15,9 +15,9 @@ from ray.experimental.client.common import ClientObjectRef
 
 class CoreRayAPI(APIImpl):
     """
-    Implements the equivalent client-side Ray API by simply passing along to the
-    Core Ray API. Primarily used inside of Ray Workers as a trampoline back to
-    core ray when passed client stubs.
+    Implements the equivalent client-side Ray API by simply passing along to
+    the Core Ray API. Primarily used inside of Ray Workers as a trampoline back
+    to core ray when passed client stubs.
     """
 
     def get(self, *args, **kwargs):
