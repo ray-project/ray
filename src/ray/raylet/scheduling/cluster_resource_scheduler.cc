@@ -27,7 +27,6 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const std::string &local_node_id,
     const std::unordered_map<std::string, double> &local_node_resources) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
-  RAY_LOG(DEBUG) << "Local node ID is " << local_node_id_;
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
@@ -141,7 +140,6 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
       } else {
         // A hard constraint has been violated, so we cannot schedule
         // this task request.
-        RAY_LOG(DEBUG) << "Node " << node_id << " does not have enough available resources to schedule task";
         return -1;
       }
     }
@@ -873,8 +871,6 @@ void ClusterResourceScheduler::AllocateRemoteTaskResources(
   auto node_id = string_to_int_map_.Insert(node_string);
   RAY_CHECK(node_id != local_node_id_);
   AllocateTaskResources(node_id, task_request, nullptr);
-
-  remote_resources_dirty_ = true;
 }
 
 void ClusterResourceScheduler::FreeLocalTaskResources(
@@ -895,11 +891,9 @@ void ClusterResourceScheduler::Heartbeat(
          "https://github.com/ray-project/ray/issues/new.";
 
   if (light_heartbeat_enabled && last_report_resources_ &&
-      resources == *last_report_resources_.get() &&
-      !remote_resources_dirty_) {
+      resources == *last_report_resources_.get()) {
     return;
   } else {
-    RAY_LOG(DEBUG) << "Reporting heartbeat " << resources.DebugString(string_to_int_map_);
     for (int i = 0; i < PredefinedResources_MAX; i++) {
       const auto &label = ResourceEnumToString((PredefinedResources)i);
       const auto &capacity = resources.predefined_resources[i];
@@ -928,17 +922,7 @@ void ClusterResourceScheduler::Heartbeat(
     if (light_heartbeat_enabled) {
       last_report_resources_.reset(new NodeResources(resources));
     }
-
-    // If our record of the remote nodes' resources might be dirty, request new
-    // heartbeats from all other nodes. Unset the flag since we're about to
-    // receive fresh updates.
-    heartbeat_data->set_should_report_resources(remote_resources_dirty_);
-    remote_resources_dirty_ = false;
   }
-}
-
-void ClusterResourceScheduler::ClearLastReportedResources() {
-  last_report_resources_ = nullptr;
 }
 
 }  // namespace ray

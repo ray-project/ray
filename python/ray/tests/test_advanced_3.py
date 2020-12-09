@@ -96,6 +96,7 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="flakes more often")
 def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
