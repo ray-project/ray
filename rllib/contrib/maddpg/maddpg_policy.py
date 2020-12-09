@@ -1,8 +1,8 @@
 import ray
 from ray.rllib.agents.dqn.dqn_tf_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
@@ -28,7 +28,7 @@ class MADDPGPostprocessing:
                                other_agent_batches=None,
                                episode=None):
         # FIXME: Get done from info is required since agentwise done is not
-        # supported now.
+        #  supported now.
         sample_batch.data[SampleBatch.DONES] = self.get_done_from_info(
             sample_batch.data[SampleBatch.INFOS])
 
@@ -250,6 +250,9 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
             loss=actor_loss + critic_loss,
             loss_inputs=loss_inputs,
             dist_inputs=actor_feature)
+
+        del self.view_requirements["prev_actions"]
+        del self.view_requirements["prev_rewards"]
 
         self.sess.run(tf1.global_variables_initializer())
 

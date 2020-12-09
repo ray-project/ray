@@ -11,7 +11,10 @@ def build_flask_request(asgi_scope_dict, request_body):
     happen.
     """
     wsgi_environ = build_wsgi_environ(asgi_scope_dict, request_body)
-    return flask.Request(wsgi_environ)
+    # We set populate_request=False to prevent self reference, which can lead
+    # to objects tracked by python garbage collector and memory growth. See
+    # https://github.com/ray-project/ray/issues/12395.
+    return flask.Request(wsgi_environ, populate_request=False)
 
 
 def build_wsgi_environ(scope, body):

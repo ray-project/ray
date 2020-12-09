@@ -129,6 +129,7 @@ class SyncSampler(SamplerInput):
                  obs_filters: Dict[PolicyID, Filter],
                  clip_rewards: bool,
                  rollout_fragment_length: int,
+                 count_steps_by: str = "env_steps",
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
                  multiple_episodes_in_batch: bool = False,
@@ -190,8 +191,12 @@ class SyncSampler(SamplerInput):
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
-                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
-                rollout_fragment_length)
+                policies,
+                clip_rewards,
+                callbacks,
+                multiple_episodes_in_batch,
+                rollout_fragment_length,
+                count_steps_by=count_steps_by)
         else:
             self.sample_collector = None
 
@@ -254,6 +259,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  obs_filters: Dict[PolicyID, Filter],
                  clip_rewards: bool,
                  rollout_fragment_length: int,
+                 count_steps_by: str = "env_steps",
                  callbacks: "DefaultCallbacks",
                  horizon: int = None,
                  multiple_episodes_in_batch: bool = False,
@@ -282,6 +288,8 @@ class AsyncSampler(threading.Thread, SamplerInput):
             rollout_fragment_length (int): The length of a fragment to collect
                 before building a SampleBatch from the data and resetting
                 the SampleBatchBuilder object.
+            count_steps_by (str): Either "env_steps" or "agent_steps".
+                Refers to the unit of `rollout_fragment_length`.
             callbacks (Callbacks): The Callbacks object to use when episode
                 events happen during rollout.
             horizon (Optional[int]): Hard-reset the Env
@@ -336,8 +344,12 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
             self.sample_collector = _SimpleListCollector(
-                policies, clip_rewards, callbacks, multiple_episodes_in_batch,
-                rollout_fragment_length)
+                policies,
+                clip_rewards,
+                callbacks,
+                multiple_episodes_in_batch,
+                rollout_fragment_length,
+                count_steps_by=count_steps_by)
         else:
             self.sample_collector = None
 
@@ -1033,17 +1045,19 @@ def _process_observations_w_trajectory_view_api(
                 agent_id)
             episode._set_last_observation(agent_id, filtered_obs)
             episode._set_last_raw_obs(agent_id, raw_obs)
-            episode._set_last_info(agent_id, infos[env_id].get(agent_id, {}))
+            # Infos from the environment.
+            agent_infos = infos[env_id].get(agent_id, {})
+            episode._set_last_info(agent_id, agent_infos)
 
             # Record transition info if applicable.
             if last_observation is None:
                 _sample_collector.add_init_obs(episode, agent_id, env_id,
-                                               policy_id, filtered_obs)
+                                               policy_id, episode.length - 1,
+                                               filtered_obs)
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {
                     "t": episode.length - 1,
-                    "eps_id": episode.episode_id,
                     "env_id": env_id,
                     "agent_index": episode._agent_index(agent_id),
                     # Action (slot 0) taken at timestep t.
@@ -1058,15 +1072,21 @@ def _process_observations_w_trajectory_view_api(
                     "new_obs": filtered_obs,
                 }
                 # Add extra-action-fetches to collectors.
-                values_dict.update(**episode.last_pi_info_for(agent_id))
+                pol = policies[policy_id]
+                for key, value in episode.last_pi_info_for(agent_id).items():
+                    if key in pol.view_requirements:
+                        values_dict[key] = value
+                # Env infos for this agent.
+                if "infos" in pol.view_requirements:
+                    values_dict["infos"] = agent_infos
                 _sample_collector.add_action_reward_next_obs(
                     episode.episode_id, agent_id, env_id, policy_id,
                     agent_done, values_dict)
 
             if not agent_done:
                 item = PolicyEvalData(
-                    env_id, agent_id, filtered_obs, infos[env_id].get(
-                        agent_id, {}), None if last_observation is None else
+                    env_id, agent_id, filtered_obs, agent_infos, None
+                    if last_observation is None else
                     episode.rnn_state_for(agent_id), None
                     if last_observation is None else
                     episode.last_action_for(agent_id),
@@ -1151,7 +1171,8 @@ def _process_observations_w_trajectory_view_api(
 
                     # Add initial obs to buffer.
                     _sample_collector.add_init_obs(
-                        new_episode, agent_id, env_id, policy_id, filtered_obs)
+                        new_episode, agent_id, env_id, policy_id,
+                        new_episode.length - 1, filtered_obs)
 
                     item = PolicyEvalData(
                         env_id, agent_id, filtered_obs,

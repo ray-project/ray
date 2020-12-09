@@ -422,7 +422,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
   return status;
 }
 
-Status RedisContext::SubscribeAsync(const NodeID &client_id,
+Status RedisContext::SubscribeAsync(const NodeID &node_id,
                                     const TablePubsub pubsub_channel,
                                     const RedisCallback &redisCallback,
                                     int64_t *out_callback_index) {
@@ -435,7 +435,7 @@ Status RedisContext::SubscribeAsync(const NodeID &client_id,
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   Status status = Status::OK();
-  if (client_id.IsNil()) {
+  if (node_id.IsNil()) {
     // Subscribe to all messages.
     std::string redis_command = "SUBSCRIBE %d";
     status = async_redis_subscribe_context_->RedisAsyncCommand(
@@ -447,7 +447,7 @@ Status RedisContext::SubscribeAsync(const NodeID &client_id,
     status = async_redis_subscribe_context_->RedisAsyncCommand(
         reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
-        client_id.Data(), client_id.Size());
+        node_id.Data(), node_id.Size());
   }
 
   return status;

@@ -239,46 +239,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return actors;
   }
 
-  bool AddCheckpoint(
-      const std::shared_ptr<rpc::ActorCheckpointData> &actor_checkpoint_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
-        actor_checkpoint_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  rpc::ActorCheckpointData GetCheckpoint(const ActorID &actor_id,
-                                         const ActorCheckpointID &checkpoint_id) {
-    std::promise<bool> promise;
-    rpc::ActorCheckpointData actor_checkpoint_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id, actor_id,
-        [&actor_checkpoint_data, &promise](
-            Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
-          assert(result);
-          actor_checkpoint_data.CopyFrom(*result);
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return actor_checkpoint_data;
-  }
-
-  rpc::ActorCheckpointIdData GetCheckpointID(const ActorID &actor_id) {
-    std::promise<bool> promise;
-    rpc::ActorCheckpointIdData actor_checkpoint_id_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
-        actor_id,
-        [&actor_checkpoint_id_data, &promise](
-            Status status, const boost::optional<rpc::ActorCheckpointIdData> &result) {
-          assert(result);
-          actor_checkpoint_id_data.CopyFrom(*result);
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return actor_checkpoint_id_data;
-  }
-
   bool SubscribeToNodeChange(
       const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
     std::promise<bool> promise;
@@ -288,7 +248,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info);
+    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
     return status.ok();
   }
 
@@ -578,11 +538,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
-  }
-
   void CheckActorData(const gcs::ActorTableData &actor,
                       rpc::ActorTableData_ActorState expected_state) {
     ASSERT_TRUE(actor.state() == expected_state);
@@ -653,31 +608,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
   WaitForActorUnsubscribed(actor_id);
-}
-
-TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
-  // Create actor checkpoint data.
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
-  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
-
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  auto checkpoint = std::make_shared<rpc::ActorCheckpointData>();
-  checkpoint->set_actor_id(actor_table_data->actor_id());
-  checkpoint->set_checkpoint_id(checkpoint_id.Binary());
-  checkpoint->set_execution_dependency(checkpoint_id.Binary());
-
-  // Add actor checkpoint data to GCS.
-  ASSERT_TRUE(AddCheckpoint(checkpoint));
-
-  // Get actor checkpoint data from GCS.
-  auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
-  ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
-
-  // Get actor checkpoint id data from GCS.
-  auto get_checkpoint_id_result = GetCheckpointID(actor_id);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
@@ -801,7 +731,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
   // Report heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   // Set this flag because GCS won't publish unchanged heartbeat.
   heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -824,13 +754,13 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeatWithLightHeartbeat) {
   // Report unchanged heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
   WaitForExpectedCount(heartbeat_batch_count, 0);
 
   // Report changed heartbeat of a node to GCS.
   auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_client_id(node_id.Binary());
+  heartbeat1->set_node_id(node_id.Binary());
   heartbeat1->set_resources_available_changed(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat1));
   WaitForExpectedCount(heartbeat_batch_count, 1);
@@ -852,7 +782,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   // Report heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   // Set this flag to indicate resources has changed.
   heartbeat->set_resources_available_changed(true);
   (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
@@ -884,7 +814,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResourcesWithLightHeartbeat
   // Report heartbeat of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
+  heartbeat->set_node_id(node_id.Binary());
   heartbeat->set_resources_available_changed(true);
   (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
   (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
@@ -900,7 +830,7 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResourcesWithLightHeartbeat
 
   // Report unchanged heartbeat of a node to GCS.
   auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_client_id(node_id.Binary());
+  heartbeat1->set_node_id(node_id.Binary());
   (*heartbeat1->mutable_resources_available())["GPU"] = 8.0;
   ASSERT_TRUE(ReportHeartbeat(heartbeat1));
   WaitForExpectedCount(heartbeat_batch_count, 1);
@@ -1228,7 +1158,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
   auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_info->node_id());
+  heartbeat->set_node_id(node_info->node_id());
   // Set this flag because GCS won't publish unchanged heartbeat.
   heartbeat->set_should_global_gc(true);
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
@@ -1240,7 +1170,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   ASSERT_TRUE(UpdateResources(node_id, key));
-  heartbeat->set_client_id(node_info->node_id());
+  heartbeat->set_node_id(node_info->node_id());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
 
   WaitForExpectedCount(node_change_count, 2);
