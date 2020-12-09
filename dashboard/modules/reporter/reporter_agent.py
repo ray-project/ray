@@ -147,7 +147,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         gpu_utilizations_jetson = []
         gpu_data = {}
         with jtop() as jetson:
-            gpu_data['index'] = 0
+            gpu_data["index"] = 0
             # This is a bit of dirty hack. For some reason, Jetson's gpu
             # can't be recognized when utilization is 0. 
             gpu_data["utilization_gpu"] = jetson.gpu["val"] + 1
