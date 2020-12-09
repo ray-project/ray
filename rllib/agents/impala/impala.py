@@ -221,10 +221,7 @@ def gather_experiences_directly(workers, config):
             replay_proportion=config["replay_proportion"])) \
         .flatten() \
         .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            ))
+            ConcatBatches(min_batch_size=config["train_batch_size"]))
 
     return train_batches
 

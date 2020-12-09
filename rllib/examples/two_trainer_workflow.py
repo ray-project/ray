@@ -81,8 +81,7 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
 
     # PPO sub-flow.
     ppo_train_op = r2.for_each(SelectExperiences(["ppo_policy"])) \
-        .combine(ConcatBatches(
-            min_batch_size=200, count_steps_by="env_steps")) \
+        .combine(ConcatBatches(min_batch_size=200)) \
         .for_each(add_ppo_metrics) \
         .for_each(StandardizeFields(["advantages"])) \
         .for_each(TrainOneStep(

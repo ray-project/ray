@@ -109,10 +109,7 @@ def execution_plan(workers, config):
 
     train_op = Replay(local_buffer=replay_buffer) \
         .combine(
-        ConcatBatches(
-            min_batch_size=config["train_batch_size"],
-            count_steps_by=config["multiagent"]["count_steps_by"]
-        )) \
+            ConcatBatches(min_batch_size=config["train_batch_size"])) \
         .for_each(TrainOneStep(workers)) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))
