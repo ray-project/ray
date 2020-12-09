@@ -139,6 +139,14 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
+class RayletClientInterface : public PinObjectsInterface,
+                              public WorkerLeaseInterface,
+                              public DependencyWaiterInterface,
+                              public ResourceReserveInterface {
+ public:
+  virtual ~RayletClientInterface(){};
+};
+
 namespace raylet {
 
 class RayletConnection {
@@ -171,10 +179,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient : public PinObjectsInterface,
-                     public WorkerLeaseInterface,
-                     public DependencyWaiterInterface,
-                     public ResourceReserveInterface {
+class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///

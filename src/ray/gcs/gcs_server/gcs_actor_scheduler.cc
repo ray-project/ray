@@ -28,7 +28,8 @@ GcsActorScheduler::GcsActorScheduler(
     std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
-    LeaseClientFactoryFn lease_client_factory, rpc::ClientFactoryFn client_factory)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
@@ -36,7 +37,7 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_failure_handler_(std::move(schedule_failure_handler)),
       schedule_success_handler_(std::move(schedule_success_handler)),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
-      lease_client_factory_(std::move(lease_client_factory)),
+      raylet_client_pool_(raylet_client_pool),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
@@ -129,10 +130,7 @@ std::vector<ActorID> GcsActorScheduler::CancelOnNode(const NodeID &node_id) {
     }
   }
 
-  // Remove the related remote lease client from remote_lease_clients_.
-  // There is no need to check in this place, because it is possible that there are no
-  // workers leased on this node.
-  remote_lease_clients_.erase(node_id);
+  raylet_client_pool_->Disconnect(node_id);
 
   return actor_ids;
 }
@@ -434,13 +432,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsActorScheduler::SelectNodeRandomly() const 
 
 std::shared_ptr<WorkerLeaseInterface> GcsActorScheduler::GetOrConnectLeaseClient(
     const rpc::Address &raylet_address) {
-  auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
-  auto iter = remote_lease_clients_.find(node_id);
-  if (iter == remote_lease_clients_.end()) {
-    auto lease_client = lease_client_factory_(raylet_address);
-    iter = remote_lease_clients_.emplace(node_id, std::move(lease_client)).first;
-  }
-  return iter->second;
+  return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
 }  // namespace gcs
