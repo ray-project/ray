@@ -39,46 +39,6 @@ static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
 class ClusterResourceScheduler {
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, NodeResources> nodes_;
-  /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Resources of local node.
-  NodeResourceInstances local_resources_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap string_to_int_map_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
-
-  /// Set predefined resources.
-  ///
-  /// \param[in] new_resources: New predefined resources.
-  /// \param[out] old_resources: Predefined resources to be updated.
-  void SetPredefinedResources(const NodeResources &new_resources,
-                              NodeResources *old_resources);
-  /// Set custom resources.
-  ///
-  /// \param[in] new_resources: New custom resources.
-  /// \param[out] old_resources: Custom resources to be updated.
-  void SetCustomResources(
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
-      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
-
-  /// Subtract the resources required by a given task request (task_req) from
-  /// a given node (node_id).
-  ///
-  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
-  /// \param task_req Task for which we allocate resources.
-  /// \param task_allocation Resources allocated to the task at instance granularity.
-  /// This is a return parameter.
-  ///
-  /// \return True if the node has enough resources to satisfy the task request.
-  /// False otherwise.
-  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
-                             std::shared_ptr<TaskResourceInstances> task_allocation);
-
  public:
   ClusterResourceScheduler(void){};
 
@@ -400,8 +360,58 @@ class ClusterResourceScheduler {
   /// fields used.
   void Heartbeat(bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> data);
 
+  /// Clear the last reported resources. This will force reporting resources
+  /// the next time a heartbeat is requested.
+  void ClearLastReportedResources();
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
+
+ private:
+  /// Set predefined resources.
+  ///
+  /// \param[in] new_resources: New predefined resources.
+  /// \param[out] old_resources: Predefined resources to be updated.
+  void SetPredefinedResources(const NodeResources &new_resources,
+                              NodeResources *old_resources);
+  /// Set custom resources.
+  ///
+  /// \param[in] new_resources: New custom resources.
+  /// \param[out] old_resources: Custom resources to be updated.
+  void SetCustomResources(
+      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
+      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
+
+  /// Subtract the resources required by a given task request (task_req) from
+  /// a given node (node_id).
+  ///
+  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
+  /// \param task_req Task for which we allocate resources.
+  /// \param task_allocation Resources allocated to the task at instance granularity.
+  /// This is a return parameter.
+  ///
+  /// \return True if the node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
+                             std::shared_ptr<TaskResourceInstances> task_allocation);
+
+  /// List of nodes in the clusters and their resources organized as a map.
+  /// The key of the map is the node ID.
+  absl::flat_hash_map<int64_t, NodeResources> nodes_;
+  /// Identifier of local node.
+  int64_t local_node_id_;
+  /// Resources of local node.
+  NodeResourceInstances local_resources_;
+  /// Keep the mapping between node and resource IDs in string representation
+  /// to integer representation. Used for improving map performance.
+  StringIdMap string_to_int_map_;
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  std::unique_ptr<NodeResources> last_report_resources_;
+  /// Whether our local record of at least one remote node's resources has been
+  /// updated since the last heartbeat from that node. If this is true, then we
+  /// will request new heartbeats from every other node during our next
+  /// heartbeat.
+  bool remote_resources_dirty_ = false;
 };
 
 }  // end namespace ray

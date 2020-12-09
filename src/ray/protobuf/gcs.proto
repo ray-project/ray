@@ -304,7 +304,7 @@ message HeartbeatTableData {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
-  // Indicates whether avaialbe resources is changed. Only used when
+  // Indicates whether availabe resources is changed. Only used when
   // light heartbeat enabled.
   bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
@@ -318,6 +318,11 @@ message HeartbeatTableData {
   ResourceLoad resource_load_by_shape = 7;
   // Whether this node manager is requesting global GC.
   bool should_global_gc = 8;
+  // Whether this node is requesting new resource availability information from
+  // all the other nodes. This should be set to true when this node's resource
+  // availability information about remote nodes may have become stale (e.g.,
+  // due to attempted spillback to a remote node).
+  bool should_report_resources = 9;
 }
 
 message ResourcesData {

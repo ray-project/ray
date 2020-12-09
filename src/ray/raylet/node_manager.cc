@@ -926,6 +926,10 @@ void NodeManager::HeartbeatAdded(const NodeID &node_id,
     should_local_gc_ = true;
   }
 
+  if (new_scheduler_enabled_ && heartbeat_data.should_report_resources()) {
+    new_resource_scheduler_->ClearLastReportedResources();
+  }
+
   SchedulingResources &remote_resources = it->second;
 
   // If light heartbeat enabled, we update remote resources only when related resources
