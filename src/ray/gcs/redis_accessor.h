@@ -353,7 +353,7 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   void AsyncReReportResourceUsage() override;
 
   Status AsyncGetAllResourceUsage(
-      const ItemCallback<rpc::ResourcesData> &callback) override {
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override {
     return Status::NotImplemented("AsyncGetAllResourceUsage not implemented");
   }
 

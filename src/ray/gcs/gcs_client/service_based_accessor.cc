@@ -677,16 +677,12 @@ void ServiceBasedNodeInfoAccessor::FillResourceUsageRequest(
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncGetAllResourceUsage(
-    const ItemCallback<rpc::ResourcesData> &callback) {
+    const ItemCallback<rpc::ResourceUsageBatchData> &callback) {
   rpc::GetAllResourceUsageRequest request;
   client_impl_->GetGcsRpcClient().GetAllResourceUsage(
       request,
       [callback](const Status &status, const rpc::GetAllResourceUsageReply &reply) {
-        std::vector<rpc::ResourcesData> result;
-        result.reserve((reply.resource_usage_data().batch_size()));
-        for (int index = 0; index < reply.resource_usage_data().batch_size(); ++index) {
-          result.emplace_back(reply.resource_usage_data().batch(index));
-        }
+        callback(reply.resource_usage_data());
         RAY_LOG(DEBUG) << "Finished getting resource usage of all nodes, status = "
                        << status;
       });

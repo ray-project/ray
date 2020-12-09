@@ -565,7 +565,7 @@ class NodeInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGetAllResourceUsage(
-      const ItemCallback<rpc::ResourcesData> &callback) = 0;
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) = 0;
 
   /// Subscribe batched state of all nodes from GCS.
   ///

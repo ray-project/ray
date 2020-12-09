@@ -191,7 +191,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
 
   Status AsyncGetAllResourceUsage(
-      const ItemCallback<rpc::ResourcesData> &callback) override;
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override;
 
   Status AsyncSubscribeBatchedResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
