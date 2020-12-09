@@ -39,46 +39,6 @@ static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
 class ClusterResourceScheduler {
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, NodeResources> nodes_;
-  /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Resources of local node.
-  NodeResourceInstances local_resources_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap string_to_int_map_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
-
-  /// Set predefined resources.
-  ///
-  /// \param[in] new_resources: New predefined resources.
-  /// \param[out] old_resources: Predefined resources to be updated.
-  void SetPredefinedResources(const NodeResources &new_resources,
-                              NodeResources *old_resources);
-  /// Set custom resources.
-  ///
-  /// \param[in] new_resources: New custom resources.
-  /// \param[out] old_resources: Custom resources to be updated.
-  void SetCustomResources(
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
-      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
-
-  /// Subtract the resources required by a given task request (task_req) from
-  /// a given node (node_id).
-  ///
-  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
-  /// \param task_req Task for which we allocate resources.
-  /// \param task_allocation Resources allocated to the task at instance granularity.
-  /// This is a return parameter.
-  ///
-  /// \return True if the node has enough resources to satisfy the task request.
-  /// False otherwise.
-  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
-                             std::shared_ptr<TaskResourceInstances> task_allocation);
-
  public:
   ClusterResourceScheduler(void){};
 
@@ -181,32 +141,6 @@ class ClusterResourceScheduler {
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, bool actor_creation,
       int64_t *violations);
-
-  /// Decrease the available resources of a node when a task request is
-  /// scheduled on the given node.
-  ///
-  /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_req: task request being scheduled.
-  ///
-  /// \return true, if task_req can be indeed scheduled on the node,
-  /// and false otherwise.
-  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
-  bool SubtractNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
-
-  /// Increase available resources of a node when a worker has finished
-  /// a task.
-  ///
-  /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_request: resource requests of the task finishing execution.
-  ///
-  /// \return true, if task_req can be indeed scheduled on the node,
-  /// and false otherwise.
-  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
-  bool AddNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -413,6 +347,57 @@ class ClusterResourceScheduler {
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
+
+ private:
+  struct RemoteNode {
+    RemoteNode(const NodeResources &resources)
+      : last_reported(resources), local_view(resources) {}
+
+    /// The resource information according to the last heartbeat reported by
+    /// this node.
+    NodeResources last_reported;
+    /// Our local view of the remote node's resources. This may be dirty
+    /// because it includes any resource requests that we allocated to this
+    /// node through spillback since our last heartbeat tick.
+    NodeResources local_view;
+  };
+
+  /// Decrease the available resources of a node when a task request is
+  /// scheduled on the given node.
+  ///
+  /// \param node_id: ID of node on which request is being scheduled.
+  /// \param task_req: task request being scheduled.
+  ///
+  /// \return true, if task_req can be indeed scheduled on the node,
+  /// and false otherwise.
+  bool SubtractRemoteNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
+
+  /// Set predefined resources.
+  ///
+  /// \param[in] new_resources: New predefined resources.
+  /// \param[out] old_resources: Predefined resources to be updated.
+  void SetPredefinedResources(const NodeResources &new_resources,
+                              NodeResources *old_resources);
+  /// Set custom resources.
+  ///
+  /// \param[in] new_resources: New custom resources.
+  /// \param[out] old_resources: Custom resources to be updated.
+  void SetCustomResources(
+      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
+      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
+
+  /// List of nodes in the clusters and their resources organized as a map.
+  /// The key of the map is the node ID.
+  absl::flat_hash_map<int64_t, RemoteNode> nodes_;
+  /// Identifier of local node.
+  int64_t local_node_id_;
+  /// Resources of local node.
+  NodeResourceInstances local_resources_;
+  /// Keep the mapping between node and resource IDs in string representation
+  /// to integer representation. Used for improving map performance.
+  StringIdMap string_to_int_map_;
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  std::unique_ptr<NodeResources> last_report_resources_;
 };
 
 }  // end namespace ray

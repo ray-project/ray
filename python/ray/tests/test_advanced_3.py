@@ -21,8 +21,7 @@ import setproctitle
 import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors,
-                            new_scheduler_enabled)
+                            wait_for_condition, wait_for_num_actors)
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +95,6 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="flakes more often")
 def test_load_balancing_with_dependencies(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
@@ -118,13 +116,14 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
-def test_load_balancing_with_dependencies_disable_light_heartbeat(ray_start_cluster):
+def test_load_balancing_with_dependencies_disable_light_heartbeat(
+        ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
     num_nodes = 3
-    cluster.add_node(_system_config={"light_heartbeat_enabled": False},
-                num_cpus=1)
+    cluster.add_node(
+        _system_config={"light_heartbeat_enabled": False}, num_cpus=1)
     for _ in range(num_nodes - 1):
         cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
