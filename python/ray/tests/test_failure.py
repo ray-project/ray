@@ -688,7 +688,6 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     # Check that we cannot place an actor on a 0 CPU machine and that we get an
     # infeasibility warning (even though the actor creation task itself

@@ -101,6 +101,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
         dependencies_fulfilled_(true),
         is_owner_alive_(true),
         node_info_calls_(0),
+        announce_infeasible_task_calls_(0),
         task_manager_(id_, scheduler_,
                       [this](const Task &_task) {
                         fulfills_dependencies_calls_++;
@@ -515,6 +516,18 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
+}
+
+TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
+  /*
+    Test if infeasible tasks warnings are printed.
+   */
+  // Create an infeasible task.
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+  task_manager_.QueueTask(task, &reply, nullptr);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
 int main(int argc, char **argv) {

@@ -70,16 +70,16 @@ bool ClusterTaskManager::SchedulePendingTasks() {
     }
 
     if (is_shape_infeasible) {
+      RAY_CHECK(!work_queue.empty());
       // All the items in the queue must be infeasible.
       auto &work_queue = shapes_it->second;
-      for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-        const Work &work = *work_it;
-        Task task = std::get<0>(work);
+      for (const auto &work : work_queue) {
+        const Task task = std::get<0>(work);
         announce_infeasible_task_(task);
       }
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
-      tasks_to_schedule_.erase(shapes_it);
+      shapes_it = tasks_to_schedule_.erase(shapes_it);
     } else if (work_queue.empty()) {
       shapes_it = tasks_to_schedule_.erase(shapes_it);
     } else {
