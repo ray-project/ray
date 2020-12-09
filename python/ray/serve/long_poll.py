@@ -71,7 +71,7 @@ class LongPollerAsyncClient:
             try:
                 updates: Dict[str, UpdatedObject] = await self._poll_once()
                 self._update(updates)
-                logger.debug(f"LongPollerClient received udpates: {updates}")
+                logger.debug(f"LongPollerClient received updates: {updates}")
                 for key, updated_object in updates.items():
                     # NOTE(simon):
                     # This blocks the loop from doing another poll. Consider
