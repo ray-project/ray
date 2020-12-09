@@ -27,6 +27,21 @@
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 
+#define ASSERT_RESOURCES_EQ(data, expected_available, expected_total) \
+  {                                                                   \
+    auto available = data->resources_available();                     \
+    ASSERT_EQ(available[kCPU_ResourceLabel], expected_available);     \
+    auto total = data->resources_total();                             \
+    ASSERT_EQ(total[kCPU_ResourceLabel], expected_total);             \
+  }
+
+#define ASSERT_RESOURCES_EMPTY(data)                   \
+  {                                                    \
+    ASSERT_FALSE(data->resources_available_changed()); \
+    ASSERT_TRUE(data->resources_available().empty());  \
+    ASSERT_TRUE(data->resources_total().empty());      \
+  }
+
 using namespace std;
 
 namespace ray {
@@ -1083,6 +1098,73 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
   }
+}
+
+TEST_F(ClusterResourceSchedulerTest, TestLightHeartbeat) {
+  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
+  ClusterResourceScheduler cluster_resources("local", initial_resources);
+
+  // Report heartbeat on initialization.
+  auto data = std::make_shared<rpc::HeartbeatTableData>();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 1, 1);
+
+  // Don't report heartbeats if resource availability hasn't changed.
+  for (int i = 0; i < 3; i++) {
+    data->Clear();
+    cluster_resources.Heartbeat(true, data);
+    ASSERT_RESOURCES_EMPTY(data);
+  }
+
+  // Report heartbeat if resource availability has changed.
+  cluster_resources.AddOrUpdateNode("local", {{"CPU", 1.}}, {{"CPU", 0.}});
+  data->Clear();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 0, 1);
+
+  // Don't report heartbeats if resource availability hasn't changed.
+  for (int i = 0; i < 3; i++) {
+    data->Clear();
+    cluster_resources.Heartbeat(true, data);
+    ASSERT_RESOURCES_EMPTY(data);
+  }
+}
+
+TEST_F(ClusterResourceSchedulerTest, TestDirtyRemoteResources) {
+  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
+  ClusterResourceScheduler cluster_resources("local", initial_resources);
+  cluster_resources.AddOrUpdateNode("remote", {{"CPU", 1.}}, {{"CPU", 1.}});
+
+  // Report heartbeat on initialization.
+  auto data = std::make_shared<rpc::HeartbeatTableData>();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 1, 1);
+  ASSERT_FALSE(data->should_report_resources());
+
+  // Allocate remote resources.
+  cluster_resources.AllocateRemoteTaskResources("remote", {{"CPU", 1.}});
+  // Report a heartbeat even though local resource availability hasn't changed,
+  // because our remote resource availability is dirty.
+  data->Clear();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 1, 1);
+  ASSERT_TRUE(data->should_report_resources());
+
+  // Don't report heartbeats if resource availability hasn't changed and our
+  // remote resource availability is not dirty.
+  for (int i = 0; i < 3; i++) {
+    data->Clear();
+    cluster_resources.Heartbeat(true, data);
+    ASSERT_RESOURCES_EMPTY(data);
+    ASSERT_FALSE(data->should_report_resources());
+  }
+
+  // Force-report a heartbeat.
+  cluster_resources.ClearLastReportedResources();
+  data->Clear();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 1, 1);
+  ASSERT_FALSE(data->should_report_resources());
 }
 
 }  // namespace ray
