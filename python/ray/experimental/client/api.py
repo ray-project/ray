@@ -11,35 +11,105 @@
 
 from abc import ABC
 from abc import abstractmethod
+from typing import TYPE_CHECKING, Any, Union
+if TYPE_CHECKING:
+    from ray.experimental.client.common import ClientStub
+    from ray.experimental.client.common import ClientObjectRef
+    from ray._raylet import ObjectRef
+
+    # Use the imports for type checking.  This is a python 3.6 limitation.
+    # See https://www.python.org/dev/peps/pep-0563/
+    PutType = Union[ClientObjectRef, ObjectRef]
 
 
 class APIImpl(ABC):
+    """
+    APIImpl is the interface to implement for whichever version of the core
+    Ray API that needs abstracting when run in client mode.
+    """
+
     @abstractmethod
-    def get(self, *args, **kwargs):
+    def get(self, *args, **kwargs) -> Any:
+        """
+        get is the hook stub passed on to replace `ray.get`
+
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def put(self, *args, **kwargs):
+    def put(self, vals: Any, *args,
+            **kwargs) -> Union["ClientObjectRef", "ObjectRef"]:
+        """
+        put is the hook stub passed on to replace `ray.put`
+
+        Args:
+            vals: The value or list of values to `put`.
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def wait(self, *args, **kwargs):
+        """
+        wait is the hook stub passed on to replace `ray.wait`
+
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def remote(self, *args, **kwargs):
+        """
+        remote is the hook stub passed on to replace `ray.remote`.
+
+        This sets up remote functions or actors, as the decorator,
+        but does not execute them.
+
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def call_remote(self, f, kind, *args, **kwargs):
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+        """
+        call_remote is called by stub objects to execute them remotely.
+
+        This is used by stub objects in situations where they're called
+        with .remote, eg, `f.remote()` or `actor_cls.remote()`.
+        This allows the client stub objects to delegate execution to be
+        implemented in the most effective way whether it's in the client,
+        clientserver, or raylet worker.
+
+        Args:
+            instance: The Client-side stub reference to a remote object
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def close(self, *args, **kwargs):
+    def close(self) -> None:
+        """
+        close cleans up an API connection by closing any channels or
+        shutting down any servers gracefully.
+        """
         pass
 
 
 class ClientAPI(APIImpl):
+    """
+    The Client-side methods corresponding to the ray API. Delegates
+    to the Client Worker that contains the connection to the ClientServer.
+    """
+
     def __init__(self, worker):
         self.worker = worker
 
@@ -55,10 +125,10 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, f, kind, *args, **kwargs):
-        return self.worker.call_remote(f, kind, *args, **kwargs)
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+        return self.worker.call_remote(instance, *args, **kwargs)
 
-    def close(self, *args, **kwargs):
+    def close(self) -> None:
         return self.worker.close()
 
     def __getattr__(self, key: str):

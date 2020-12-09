@@ -592,11 +592,6 @@ def build_eager_tf_policy(name,
             samples["is_training"] = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
-                state_in = []
-                for i in range(self.num_state_tensors()):
-                    state_in.append(samples["state_in_{}".format(i)])
-                self._state_in = state_in
-
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()

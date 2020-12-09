@@ -244,7 +244,10 @@ def execution_plan(workers: WorkerSet,
         SelectExperiences(workers.trainable_policies()))
     # Concatenate the SampleBatches into one.
     rollouts = rollouts.combine(
-        ConcatBatches(min_batch_size=config["train_batch_size"]))
+        ConcatBatches(
+            min_batch_size=config["train_batch_size"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
+        ))
     # Standardize advantages.
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 

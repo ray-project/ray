@@ -159,18 +159,19 @@ def add_time_dimension(padded_inputs: TensorType,
 
 
 @DeveloperAPI
-def chop_into_sequences(*,
-                        feature_columns,
-                        state_columns,
-                        max_seq_len,
-                        episode_ids=None,
-                        unroll_ids=None,
-                        agent_indices=None,
-                        dynamic_max=True,
-                        shuffle=False,
-                        seq_lens=None,
-                        #states_already_reduced_to_init=False,
-                        _extra_padding=0):
+def chop_into_sequences(
+        *,
+        feature_columns,
+        state_columns,
+        max_seq_len,
+        episode_ids=None,
+        unroll_ids=None,
+        agent_indices=None,
+        dynamic_max=True,
+        shuffle=False,
+        seq_lens=None,
+        #states_already_reduced_to_init=False,
+        _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:

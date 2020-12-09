@@ -110,11 +110,37 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def total_env_steps(self) -> int:
-        """Returns total number of steps taken in the env (sum of all agents).
+        """Returns total number of env-steps taken so far.
+
+        Thereby, a step in an N-agent multi-agent environment counts as only 1
+        for this metric. The returned count contains everything that has not
+        been built yet (and returned as MultiAgentBatches by the
+        `try_build_truncated_episode_multi_agent_batch` or
+        `postprocess_episode(build=True)` methods). After such build, this
+        counter is reset to 0.
 
         Returns:
-            int: The number of steps taken in total in the environment over all
-                agents.
+            int: The number of env-steps taken in total in the environment(s)
+                so far.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def total_agent_steps(self) -> int:
+        """Returns total number of (individual) agent-steps taken so far.
+
+        Thereby, a step in an N-agent multi-agent environment counts as N.
+        If less than N agents have stepped (because some agents were not
+        required to send actions), the count will be increased by less than N.
+        The returned count contains everything that has not been built yet
+        (and returned as MultiAgentBatches by the
+        `try_build_truncated_episode_multi_agent_batch` or
+        `postprocess_episode(build=True)` methods). After such build, this
+        counter is reset to 0.
+
+        Returns:
+            int: The number of (individual) agent-steps taken in total in the
+                environment(s) so far.
         """
         raise NotImplementedError
 
