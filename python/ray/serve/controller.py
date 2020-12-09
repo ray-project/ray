@@ -145,7 +145,7 @@ class ActorStateReconciler:
     controller_name: str = field(init=True)
     detached: bool = field(init=True)
 
-    routers_cache: Dict[NodeId, ActorHandle] = field(default_factory=dict)
+    http_proxy_cache: Dict[NodeId, ActorHandle] = field(default_factory=dict)
     backend_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]] = field(
         default_factory=lambda: defaultdict(dict))
     backend_replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
@@ -157,8 +157,8 @@ class ActorStateReconciler:
 
     # TODO(edoakes): consider removing this and just using the names.
 
-    def router_handles(self) -> List[ActorHandle]:
-        return list(self.routers_cache.values())
+    def http_proxy_handles(self) -> List[ActorHandle]:
+        return list(self.http_proxy_cache.values())
 
     def get_replica_handles(self) -> List[ActorHandle]:
         return list(
@@ -303,7 +303,7 @@ class ActorStateReconciler:
     async def _stop_pending_backend_replicas(self) -> None:
         """Stops the pending backend replicas in self.backend_replicas_to_stop.
 
-        Removes backend_replicas from the router, kills them, and clears
+        Removes backend_replicas from the http_proxy, kills them, and clears
         self.backend_replicas_to_stop.
         """
         for backend_tag, replicas_list in self.backend_replicas_to_stop.items(
@@ -327,26 +327,26 @@ class ActorStateReconciler:
 
         self.backend_replicas_to_stop.clear()
 
-    def _start_routers_if_needed(self, http_host: str, http_port: str,
+    def _start_http_proxies_if_needed(self, http_host: str, http_port: str,
                                  http_middlewares: List[Any]) -> None:
-        """Start a router on every node if it doesn't already exist."""
+        """Start an HTTP proxy on every node if it doesn't already exist."""
         if http_host is None:
             return
 
         for node_id, node_resource in get_all_node_ids():
-            if node_id in self.routers_cache:
+            if node_id in self.http_proxy_cache:
                 continue
 
-            router_name = format_actor_name(SERVE_PROXY_NAME,
+            name = format_actor_name(SERVE_PROXY_NAME,
                                             self.controller_name, node_id)
             try:
-                router = ray.get_actor(router_name)
+                http_proxy = ray.get_actor(name)
             except ValueError:
-                logger.info("Starting router with name '{}' on node '{}' "
+                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
                             "listening on '{}:{}'".format(
-                                router_name, node_id, http_host, http_port))
-                router = HTTPProxyActor.options(
-                    name=router_name,
+                                name, node_id, http_host, http_port))
+                proxy = HTTPProxyActor.options(
+                    name=name,
                     lifetime="detached" if self.detached else None,
                     max_concurrency=ASYNC_CONCURRENCY,
                     max_restarts=-1,
@@ -360,10 +360,10 @@ class ActorStateReconciler:
                     controller_name=self.controller_name,
                     http_middlewares=http_middlewares)
 
-            self.routers_cache[node_id] = router
+            self.http_proxy_cache[node_id] = proxy
 
-    def _stop_routers_if_needed(self) -> bool:
-        """Removes router actors from any nodes that no longer exist.
+    def _stop_http_proxies_if_needed(self) -> bool:
+        """Removes HTTP proxy actors from any nodes that no longer exist.
 
         Returns whether or not any actors were removed (a checkpoint should
         be taken).
@@ -371,25 +371,25 @@ class ActorStateReconciler:
         actor_stopped = False
         all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
         to_stop = []
-        for node_id in self.routers_cache:
+        for node_id in self.http_proxy_cache:
             if node_id not in all_node_ids:
                 logger.info(
-                    "Removing router on removed node '{}'.".format(node_id))
+                    "Removing HTTP proxy on removed node '{}'.".format(node_id))
                 to_stop.append(node_id)
 
         for node_id in to_stop:
-            router_handle = self.routers_cache.pop(node_id)
-            ray.kill(router_handle, no_restart=True)
+            proxy = self.http_proxy_cache.pop(node_id)
+            ray.kill(proxy, no_restart=True)
             actor_stopped = True
 
         return actor_stopped
 
     def _recover_actor_handles(self) -> None:
         # Refresh the RouterCache
-        for node_id in self.routers_cache.keys():
-            router_name = format_actor_name(SERVE_PROXY_NAME,
+        for node_id in self.http_proxy_cache.keys():
+            name = format_actor_name(SERVE_PROXY_NAME,
                                             self.controller_name, node_id)
-            self.routers_cache[node_id] = ray.get_actor(router_name)
+            self.http_proxy_cache[node_id] = ray.get_actor(name)
 
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these backend_replicas are guaranteed to already exist because
@@ -475,7 +475,7 @@ class ServeController:
         # backend -> AutoscalingPolicy
         self.autoscaling_policies = dict()
 
-        # Dictionary of backend_tag -> router_name -> most recent queue length.
+        # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
@@ -488,7 +488,7 @@ class ServeController:
 
         # If starting the actor for the first time, starts up the other system
         # components. If recovering, fetches their actor handles.
-        self.actor_reconciler._start_routers_if_needed(
+        self.actor_reconciler._start_http_proxies_if_needed(
             self.http_host, self.http_port, self.http_middlewares)
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
@@ -558,9 +558,9 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    def get_routers(self) -> Dict[str, ActorHandle]:
-        """Returns a dictionary of node ID to router actor handles."""
-        return self.actor_reconciler.routers_cache
+    def get_http_proxys(self) -> Dict[str, ActorHandle]:
+        """Returns a dictionary of node ID to http_proxy actor handles."""
+        return self.actor_reconciler.http_proxy_cache
 
     def _checkpoint(self) -> None:
         """Checkpoint internal state and write it to the KV store."""
@@ -585,7 +585,7 @@ class ServeController:
 
         Performs the following operations:
             1) Deserializes the internal state from the checkpoint.
-            2) Pushes the latest configuration to the routers
+            2) Pushes the latest configuration to the HTTP proxies
                in case we crashed before updating them.
             3) Starts/stops any replicas that are pending creation or
                deletion.
@@ -628,40 +628,25 @@ class ServeController:
         while True:
             await self.do_autoscale()
             async with self.write_lock:
-                self.actor_reconciler._start_routers_if_needed(
+                self.actor_reconciler._start_http_proxies_if_needed(
                     self.http_host, self.http_port, self.http_middlewares)
                 checkpoint_required = self.actor_reconciler.\
-                    _stop_routers_if_needed()
+                    _stop_http_proxies_if_needed()
                 if checkpoint_required:
                     self._checkpoint()
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
-    def get_backend_configs(self) -> Dict[str, BackendConfig]:
-        """Fetched by the router on startup."""
-        return self.current_state.get_backend_configs()
-
-    def get_traffic_policies(self) -> Dict[str, TrafficPolicy]:
-        """Fetched by the router on startup."""
-        return self.current_state.traffic_policies
-
-    def _list_replicas(self, backend_tag: BackendTag) -> List[ReplicaTag]:
-        """Used only for testing."""
-        return list(self.actor_reconciler.backend_replicas[backend_tag].keys())
-
-    def get_traffic_policy(self, endpoint: str) -> TrafficPolicy:
-        """Fetched by serve handles."""
-        return self.current_state.traffic_policies[endpoint]
-
-    def get_all_replica_handles(self) -> Dict[str, Dict[str, ActorHandle]]:
-        """Fetched by the router on startup."""
+    def _all_replica_handles(self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+        """Used for testing."""
         return self.actor_reconciler.backend_replicas
 
-    def get_all_backends(self) -> Dict[str, BackendConfig]:
+    def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
         return self.current_state.get_backend_configs()
 
-    def get_all_endpoints(self) -> Dict[str, Dict[str, Any]]:
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+        """Returns a dictionary of backend tag to backend config."""
         return self.current_state.get_endpoints()
 
     async def _set_traffic(self, endpoint_name: str,
@@ -791,7 +776,7 @@ class ServeController:
             self.actor_reconciler.endpoints_to_remove.append(endpoint)
 
             # NOTE(edoakes): we must write a checkpoint before pushing the
-            # updates to the routers to avoid inconsistent state if we crash
+            # updates to the proxies to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
             self.notify_route_table_changed()
@@ -842,7 +827,7 @@ class ServeController:
 
             self.notify_replica_handles_changed()
 
-            # Set the backend config inside the router
+            # Set the backend config inside routers
             # (particularly for max_concurrent_queries).
             self.notify_backend_configs_changed()
 
@@ -874,11 +859,11 @@ class ServeController:
             if backend_tag in self.autoscaling_policies:
                 del self.autoscaling_policies[backend_tag]
 
-            # Add the intention to remove the backend from the router.
+            # Add the intention to remove the backend from the routers.
             self.actor_reconciler.backends_to_remove.append(backend_tag)
 
             # NOTE(edoakes): we must write a checkpoint before removing the
-            # backend from the router to avoid inconsistent state if we crash
+            # backend from the routers to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
             await self.actor_reconciler._stop_pending_backend_replicas()
@@ -911,7 +896,7 @@ class ServeController:
             # update.
             self._checkpoint()
 
-            # Inform the router about change in configuration
+            # Inform the routers about change in configuration
             # (particularly for setting max_batch_size).
 
             await self.actor_reconciler._start_pending_backend_replicas(
@@ -930,8 +915,8 @@ class ServeController:
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for router in self.actor_reconciler.router_handles():
-                ray.kill(router, no_restart=True)
+            for http_proxy in self.actor_reconciler.http_proxy_handles():
+                ray.kill(http_proxy, no_restart=True)
             for replica in self.actor_reconciler.get_replica_handles():
                 ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)

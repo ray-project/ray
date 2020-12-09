@@ -323,16 +323,16 @@ def test_updating_config(serve_instance):
     client.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
     controller = client._controller
-    old_replica_tag_list = ray.get(
-        controller._list_replicas.remote("bsimple:v1"))
+    old_replica_tag_list = list(ray.get(
+        controller._all_replica_handles.remote())["bsimple:v1"].keys())
 
     update_config = BackendConfig(max_batch_size=5)
     client.update_backend_config("bsimple:v1", update_config)
-    new_replica_tag_list = ray.get(
-        controller._list_replicas.remote("bsimple:v1"))
+    new_replica_tag_list = list(ray.get(
+        controller._all_replica_handles.remote())["bsimple:v1"].keys())
     new_all_tag_list = []
     for worker_dict in ray.get(
-            controller.get_all_replica_handles.remote()).values():
+            controller._all_replica_handles.remote()).values():
         new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
@@ -662,8 +662,7 @@ def test_create_infeasible_error(serve_instance):
             config=config)
 
     # No replica should be created!
-    replicas = ray.get(client._controller._list_replicas.remote("f1"))
-    assert len(replicas) == 0
+    assert not ray.get(client._controller._list_replicas.remote())["f1"]
 
 
 def test_shutdown():
