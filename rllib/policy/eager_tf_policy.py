@@ -271,12 +271,6 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_from_dummy_batch(
-                auto_remove_unneeded_view_reqs=True,
-                stats_fn=stats_fn,
-            )
-            self._loss_initialized = True
-
             if optimizer_fn:
                 optimizers = optimizer_fn(self, config)
             else:
@@ -289,10 +283,16 @@ def build_eager_tf_policy(name,
             #  Just like torch Policy does.
             self._optimizer = optimizers[0] if optimizers else None
 
+            self._initialize_loss_from_dummy_batch(
+                auto_remove_unneeded_view_reqs=True,
+                stats_fn=stats_fn,
+            )
+            self._loss_initialized = True
+
             if after_init:
                 after_init(self, observation_space, action_space, config)
 
-            # Got to reset global_timestep again after this fake run-through.
+            # Got to reset global_timestep again after fake run-throughs.
             self.global_timestep = 0
 
         @override(Policy)
@@ -406,7 +406,7 @@ def build_eager_tf_policy(name,
                         timestep=timestep, explore=explore)
 
                     if action_distribution_fn:
-                        dist_inputs, dist_class, state_out = \
+                        dist_inputs, self.dist_class, state_out = \
                             action_distribution_fn(
                                 self, self.model,
                                 input_dict[SampleBatch.CUR_OBS],
@@ -414,11 +414,10 @@ def build_eager_tf_policy(name,
                                 timestep=timestep,
                                 is_training=False)
                     else:
-                        dist_class = self.dist_class
                         dist_inputs, state_out = self.model(
                             input_dict, state_batches, seq_lens)
 
-                    action_dist = dist_class(dist_inputs, self.model)
+                    action_dist = self.dist_class(dist_inputs, self.model)
 
                     # Get the exploration action from the forward results.
                     actions, logp = self.exploration.get_exploration_action(
@@ -462,12 +461,12 @@ def build_eager_tf_policy(name,
                 "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                input_dict.update({
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                        prev_action_batch),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
-                        prev_reward_batch),
-                })
+                if prev_action_batch is not None:
+                    input_dict[SampleBatch.PREV_ACTIONS] = \
+                        tf.convert_to_tensor(prev_action_batch)
+                if prev_reward_batch is not None:
+                    input_dict[SampleBatch.PREV_REWARDS] = \
+                        tf.convert_to_tensor(prev_reward_batch)
 
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
@@ -555,7 +554,9 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def get_initial_state(self):
-            return self.model.get_initial_state()
+            if hasattr(self, "model"):
+                return self.model.get_initial_state()
+            return []
 
         def get_session(self):
             return None  # None implies eager

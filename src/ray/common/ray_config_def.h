@@ -353,3 +353,8 @@ RAY_CONFIG(int, max_io_workers, 1)
 /// The minimum object size that can be spilled by each spill operation. 100 MB by
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// Whether to enable automatic object deletion when refs are gone out of scope.
+/// When it is true, manual (force) spilling is not available.
+/// TODO(sang): Fix it.
+RAY_CONFIG(bool, automatic_object_deletion_enabled, true)

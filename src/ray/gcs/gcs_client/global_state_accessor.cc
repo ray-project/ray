@@ -202,17 +202,6 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
   return actor_table_data;
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
-    const ActorID &actor_id) {
-  std::unique_ptr<std::string> actor_checkpoint_id_data;
-  std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
-      actor_id, TransformForOptionalItemCallback<rpc::ActorCheckpointIdData>(
-                    actor_checkpoint_id_data, promise)));
-  promise.get_future().get();
-  return actor_checkpoint_id_data;
-}
-
 std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
     const WorkerID &worker_id) {
   std::unique_ptr<std::string> worker_table_data;

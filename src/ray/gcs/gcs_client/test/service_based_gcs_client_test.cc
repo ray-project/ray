@@ -239,46 +239,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return actors;
   }
 
-  bool AddCheckpoint(
-      const std::shared_ptr<rpc::ActorCheckpointData> &actor_checkpoint_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
-        actor_checkpoint_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  rpc::ActorCheckpointData GetCheckpoint(const ActorID &actor_id,
-                                         const ActorCheckpointID &checkpoint_id) {
-    std::promise<bool> promise;
-    rpc::ActorCheckpointData actor_checkpoint_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id, actor_id,
-        [&actor_checkpoint_data, &promise](
-            Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
-          assert(result);
-          actor_checkpoint_data.CopyFrom(*result);
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return actor_checkpoint_data;
-  }
-
-  rpc::ActorCheckpointIdData GetCheckpointID(const ActorID &actor_id) {
-    std::promise<bool> promise;
-    rpc::ActorCheckpointIdData actor_checkpoint_id_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
-        actor_id,
-        [&actor_checkpoint_id_data, &promise](
-            Status status, const boost::optional<rpc::ActorCheckpointIdData> &result) {
-          assert(result);
-          actor_checkpoint_id_data.CopyFrom(*result);
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return actor_checkpoint_id_data;
-  }
-
   bool SubscribeToNodeChange(
       const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
     std::promise<bool> promise;
@@ -655,31 +615,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
   WaitForActorUnsubscribed(actor_id);
-}
-
-TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
-  // Create actor checkpoint data.
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
-  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
-
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  auto checkpoint = std::make_shared<rpc::ActorCheckpointData>();
-  checkpoint->set_actor_id(actor_table_data->actor_id());
-  checkpoint->set_checkpoint_id(checkpoint_id.Binary());
-  checkpoint->set_execution_dependency(checkpoint_id.Binary());
-
-  // Add actor checkpoint data to GCS.
-  ASSERT_TRUE(AddCheckpoint(checkpoint));
-
-  // Get actor checkpoint data from GCS.
-  auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
-  ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
-
-  // Get actor checkpoint id data from GCS.
-  auto get_checkpoint_id_result = GetCheckpointID(actor_id);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {

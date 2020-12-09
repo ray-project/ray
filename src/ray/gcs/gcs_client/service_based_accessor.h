@@ -98,17 +98,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
-  Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-                            const StatusCallback &callback) override;
-
-  Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointData> &callback) override;
-
-  Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
-
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
   bool IsActorUnsubscribed(const ActorID &actor_id) override;
@@ -465,6 +454,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
+                             const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

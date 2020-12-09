@@ -200,6 +200,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     return gcsClient.getAllPlacementGroupInfo();
   }
 
+  @Override
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    return taskSubmitter.waitPlacementGroupReady(id, timeoutMs);
+  }
+
   @SuppressWarnings("unchecked")
   @Override
   public <T extends BaseActorHandle> T getActorHandle(ActorId actorId) {

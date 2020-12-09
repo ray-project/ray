@@ -198,10 +198,12 @@ Histogram
 
 .. _package-ref-debugging-apis:
 
-Debugger APIs
--------------
+Debugging APIs
+--------------
 
 .. autofunction:: ray.util.pdb.set_trace
+
+.. autofunction:: ray.util.inspect_serializability
 
 Experimental APIs
 -----------------
