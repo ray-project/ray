@@ -646,7 +646,7 @@ class ServeController:
         """Returns a dictionary of backend tag to backend config."""
         return self.current_state.get_backend_configs()
 
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
         """Returns a dictionary of backend tag to backend config."""
         return self.current_state.get_endpoints()
 
