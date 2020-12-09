@@ -791,7 +791,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t metrics_num_task_spilled_back_;
 
   /// Managers all bundle-related operations.
-  LocalPlacementGroupManager local_placement_group_manager_;
+  std::shared_ptr<LocalPlacementGroupManagerInterface> local_placement_group_manager_;
 };
 
 }  // namespace raylet

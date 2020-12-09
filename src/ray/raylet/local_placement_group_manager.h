@@ -44,40 +44,57 @@ struct pair_hash {
   }
 };
 
-class LocalPlacementGroupManager {
+/// LocalPlacementGroupManagerInterface is responsible for handle the register bundle request from GCS.
+class LocalPlacementGroupManagerInterface {
  public:
-  /// Create a local placement group manager.
-  ///
-  /// \param local_available_resources_: The resources (IDs specificed) that are currently
-  /// available. \param cluster_resource_map_: The resources (without IDs specificed) that
-  /// are currently available. \param self_node_id_: The related raylet with current
-  /// placement group manager.
-  LocalPlacementGroupManager(
-      ResourceIdSet &local_available_resources_,
-      std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
-      const NodeID &self_node_id_);
-
   /// Lock the required resources from local available resources. Note that this is phase
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
   ///
   /// \param bundle_spec: Specification of bundle whose resources will be prepared.
-  bool PrepareBundleResources(const BundleSpecification &bundle_spec);
+  virtual bool PrepareBundle(const BundleSpecification &bundle_spec) = 0;
 
   /// Convert the required resources to placement group resources(like CPU ->
   /// CPU_group_i). This is phase two of 2PC.
   ///
   /// \param bundle_spec: Specification of bundle whose resources will be commited.
-  void CommitBundleResources(const BundleSpecification &bundle_spec);
+  virtual void CommitBundle(const BundleSpecification &bundle_spec) = 0;
 
   /// Return back all the bundle resource.
   ///
   /// \param bundle_spec: Specification of bundle whose resources will be returned.
-  void ReturnBundleResources(const BundleSpecification &bundle_spec);
+  virtual void ReturnBundle(const BundleSpecification &bundle_spec) = 0;
 
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec: A set of bundles which in use.
-  void ReturnUnusedBundleResources(
+  virtual void ReturnUnusedBundle(
+      const std::unordered_set<BundleID, pair_hash> &in_use_bundles) = 0;
+
+  virtual ~LocalPlacementGroupManagerInterface() {}
+};
+
+/// Associated with old scheduler.
+class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface {
+ public:
+  /// Create a local placement group manager.
+  ///
+  /// \param local_available_resources_: The resources (IDs specificed) that are currently available. 
+  /// \param cluster_resource_map_: The resources (without IDs specificed) that are currently available. 
+  /// \param self_node_id_: The related raylet with current placement group manager.
+  OldLocalPlacementGroupManager(
+      ResourceIdSet &local_available_resources_,
+      std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
+      const NodeID &self_node_id_);
+
+  virtual ~OldLocalPlacementGroupManager() = default;
+
+  bool PrepareBundle(const BundleSpecification &bundle_spec);
+
+  void CommitBundle(const BundleSpecification &bundle_spec);
+
+  void ReturnBundle(const BundleSpecification &bundle_spec);
+
+  void ReturnUnusedBundle(
       const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
   /// Get all local available resource(IDs specificed).

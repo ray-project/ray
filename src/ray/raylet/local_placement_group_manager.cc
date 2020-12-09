@@ -22,7 +22,7 @@ namespace ray {
 
 namespace raylet {
 
-LocalPlacementGroupManager::LocalPlacementGroupManager(
+OldLocalPlacementGroupManager::OldLocalPlacementGroupManager(
     ResourceIdSet &local_available_resources_,
     std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
     const NodeID &self_node_id_)
@@ -30,7 +30,7 @@ LocalPlacementGroupManager::LocalPlacementGroupManager(
       cluster_resource_map_(cluster_resource_map_),
       self_node_id_(self_node_id_) {}
 
-bool LocalPlacementGroupManager::PrepareBundleResources(
+bool OldLocalPlacementGroupManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {
   // We will first delete the existing bundle to ensure idempotent.
   // The reason why we do this is: after GCS restarts, placement group can be rescheduled
@@ -46,7 +46,7 @@ bool LocalPlacementGroupManager::PrepareBundleResources(
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
       // return bundle resources.
-      ReturnBundleResources(bundle_spec);
+      ReturnBundle(bundle_spec);
     }
   }
 
@@ -76,7 +76,7 @@ bool LocalPlacementGroupManager::PrepareBundleResources(
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
 
-void LocalPlacementGroupManager::CommitBundleResources(
+void OldLocalPlacementGroupManager::CommitBundle(
     const BundleSpecification &bundle_spec) {
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
   // once retry is implemented.
@@ -104,7 +104,7 @@ void LocalPlacementGroupManager::CommitBundleResources(
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
-void LocalPlacementGroupManager::ReturnBundleResources(
+void OldLocalPlacementGroupManager::ReturnBundle(
     const BundleSpecification &bundle_spec) {
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
@@ -115,7 +115,7 @@ void LocalPlacementGroupManager::ReturnBundleResources(
   }
   const auto &bundle_state = it->second;
   if (bundle_state->state == CommitState::PREPARED) {
-    CommitBundleResources(bundle_spec);
+    CommitBundle(bundle_spec);
   }
   bundle_state_map_.erase(it);
 
@@ -132,11 +132,11 @@ void LocalPlacementGroupManager::ReturnBundleResources(
       ResourceSet(placement_group_resource_labels));
 }
 
-void LocalPlacementGroupManager::ReturnUnusedBundleResources(
+void OldLocalPlacementGroupManager::ReturnUnusedBundle(
     const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
-      ReturnBundleResources(*iter->second);
+      ReturnBundle(*iter->second);
       bundle_spec_map_.erase(iter++);
     } else {
       iter++;

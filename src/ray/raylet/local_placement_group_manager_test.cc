@@ -24,14 +24,14 @@
 
 namespace ray {
 
-class LocalPlacementGroupManagerTest : public ::testing::Test {
+class OldLocalPlacementGroupManagerTest : public ::testing::Test {
  public:
-  LocalPlacementGroupManagerTest() {
-    local_placement_group_manager_.reset(new raylet::LocalPlacementGroupManager(
+  OldLocalPlacementGroupManagerTest() {
+    local_placement_group_manager_.reset(new raylet::OldLocalPlacementGroupManager(
         local_available_resources_, cluster_resource_map_, self_node_id_));
   }
 
-  std::unique_ptr<raylet::LocalPlacementGroupManager> local_placement_group_manager_;
+  std::unique_ptr<raylet::OldLocalPlacementGroupManager> local_placement_group_manager_;
 
  protected:
   ResourceIdSet local_available_resources_;
@@ -39,7 +39,7 @@ class LocalPlacementGroupManagerTest : public ::testing::Test {
   NodeID self_node_id_ = NodeID::FromRandom();
 };
 
-TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleResource) {
+TEST_F(OldLocalPlacementGroupManagerTest, TestPrepareBundleResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::FromRandom();
   std::unordered_map<std::string, double> unit_resource;
@@ -50,7 +50,7 @@ TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleResource) {
   cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
   local_available_resources_ = ResourceIdSet(init_resourece);
   /// 3. prepare bundle resource.
-  local_placement_group_manager_->PrepareBundleResources(bundle_spec);
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
   /// 4. check remaining resources is correct.
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
   ResourceSet result_resource;
@@ -63,7 +63,7 @@ TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleResource) {
       << result_resource.ToString();
 }
 
-TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleWithInsufficientResource) {
+TEST_F(OldLocalPlacementGroupManagerTest, TestPrepareBundleWithInsufficientResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::FromRandom();
   std::unordered_map<std::string, double> unit_resource;
@@ -76,10 +76,10 @@ TEST_F(LocalPlacementGroupManagerTest, TestPrepareBundleWithInsufficientResource
   cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
   local_available_resources_ = ResourceIdSet(init_resourece);
   /// 3. prepare bundle resource.
-  ASSERT_FALSE(local_placement_group_manager_->PrepareBundleResources(bundle_spec));
+  ASSERT_FALSE(local_placement_group_manager_->PrepareBundle(bundle_spec));
 }
 
-TEST_F(LocalPlacementGroupManagerTest, TestCommitBundleResource) {
+TEST_F(OldLocalPlacementGroupManagerTest, TestCommitBundleResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::FromRandom();
   std::unordered_map<std::string, double> unit_resource;
@@ -90,8 +90,8 @@ TEST_F(LocalPlacementGroupManagerTest, TestCommitBundleResource) {
   cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
   local_available_resources_ = ResourceIdSet(init_resourece);
   /// 3. prepare and commit bundle resource.
-  local_placement_group_manager_->PrepareBundleResources(bundle_spec);
-  local_placement_group_manager_->CommitBundleResources(bundle_spec);
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
+  local_placement_group_manager_->CommitBundle(bundle_spec);
   /// 4. check remaining resources is correct.
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
   std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
@@ -107,7 +107,7 @@ TEST_F(LocalPlacementGroupManagerTest, TestCommitBundleResource) {
       << result_resource.ToString();
 }
 
-TEST_F(LocalPlacementGroupManagerTest, TestReturnBundleResource) {
+TEST_F(OldLocalPlacementGroupManagerTest, TestReturnBundleResource) {
   // 1. create bundle spec.
   auto group_id = PlacementGroupID::FromRandom();
   std::unordered_map<std::string, double> unit_resource;
@@ -118,10 +118,10 @@ TEST_F(LocalPlacementGroupManagerTest, TestReturnBundleResource) {
   cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
   local_available_resources_ = ResourceIdSet(init_resourece);
   /// 3. prepare and commit bundle resource.
-  local_placement_group_manager_->PrepareBundleResources(bundle_spec);
-  local_placement_group_manager_->CommitBundleResources(bundle_spec);
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
+  local_placement_group_manager_->CommitBundle(bundle_spec);
   /// 4. return bundle resource.
-  local_placement_group_manager_->ReturnBundleResources(bundle_spec);
+  local_placement_group_manager_->ReturnBundle(bundle_spec);
   /// 5. check remaining resources is correct.
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
   ResourceSet result_resource(unit_resource);
@@ -134,7 +134,7 @@ TEST_F(LocalPlacementGroupManagerTest, TestReturnBundleResource) {
       << result_resource.ToString();
 }
 
-TEST_F(LocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
+TEST_F(OldLocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
   // 1. create two bundles spec.
   auto group_id = PlacementGroupID::FromRandom();
   std::unordered_map<std::string, double> unit_resource;
@@ -148,10 +148,10 @@ TEST_F(LocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
   cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
   local_available_resources_ = ResourceIdSet(init_resourece);
   /// 3. prepare and commit two bundle resource.
-  local_placement_group_manager_->PrepareBundleResources(first_bundle_spec);
-  local_placement_group_manager_->PrepareBundleResources(second_bundle_spec);
-  local_placement_group_manager_->CommitBundleResources(first_bundle_spec);
-  local_placement_group_manager_->CommitBundleResources(second_bundle_spec);
+  local_placement_group_manager_->PrepareBundle(first_bundle_spec);
+  local_placement_group_manager_->PrepareBundle(second_bundle_spec);
+  local_placement_group_manager_->CommitBundle(first_bundle_spec);
+  local_placement_group_manager_->CommitBundle(second_bundle_spec);
   /// 4. check remaining resources is correct after commit phase.
   auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
   std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
@@ -167,7 +167,7 @@ TEST_F(LocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
       << local_available_resources_.ToResourceSet().ToString() << " vs "
       << result_resource.ToString();
   /// 5. return second bundle.
-  local_placement_group_manager_->ReturnBundleResources(second_bundle_spec);
+  local_placement_group_manager_->ReturnBundle(second_bundle_spec);
   /// 6. check remaining resources is correct after return second bundle.
   resource_labels = {"CPU", "CPU_group_" + group_id.Hex(),
                      "CPU_group_1_" + group_id.Hex()};
@@ -180,7 +180,7 @@ TEST_F(LocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
       << local_available_resources_.ToResourceSet().ToString() << " vs "
       << result_resource.ToString();
   /// 7. return first bundel.
-  local_placement_group_manager_->ReturnBundleResources(first_bundle_spec);
+  local_placement_group_manager_->ReturnBundle(first_bundle_spec);
   /// 8. check remaining resources is correct after all bundle returned.
   result_resource = ResourceSet(init_unit_resource);
   ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
