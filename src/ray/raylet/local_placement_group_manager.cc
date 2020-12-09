@@ -76,8 +76,7 @@ bool OldLocalPlacementGroupManager::PrepareBundle(
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
 
-void OldLocalPlacementGroupManager::CommitBundle(
-    const BundleSpecification &bundle_spec) {
+void OldLocalPlacementGroupManager::CommitBundle(const BundleSpecification &bundle_spec) {
   // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
   // once retry is implemented.
   const auto &bundle_id = bundle_spec.BundleId();
@@ -104,8 +103,7 @@ void OldLocalPlacementGroupManager::CommitBundle(
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
-void OldLocalPlacementGroupManager::ReturnBundle(
-    const BundleSpecification &bundle_spec) {
+void OldLocalPlacementGroupManager::ReturnBundle(const BundleSpecification &bundle_spec) {
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());

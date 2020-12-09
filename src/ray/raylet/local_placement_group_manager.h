@@ -44,7 +44,8 @@ struct pair_hash {
   }
 };
 
-/// LocalPlacementGroupManagerInterface is responsible for handle the register bundle request from GCS.
+/// LocalPlacementGroupManagerInterface is responsible for handle the register bundle
+/// request from GCS.
 class LocalPlacementGroupManagerInterface {
  public:
   /// Lock the required resources from local available resources. Note that this is phase
@@ -78,9 +79,12 @@ class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface
  public:
   /// Create a local placement group manager.
   ///
-  /// \param local_available_resources_: The resources (IDs specificed) that are currently available. 
-  /// \param cluster_resource_map_: The resources (without IDs specificed) that are currently available. 
-  /// \param self_node_id_: The related raylet with current placement group manager.
+  /// \param local_available_resources_: The resources (IDs specificed) that are currently
+  /// available.
+  /// \param cluster_resource_map_: The resources (without IDs specificed) that
+  /// are currently available.
+  /// \param self_node_id_: The related raylet with current
+  /// placement group manager.
   OldLocalPlacementGroupManager(
       ResourceIdSet &local_available_resources_,
       std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
@@ -94,8 +98,7 @@ class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface
 
   void ReturnBundle(const BundleSpecification &bundle_spec);
 
-  void ReturnUnusedBundle(
-      const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
+  void ReturnUnusedBundle(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
   /// Get all local available resource(IDs specificed).
   const ResourceIdSet &GetAllResourceIdSet() const { return local_available_resources_; };

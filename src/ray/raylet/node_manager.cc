@@ -170,7 +170,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       record_metrics_period_(config.record_metrics_period_ms) {
   local_placement_group_manager_ = std::make_shared<OldLocalPlacementGroupManager>(
-      local_available_resources_, cluster_resource_map_,self_node_id_);
+      local_available_resources_, cluster_resource_map_, self_node_id_);
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
