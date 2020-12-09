@@ -1,6 +1,7 @@
 import atexit
 from functools import wraps
 import os
+from uuid import uuid4
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -84,8 +85,8 @@ class Client:
             self._shutdown = True
 
     @_ensure_connected
-    def _get_result(self, result_object_id: ray.ObjectRef) -> FutureResult:
-        result_id: str = ray.get(result_object_id)
+    def _get_result(self, result_object_id: ray.ObjectRef) -> bool:
+        result_id: uuid4 = ray.get(result_object_id)
         result = ray.get(self._controller.wait_for_event.remote(result_id))
         logger.debug(f"Getting result_id ({result_id}) with result: {result}")
         return result
