@@ -7,10 +7,14 @@
 # While the stub is trivial, it allows us to check that the calls we're
 # making into the core-ray module are contained and well-defined.
 
+from typing import Any
+from typing import Union
+
 import ray
 
 from ray.experimental.client.api import APIImpl
 from ray.experimental.client.common import ClientObjectRef
+from ray.experimental.client.common import ClientStub
 
 
 class CoreRayAPI(APIImpl):
@@ -23,8 +27,8 @@ class CoreRayAPI(APIImpl):
     def get(self, *args, **kwargs):
         return ray.get(*args, **kwargs)
 
-    def put(self, *args, **kwargs):
-        return ray.put(*args, **kwargs)
+    def put(self, vals: Any, *args, **kwargs) -> Union[ClientObjectRef, ray._raylet.ObjectRef]:
+        return ray.put(vals, *args, **kwargs)
 
     def wait(self, *args, **kwargs):
         return ray.wait(*args, **kwargs)
@@ -32,10 +36,10 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
-    def call_remote(self, instance, *args, **kwargs):
+    def call_remote(self, instance: ClientStub, *args, **kwargs):
         return instance._get_ray_remote_impl().remote(*args, **kwargs)
 
-    def close(self):
+    def close(self) -> None:
         return None
 
     # Allow for generic fallback to ray.* in remote methods. This allows calls
@@ -56,7 +60,7 @@ class RayServerAPI(CoreRayAPI):
         self.server = server_instance
 
     # Wrap single item into list if needed before calling server put.
-    def put(self, vals, *args, **kwargs):
+    def put(self, vals: Any, *args, **kwargs) -> ClientObjectRef:
         to_put = []
         single = False
         if isinstance(vals, list):
@@ -70,11 +74,11 @@ class RayServerAPI(CoreRayAPI):
             out = out[0]
         return out
 
-    def _put(self, val):
+    def _put(self, val: Any):
         resp = self.server._put_and_retain_obj(val)
         return ClientObjectRef(resp.id)
 
-    def call_remote(self, instance, *args, **kwargs):
+    def call_remote(self, instance: ClientStub, *args, **kwargs):
         task = instance._prepare_client_task()
         ticket = self.server.Schedule(task, prepared_args=args)
         return ClientObjectRef(ticket.return_id)

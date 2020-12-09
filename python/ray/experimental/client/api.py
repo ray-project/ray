@@ -11,9 +11,11 @@
 
 from abc import ABC
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 if TYPE_CHECKING:
     from ray.experimental.client.common import ClientStub
+    from ray.experimental.client.common import ClientObjectRef
+    from ray._raylet import ObjectRef
 
 
 class APIImpl(ABC):
@@ -34,11 +36,12 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def put(self, *args, **kwargs):
+    def put(self, vals: Any, *args, **kwargs) -> Union['ClientObjectRef', 'ObjectRef']:
         """
         put is the hook stub passed on to replace `ray.put`
 
         Args:
+            vals: The value or list of values to `put`.
             args: opaque arguments
             kwargs: opaque keyword arguments
         """
@@ -88,7 +91,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def close(self):
+    def close(self) -> None:
         """
         close cleans up an API connection by closing any channels or
         shutting down any servers gracefully.
@@ -117,10 +120,10 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, f, *args, **kwargs):
-        return self.worker.call_remote(f, *args, **kwargs)
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+        return self.worker.call_remote(instance, *args, **kwargs)
 
-    def close(self):
+    def close(self) -> None:
         return self.worker.close()
 
     def __getattr__(self, key: str):

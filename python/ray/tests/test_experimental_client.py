@@ -172,6 +172,11 @@ def test_basic_actor(ray_start_regular_shared):
 
 
 def test_pass_handles(ray_start_regular_shared):
+    """
+    Test that passing client handles to actors and functions to remote actors
+    in functions (on the server or raylet side) works transparently to the
+    caller.
+    """
     with ray_start_client_server() as ray:
 
         @ray.remote
