@@ -9,7 +9,6 @@ import ray
 from ray.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
-    new_scheduler_enabled,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -488,7 +487,6 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
                 raise e.as_instanceof_cause()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_reconstruction_stress(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,

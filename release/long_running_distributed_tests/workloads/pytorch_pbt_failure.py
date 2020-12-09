@@ -13,7 +13,7 @@ from ray.tune import CLIReporter
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.utils.util import merge_dicts
 from ray.tune.utils.mock import FailureInjectorCallback
-from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import BATCH_SIZE
 
@@ -74,13 +74,17 @@ def optimizer_creator(model, config):
         momentum=config.get("momentum", 0.9))
 
 
-ray.init(address="auto" if not args.smoke_test else None, _log_to_driver=True)
+ray.init(address="auto" if not args.smoke_test else None, log_to_driver=True)
 num_training_workers = 1 if args.smoke_test else 3
-TorchTrainable = TorchTrainer.as_trainable(
+
+CustomTrainingOperator = TrainingOperator.from_creators(
     model_creator=ResNet18,
-    data_creator=cifar_creator,
     optimizer_creator=optimizer_creator,
-    loss_creator=nn.CrossEntropyLoss,
+    data_creator=cifar_creator,
+    loss_creator=nn.CrossEntropyLoss)
+
+TorchTrainable = TorchTrainer.as_trainable(
+    training_operator_cls=CustomTrainingOperator,
     initialization_hook=initialization_hook,
     num_workers=num_training_workers,
     config={
