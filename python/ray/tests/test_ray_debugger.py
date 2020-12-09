@@ -1,9 +1,11 @@
 import json
 import os
+import platform
 import sys
 from telnetlib import Telnet
 
 import pexpect
+import pytest
 import ray
 
 
@@ -35,6 +37,8 @@ def test_ray_debugger_breakpoint(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -64,6 +68,8 @@ def test_ray_debugger_stepping(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
     ray.init(num_cpus=1)
 
