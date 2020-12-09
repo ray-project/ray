@@ -47,12 +47,12 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
 
-  // If the actor is non-detached, try to schedule it on the same node as the owner if
-  // possible.
-  if (!actor->IsDetached()) {
+  // If an actor is non-detached and has resource requirements, We will try to schedule it
+  // on the same node as the owner if possible.
+  const auto &task_spec = actor->GetCreationTaskSpecification();
+  if (!actor->IsDetached() && !task_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
-    ;
   } else {
     node = SelectNodeRandomly();
   }
