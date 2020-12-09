@@ -304,7 +304,7 @@ Status ConnectWithoutRetries(const std::string &address, int port,
       oss << "Could not allocate Redis context.";
     } else if (newContext->err) {
       oss << "Could not establish connection to Redis " << address << ":" << port
-          << " (context.err = " << newContext->err << ")";
+          << " (context.err = " << newContext->err << ").";
     }
     return Status::RedisError(errorMessage);
   }
