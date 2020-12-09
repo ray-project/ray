@@ -87,6 +87,13 @@ async def test_async_client(serve_instance):
     ray.get(host.notify_changed.remote("key_1", 100))
     ray.get(host.notify_changed.remote("key_2", 999))
 
+    # Check that construction fails with a sync callback.
+    def callback(result, key):
+        pass
+
+    with pytest.raises(ValueError):
+        client = LongPollerAsyncClient(host, {"key": callback})
+
     callback_results = dict()
 
     async def callback(result, key):

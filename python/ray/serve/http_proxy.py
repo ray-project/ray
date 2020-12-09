@@ -6,15 +6,13 @@ import uvicorn
 
 import ray
 from ray.exceptions import RayTaskError
+from ray.serve.constants import LONG_POLL_KEY_ROUTE_TABLE
 from ray.serve.context import TaskContext
 from ray.util import metrics
 from ray.serve.utils import _get_logger, get_random_letters
 from ray.serve.http_util import Response
+from ray.serve.long_poll import LongPollerAsyncClient
 from ray.serve.router import Router, RequestMetadata
-
-# The maximum number of times to retry a request due to actor failure.
-# TODO(edoakes): this should probably be configurable.
-MAX_ACTOR_DEAD_RETRIES = 10
 
 logger = _get_logger()
 
@@ -28,21 +26,22 @@ class HTTPProxy:
     # blocks forever
     """
 
-    async def fetch_config_from_controller(self, controller_name):
-        assert ray.is_initialized()
+    def __init__(self, controller_name):
         controller = ray.get_actor(controller_name)
-
-        self.route_table = await controller.get_router_config.remote()
+        self.router = Router(controller)
+        self.long_poll_client = LongPollerAsyncClient(controller, {
+            LONG_POLL_KEY_ROUTE_TABLE: self._update_route_table,
+        })
 
         self.request_counter = metrics.Count(
             "num_http_requests",
             description="The number of HTTP requests processed",
             tag_keys=("route", ))
 
-        self.router = Router(controller)
+    async def setup(self):
         await self.router.setup_in_async_loop()
 
-    def set_route_table(self, route_table):
+    async def _update_route_table(self, route_table):
         self.route_table = route_table
 
     async def receive_http_body(self, scope, receive, send):
@@ -141,8 +140,8 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
 
-        self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(controller_name)
+        self.app = HTTPProxy(controller_name)
+        await self.app.setup()
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
@@ -180,12 +179,3 @@ class HTTPProxyActor:
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
         await server.serve(sockets=[sock])
-
-    async def set_route_table(self, route_table):
-        self.app.set_route_table(route_table)
-
-    # ------ Proxy router logic ------ #
-    async def assign_request(self, request_meta, *request_args,
-                             **request_kwargs):
-        return await (await self.app.router.assign_request(
-            request_meta, *request_args, **request_kwargs))

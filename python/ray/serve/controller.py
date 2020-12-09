@@ -12,7 +12,10 @@ import ray
 import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_replica
-from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
+from ray.serve.constants import (
+    ASYNC_CONCURRENCY, SERVE_PROXY_NAME, LONG_POLL_KEY_REPLICA_HANDLES,
+    LONG_POLL_KEY_TRAFFIC_POLICIES, LONG_POLL_KEY_BACKEND_CONFIGS,
+    LONG_POLL_KEY_ROUTE_TABLE)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
@@ -516,24 +519,32 @@ class ServeController:
         self.notify_backend_configs_changed()
         self.notify_replica_handles_changed()
         self.notify_traffic_policies_changed()
+        self.notify_route_table_changed()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     def notify_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
-            "worker_handles", {
+            LONG_POLL_KEY_REPLICA_HANDLES, {
                 backend_tag: list(replica_dict.values())
                 for backend_tag, replica_dict in
                 self.actor_reconciler.backend_replicas.items()
             })
 
     def notify_traffic_policies_changed(self):
-        self.long_poll_host.notify_changed("traffic_policies",
-                                           self.current_state.traffic_policies)
+        self.long_poll_host.notify_changed(
+            LONG_POLL_KEY_TRAFFIC_POLICIES,
+            self.current_state.traffic_policies,
+        )
 
     def notify_backend_configs_changed(self):
         self.long_poll_host.notify_changed(
-            "backend_configs", self.current_state.get_backend_configs())
+            LONG_POLL_KEY_BACKEND_CONFIGS,
+            self.current_state.get_backend_configs())
+
+    def notify_route_table_changed(self):
+        self.long_poll_host.notify_changed(LONG_POLL_KEY_ROUTE_TABLE,
+                                           self.current_state.routes)
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -549,10 +560,6 @@ class ServeController:
     def get_routers(self) -> Dict[str, ActorHandle]:
         """Returns a dictionary of node ID to router actor handles."""
         return self.actor_reconciler.routers_cache
-
-    def get_router_config(self) -> Dict[str, Tuple[str, List[str]]]:
-        """Called by the router on startup to fetch required state."""
-        return self.current_state.routes
 
     def _checkpoint(self) -> None:
         """Checkpoint internal state and write it to the KV store."""
@@ -753,10 +760,7 @@ class ServeController:
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
             await self._set_traffic(endpoint, traffic_dict)
-            await asyncio.gather(*[
-                router.set_route_table.remote(self.current_state.routes)
-                for router in self.actor_reconciler.router_handles()
-            ])
+            self.notify_route_table_changed()
 
     async def delete_endpoint(self, endpoint: str) -> None:
         """Delete the specified endpoint.
@@ -789,11 +793,7 @@ class ServeController:
             # updates to the routers to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
-
-            await asyncio.gather(*[
-                router.set_route_table.remote(self.current_state.routes)
-                for router in self.actor_reconciler.router_handles()
-            ])
+            self.notify_route_table_changed()
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,

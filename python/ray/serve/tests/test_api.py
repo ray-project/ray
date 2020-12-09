@@ -29,6 +29,7 @@ def test_e2e(serve_instance):
     timeout_sleep = 0.5
     while True:
         try:
+            print("1")
             resp = requests.get(
                 "http://127.0.0.1:8000/-/routes", timeout=0.5).json()
             assert resp == {"/api": ["endpoint", ["GET", "POST"]]}
@@ -41,9 +42,11 @@ def test_e2e(serve_instance):
                 assert False, ("Route table hasn't been updated after 3 tries."
                                "The latest error was {}").format(e)
 
+    print("2")
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
 
+    print("3")
     resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
 

@@ -6,6 +6,11 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve.constants import (
+    LONG_POLL_KEY_BACKEND_CONFIGS,
+    LONG_POLL_KEY_REPLICA_HANDLES,
+    LONG_POLL_KEY_TRAFFIC_POLICIES,
+)
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollerAsyncClient
@@ -141,7 +146,7 @@ class ReplicaSet:
             # config to be updated.
             if num_finished == 0:
                 logger.debug(
-                    f"All replicas are busy, waiting for a free replica.")
+                    "All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED)
@@ -181,9 +186,9 @@ class Router:
         # requires async context.
         self.long_pull_client = LongPollerAsyncClient(
             self.controller, {
-                "traffic_policies": self._update_traffic_policies,
-                "worker_handles": self._update_worker_handles,
-                "backend_configs": self._update_backend_configs,
+                LONG_POLL_KEY_TRAFFIC_POLICIES: self._update_traffic_policies,
+                LONG_POLL_KEY_REPLICA_HANDLES: self._update_replica_handles,
+                LONG_POLL_KEY_BACKEND_CONFIGS: self._update_backend_configs,
             })
 
     async def _update_traffic_policies(self, traffic_policies):
@@ -194,8 +199,8 @@ class Router:
                 event = self._pending_endpoints.pop(endpoint)
                 event.set()
 
-    async def _update_worker_handles(self, worker_handles):
-        for backend_tag, replica_handles in worker_handles.items():
+    async def _update_replica_handles(self, replica_handles):
+        for backend_tag, replica_handles in replica_handles.items():
             self.backend_replicas[backend_tag].update_worker_replicas(
                 replica_handles)
 

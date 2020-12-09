@@ -1,4 +1,5 @@
 import asyncio
+from inspect import iscoroutinefunction
 import random
 from collections import defaultdict
 from dataclasses import dataclass
@@ -40,6 +41,10 @@ class LongPollerAsyncClient:
                  key_listeners: Dict[str, UpdateStateAsyncCallable]) -> None:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
+        for callback in key_listeners.values():
+            if not iscoroutinefunction(callback):
+                raise ValueError(
+                    "Callbacks to async long poller must be 'async def'.")
 
         self.snapshot_ids: Dict[str, int] = {
             key: -1
