@@ -112,6 +112,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
                       [this](const NodeID &node_id) {
                         node_info_calls_++;
                         return node_info_[node_id];
+                      },
+                      [this](const Task &task) {
+                        announce_infeasible_task_calls_++;
                       }) {}
 
   void SetUp() {}
@@ -141,6 +144,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   bool is_owner_alive_;
 
   int node_info_calls_;
+  int announce_infeasible_task_calls_;
   std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
 
   ClusterTaskManager task_manager_;

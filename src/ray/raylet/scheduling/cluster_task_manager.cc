@@ -12,18 +12,21 @@ ClusterTaskManager::ClusterTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     std::function<bool(const Task &)> fulfills_dependencies_func,
     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-    NodeInfoGetter get_node_info)
+    NodeInfoGetter get_node_info,
+    std::function<void(const Task &)> announce_infeasible_task)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
       is_owner_alive_(is_owner_alive),
-      get_node_info_(get_node_info) {}
+      get_node_info_(get_node_info),
+      announce_infeasible_task_(announce_infeasible_task) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
+    bool is_shape_infeasible = false;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
@@ -36,33 +39,48 @@ bool ClusterTaskManager::SchedulePendingTasks() {
                      << task.GetTaskSpecification().TaskId();
       auto placement_resources =
           task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
+      // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
       // TODO (Alex): We should distinguish between infeasible tasks and a fully
       // utilized cluster.
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
           placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
           &_unused);
+
+      // There is no node that has available resources to run the request.
+      // Move on to the next shape.
       if (node_id_string.empty()) {
-        // There is no node that has available resources to run the request.
-        // Move on to the next shape.
         RAY_LOG(DEBUG) << "No feasible node found for task "
                        << task.GetTaskSpecification().TaskId();
+        is_shape_infeasible = true;
         break;
-      } else {
-        if (node_id_string == self_node_id_.Binary()) {
-          // Warning: WaitForTaskArgsRequests must execute (do not let it short
-          // circuit if did_schedule is true).
-          bool task_scheduled = WaitForTaskArgsRequests(work);
-          did_schedule = task_scheduled || did_schedule;
-        } else {
-          // Should spill over to a different node.
-          NodeID node_id = NodeID::FromBinary(node_id_string);
-          Spillback(node_id, work);
-        }
-        work_it = work_queue.erase(work_it);
       }
+
+      if (node_id_string == self_node_id_.Binary()) {
+        // Warning: WaitForTaskArgsRequests must execute (do not let it short
+        // circuit if did_schedule is true).
+        bool task_scheduled = WaitForTaskArgsRequests(work);
+        did_schedule = task_scheduled || did_schedule;
+      } else {
+        // Should spill over to a different node.
+        NodeID node_id = NodeID::FromBinary(node_id_string);
+        Spillback(node_id, work);
+      }
+      work_it = work_queue.erase(work_it);
     }
-    if (work_queue.empty()) {
+
+    if (is_shape_infeasible) {
+      // All the items in the queue must be infeasible.
+      auto &work_queue = shapes_it->second;
+      for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
+        const Work &work = *work_it;
+        Task task = std::get<0>(work);
+        announce_infeasible_task_(task);
+      }
+      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
+      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      tasks_to_schedule_.erase(shapes_it);
+    } else if (work_queue.empty()) {
       shapes_it = tasks_to_schedule_.erase(shapes_it);
     } else {
       shapes_it++;
@@ -201,6 +219,7 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
   RAY_LOG(DEBUG) << "Queuing task " << task.GetTaskSpecification().TaskId();
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+  // SANG-TODO Add to the infeasible queue if the shape is infeasible.
   tasks_to_schedule_[scheduling_class].push_back(work);
 }
 

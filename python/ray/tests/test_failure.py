@@ -663,7 +663,6 @@ def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     p = error_pubsub
     # Check that we get warning messages for infeasible tasks.

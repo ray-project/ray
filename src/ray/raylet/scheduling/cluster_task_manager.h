@@ -55,7 +55,8 @@ class ClusterTaskManager {
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
                      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-                     NodeInfoGetter get_node_info);
+                     NodeInfoGetter get_node_info,
+                     std::function<void(const Task &)> announce_infeasible_task);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
@@ -125,9 +126,14 @@ class ClusterTaskManager {
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  /// Function to make task dependencies to be local.
   std::function<bool(const Task &)> fulfills_dependencies_func_;
+  /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
+  /// Function to get the node information of a given node id.
   NodeInfoGetter get_node_info_;
+  /// Function to announce infeasible task to GCS.
+  std::function<void(const Task &)> announce_infeasible_task_;
 
   /// Queue of lease requests that are waiting for resources to become available.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
@@ -136,6 +142,8 @@ class ClusterTaskManager {
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
   /// Tasks waiting for arguments to be transferred locally.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+  /// Queue of lease requests that are infeasible.
+  std::unordered_map<SchedulingClass, std::deque<Work>> infeasible_tasks_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
