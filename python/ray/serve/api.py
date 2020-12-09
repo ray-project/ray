@@ -6,7 +6,7 @@ from uuid import uuid4
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController, FutureResult
+from ray.serve.controller import ServeController
 from ray.serve.handle import RayServeHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters, logger, get_conda_env_dir)

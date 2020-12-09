@@ -419,18 +419,18 @@ class ActorStateReconciler:
 
 
 @dataclass
+class FutureResult:
+    # Goal requested when this future was created
+    requested_goal: Dict[str, Any]
+
+
+@dataclass
 class Checkpoint:
     goal_state: SystemState
     current_state: SystemState
     reconciler: ActorStateReconciler
     # TODO(ilr) Rename reconciler to PendingState
     inflight_reqs: Dict[uuid4, FutureResult]
-
-
-@dataclass
-class FutureResult:
-    # Goal requested when this future was created
-    requested_goal: Dict[str, Any]
 
 
 @ray.remote
@@ -548,10 +548,10 @@ class ServeController:
         # NOTE(ilr) Must be called before checkpointing!
         fut = asyncio.get_event_loop().create_future()
         fut.set_result(FutureResult(goal_state))
-        uuid = recreation_uuid or uuid.uuid4()
-        self.inflight_results[uuid] = fut
-        self._serializable_inflight_results[uuid] = fut
-        return uuid
+        uuid_val = recreation_uuid or uuid4()
+        self.inflight_results[uuid_val] = fut
+        self._serializable_inflight_results[uuid_val] = fut
+        return uuid_val
 
     async def _num_inflight_results(self) -> int:
         return len(self.inflight_results)
@@ -635,6 +635,7 @@ class ServeController:
         # Restore ActorStateReconciler
         self.actor_reconciler = restored_checkpoint.reconciler
 
+        # Recreate self.inflight_requests!
         self._serializable_inflight_results = restored_checkpoint.inflight_reqs
         for uuid, fut_result in self._serializable_inflight_results.items():
             self._create_event_with_result(self.inflight_results[uuid], uuid)
