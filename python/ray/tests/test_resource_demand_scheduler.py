@@ -256,19 +256,19 @@ def test_add_min_workers_nodes():
     }
     assert _add_min_workers_nodes([],
                                   {},
-                                  types) == \
+                                  types, None, None) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
             {"m2.large": 50, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*5,
                                   {"m2.large": 5},
-                                  types) == \
+                                  types, None, None) == \
         ([{"CPU": 2}]*50+[{"GPU": 1}]*99999, {"m2.large": 50, "gpu": 99999},
             {"m2.large": 45, "gpu": 99999})
 
     assert _add_min_workers_nodes([{"CPU": 2}]*60,
                                   {"m2.large": 60},
-                                  types) == \
+                                  types, None, None) == \
         ([{"CPU": 2}]*60+[{"GPU": 1}]*99999, {"m2.large": 60, "gpu": 99999},
             {"gpu": 99999})
 
@@ -279,7 +279,7 @@ def test_add_min_workers_nodes():
     }] * 99999, {
         "m2.large": 50,
         "gpu": 99999
-    }, types) == ([{
+    }, types, None, None) == ([{
         "CPU": 2
     }] * 50 + [{
         "GPU": 1
@@ -288,17 +288,18 @@ def test_add_min_workers_nodes():
         "gpu": 99999
     }, {})
 
-    assert _add_min_workers_nodes([], {},
-                                  {"gpubla": types["gpubla"]}) == ([], {}, {})
+    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
+                                  None) == ([], {}, {})
 
     types["gpubla"]["max_workers"] = 10
-    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}) == ([{
-        "GPU": 1
-    }] * 10, {
-        "gpubla": 10
-    }, {
-        "gpubla": 10
-    })
+    assert _add_min_workers_nodes([], {}, {"gpubla": types["gpubla"]}, None,
+                                  None) == ([{
+                                      "GPU": 1
+                                  }] * 10, {
+                                      "gpubla": 10
+                                  }, {
+                                      "gpubla": 10
+                                  })
 
 
 def test_get_nodes_to_launch_with_min_workers():
@@ -1406,7 +1407,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1432,6 +1433,7 @@ class AutoscalingTest(unittest.TestCase):
         sleep(0.1)
         runner.assert_has_call(self.provider.mock_nodes[1].internal_ip,
                                "new_worker_setup_command")
+
         runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
                                    "setup_cmd")
         runner.assert_not_has_call(self.provider.mock_nodes[1].internal_ip,
@@ -1570,6 +1572,312 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
+
+    def testRequestResourcesIdleTimeout(self):
+        """Test request_resources() with and without idle timeout."""
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["max_workers"] = 4
+        config["idle_timeout_minutes"] = 0
+        config["available_node_types"] = {
+            "empty_node": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2
+                },
+                "max_workers": 1
+            },
+            "def_worker": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "WORKER": 1
+                },
+                "max_workers": 3
+            }
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(0)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.update()
+        self.waitForNodes(1)
+        non_terminated_nodes = autoscaler.provider.non_terminated_nodes({})
+        assert len(non_terminated_nodes) == 1
+        node_id = non_terminated_nodes[0]
+        node_ip = autoscaler.provider.non_terminated_node_ips({})[0]
+
+        # A hack to check if the node was terminated when it shouldn't.
+        autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        # this fits on request_resources()!
+        self.waitForNodes(1)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}] * 2)
+        autoscaler.update()
+        self.waitForNodes(2)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"], {}, {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        self.waitForNodes(2)
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        # Still 2 as the second node did not show up a heart beat.
+        self.waitForNodes(2)
+        # If node {node_id} was terminated any time then it's state will be set
+        # to terminated.
+        assert autoscaler.provider.mock_nodes[
+            node_id].state == "unterminatable"
+        lm.update(
+            "172.0.0.1",
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.update()
+        # Now it is 1 because it showed up in last used (heart beat).
+        # The remaining one is 127.0.0.1.
+        self.waitForNodes(1)
+
+    def testRequestResourcesRaceConditionsLong(self):
+        """Test request_resources(), race conditions & demands/min_workers.
+
+        Tests when request_resources() is called simultaneously with resource
+        demands and min_workers constraint in multiple orders upscaling and
+        downscaling.
+        """
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["max_workers"] = 4
+        config["idle_timeout_minutes"] = 0
+        config["available_node_types"] = {
+            "empty_node": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2
+                },
+                "max_workers": 1
+            },
+            "def_worker": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "WORKER": 1
+                },
+                "max_workers": 3,
+                "min_workers": 1
+            }
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.update()
+        # 1 min worker for both min_worker and request_resources()
+        self.waitForNodes(1)
+        non_terminated_nodes = autoscaler.provider.non_terminated_nodes({})
+        assert len(non_terminated_nodes) == 1
+        node_id = non_terminated_nodes[0]
+        node_ip = autoscaler.provider.non_terminated_node_ips({})[0]
+
+        # A hack to check if the node was terminated when it shouldn't.
+        autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"],
+            config["available_node_types"]["def_worker"]["resources"], {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }])
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}] * 2)
+        autoscaler.update()
+        # 2 requested_resource, 1 min worker, 1 free node -> 2 nodes total
+        self.waitForNodes(2)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.update()
+        # Still 2 because the second one is not connected and hence
+        # request_resources occupies the connected node.
+        self.waitForNodes(2)
+        autoscaler.request_resources([{"CPU": 0.2, "WORKER": 1.0}] * 3)
+        lm.update(
+            node_ip,
+            config["available_node_types"]["def_worker"]["resources"], {}, {},
+            waiting_bundles=[{
+                "CPU": 0.2,
+                "WORKER": 1.0
+            }] * 3)
+        autoscaler.update()
+        self.waitForNodes(3)
+        autoscaler.request_resources([])
+
+        lm.update("172.0.0.1",
+                  config["available_node_types"]["def_worker"]["resources"],
+                  config["available_node_types"]["def_worker"]["resources"],
+                  {})
+        lm.update("172.0.0.2",
+                  config["available_node_types"]["def_worker"]["resources"],
+                  config["available_node_types"]["def_worker"]["resources"],
+                  {})
+        lm.update(node_ip,
+                  config["available_node_types"]["def_worker"]["resources"],
+                  {}, {})
+        autoscaler.update()
+        self.waitForNodes(1)
+        # If node {node_id} was terminated any time then it's state will be set
+        # to terminated.
+        assert autoscaler.provider.mock_nodes[
+            node_id].state == "unterminatable"
+
+    def testRequestResourcesRaceConditionWithMinWorker(self):
+        """Test request_resources() with min_workers.
+
+        Tests when request_resources() is called simultaneously with adding
+        min_workers constraint.
+        """
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"] = {
+            "empty_node": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2
+                },
+                "max_workers": 1
+            },
+            "def_worker": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "WORKER": 1
+                },
+                "max_workers": 3,
+                "min_workers": 1
+            }
+        }
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.request_resources([{"CPU": 2, "WORKER": 1.0}] * 2)
+        autoscaler.update()
+        # 2 min worker for both min_worker and request_resources(), not 3.
+        self.waitForNodes(2)
+
+    def testRequestResourcesRaceConditionWithResourceDemands(self):
+        """Test request_resources() with resource_demands.
+
+        Tests when request_resources() is called simultaneously with resource
+        demands in multiple orders.
+        """
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"].update({
+            "empty_node": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1
+                },
+                "max_workers": 1
+            },
+            "def_worker": {
+                "node_config": {},
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "WORKER": 1
+                },
+                "max_workers": 3,
+            }
+        })
+
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: "empty_node"
+        }, 1)
+
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        lm.update(
+            "127.0.0.0", {
+                "CPU": 2,
+                "GPU": 1
+            }, {"CPU": 2}, {},
+            waiting_bundles=[{
+                "CPU": 2
+            }])
+        autoscaler.request_resources([{"CPU": 2, "GPU": 1}] * 2)
+        autoscaler.update()
+        # 1 head, 1 worker.
+        self.waitForNodes(2)
+        lm.update(
+            "127.0.0.0", {
+                "CPU": 2,
+                "GPU": 1
+            }, {"CPU": 2}, {},
+            waiting_bundles=[{
+                "CPU": 2
+            }])
+        # make sure it stays consistent.
+        for _ in range(10):
+            autoscaler.update()
+        self.waitForNodes(2)
 
 
 if __name__ == "__main__":

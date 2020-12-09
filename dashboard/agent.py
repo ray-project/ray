@@ -91,9 +91,12 @@ class DashboardAgent(object):
         async def _check_parent():
             """Check if raylet is dead."""
             curr_proc = psutil.Process()
+            ppid = int(os.environ["RAY_NODE_PID"])
+            logger.info("Parent pid is %s", ppid)
             while True:
                 parent = curr_proc.parent()
-                if parent is None or parent.pid == 1:
+                if parent is None or parent.pid == 1 or (ppid and
+                                                         ppid != parent.pid):
                     logger.error("raylet is dead, agent will die because "
                                  "it fate-shares with raylet.")
                     sys.exit(0)

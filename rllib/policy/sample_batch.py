@@ -417,16 +417,17 @@ class MultiAgentBatch:
         Args:
             policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
                 ids to SampleBatches of experiences.
-            env_steps (int): The number of timesteps in the environment this
-                batch contains. This will be less than the number of
+            env_steps (int): The number of environment steps in the environment
+                this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
         """
 
         for v in policy_batches.values():
             assert isinstance(v, SampleBatch)
         self.policy_batches = policy_batches
-        # Called count for uniformity with SampleBatch. Prefer to access this
-        # via the env_steps() method when possible for clarity.
+        # Called "count" for uniformity with SampleBatch.
+        # Prefer to access this via the `env_steps()` method when possible
+        # for clarity.
         self.count = env_steps
 
     @PublicAPI
@@ -526,7 +527,8 @@ class MultiAgentBatch:
         """
         if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
             return policy_batches[DEFAULT_POLICY_ID]
-        return MultiAgentBatch(policy_batches, env_steps)
+        return MultiAgentBatch(
+            policy_batches=policy_batches, env_steps=env_steps)
 
     @staticmethod
     @PublicAPI
