@@ -7,6 +7,7 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
+import json
 from ray.experimental.client import stash_api_for_tests, _set_server_api
 from ray.experimental.client.common import convert_from_arg
 from ray.experimental.client.common import ClientObjectRef
@@ -23,8 +24,44 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self._test_mode = test_mode
 
-    def ClusterInfo(self, request, context=None):
-        pass
+    def ClusterInfo(self, request, context=None) -> ray_client_pb2.ClusterInfoResponse:
+        resp = ray_client_pb2.ClusterInfoResponse()
+        resp.type = request.type
+        if request.type == ray_client_pb2.CURRENT_NODE_ID:
+            resp.id = ray.current_node_id()
+        elif request.type == ray_client_pb2.CLUSTER_RESOURCES:
+            resp.resource_table = ray.cluster_resources()
+        elif request.type == ray_client_pb2.AVAILABLE_RESOURCES:
+            resp.resource_table = ray.available_resources()
+        else:
+            resp.debug_table_json = self._return_debug_cluster_info(request, context)
+        return resp
+
+    def _return_debug_cluster_info(request, context=None) -> str:
+        data = None
+        if request.type == ray_client_pb2.JOBS:
+            data = ray.jobs()
+        elif request.type == ray_client_pb2.NODES:
+            data = ray.nodes()
+        elif request.type == ray_client_pb2.WORKERS:
+            data = ray.workers()
+        elif request.type == ray_client_pb2.NODE_IDS:
+            data = ray.node_ids()
+        elif request.type == ray_client_pb2.ACTORS:
+            if request.HasField("client_id"):
+                actor = self.actor_refs[request.client_id]
+                data = ray.actors(actor._actor_id.hex())
+            else:
+                data = ray.actors()
+        elif request.type == ray_client_pb2.OBJECTS:
+            if request.HasField("client_id"):
+                ref = self.object_refs[request.client_id]
+                data = ray.objects(ref)
+            else:
+                data = ray.objects()
+        else:
+            raise TypeError("Unsupported cluster info type")
+        return json.dumps(data)
 
     def TerminateRequest(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":

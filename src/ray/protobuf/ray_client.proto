@@ -92,8 +92,7 @@ message ClusterInfoRequest {
   ClusterInfoType type = 1;
 
   // Optional, used for ACTORS and OBJECTS info.
-  // If empty, returns the entire table for those entities.
-  repeated bytes client_ids = 2;
+  bytes client_id = 2;
 }
 
 message ClusterInfoResponse {

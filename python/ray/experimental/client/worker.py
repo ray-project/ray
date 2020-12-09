@@ -158,4 +158,3 @@ class Worker:
         term_object.recursive = recursive
         term = ray_client_pb2.TerminateRequest(task_object=term_object)
         self.server.Terminate(term)
-
