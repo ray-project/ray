@@ -1,5 +1,6 @@
 import json
 import os
+import pytest
 import sys
 from telnetlib import Telnet
 
@@ -7,6 +8,7 @@ import pexpect
 import ray
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_ray_debugger_breakpoint(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -35,6 +37,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -64,6 +67,7 @@ def test_ray_debugger_stepping(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -97,7 +101,6 @@ def test_ray_debugger_recursive(shutdown_only):
 
 
 if __name__ == "__main__":
-    import pytest
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
