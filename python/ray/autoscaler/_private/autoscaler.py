@@ -224,8 +224,8 @@ class StandardAutoscaler:
                 if self.updaters[node_id].exitcode == 0:
                     ip = self.provider.internal_ip(node_id)
                     self.num_successful_updates[node_id] += 1
-                    # Mark the node as active to prevent the node recovery logic
-                    # immediately trying to restart Ray on the new node.
+                    # Mark the node as active to prevent the node recovery
+                    # logic immediately trying to restart Ray on the new node.
                     self.load_metrics.mark_active(ip)
                 else:
                     self.num_failed_updates[node_id] += 1
@@ -430,7 +430,8 @@ class StandardAutoscaler:
             return
         key = self.provider.internal_ip(node_id)
         if key in self.load_metrics.last_heartbeat_time_by_ip:
-            last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
+            last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[
+                key]
             delta = now - last_heartbeat_time
             if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
                 return
@@ -650,6 +651,7 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
+
 
 def format_info_string(lm_summary, autoscaler_summary):
     header = "=" * 8 + f"Autoscaler status: {datetime.now()}" + "=" * 8
