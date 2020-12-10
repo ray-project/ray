@@ -145,11 +145,14 @@ if __name__ == "__main__":
         raylet_ip_address = args.node_ip_address
 
     code_search_path = args.code_search_path
+    load_code_from_local = False
     if code_search_path is not None:
+        load_code_from_local = True
         for p in code_search_path.split(":"):
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.append(p)
+    ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
@@ -160,7 +163,6 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
-        load_code_from_local=args.load_code_from_local,
         metrics_agent_port=args.metrics_agent_port,
     )
 

@@ -82,9 +82,10 @@ class LoadMetrics:
         def prune(mapping):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                logger.info("LoadMetrics: "
-                            "Removed mapping: {} - {}".format(
-                                unwanted_key, mapping[unwanted_key]))
+                # TODO (Alex): Change this back to info after #12138.
+                logger.debug("LoadMetrics: "
+                             "Removed mapping: {} - {}".format(
+                                 unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
             if unwanted:
                 # TODO (Alex): Change this back to info after #12138.

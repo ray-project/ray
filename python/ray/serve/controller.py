@@ -6,6 +6,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Tuple
+from uuid import uuid4, UUID
 from pydantic import BaseModel
 
 import ray
@@ -422,11 +423,18 @@ class ActorStateReconciler:
 
 
 @dataclass
+class FutureResult:
+    # Goal requested when this future was created
+    requested_goal: Dict[str, Any]
+
+
+@dataclass
 class Checkpoint:
     goal_state: SystemState
     current_state: SystemState
     reconciler: ActorStateReconciler
     # TODO(ilr) Rename reconciler to PendingState
+    inflight_reqs: Dict[uuid4, FutureResult]
 
 
 @ray.remote
@@ -491,6 +499,11 @@ class ServeController:
         self.actor_reconciler._start_http_proxies_if_needed(
             self.http_host, self.http_port, self.http_middlewares)
 
+        # Map of awaiting results
+        # TODO(ilr): Checkpoint this once this becomes asynchronous
+        self.inflight_results: Dict[UUID, asyncio.Event] = dict()
+        self._serializable_inflight_results: Dict[UUID, FutureResult] = dict()
+
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
         # other actors to start up, and those actors fetch soft state from
@@ -523,6 +536,34 @@ class ServeController:
         self.notify_route_table_changed()
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
+
+    async def wait_for_event(self, uuid: UUID) -> bool:
+        if uuid not in self.inflight_results:
+            return True
+        event = self.inflight_results[uuid]
+        await event.wait()
+        self.inflight_results.pop(uuid)
+        self._serializable_inflight_results.pop(uuid)
+        async with self.write_lock:
+            self._checkpoint()
+
+        return True
+
+    def _create_event_with_result(
+            self,
+            goal_state: Dict[str, any],
+            recreation_uuid: Optional[UUID] = None) -> UUID:
+        # NOTE(ilr) Must be called before checkpointing!
+        event = asyncio.Event()
+        event.result = FutureResult(goal_state)
+        event.set()
+        uuid_val = recreation_uuid or uuid4()
+        self.inflight_results[uuid_val] = event
+        self._serializable_inflight_results[uuid_val] = event.result
+        return uuid_val
+
+    async def _num_inflight_results(self) -> int:
+        return len(self.inflight_results)
 
     def notify_replica_handles_changed(self):
         self.long_poll_host.notify_changed(
@@ -570,7 +611,8 @@ class ServeController:
 
         checkpoint = pickle.dumps(
             Checkpoint(self.goal_state, self.current_state,
-                       self.actor_reconciler))
+                       self.actor_reconciler,
+                       self._serializable_inflight_results))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
         logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
@@ -604,6 +646,11 @@ class ServeController:
 
         # Restore ActorStateReconciler
         self.actor_reconciler = restored_checkpoint.reconciler
+
+        # Recreate self.inflight_requests!
+        self._serializable_inflight_results = restored_checkpoint.inflight_reqs
+        for uuid, fut_result in self._serializable_inflight_results.items():
+            self._create_event_with_result(fut_result.requested_goal, uuid)
 
         self.autoscaling_policies = await self.actor_reconciler.\
             _recover_from_checkpoint(self.current_state, self)
@@ -651,7 +698,7 @@ class ServeController:
         return self.current_state.get_endpoints()
 
     async def _set_traffic(self, endpoint_name: str,
-                           traffic_dict: Dict[str, float]) -> None:
+                           traffic_dict: Dict[str, float]) -> UUID:
         if endpoint_name not in self.current_state.get_endpoints():
             raise ValueError("Attempted to assign traffic for an endpoint '{}'"
                              " that is not registered.".format(endpoint_name))
@@ -668,20 +715,25 @@ class ServeController:
         traffic_policy = TrafficPolicy(traffic_dict)
         self.current_state.traffic_policies[endpoint_name] = traffic_policy
 
+        return_uuid = self._create_event_with_result({
+            endpoint_name: traffic_policy
+        })
         # NOTE(edoakes): we must write a checkpoint before pushing the
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
         self.notify_traffic_policies_changed()
+        return return_uuid
 
     async def set_traffic(self, endpoint_name: str,
-                          traffic_dict: Dict[str, float]) -> None:
+                          traffic_dict: Dict[str, float]) -> UUID:
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
-            await self._set_traffic(endpoint_name, traffic_dict)
+            return_uuid = await self._set_traffic(endpoint_name, traffic_dict)
+        return return_uuid
 
     async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
-                             proportion: float) -> None:
+                             proportion: float) -> UUID:
         """Shadow traffic from the endpoint to the backend."""
         async with self.write_lock:
             if endpoint_name not in self.current_state.get_endpoints():
@@ -697,16 +749,22 @@ class ServeController:
             self.current_state.traffic_policies[endpoint_name].set_shadow(
                 backend_tag, proportion)
 
+            traffic_policy = self.current_state.traffic_policies[endpoint_name]
+
+            return_uuid = self._create_event_with_result({
+                endpoint_name: traffic_policy
+            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
             self._checkpoint()
             self.notify_traffic_policies_changed()
+            return return_uuid
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
                               traffic_dict: Dict[str, float], route,
-                              methods) -> None:
+                              methods) -> UUID:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -745,10 +803,11 @@ class ServeController:
             self.current_state.routes[route] = (endpoint, methods)
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
-            await self._set_traffic(endpoint, traffic_dict)
+            return_uuid = await self._set_traffic(endpoint, traffic_dict)
             self.notify_route_table_changed()
+            return return_uuid
 
-    async def delete_endpoint(self, endpoint: str) -> None:
+    async def delete_endpoint(self, endpoint: str) -> UUID:
         """Delete the specified endpoint.
 
         Does not modify any corresponding backends.
@@ -775,15 +834,20 @@ class ServeController:
 
             self.actor_reconciler.endpoints_to_remove.append(endpoint)
 
+            return_uuid = self._create_event_with_result({
+                route_to_delete: None,
+                endpoint: None
+            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # updates to the proxies to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
             self.notify_route_table_changed()
+            return return_uuid
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
-                             replica_config: ReplicaConfig) -> None:
+                             replica_config: ReplicaConfig) -> UUID:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             # Ensures this method is idempotent.
@@ -798,12 +862,11 @@ class ServeController:
 
             # Save creator that starts replicas, the arguments to be passed in,
             # and the configuration for the backends.
-            self.current_state.add_backend(
-                backend_tag,
-                BackendInfo(
-                    worker_class=backend_replica,
-                    backend_config=backend_config,
-                    replica_config=replica_config))
+            backend_info = BackendInfo(
+                worker_class=backend_replica,
+                backend_config=backend_config,
+                replica_config=replica_config)
+            self.current_state.add_backend(backend_tag, backend_info)
             metadata = backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
@@ -818,6 +881,9 @@ class ServeController:
                 del self.current_state.backends[backend_tag]
                 raise e
 
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
@@ -830,8 +896,9 @@ class ServeController:
             # Set the backend config inside routers
             # (particularly for max_concurrent_queries).
             self.notify_backend_configs_changed()
+            return return_uuid
 
-    async def delete_backend(self, backend_tag: BackendTag) -> None:
+    async def delete_backend(self, backend_tag: BackendTag) -> UUID:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
@@ -862,6 +929,7 @@ class ServeController:
             # Add the intention to remove the backend from the routers.
             self.actor_reconciler.backends_to_remove.append(backend_tag)
 
+            return_uuid = self._create_event_with_result({backend_tag: None})
             # NOTE(edoakes): we must write a checkpoint before removing the
             # backend from the routers to avoid inconsistent state if we crash
             # after pushing the update.
@@ -869,9 +937,10 @@ class ServeController:
             await self.actor_reconciler._stop_pending_backend_replicas()
 
             self.notify_replica_handles_changed()
+            return return_uuid
 
     async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_options: BackendConfig) -> None:
+                                    config_options: BackendConfig) -> UUID:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (self.current_state.get_backend(backend_tag)
@@ -885,12 +954,16 @@ class ServeController:
             backend_config._validate_complete()
             self.current_state.get_backend(
                 backend_tag).backend_config = backend_config
+            backend_info = self.current_state.get_backend(backend_tag)
 
             # Scale the replicas with the new configuration.
             self.actor_reconciler._scale_backend_replicas(
                 self.current_state.backends, backend_tag,
                 backend_config.num_replicas)
 
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
@@ -905,6 +978,7 @@ class ServeController:
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
+            return return_uuid
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
