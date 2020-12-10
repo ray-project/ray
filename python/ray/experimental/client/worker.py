@@ -185,7 +185,6 @@ class Worker:
 
     def is_initialized(self) -> bool:
         if self.server is not None:
-            return self.get_cluster_info(ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+            return self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
-
-
