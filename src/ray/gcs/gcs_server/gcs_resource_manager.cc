@@ -123,7 +123,7 @@ void GcsResourceManager::HandleDeleteResources(
     }
 
     auto on_done = [this, node_id, resource_names, reply,
-                    send_reply_callback](const Status &status) {
+        send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
