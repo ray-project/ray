@@ -22,6 +22,8 @@ ClusterTaskManager::ClusterTaskManager(
       announce_infeasible_task_(announce_infeasible_task) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
+  // Always try to schedule infeasible tasks in case they are now feasible.
+  TryLocalInfeasibleTaskScheduling();
   bool did_schedule = false;
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
@@ -321,7 +323,6 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
       (*by_shape_entry->mutable_shape())[label] = quantity;
       // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
       // that the entire cluster is utilized.
-      by_shape_entry->set_num_infeasible_requests_queued(count);
     }
   }
 
@@ -346,6 +347,30 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
       // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
       // that the entire cluster is utilized.
       by_shape_entry->set_num_ready_requests_queued(count);
+    }
+  }
+
+  for (const auto &pair : infeasible_tasks_) {
+    const auto &scheduling_class = pair.first;
+    const auto &resources =
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
+            .GetResourceMap();
+    const auto &queue = pair.second;
+    const auto &count = queue.size();
+
+    auto by_shape_entry = resource_load_by_shape->Add();
+
+    for (const auto &resource : resources) {
+      // Add to `resource_loads`.
+      const auto &label = resource.first;
+      const auto &quantity = resource.second;
+      (*resource_loads)[label] += quantity * count;
+
+      // Add to `resource_load_by_shape`.
+      (*by_shape_entry->mutable_shape())[label] = quantity;
+      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
+      // that the entire cluster is utilized.
+      by_shape_entry->set_num_infeasible_requests_queued(count);
     }
   }
 }

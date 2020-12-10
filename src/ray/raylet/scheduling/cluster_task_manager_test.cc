@@ -532,7 +532,6 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   // Infeasible warning shouldn't be reprinted when the previous task is still infeasible
   // after adding a new node.
   AddNode(NodeID::FromRandom(), 8);
-  task_manager_.TryLocalInfeasibleTaskScheduling();
   task_manager_.SchedulePendingTasks();
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -548,7 +547,6 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   // task is spillbacked properly.
   auto remote_node_id = NodeID::FromRandom();
   AddNode(remote_node_id, 12);
-  task_manager_.TryLocalInfeasibleTaskScheduling();
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   // Make sure nothing happens locally.

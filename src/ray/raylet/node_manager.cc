@@ -855,9 +855,6 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
     if (new_scheduler_enabled_) {
       new_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
                                                       new_resource_capacity);
-      // It means either the local node resource information has been changed or there are
-      // new nodes added to the cluster. Try scheduling infeasible tasks.
-      cluster_task_manager_->TryLocalInfeasibleTaskScheduling();
     }
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
