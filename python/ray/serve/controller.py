@@ -558,7 +558,7 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    def get_http_proxys(self) -> Dict[str, ActorHandle]:
+    def get_http_proxies(self) -> Dict[str, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
         return self.actor_reconciler.http_proxy_cache
 

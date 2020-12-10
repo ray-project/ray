@@ -77,8 +77,8 @@ def test_controller_failure(serve_instance):
 
 
 def _kill_http_proxies(client):
-    http_proxys = ray.get(client._controller.get_http_proxys.remote())
-    for http_proxy in http_proxys.values():
+    http_proxies = ray.get(client._controller.get_http_proxies.remote())
+    for http_proxy in http_proxies.values():
         ray.kill(http_proxy, no_restart=False)
 
 

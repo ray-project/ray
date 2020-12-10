@@ -147,7 +147,7 @@ class Client:
         if route is not None:
 
             def check_ready(http_response):
-                assert route in http_response.json()
+                return route in http_response.json()
 
             futures = []
             for node_id in ray.state.node_ids():
@@ -162,7 +162,7 @@ class Client:
                 futures.append(future)
             try:
                 ray.get(futures)
-            except ray.RayTaskError:
+            except ray.exceptions.RayTaskError:
                 raise TimeoutError("Route not available at HTTP proxies "
                                    "after {HTTP_PROXY_TIMEOUT}s.")
 
@@ -472,7 +472,7 @@ def start(detached: bool = False,
             futures.append(future)
         try:
             ray.get(futures)
-        except ray.RayTaskError:
+        except ray.exceptions.RayTaskError:
             raise TimeoutError(
                 "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s.")
 

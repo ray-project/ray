@@ -18,12 +18,10 @@ logger = _get_logger()
 
 
 class HTTPProxy:
-    """
-    This class should be instantiated and ran by ASGI server.
+    """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
     >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
-    # blocks forever
     """
 
     def __init__(self, controller_name):
@@ -73,8 +71,11 @@ class HTTPProxy:
                 status_code=404).send(scope, receive, send)
 
     async def __call__(self, scope, receive, send):
-        # NOTE: This implements ASGI protocol specified in
-        #       https://asgi.readthedocs.io/en/latest/specs/index.html
+        """Implements the ASGI protocol.
+
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
 
         error_sender = self._make_error_sender(scope, receive, send)
 
@@ -136,7 +137,8 @@ class HTTPProxyActor:
             host,
             port,
             controller_name,
-            http_middlewares: List["starlette.middleware.Middleware"] = []):
+            http_middlewares: List[
+                "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
         self.port = port
 

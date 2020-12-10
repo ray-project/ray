@@ -167,7 +167,7 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
 def test_no_http(serve_instance):
     client = serve.start(http_host=None)
 
-    assert len(ray.get(client._controller.get_routers.remote())) == 0
+    assert len(ray.get(client._controller.get_http_proxies.remote())) == 0
 
     def hello(*args):
         return "hello"
