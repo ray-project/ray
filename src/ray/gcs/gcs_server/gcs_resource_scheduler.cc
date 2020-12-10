@@ -13,45 +13,70 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
+#include "absl/container/flat_hash_set.h"
 
 namespace ray {
 namespace gcs {
 
-const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterResources()
-    const {
-  return cluster_resources_;
-}
+//////////////////////////////////// Begin of NodeScorer ////////////////////////////////
+double LeastResourceScorer::MakeGrade(const ResourceSet &required_resources,
+                                      const SchedulingResources &node_resources) {
+  const auto &available_resources = node_resources.GetAvailableResources();
+  const auto &available_resource_amount_map = available_resources.GetResourceAmountMap();
 
-void GcsResourceManager::UpdateResources(const NodeID &node_id,
-                                         const ResourceSet &resources) {
-  cluster_resources_[node_id] = resources;
-}
-
-void GcsResourceManager::RemoveResources(const NodeID &node_id) {
-  cluster_resources_.erase(node_id);
-}
-
-bool GcsResourceManager::AcquireResources(const NodeID &node_id,
-                                          const ResourceSet &required_resources) {
-  auto iter = cluster_resources_.find(node_id);
-  RAY_CHECK(iter != cluster_resources_.end()) << "Node " << node_id << " not exist.";
-  if (!required_resources.IsSubset(iter->second)) {
-    return false;
+  double node_score = 0.0;
+  for (const auto &entry : required_resources.GetResourceAmountMap()) {
+    auto available_resource_amount_iter = available_resource_amount_map.find(entry.first);
+    RAY_CHECK(available_resource_amount_iter != available_resource_amount_map.end());
+    node_score += Calculate(entry.second, available_resource_amount_iter->second);
   }
-  iter->second.SubtractResourcesStrict(required_resources);
-  return true;
+  if (!required_resources.GetResourceAmountMap().empty()) {
+    node_score /= required_resources.GetResourceAmountMap().size();
+  }
+
+  return node_score;
 }
 
-bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
-                                          const ResourceSet &acquired_resources) {
-  auto iter = cluster_resources_.find(node_id);
-  if (iter != cluster_resources_.end()) {
-    iter->second.AddResources(acquired_resources);
+double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requested,
+                                      const FractionalResourceQuantity &available) {
+  if (available == 0 || requested > available) {
+    return 0;
   }
-  // If node dead, we will not find the node. This is a normal scenario, so it returns
-  // true.
-  return true;
+  return (available - requested).ToDouble() / available.ToDouble();
 }
+//////////////////////////////////// End of NodeScorer ////////////////////////////////
+
+/////////////////////////////// Begin of GcsResourceScheduler ///////////////////////////
+std::vector<NodeID> GcsResourceScheduler::Schedule(
+    std::vector<ResourceSet> required_resources, SchedulingPolicy policy,
+    const std::function<bool(const NodeID &)> &node_filter_func) {
+  // Filter candidate nodes.
+  absl::flat_hash_set<NodeID> candidate_nodes =
+      Filter(gcs_resource_manager_.GetClusterResources(), node_filter_func);
+  if (candidate_nodes.size() < required_resources.size()) {
+    return {};
+  }
+
+  // Sco.
+
+  // Rank.
+  std::vector<NodeID> result;
+  return result;
+}
+
+absl::flat_hash_set<NodeID> GcsResourceScheduler::Filter(
+    const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources,
+    std::function<bool(const NodeID &)> node_filter_func) {
+  absl::flat_hash_set<NodeID> result;
+  for (const auto &iter : cluster_resources) {
+    const auto &node_id = iter.first;
+    if (node_filter_func(node_id)) {
+      result.emplace(node_id);
+    }
+  }
+  return result;
+}
+//////////////////////////////////// End of GcsResourceScheduler ////////////////////////////////
 
 }  // namespace gcs
 }  // namespace ray
