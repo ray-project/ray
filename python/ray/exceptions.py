@@ -138,6 +138,13 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
+class RayPlacementGroupError(RayTaskError):
+    """Indicates that the task failed due to placement errors."""
+
+    def __str__(self):
+        return "The task failed due to placement group errors."
+
+
 class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
@@ -212,6 +219,7 @@ RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
+    RayPlacementGroupError,
     WorkerCrashedError,
     RayActorError,
     ObjectStoreFullError,

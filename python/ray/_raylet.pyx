@@ -102,6 +102,7 @@ from ray.exceptions import (
     RayError,
     RaySystemError,
     RayTaskError,
+    RayPlacementGroupError,
     ObjectStoreFullError,
     GetTimeoutError,
     TaskCancelledError
