@@ -1238,6 +1238,10 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
+        # Make sure we return something (and don't throw exceptions). Let's not
+        # get bogged down with a full cli test here.
+        assert len(autoscaler.info_string()) > 1
+
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["m4.large"]["min_workers"] = \
