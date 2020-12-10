@@ -1159,6 +1159,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testSummary(self):
         from ray.autoscaler._private.cli_logger import cli_logger
+
         def do_nothing(*args, **kwargs):
             pass
 
@@ -1196,26 +1197,34 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         while True:
-            if len(self.provider.non_terminated_nodes({TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})) == 3:
+            if len(
+                    self.provider.non_terminated_nodes({
+                        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+                    })) == 3:
                 break
             time.sleep(0.1)
 
         # After this section, the p2.xlarge is now in the setup process.
-        lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {}, waiting_bundles=[{"GPU": 1}])
+        lm.update(
+            head_ip, {"CPU": 16}, {"CPU": 1}, {}, waiting_bundles=[{
+                "GPU": 1
+            }])
         runner.ready_to_run.clear()
         autoscaler.update()
         self.waitForNodes(4)
 
-
         self.provider.ready_to_create.clear()
-        lm.set_resource_requests([{"CPU": 64}]*2)
+        lm.set_resource_requests([{"CPU": 64}] * 2)
         autoscaler.update()
 
-        self.provider.create_node({}, {
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
-            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
-            TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED
-        }, 1, _skip_wait=True)
+        self.provider.create_node(
+            {}, {
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+                TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
+                TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED
+            },
+            1,
+            _skip_wait=True)
         self.waitForNodes(5)
 
         summary = autoscaler.summary()
@@ -1225,11 +1234,9 @@ class AutoscalingTest(unittest.TestCase):
         assert len(summary.active_nodes) == 2
 
         assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge")]
-        assert summary.pending_launches == {"m4.16xlarge" : 2}
+        assert summary.pending_launches == {"m4.16xlarge": 2}
 
-        assert summary.failed_nodes ==[("172.0.0.4", "m4.4xlarge")]
-
-
+        assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -1238,7 +1245,6 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1248,7 +1254,6 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
-
 
     def testPlacementGroup(self):
         # Note this is mostly an integration test. See

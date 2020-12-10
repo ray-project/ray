@@ -177,9 +177,11 @@ class LoadMetrics:
 
     def summary(self):
         available_resources = reduce(add_resources,
-                                     self.dynamic_resources_by_ip.values()) if self.dynamic_resources_by_ip else {}
+                                     self.dynamic_resources_by_ip.values()
+                                     ) if self.dynamic_resources_by_ip else {}
         total_resources = reduce(add_resources,
-                                 self.static_resources_by_ip.values()) if self.static_resources_by_ip else {}
+                                 self.static_resources_by_ip.values()
+                                 ) if self.static_resources_by_ip else {}
         usage_dict = {}
         for key in total_resources:
             total = total_resources[key]

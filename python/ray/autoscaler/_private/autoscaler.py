@@ -13,11 +13,12 @@ import collections
 
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
-from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
-                                 TAG_RAY_FILE_MOUNTS_CONTENTS,
-                                 TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH, STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
-                                 NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+from ray.autoscaler.tags import (
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
+    TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
+    TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
+    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -43,6 +44,7 @@ UpdateInstructions = namedtuple(
 AutoscalerSummary = namedtuple(
     "AutoscalerSummary",
     ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
+
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
@@ -210,7 +212,6 @@ class StandardAutoscaler:
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
             ensure_min_cluster_size=self.load_metrics.get_resource_requests())
-        print("TO LAUNCH: ", to_launch)
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
@@ -588,14 +589,15 @@ class StandardAutoscaler:
         logger.debug(tmp)
 
     def summary(self):
-        """
-        Summarizes the active, pending, and failed node launches.
+        """Summarizes the active, pending, and failed node launches.
 
         An active node is a node whose raylet is actively reporting heartbeats.
 
-        A pending node is non-active node whose node tag is uninitialized, waiting for ssh, syncing files, or setting up.
+        A pending node is non-active node whose node tag is uninitialized,
+        waiting for ssh, syncing files, or setting up.
 
         If a node is not pending or active, it is failed.
+
         """
         all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
 
@@ -611,23 +613,25 @@ class StandardAutoscaler:
                 continue
             node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
 
-            print("Going through", ip)
-
-            # TODO (Alex): If a node's raylet has died, it shouldn't be marked as active.
+            # TODO (Alex): If a node's raylet has died, it shouldn't be marked
+            # as active.
             is_active = self.load_metrics.is_active(ip)
             if is_active:
                 active_nodes[node_type] += 1
             else:
                 status = node_tags[TAG_RAY_NODE_STATUS]
-                pending_states = [STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-                                  STATUS_SYNCING_FILES, STATUS_SETTING_UP]
+                pending_states = [
+                    STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
+                    STATUS_SYNCING_FILES, STATUS_SETTING_UP
+                ]
                 is_pending = status in pending_states
                 if is_pending:
                     pending_nodes.append((ip, node_type))
                 else:
                     failed_nodes.append((ip, node_type))
 
-        # The concurrent counter leaves some 0 counts in, so we need to manually filter those out.
+        # The concurrent counter leaves some 0 counts in, so we need to
+        # manually filter those out.
         pending_launches = {}
         for node_type, count in self.pending_launches.breakdown().items():
             if count:
@@ -638,7 +642,6 @@ class StandardAutoscaler:
             pending_nodes=pending_nodes,
             pending_launches=pending_launches,
             failed_nodes=failed_nodes)
-
 
     def info_string(self, nodes):
         suffix = ""
