@@ -17,7 +17,7 @@ from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules import GRUGate, \
     RelativeMultiHeadAttention, SkipConnection
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
-from ray.rllib.models.utils import preprocess_train_batch_attention_nets
+from ray.rllib.models.utils import attention_preprocess_train_batch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -165,13 +165,18 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # current one (0))
         # 1 to `num_transformer_units`: Memory data (one per transformer unit).
         for i in range(self.num_transformer_units):
+            space = Box(-1.0, 1.0, shape=(self.attn_dim,))
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
-                    data_rel_pos="-{}:-1".format(self.memory_inference),
+                    shift="-{}:-1".format(self.memory_inference),
                     # Repeat the incoming state every max-seq-len times.
                     batch_repeat_value=self.max_seq_len,
-                    space=Box(-1.0, 1.0, shape=(self.attn_dim,)))
+                    space=space)
+            self.inference_view_requirements["state_out_{}".format(i)] = \
+                ViewRequirement(
+                    space=space,
+                    used_for_training=False)
 
     @override(ModelV2)
     def forward(self, input_dict, state: List[TensorType],
@@ -221,5 +226,5 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
 
     @override(RecurrentNetwork)
     def preprocess_train_batch(self, train_batch):
-        return preprocess_train_batch_attention_nets(
+        return attention_preprocess_train_batch(
             train_batch, max_seq_len=self.model_config["max_seq_len"])
