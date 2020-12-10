@@ -370,7 +370,7 @@ class UpdateTargetNetwork:
                  workers: WorkerSet,
                  target_update_freq: int,
                  by_steps_trained: bool =False,
-                 policies=frozenset([])):
+                 policies: List[PolicyID] =frozenset([])):
         self.workers = workers
         self.target_update_freq = target_update_freq
         self.policies = (policies or workers.local_worker().policies_to_train)
