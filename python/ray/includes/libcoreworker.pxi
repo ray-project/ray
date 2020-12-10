@@ -18,7 +18,7 @@ cdef class CoreWorkerWrapper:
         unique_ptr[CCoreWorker] inner
 
     def GetCurrentNodeId(self):
-        cdef CNodeID c_nodeID = inner.get().GetCurrentNodeId()
+        cdef CNodeID c_nodeID = self.inner.get().GetCurrentNodeId()
         return NodeID(c_nodeID.Binary())
 
 
