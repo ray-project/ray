@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Any
 import queue
 
 from ray.util.iter import LocalIterator, _NextValueNotReady
@@ -7,9 +7,9 @@ from ray.util.iter_metrics import SharedMetrics
 
 def Concurrently(ops: List[LocalIterator],
                  *,
-                 mode="round_robin",
-                 output_indexes=None,
-                 round_robin_weights=None):
+                 mode: str ="round_robin",
+                 output_indexes: Optional[List[int]] = None,
+                 round_robin_weights: Optional[List[int]] = None)  -> "LocalIterator[T]":
     """Operator that runs the given parent iterators concurrently.
 
     Args:
@@ -91,7 +91,7 @@ class Enqueue:
                 type(output_queue)))
         self.queue = output_queue
 
-    def __call__(self, x):
+    def __call__(self, x: Any) -> Any:
         try:
             self.queue.put_nowait(x)
         except queue.Full:
@@ -99,7 +99,7 @@ class Enqueue:
         return x
 
 
-def Dequeue(input_queue: queue.Queue, check=lambda: True):
+def Dequeue(input_queue: queue.Queue, check=lambda: True) -> "LocalIterator[T]":
     """Dequeue data items from a queue.Queue instance.
 
     The dequeue is non-blocking, so Dequeue operations can executed with
