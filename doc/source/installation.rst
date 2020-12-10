@@ -15,7 +15,7 @@ You can install the latest official version of Ray as follows. Official releases
 
 .. code-block:: bash
 
-  pip install -U ray  # also recommended: ray[debug]
+  pip install -U ray
 
 **Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
 
