@@ -183,9 +183,3 @@ class HTTPProxyActor:
 
     async def set_route_table(self, route_table):
         self.app.set_route_table(route_table)
-
-    # ------ Proxy router logic ------ #
-    async def assign_request(self, request_meta, *request_args,
-                             **request_kwargs):
-        return await (await self.app.router.assign_request(
-            request_meta, *request_args, **request_kwargs))
