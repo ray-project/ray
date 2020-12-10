@@ -215,9 +215,6 @@ class QMixTorchPolicy(Policy):
             name="target_model",
             default_model=RNNModel).to(self.device)
 
-        # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.inference_view_requirements)
-
         self.exploration = self._create_exploration()
 
         # Setup the mixer network.

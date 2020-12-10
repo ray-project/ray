@@ -2,11 +2,18 @@ import gym
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.utils.typing import ModelConfigDict
 
 
+jax, flax = try_import_jax()
+nn = None
+if flax:
+    nn = flax.linen
+
+
 @PublicAPI
-class JAXModelV2(ModelV2):
+class JAXModelV2(ModelV2, nn.Module if nn else object):
     """JAX version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
@@ -16,7 +23,7 @@ class JAXModelV2(ModelV2):
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
         """Initializes a JAXModelV2 instance."""
-
+        flax.linen.Module()
         ModelV2.__init__(
             self,
             obs_space,

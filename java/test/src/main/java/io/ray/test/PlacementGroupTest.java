@@ -31,8 +31,10 @@ public class PlacementGroupTest extends BaseTest {
   // This test just creates a placement group with one bundle.
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
-    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
-    Assert.assertEquals(((PlacementGroupImpl)placementGroup).getName(),"unnamed_group");
+    PlacementGroupImpl placementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
+        .createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(10000));
+    Assert.assertEquals(placementGroup.getName(),"unnamed_group");
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
@@ -52,6 +54,8 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroupImpl secondPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
         .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
         1.0, "second_placement_group");
+    Assert.assertTrue(firstPlacementGroup.wait(10000));
+    Assert.assertTrue(secondPlacementGroup.wait(10000));
 
     PlacementGroupImpl firstPlacementGroupRes =
         (PlacementGroupImpl)Ray.getPlacementGroup((firstPlacementGroup).getId());
