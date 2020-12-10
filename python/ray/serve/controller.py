@@ -6,7 +6,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Tuple
-from uuid import uuid4
+from uuid import uuid4, UUID
 from pydantic import BaseModel
 
 import ray
@@ -497,8 +497,8 @@ class ServeController:
 
         # Map of awaiting results
         # TODO(ilr): Checkpoint this once this becomes asynchronous
-        self.inflight_results: Dict[uuid4, asyncio.Event] = dict()
-        self._serializable_inflight_results: Dict[uuid4, FutureResult] = dict()
+        self.inflight_results: Dict[UUID, asyncio.Event] = dict()
+        self._serializable_inflight_results: Dict[UUID, FutureResult] = dict()
 
         # NOTE(edoakes): unfortunately, we can't completely recover from a
         # checkpoint in the constructor because we block while waiting for
@@ -532,7 +532,7 @@ class ServeController:
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
-    async def wait_for_event(self, uuid: uuid4) -> bool:
+    async def wait_for_event(self, uuid: UUID) -> bool:
         if uuid not in self.inflight_results:
             return True
         event = self.inflight_results[uuid]
@@ -547,13 +547,12 @@ class ServeController:
     def _create_event_with_result(
             self,
             goal_state: Dict[str, any],
-            recreation_uuid: Optional[uuid4] = None) -> uuid4:
+            recreation_uuid: Optional[UUID] = None) -> UUID:
         # NOTE(ilr) Must be called before checkpointing!
         event = asyncio.Event()
         event.result = FutureResult(goal_state)
         event.set()
         uuid_val = recreation_uuid or uuid4()
-        print(uuid_val)
         self.inflight_results[uuid_val] = event
         self._serializable_inflight_results[uuid_val] = event.result
         return uuid_val
@@ -705,7 +704,7 @@ class ServeController:
         return self.current_state.get_endpoints()
 
     async def _set_traffic(self, endpoint_name: str,
-                           traffic_dict: Dict[str, float]) -> uuid4:
+                           traffic_dict: Dict[str, float]) -> UUID:
         if endpoint_name not in self.current_state.get_endpoints():
             raise ValueError("Attempted to assign traffic for an endpoint '{}'"
                              " that is not registered.".format(endpoint_name))
@@ -734,14 +733,14 @@ class ServeController:
         return return_uuid
 
     async def set_traffic(self, endpoint_name: str,
-                          traffic_dict: Dict[str, float]) -> uuid4:
+                          traffic_dict: Dict[str, float]) -> UUID:
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
             return_uuid = await self._set_traffic(endpoint_name, traffic_dict)
         return return_uuid
 
     async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
-                             proportion: float) -> uuid4:
+                             proportion: float) -> UUID:
         """Shadow traffic from the endpoint to the backend."""
         async with self.write_lock:
             if endpoint_name not in self.current_state.get_endpoints():
@@ -772,7 +771,7 @@ class ServeController:
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
     async def create_endpoint(self, endpoint: str,
                               traffic_dict: Dict[str, float], route,
-                              methods) -> uuid4:
+                              methods) -> UUID:
         """Create a new endpoint with the specified route and methods.
 
         If the route is None, this is a "headless" endpoint that will not
@@ -818,7 +817,7 @@ class ServeController:
             ])
             return return_uuid
 
-    async def delete_endpoint(self, endpoint: str) -> uuid4:
+    async def delete_endpoint(self, endpoint: str) -> UUID:
         """Delete the specified endpoint.
 
         Does not modify any corresponding backends.
@@ -862,7 +861,7 @@ class ServeController:
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
-                             replica_config: ReplicaConfig) -> uuid4:
+                             replica_config: ReplicaConfig) -> UUID:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             # Ensures this method is idempotent.
@@ -913,7 +912,7 @@ class ServeController:
             self.notify_backend_configs_changed()
             return return_uuid
 
-    async def delete_backend(self, backend_tag: BackendTag) -> uuid4:
+    async def delete_backend(self, backend_tag: BackendTag) -> UUID:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
@@ -955,7 +954,7 @@ class ServeController:
             return return_uuid
 
     async def update_backend_config(self, backend_tag: BackendTag,
-                                    config_options: BackendConfig) -> uuid4:
+                                    config_options: BackendConfig) -> UUID:
         """Set the config for the specified backend."""
         async with self.write_lock:
             assert (self.current_state.get_backend(backend_tag)
