@@ -517,8 +517,8 @@ class DynamicTFPolicy(TFPolicy):
 
         # Model forward pass for the loss (needed after postprocess to
         # overwrite any tensor state from that call)
-        # TODO: replace with `compute_actions_from_input_dict`
-        self.model(self._input_dict, self._state_inputs, self._seq_lens)
+        ## TODO: replace with `compute_actions_from_input_dict`
+        #self.model(self._input_dict, self._state_inputs, self._seq_lens)
 
         if not self.config["_use_trajectory_view_api"]:
             train_batch = UsageTrackingDict(

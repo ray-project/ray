@@ -170,7 +170,7 @@ def chop_into_sequences(
         dynamic_max=True,
         shuffle=False,
         seq_lens=None,
-        #states_already_reduced_to_init=False,
+        states_already_reduced_to_init=False,
         _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
@@ -213,8 +213,6 @@ def chop_into_sequences(
         >>> print(seq_lens)
         [2, 3, 1]
     """
-
-    states_already_reduced_to_init = seq_lens is not None
 
     if seq_lens is None:
         prev_id = None

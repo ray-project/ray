@@ -631,8 +631,8 @@ class Policy(metaclass=ABCMeta):
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            # TODO: (sven) This hack will not work for attention net traj.
-            #  view setup.
+            #TODO: (sven) This hack will not work for attention net traj.
+            # view setup.
             i = 0
             while "state_in_{}".format(i) in postprocessed_batch:
                 postprocessed_batch["state_in_{}".format(i)] = \
@@ -763,7 +763,7 @@ class Policy(metaclass=ABCMeta):
                     "max_seq_len", 1),
                 space=space)
             #TODO: check, whether we can set: used_for_training=False here.
-            view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space)
+            view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space, used_for_training=False)
 
 
 def clip_action(action, action_space):
