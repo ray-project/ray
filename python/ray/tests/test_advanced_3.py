@@ -21,7 +21,8 @@ import setproctitle
 import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors,
+    new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,13 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-def test_load_balancing_with_dependencies(ray_start_cluster):
+@pytest.mark.parametrize("fast", [True, False])
+def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+    if fast and new_scheduler_enabled:
+        # Load-balancing on new scheduler can be inefficient if (task
+        # duration:heartbeat interval) is small enough.
+        pytest.skip()
+
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -106,31 +113,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
-        return ray.worker.global_worker.node.unique_id
-
-    # This object will be local to one of the raylets. Make sure
-    # this doesn't prevent tasks from being scheduled on other raylets.
-    x = ray.put(np.zeros(1000000))
-
-    attempt_to_load_balance(f, [x], 100, num_nodes, 25)
-
-
-def test_load_balancing_with_dependencies_disable_light_heartbeat(
-        ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets in a
-    # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    cluster.add_node(
-        _system_config={"light_heartbeat_enabled": False}, num_cpus=1)
-    for _ in range(num_nodes - 1):
-        cluster.add_node(num_cpus=1)
-    ray.init(address=cluster.address)
-
-    @ray.remote
-    def f(x):
-        time.sleep(0.010)
+        if fast:
+            time.sleep(0.010)
+        else:
+            time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
