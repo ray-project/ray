@@ -15,11 +15,14 @@ from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
 from ray._raylet import GlobalStateAccessor
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
 
 import redis
 
@@ -245,12 +248,19 @@ class Monitor:
 
         # Handle messages from the subscription channels.
         while True:
+            self.update_raylet_map()
+            self.update_load_metrics()
+            status = {"load_metrics_report": self.load_metrics.summary()._asdict()}
+
             # Process autoscaling actions
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
-                self.update_raylet_map()
-                self.update_load_metrics()
                 self.autoscaler.update()
+                status["autoscaler_report"] = self.autoscaler.summary()._asdict()
+
+            as_json = json.dumps(status)
+            if _internal_kv_initialized():
+                _internal_kv_put(DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
 
             # Process a round of messages.
             self.process_messages()
