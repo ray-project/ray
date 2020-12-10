@@ -107,7 +107,6 @@ def rnn_preprocess_train_batch(train_batch, max_seq_len):
 
 
 def attention_preprocess_train_batch(train_batch, max_seq_len):
-    TODO: check with tf version rn
     # Should be the same as for RecurrentNets, but with dynamic-max=False.
     assert "state_in_0" in train_batch
     state_keys = []
@@ -117,9 +116,10 @@ def attention_preprocess_train_batch(train_batch, max_seq_len):
             state_keys.append(k)
         elif not k.startswith(
                 "state_out_"
-        ) and k != "infos" and k != "seq_lens" and isinstance(v, np.ndarray):
+        ) and k != "infos" and k != "seq_lens" and isinstance(
+            v, np.ndarray):
             feature_keys_.append(k)
-
+    
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
             episode_ids=None,
@@ -130,6 +130,7 @@ def attention_preprocess_train_batch(train_batch, max_seq_len):
             max_seq_len=max_seq_len,
             dynamic_max=False,
             seq_lens=train_batch.seq_lens,
+            states_already_reduced_to_init=True,
             shuffle=False)
     for i, k in enumerate(feature_keys_):
         train_batch[k] = feature_sequences[i]
