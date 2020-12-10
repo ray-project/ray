@@ -1233,16 +1233,16 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 def test_create_placement_group_during_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=20)
+    cluster.add_node(num_cpus=200)
     cluster.wait_for_nodes()
 
     # Create placement groups during gcs server restart.
     placement_groups = []
     for i in range(0, 100):
         placement_group = ray.util.placement_group([{
-            "CPU": 0.1
+            "CPU": 1
         }, {
-            "CPU": 0.1
+            "CPU": 1
         }])
         placement_groups.append(placement_group)
 
