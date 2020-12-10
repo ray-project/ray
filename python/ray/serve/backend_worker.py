@@ -127,7 +127,7 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
                 *request_args,
                 **request_kwargs,
         ):
-            # Directly receive input data because it might contain an ObjectRef.
+            # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs,
                           request_metadata.request_context, request_metadata)
             return await self.backend.handle_request(query)
