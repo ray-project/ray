@@ -2,8 +2,8 @@ from libcpp.string cimport string as c_string
 
 from ray.includes.libcoreworker cimport CProfileEvent
 from ray.includes.libcoreworker cimport CCoreWorker
-from ray.includes.unique_ids cimport CNodeID
-from ray.includes.unique_ids cimport NodeID
+
+include "includes/unique_ids.pxi"
 
 import json
 import traceback
