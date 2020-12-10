@@ -4,13 +4,13 @@ from typing import Callable, Optional
 from ray.rllib.utils.framework import get_activation_fn, try_import_jax
 
 jax, flax = try_import_jax()
-nn = np = None
+nn = jnp = None
 if flax:
     import flax.linen as nn
-    import jax.numpy as np
+    import jax.numpy as jnp
 
 
-class SlimFC:
+class SlimFC(nn.Module if nn else object):
     """Simple JAX version of a fully connected layer."""
 
     def __init__(self,
@@ -35,28 +35,35 @@ class SlimFC:
                 use for initialization. If None, create a new random one.
             name (Optional[str]): An optional name for this layer.
         """
+        self.in_size = in_size
+        self.out_size = out_size
+        self.use_bias = use_bias
+        self.name = name
 
         # By default, use Glorot unform initializer.
         if initializer is None:
             initializer = flax.nn.initializers.xavier_uniform()
+        self.initializer = initializer
 
         self.prng_key = prng_key or jax.random.PRNGKey(int(time.time()))
         _, self.prng_key = jax.random.split(self.prng_key)
-        # Create the flax dense layer.
-        self._dense = nn.Dense(
-            out_size,
-            use_bias=use_bias,
-            kernel_init=initializer,
-            name=name,
-        )
-        # Initialize it.
-        dummy_in = jax.random.normal(
-            self.prng_key, (in_size, ), dtype=np.float32)
-        _, self.prng_key = jax.random.split(self.prng_key)
-        self._params = self._dense.init(self.prng_key, dummy_in)
 
         # Activation function (if any; default=None (linear)).
         self.activation_fn = get_activation_fn(activation_fn, "jax")
+
+    def setup(self):
+        # Create the flax dense layer.
+        self._dense = nn.Dense(
+            self.out_size,
+            use_bias=self.use_bias,
+            kernel_init=self.initializer,
+            name=self.name,
+        )
+        # Initialize it.
+        dummy_in = jax.random.normal(
+            self.prng_key, (self.in_size, ), dtype=jnp.float32)
+        _, self.prng_key = jax.random.split(self.prng_key)
+        self._params = self._dense.init(self.prng_key, dummy_in)
 
     def __call__(self, x):
         out = self._dense.apply(self._params, x)

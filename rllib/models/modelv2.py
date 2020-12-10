@@ -280,7 +280,7 @@ class ModelV2:
 
         Args:
             as_dict(bool): Whether variables should be returned as dict-values
-                (using descriptive keys).
+                (using descriptive str keys).
 
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
