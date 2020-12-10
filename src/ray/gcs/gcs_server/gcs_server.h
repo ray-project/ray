@@ -23,6 +23,7 @@
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 namespace gcs {
@@ -131,6 +132,8 @@ class GcsServer {
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
+  /// Node manager client pool
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The gcs node manager.
