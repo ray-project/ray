@@ -145,13 +145,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdateNodeRealtimeResources(const NodeID &node_id,
                                    const rpc::ResourcesData &heartbeat);
 
-  /// Update the placement group load information so that it will be reported through
-  /// heartbeat.
-  ///
-  /// \param placement_group_load placement group load protobuf.
-  void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
-
   std::string DebugString() const;
 
  private:
@@ -191,8 +184,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Gcs resource manager.
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   // Debug info.
   enum CountType {

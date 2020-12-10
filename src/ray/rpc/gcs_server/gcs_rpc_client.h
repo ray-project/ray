@@ -163,7 +163,6 @@ class GcsRpcClient {
 
   /// Report resource usage of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
-                             node_info_grpc_client_, )
 
   /// Get resource usage of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
