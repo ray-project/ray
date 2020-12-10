@@ -16,14 +16,8 @@ import ray.utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
-from ray.test_utils import (
-    wait_for_condition,
-    SignalActor,
-    init_error_pubsub,
-    get_error_message,
-    Semaphore,
-    new_scheduler_enabled,
-)
+from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
+                            get_error_message, Semaphore)
 
 
 def test_failed_task(ray_start_regular, error_pubsub):

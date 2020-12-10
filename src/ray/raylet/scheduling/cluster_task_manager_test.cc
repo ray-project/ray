@@ -114,9 +114,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
                         node_info_calls_++;
                         return node_info_[node_id];
                       },
-                      [this](const Task &task) {
-                        announce_infeasible_task_calls_++;
-                      }) {}
+                      [this](const Task &task) { announce_infeasible_task_calls_++; }) {}
 
   void SetUp() {}
 
@@ -525,9 +523,41 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   // Create an infeasible task.
   Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
   rpc::RequestWorkerLeaseReply reply;
-  task_manager_.QueueTask(task, &reply, nullptr);
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
+
+  // Infeasible warning shouldn't be reprinted when the previous task is still infeasible
+  // after adding a new node.
+  AddNode(NodeID::FromRandom(), 8);
+  task_manager_.TryLocalInfeasibleTaskScheduling();
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  // Task shouldn't be scheduled yet.
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+  ASSERT_FALSE(*callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // Now we have a node that is feasible to schedule the task. Make sure the infeasible
+  // task is spillbacked properly.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 12);
+  task_manager_.TryLocalInfeasibleTaskScheduling();
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Make sure nothing happens locally.
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+  ASSERT_TRUE(*callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  // Make sure the spillback callback is called.
+  ASSERT_EQ(reply.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
 }
 
 int main(int argc, char **argv) {

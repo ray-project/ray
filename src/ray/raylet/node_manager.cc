@@ -208,7 +208,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
                failed_nodes_cache_.count(owner_node_id) > 0);
     };
-    auto announce_infeasible_task = [this] (const Task &task) {
+    auto announce_infeasible_task = [this](const Task &task) {
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
@@ -857,11 +857,13 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
     if (new_scheduler_enabled_) {
       new_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
                                                       new_resource_capacity);
+      // It means either the local node resource information has been changed or there are
+      // new nodes added to the cluster. Try scheduling infeasible tasks.
+      cluster_task_manager_->TryLocalInfeasibleTaskScheduling();
     }
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
 
-  // SANG-TODO Update this method.
   if (node_id == self_node_id_) {
     // The resource update is on the local node, check if we can reschedule tasks.
     TryLocalInfeasibleTaskScheduling();
@@ -900,6 +902,7 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
 void NodeManager::TryLocalInfeasibleTaskScheduling() {
   RAY_LOG(DEBUG) << "[LocalResourceUpdateRescheduler] The resource update is on the "
                     "local node, check if we can reschedule tasks";
+
   SchedulingResources &new_local_resources = cluster_resource_map_[self_node_id_];
 
   // SpillOver locally to figure out which infeasible tasks can be placed now
@@ -3263,8 +3266,7 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
   // to have this in ray_config_def.h because the use case is very narrow, and we don't
   // want to expose this anywhere.
   double INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER = 0.0101;
-  if (it != resources_map.end() &&
-      it->second == INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER) {
+  if (it != resources_map.end() && it->second == INFEASIBLE_TASK_SUPPRESS_MAGIC_NUMBER) {
     suppress_warning = true;
   }
 
@@ -3278,9 +3280,9 @@ void NodeManager::PublishInfeasibleTaskError(const Task &task) const {
         << " cannot be scheduled right now. It requires "
         << task.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << " for placement, however the cluster currently cannot provide the requested "
-            "resources. The required resources may be added as autoscaling takes place "
-            "or placement groups are scheduled. Otherwise, consider reducing the "
-            "resource requirements of the task.";
+           "resources. The required resources may be added as autoscaling takes place "
+           "or placement groups are scheduled. Otherwise, consider reducing the "
+           "resource requirements of the task.";
     auto error_data_ptr =
         gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
                                   task.GetTaskSpecification().JobId());

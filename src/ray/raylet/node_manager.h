@@ -666,7 +666,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
 
-  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and print.
+  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
+  /// print.
   ///
   /// \param task Task that is infeasible
   void PublishInfeasibleTaskError(const Task &task) const;

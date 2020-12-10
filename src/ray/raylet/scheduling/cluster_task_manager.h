@@ -117,6 +117,10 @@ class ClusterTaskManager {
 
   std::string DebugString() const;
 
+  /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
+  /// becomes feasible to schedule.
+  void TryLocalInfeasibleTaskScheduling();
+
  private:
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
