@@ -70,7 +70,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
     nodes_.emplace(node_id, node_resources);
   } else {
     // This node exists, so update its resources.
-    RemoteNode &node = it->second;
+    Node &node = it->second;
     SetPredefinedResources(node_resources, &node.last_reported);
     SetCustomResources(node_resources.custom_resources, &node.last_reported.custom_resources);
     SetPredefinedResources(node_resources, &node.local_view);
@@ -792,15 +792,21 @@ std::vector<double> ClusterResourceScheduler::SubtractGPUResourceInstances(
 }
 
 bool ClusterResourceScheduler::AllocateLocalTaskResources(
-    const std::unordered_map<std::string, double> &task_resources,
+    const TaskRequest &task_request,
     std::shared_ptr<TaskResourceInstances> task_allocation) {
-  RAY_CHECK(task_allocation != nullptr);
-  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
   if (AllocateTaskResourceInstances(task_request, task_allocation)) {
     UpdateLocalAvailableResourcesFromResourceInstances();
     return true;
   }
   return false;
+}
+
+bool ClusterResourceScheduler::AllocateLocalTaskResources(
+    const std::unordered_map<std::string, double> &task_resources,
+    std::shared_ptr<TaskResourceInstances> task_allocation) {
+  RAY_CHECK(task_allocation != nullptr);
+  TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
+  return AllocateLocalTaskResources(task_request, task_allocation);
 }
 
 std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) {
@@ -817,15 +823,13 @@ std::string ClusterResourceScheduler::GetResourceNameFromIndex(int64_t res_idx) 
   }
 }
 
-void ClusterResourceScheduler::AllocateRemoteTaskResources(
+bool ClusterResourceScheduler::AllocateRemoteTaskResources(
     const std::string &node_string,
     const std::unordered_map<std::string, double> &task_resources) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
   auto node_id = string_to_int_map_.Insert(node_string);
   RAY_CHECK(node_id != local_node_id_);
-  if (!SubtractRemoteNodeAvailableResources(node_id, task_request)) {
-    RAY_LOG(INFO) << "Tried to allocate resources on a remote node that are no longer available";
-  }
+  return SubtractRemoteNodeAvailableResources(node_id, task_request);
 }
 
 void ClusterResourceScheduler::FreeLocalTaskResources(
@@ -877,9 +881,11 @@ void ClusterResourceScheduler::Heartbeat(
     }
   }
 
-  for (auto &node : nodes_) {
-    if (node.first != local_node_id_) {
-      node.second.local_view = node.second.last_reported;
+  if (light_heartbeat_enabled) {
+    for (auto &node : nodes_) {
+      if (node.first != local_node_id_) {
+        node.second.local_view = node.second.last_reported;
+      }
     }
   }
 }

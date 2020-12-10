@@ -314,12 +314,18 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  bool AllocateLocalTaskResources(
+      const TaskRequest &task_request,
+      std::shared_ptr<TaskResourceInstances> task_allocation);
+
   /// Subtract the resources required by a given task request (task_req) from a given
   /// remote node.
   ///
   /// \param node_id Remote node whose resources we allocate.
   /// \param task_req Task for which we allocate resources.
-  void AllocateRemoteTaskResources(
+  /// \return True if remote node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateRemoteTaskResources(
       const std::string &node_id,
       const std::unordered_map<std::string, double> &task_resources);
 
@@ -349,12 +355,15 @@ class ClusterResourceScheduler {
   std::string DebugString() const;
 
  private:
-  struct RemoteNode {
-    RemoteNode(const NodeResources &resources)
+  struct Node {
+    Node(const NodeResources &resources)
       : last_reported(resources), local_view(resources) {}
 
     /// The resource information according to the last heartbeat reported by
     /// this node.
+    /// NOTE(swang): For the local node, this field should be ignored because
+    /// we do not receive heartbeats from ourselves and the local view is
+    /// therefore always the most up-to-date.
     NodeResources last_reported;
     /// Our local view of the remote node's resources. This may be dirty
     /// because it includes any resource requests that we allocated to this
@@ -388,7 +397,7 @@ class ClusterResourceScheduler {
 
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, RemoteNode> nodes_;
+  absl::flat_hash_map<int64_t, Node> nodes_;
   /// Identifier of local node.
   int64_t local_node_id_;
   /// Resources of local node.
