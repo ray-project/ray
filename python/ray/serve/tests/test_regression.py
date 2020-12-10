@@ -2,10 +2,10 @@ import gc
 
 import numpy as np
 import requests
+import pytest
 
 import ray
 from ray.exceptions import GetTimeoutError
-import pytest
 from ray import serve
 from ray.test_utils import SignalActor
 
@@ -68,6 +68,7 @@ def test_backend_worker_memory_growth(serve_instance):
 
 def test_ref_in_handle_input(serve_instance):
     client = serve_instance
+    # https://github.com/ray-project/ray/issues/12593
 
     unblock_worker_signal = SignalActor.remote()
 
