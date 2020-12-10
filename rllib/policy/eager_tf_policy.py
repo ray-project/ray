@@ -313,13 +313,18 @@ def build_eager_tf_policy(name,
             # Callback handling.
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=postprocessed_batch)
-
+            # Get batch ready for multi-agent, if applicable.
+            if self.batch_divisibility_req > 1:
+                pad_batch_to_sequences_of_same_size(
+                    postprocessed_batch,
+                    shuffle=False,
+                    max_seq_len=self._max_seq_len,
+                    batch_divisibility_req=self.batch_divisibility_req)
             # Get batch ready for RNNs, if applicable.
-            pad_batch_to_sequences_of_same_size(
-                postprocessed_batch,
-                shuffle=False,
-                max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+            if getattr(self, "model", None):
+                postprocessed_batch = self.model.preprocess_train_batch(postprocessed_batch)
+            self._is_training = True
+            postprocessed_batch["is_training"] = True
             return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
@@ -332,12 +337,18 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def compute_gradients(self, samples):
+            # Get batch ready for multi-agent, if applicable.
+            if self.batch_divisibility_req > 1:
+                pad_batch_to_sequences_of_same_size(
+                    samples,
+                    shuffle=False,
+                    max_seq_len=self._max_seq_len,
+                    batch_divisibility_req=self.batch_divisibility_req)
             # Get batch ready for RNNs, if applicable.
-            pad_batch_to_sequences_of_same_size(
-                samples,
-                shuffle=False,
-                max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+            if getattr(self, "model", None):
+                samples = self.model.preprocess_train_batch(samples)
+            self._is_training = True
+            samples["is_training"] = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -369,7 +380,7 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
-            self._state_in = state_batches
+            self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -590,8 +601,6 @@ def build_eager_tf_policy(name,
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
-
-            self._is_training = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)

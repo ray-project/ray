@@ -5,6 +5,7 @@ from typing import Dict, List
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.models.utils import rnn_preprocess_train_batch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -107,6 +108,11 @@ class RecurrentNetwork(TFModelV2):
                 ]
         """
         raise NotImplementedError("You must implement this for a RNN model")
+
+    @override(ModelV2)
+    def preprocess_train_batch(self, train_batch):
+        return rnn_preprocess_train_batch(
+            train_batch, self.model_config["max_seq_len"])
 
 
 class LSTMWrapper(RecurrentNetwork):

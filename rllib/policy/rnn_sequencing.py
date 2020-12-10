@@ -88,12 +88,13 @@ def pad_batch_to_sequences_of_same_size(
 
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
-            batch[SampleBatch.EPS_ID],
-            batch[SampleBatch.UNROLL_ID],
-            batch[SampleBatch.AGENT_INDEX],
-            [batch[k] for k in feature_keys_],
-            [batch[k] for k in state_keys],
-            max_seq_len,
+            feature_columns=[batch[k] for k in feature_keys_],
+            state_columns=[batch[k] for k in state_keys],
+            episode_ids=batch[SampleBatch.EPS_ID],
+            unroll_ids=batch[SampleBatch.UNROLL_ID],
+            agent_indices=batch[SampleBatch.AGENT_INDEX],
+            seq_lens=batch.seq_lens,
+            max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
             shuffle=shuffle)
     for i, k in enumerate(feature_keys_):
@@ -157,19 +158,20 @@ def add_time_dimension(padded_inputs: TensorType,
         return torch.reshape(padded_inputs, new_shape)
 
 
-# NOTE: This function will be deprecated once chunks already come padded and
-#  correctly chopped from the _SampleCollector object (in time-major fashion
-#  or not). It is already no longer user iff `_use_trajectory_view_api` = True.
 @DeveloperAPI
-def chop_into_sequences(episode_ids,
-                        unroll_ids,
-                        agent_indices,
-                        feature_columns,
-                        state_columns,
-                        max_seq_len,
-                        dynamic_max=True,
-                        shuffle=False,
-                        _extra_padding=0):
+def chop_into_sequences(
+        *,
+        feature_columns,
+        state_columns,
+        max_seq_len,
+        episode_ids=None,
+        unroll_ids=None,
+        agent_indices=None,
+        dynamic_max=True,
+        shuffle=False,
+        seq_lens=None,
+        states_already_reduced_to_init=False,
+        _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
@@ -212,23 +214,24 @@ def chop_into_sequences(episode_ids,
         [2, 3, 1]
     """
 
-    prev_id = None
-    seq_lens = []
-    seq_len = 0
-    unique_ids = np.add(
-        np.add(episode_ids, agent_indices),
-        np.array(unroll_ids, dtype=np.int64) << 32)
-    for uid in unique_ids:
-        if (prev_id is not None and uid != prev_id) or \
-                seq_len >= max_seq_len:
+    if seq_lens is None:
+        prev_id = None
+        seq_lens = []
+        seq_len = 0
+        unique_ids = np.add(
+            np.add(episode_ids, agent_indices),
+            np.array(unroll_ids, dtype=np.int64) << 32)
+        for uid in unique_ids:
+            if (prev_id is not None and uid != prev_id) or \
+                    seq_len >= max_seq_len:
+                seq_lens.append(seq_len)
+                seq_len = 0
+            seq_len += 1
+            prev_id = uid
+        if seq_len:
             seq_lens.append(seq_len)
-            seq_len = 0
-        seq_len += 1
-        prev_id = uid
-    if seq_len:
-        seq_lens.append(seq_len)
-    assert sum(seq_lens) == len(unique_ids)
-    seq_lens = np.array(seq_lens, dtype=np.int32)
+        seq_lens = np.array(seq_lens, dtype=np.int32)
+    assert sum(seq_lens) == len(feature_columns[0])
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
@@ -252,18 +255,23 @@ def chop_into_sequences(episode_ids,
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
-        assert i == len(unique_ids), f
+        assert i == len(f), f
         feature_sequences.append(f_pad)
 
-    initial_states = []
-    for s in state_columns:
-        s = np.array(s)
-        s_init = []
-        i = 0
-        for len_ in seq_lens:
-            s_init.append(s[i])
-            i += len_
-        initial_states.append(np.array(s_init))
+    if states_already_reduced_to_init:
+        initial_states = state_columns
+    else:
+        initial_states = []
+        for s in state_columns:
+            # Skip unnecessary copy.
+            if not isinstance(s, np.ndarray):
+                s = np.array(s)
+            s_init = []
+            i = 0
+            for len_ in seq_lens:
+                s_init.append(s[i])
+                i += len_
+            initial_states.append(np.array(s_init))
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))

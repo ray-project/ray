@@ -238,15 +238,19 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        train_batch["is_training"] = is_training
+        input_dict = train_batch.copy()
+        input_dict["is_training"] = is_training
         states = []
         i = 0
-        while "state_in_{}".format(i) in train_batch:
-            states.append(train_batch["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        ret = self.__call__(train_batch, states, train_batch.get("seq_lens"))
-        del train_batch["is_training"]
+        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
         return ret
+
+    # TODO: (sven) Experimental method.
+    def preprocess_train_batch(self, train_batch):
+        return train_batch
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
@@ -313,29 +317,6 @@ class ModelV2:
                 format.
         """
         return self.time_major is True
-
-    # TODO: (sven) Experimental method.
-    def get_input_dict(self, sample_batch,
-                       index: int = -1) -> Dict[str, TensorType]:
-        if index < 0:
-            index = sample_batch.count - 1
-
-        input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
-            # Create batches of size 1 (single-agent input-dict).
-
-            # Index range.
-            if isinstance(index, tuple):
-                data = sample_batch[view_col][index[0]:index[1] + 1]
-                input_dict[view_col] = np.array([data])
-            # Single index.
-            else:
-                input_dict[view_col] = sample_batch[view_col][index:index + 1]
-
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
 
 
 class NullContextManager:

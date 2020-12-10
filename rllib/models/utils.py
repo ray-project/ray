@@ -1,3 +1,7 @@
+import numpy as np
+
+from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 
@@ -65,3 +69,38 @@ def get_initializer(name, framework="tf"):
 
     raise ValueError("Unknown activation ({}) for framework={}!".format(
         name, framework))
+
+
+def rnn_preprocess_train_batch(train_batch, max_seq_len):
+    assert "state_in_0" in train_batch
+    state_keys = []
+    feature_keys_ = []
+    for k, v in train_batch.items():
+        if k.startswith("state_in_"):
+            state_keys.append(k)
+        elif not k.startswith("state_out_") and k != "infos" and \
+                isinstance(v, np.ndarray):
+            feature_keys_.append(k)
+
+    states_already_reduced_to_init = \
+        len(train_batch["state_in_0"]) < len(train_batch["obs"])
+
+    feature_sequences, initial_states, seq_lens = \
+        chop_into_sequences(
+            feature_columns=[train_batch[k] for k in feature_keys_],
+            state_columns=[train_batch[k] for k in state_keys],
+            max_seq_len=max_seq_len,
+            episode_ids=train_batch.get(SampleBatch.EPS_ID),
+            unroll_ids=train_batch.get(SampleBatch.UNROLL_ID),
+            agent_indices=train_batch.get(SampleBatch.AGENT_INDEX),
+            dynamic_max=True,
+            shuffle=False,
+            seq_lens=getattr(train_batch, "seq_lens", train_batch.get("seq_lens")),
+            states_already_reduced_to_init=states_already_reduced_to_init,
+        )
+    for i, k in enumerate(feature_keys_):
+        train_batch[k] = feature_sequences[i]
+    for i, k in enumerate(state_keys):
+        train_batch[k] = initial_states[i]
+    train_batch["seq_lens"] = seq_lens
+    return train_batch
