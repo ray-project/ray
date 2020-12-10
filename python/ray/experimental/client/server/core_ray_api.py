@@ -56,6 +56,9 @@ class CoreRayAPI(APIImpl):
     def cancel(self, obj, *, force=False, recursive=True):
         return ray.cancel(obj, force=force, recursive=recursive)
 
+    def is_initialized(self) -> bool:
+        return ray.is_initialized()
+
     # Allow for generic fallback to ray.* in remote methods. This allows calls
     # like ray.nodes() to be run in remote functions even though the client
     # doesn't currently support them.

@@ -41,6 +41,7 @@ class Worker:
             metadata: additional metadata passed in the grpc request headers.
         """
         self.metadata = metadata
+        self.channel = None
         if stub is None:
             if secure:
                 credentials = grpc.ssl_channel_credentials()
@@ -151,7 +152,9 @@ class Worker:
         return ClientObjectRef(ticket.return_id)
 
     def close(self):
-        self.channel.close()
+        self.server = None
+        if self.channel:
+            self.channel.close()
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
@@ -170,16 +173,19 @@ class Worker:
         term = ray_client_pb2.TerminateRequest(task_object=term_object)
         self.server.Terminate(term)
 
-    def get_cluster_info(self,
-                         type: ray_client_pb2.ClusterInfoType.TypeEnum,
-                         client_id: Optional[bytes] = None):
+    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        if client_id is not None:
-            req.client_id = client_id
         resp = self.server.ClusterInfo(req)
         if resp.WhichOneof("response_type") == "id":
             return resp.id
         elif resp.WhichOneof("response_type") == "resource_table":
             return resp.resource_table.table
-        return json.loads(resp.debug_table_json)
+        return json.loads(resp.json)
+
+    def is_initialized(self) -> bool:
+        if self.server is not None:
+            return self.get_cluster_info(ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+        return False
+
+

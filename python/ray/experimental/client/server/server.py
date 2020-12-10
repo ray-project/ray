@@ -30,9 +30,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
         resp.type = request.type
-        if request.type == ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID:
-            resp.id = ray.state.current_node_id()
-        elif request.type == ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES:
+        if request.type == ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES:
             resources = ray.cluster_resources()
             # Normalize resources into floats
             # (the function may return values that are ints)
@@ -49,32 +47,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(
                     table=float_resources))
         else:
-            resp.debug_table_json = self._return_debug_cluster_info(
-                request, context)
+            resp.json = self._return_debug_cluster_info(request, context)
         return resp
 
     def _return_debug_cluster_info(self, request, context=None) -> str:
         data = None
-        if request.type == ray_client_pb2.ClusterInfoType.JOBS:
-            data = ray.jobs()
-        elif request.type == ray_client_pb2.ClusterInfoType.NODES:
+        if request.type == ray_client_pb2.ClusterInfoType.NODES:
             data = ray.nodes()
-        elif request.type == ray_client_pb2.ClusterInfoType.WORKERS:
-            data = ray.state.workers()
-        elif request.type == ray_client_pb2.ClusterInfoType.NODE_IDS:
-            data = ray.state.node_ids()
-        elif request.type == ray_client_pb2.ClusterInfoType.ACTORS:
-            if len(request.client_id) != 0:
-                actor = self.actor_refs[request.client_id]
-                data = ray.actors(actor._actor_id.hex())
-            else:
-                data = ray.actors()
-        elif request.type == ray_client_pb2.ClusterInfoType.OBJECTS:
-            if len(request.client_id) != 0:
-                ref = cloudpickle.loads(request.client_id)
-                data = ray.objects(ref.binary().hex())
-            else:
-                data = ray.objects()
+        elif request.type == ray_client_pb2.ClusterInfoType.IS_INITIALIZED:
+            data = ray.is_initialized()
         else:
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)

@@ -173,6 +173,15 @@ class ClientAPI(APIImpl):
         return self.worker.terminate_task(obj, force, recursive)
 
     # Various metadata methods for the client that are defined in the protocol.
+    def is_initialized(self) -> bool:
+        """ True if our client is connected, and if the server is initialized.
+
+        Returns:
+            A boolean determining if the client is connected and
+            server initialized.
+        """
+        return self.worker.is_initialized()
+
     def nodes(self):
         """Get a list of the nodes in the cluster (for debugging only).
 
@@ -182,45 +191,11 @@ class ClientAPI(APIImpl):
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.NODES)
 
-    def actors(self, actor_id: Optional[str] = None):
-        """Fetch actor info for one or more actor IDs (for debugging only).
-
-        Args:
-            actor_id: A hex string of the actor ID to fetch information about. If
-                this is None, then all actor information is fetched.
-
-        Returns:
-            Information about the actors.
-        """
-        client_id = None
-        if actor_id is not None:
-            client_id = bytes.fromhex(actor_id)
-
-        return self.worker.get_cluster_info(
-            ray_client_pb2.ClusterInfoType.ACTORS, client_id=client_id)
-
-    def objects(self, object_ref: Optional[str] = None):
-        """Fetch and parse the object table info for one or more object refs.
-
-        Args:
-            object_ref: An object ref to fetch information about. If this is None,
-                then the entire object table is fetched.
-
-        Returns:
-            Information from the object table.
-        """
-        client_id = None
-        if object_ref is not None:
-            client_id = bytes.fromhex(object_ref)
-
-        return self.worker.get_cluster_info(
-            ray_client_pb2.ClusterInfoType.OBJECTS, client_id=client_id)
-
     def cluster_resources(self):
         """Get the current total cluster resources.
 
-        Note that this information can grow stale as nodes are added to or removed
-        from the cluster.
+        Note that this information can grow stale as nodes are added to or
+        removed from the cluster.
 
         Returns:
             A dictionary mapping resource name to the total quantity of that
@@ -244,10 +219,6 @@ class ClientAPI(APIImpl):
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 
-    @property
-    def state(self) -> "ClientStateAPI":
-        return ClientStateAPI(self)
-
     def __getattr__(self, key: str):
         if not key.startswith("_"):
             raise NotImplementedError(
@@ -255,47 +226,3 @@ class ClientAPI(APIImpl):
                 "available within Ray remote functions and is not yet "
                 "implemented in the client API.".format(key))
         return self.__getattribute__(key)
-
-
-class ClientStateAPI:
-    """
-    Shim class to match the `ray.state` import path with an eqivalent client version.
-    """
-
-    def __init__(self, parent_api: ClientAPI):
-        self.api = parent_api
-
-    def current_node_id(self):
-        """Return the node id of the current node.
-
-        For example, "node:172.10.5.34". This can be used as a custom resource,
-        e.g., {node_id: 1} to reserve the whole node, or {node_id: 0.001} to
-        just force placement on the node.
-
-        Returns:
-            Id of the current node.
-        """
-        return self.api.worker.get_cluster_info(
-            ray_client_pb2.ClusterInfoType.CURRENT_NODE_ID)
-
-    def node_ids(self):
-        """Get a list of the node ids in the cluster.
-
-        For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
-        as custom resources, e.g., {node_id: 1} to reserve the whole node, or
-        {node_id: 0.001} to just force placement on the node.
-
-        Returns:
-            List of the node resource ids.
-        """
-        return self.api.worker.get_cluster_info(
-            ray_client_pb2.ClusterInfoType.NODE_IDS)
-
-    def workers(self):
-        """Get a list of the workers in the cluster.
-
-        Returns:
-            Information about the Ray workers in the cluster.
-        """
-        return self.api.worker.get_cluster_info(
-            ray_client_pb2.ClusterInfoType.WORKERS)

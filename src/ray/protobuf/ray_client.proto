@@ -79,15 +79,10 @@ message WaitResponse {
 message ClusterInfoType {
   // Namespace the enum, as it collides in the overall package.
   enum TypeEnum {
-    CURRENT_NODE_ID = 0;
-    JOBS = 1;
-    NODES = 2;
-    WORKERS = 3;
-    NODE_IDS = 4;
-    ACTORS = 5;
-    OBJECTS = 6;
-    CLUSTER_RESOURCES = 7;
-    AVAILABLE_RESOURCES = 8;
+    IS_INITIALIZED = 0;
+    NODES = 1;
+    CLUSTER_RESOURCES = 2;
+    AVAILABLE_RESOURCES = 3;
   }
 }
 
@@ -104,9 +99,8 @@ message ClusterInfoResponse {
   }
   ClusterInfoType.TypeEnum type = 1;
   oneof response_type {
-    string id = 2;
-    string debug_table_json = 3;
-    ResourceTable resource_table = 4;
+    string json = 2;
+    ResourceTable resource_table = 3;
   }
 }
 
