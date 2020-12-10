@@ -323,6 +323,8 @@ def build_eager_tf_policy(name,
             # Get batch ready for RNNs, if applicable.
             if getattr(self, "model", None):
                 postprocessed_batch = self.model.preprocess_train_batch(postprocessed_batch)
+            self._is_training = True
+            postprocessed_batch["is_training"] = True
             return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
@@ -345,6 +347,8 @@ def build_eager_tf_policy(name,
             # Get batch ready for RNNs, if applicable.
             if getattr(self, "model", None):
                 samples = self.model.preprocess_train_batch(samples)
+            self._is_training = True
+            samples["is_training"] = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -597,9 +601,6 @@ def build_eager_tf_policy(name,
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
-
-            self._is_training = True
-            samples["is_training"] = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)
