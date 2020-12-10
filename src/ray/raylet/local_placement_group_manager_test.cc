@@ -33,6 +33,22 @@ class OldLocalPlacementGroupManagerTest : public ::testing::Test {
 
   std::unique_ptr<raylet::OldLocalPlacementGroupManager> local_placement_group_manager_;
 
+  void InitLocalAvailableResource(std::unordered_map<std::string, double> &unit_resource) {
+    ResourceSet init_resourece(unit_resource);
+    cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
+    local_available_resources_ = ResourceIdSet(init_resourece);
+  }
+
+  void CheckRemainingResourceCorrect(ResourceSet &result_resource) {
+    auto &remaining_resource = local_placement_group_manager_->GetAllResourceSetWithoutId();
+    ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
+      << remaining_resource.GetAvailableResources().ToString() << " vs "
+      << result_resource.ToString();
+    ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
+      << local_available_resources_.ToResourceSet().ToString() << " vs "
+      << result_resource.ToString();
+  }
+
  protected:
   ResourceIdSet local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
@@ -46,9 +62,7 @@ TEST_F(OldLocalPlacementGroupManagerTest, TestPrepareBundleResource) {
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
-  ResourceSet init_resourece(unit_resource);
-  cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
-  local_available_resources_ = ResourceIdSet(init_resourece);
+  InitLocalAvailableResource(unit_resource);
   /// 3. prepare bundle resource.
   local_placement_group_manager_->PrepareBundle(bundle_spec);
   /// 4. check remaining resources is correct.
@@ -72,9 +86,7 @@ TEST_F(OldLocalPlacementGroupManagerTest, TestPrepareBundleWithInsufficientResou
   /// 2. init local available resource.
   std::unordered_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 1.0});
-  ResourceSet init_resourece(init_unit_resource);
-  cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
-  local_available_resources_ = ResourceIdSet(init_resourece);
+  InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare bundle resource.
   ASSERT_FALSE(local_placement_group_manager_->PrepareBundle(bundle_spec));
 }
@@ -86,9 +98,7 @@ TEST_F(OldLocalPlacementGroupManagerTest, TestCommitBundleResource) {
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
-  ResourceSet init_resourece(unit_resource);
-  cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
-  local_available_resources_ = ResourceIdSet(init_resourece);
+  InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
   local_placement_group_manager_->PrepareBundle(bundle_spec);
   local_placement_group_manager_->CommitBundle(bundle_spec);
@@ -114,9 +124,7 @@ TEST_F(OldLocalPlacementGroupManagerTest, TestReturnBundleResource) {
   unit_resource.insert({"CPU", 1.0});
   auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
   /// 2. init local available resource.
-  ResourceSet init_resourece(unit_resource);
-  cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
-  local_available_resources_ = ResourceIdSet(init_resourece);
+  InitLocalAvailableResource(unit_resource);
   /// 3. prepare and commit bundle resource.
   local_placement_group_manager_->PrepareBundle(bundle_spec);
   local_placement_group_manager_->CommitBundle(bundle_spec);
@@ -144,9 +152,7 @@ TEST_F(OldLocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
   /// 2. init local available resource.
   std::unordered_map<std::string, double> init_unit_resource;
   init_unit_resource.insert({"CPU", 2.0});
-  ResourceSet init_resourece(init_unit_resource);
-  cluster_resource_map_[self_node_id_] = SchedulingResources(init_resourece);
-  local_available_resources_ = ResourceIdSet(init_resourece);
+  InitLocalAvailableResource(init_unit_resource);
   /// 3. prepare and commit two bundle resource.
   local_placement_group_manager_->PrepareBundle(first_bundle_spec);
   local_placement_group_manager_->PrepareBundle(second_bundle_spec);
@@ -189,6 +195,61 @@ TEST_F(OldLocalPlacementGroupManagerTest, TestMultipleBundlesCommitAndReturn) {
   ASSERT_EQ(1, local_available_resources_.ToResourceSet().IsEqual(result_resource))
       << local_available_resources_.ToResourceSet().ToString() << " vs "
       << result_resource.ToString();
+}
+
+TEST_F(OldLocalPlacementGroupManagerTest, TestIdempotencyWithMultiPrepare) {
+  // 1. create one bundle spec.
+  auto group_id = PlacementGroupID::FromRandom();
+  std::unordered_map<std::string, double> unit_resource;
+  unit_resource.insert({"CPU", 1.0});
+  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
+  /// 2. init local available resource.
+  std::unordered_map<std::string, double> available_resource = {std::make_pair("CPU", 3.0)}; 
+  InitLocalAvailableResource(available_resource);
+  /// 3. prepare bundle resource 10 times.
+  for (int i = 0; i < 10; i++) {
+    local_placement_group_manager_->PrepareBundle(bundle_spec);
+  }
+  /// 4. check remaining resources is correct.
+  std::unordered_map<std::string, double> result_resource_map = {std::make_pair("CPU", 2.0)};
+  ResourceSet result_resource(result_resource_map);
+  CheckRemainingResourceCorrect(result_resource);
+}
+
+TEST_F(OldLocalPlacementGroupManagerTest, TestIdempotencyWithRandomOrder) {
+  // 1. create one bundle spec.
+  auto group_id = PlacementGroupID::FromRandom();
+  std::unordered_map<std::string, double> unit_resource;
+  unit_resource.insert({"CPU", 1.0});
+  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
+  /// 2. init local available resource.
+  std::unordered_map<std::string, double> available_resource = {std::make_pair("CPU", 3.0)}; 
+  InitLocalAvailableResource(available_resource);
+  /// 3. prepare bundle -> commit bundle -> prepare bundle.
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
+  local_placement_group_manager_->CommitBundle(bundle_spec);
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
+  /// 4. check remaining resources is correct.
+  std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
+                                              "CPU_group_1_" + group_id.Hex(),
+                                              "CPU"};
+  std::vector<double> resource_capacity = {1.0, 1.0, 2.0};
+  ResourceSet result_resource(resource_labels, resource_capacity);
+  CheckRemainingResourceCorrect(result_resource);
+  local_placement_group_manager_->ReturnBundle(bundle_spec);
+  // 5. prepare bundle -> commit bundle -> commit bundle.
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
+  local_placement_group_manager_->CommitBundle(bundle_spec);
+  local_placement_group_manager_->CommitBundle(bundle_spec);
+  // 6. check remaining resources is correct.
+  CheckRemainingResourceCorrect(result_resource);
+  local_placement_group_manager_->ReturnBundle(bundle_spec);
+  // 7. prepare bundle -> return bundle -> commit bundle.
+  local_placement_group_manager_->PrepareBundle(bundle_spec);
+  local_placement_group_manager_->ReturnBundle(bundle_spec);
+  local_placement_group_manager_->CommitBundle(bundle_spec);
+  result_resource = ResourceSet(available_resource);
+  CheckRemainingResourceCorrect(result_resource);
 }
 
 }  // namespace ray

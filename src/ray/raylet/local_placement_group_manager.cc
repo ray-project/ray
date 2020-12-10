@@ -77,8 +77,6 @@ bool OldLocalPlacementGroupManager::PrepareBundle(
 }
 
 void OldLocalPlacementGroupManager::CommitBundle(const BundleSpecification &bundle_spec) {
-  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
-  // once retry is implemented.
   const auto &bundle_id = bundle_spec.BundleId();
   auto it = bundle_state_map_.find(bundle_id);
   // When bundle is committed, it should've been prepared already.
@@ -88,6 +86,12 @@ void OldLocalPlacementGroupManager::CommitBundle(const BundleSpecification &bund
     RAY_LOG(INFO) << "The bundle has been cancelled. Skip it directly. Bundle info is "
                   << bundle_spec.DebugString();
     return;
+  } else {
+    // Ignore request If the bundle state is already committed.
+    if (it->second->state == CommitState::COMMITTED) {
+      RAY_LOG(INFO) << "Duplicate committ bundle request, skip it directly.";
+      return;
+    }
   }
   const auto &bundle_state = it->second;
   bundle_state->state = CommitState::COMMITTED;
