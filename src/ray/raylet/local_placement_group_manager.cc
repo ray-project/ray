@@ -143,5 +143,4 @@ void OldLocalPlacementGroupManager::ReturnUnusedBundle(
 }
 
 }  // namespace raylet
-
 }  // namespace ray

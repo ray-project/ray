@@ -46,6 +46,12 @@ struct pair_hash {
 
 /// LocalPlacementGroupManagerInterface is responsible for handle the register bundle
 /// request from GCS.
+/// PrepareBundle is responsible for reserving the necessary resources.
+/// CommitBundle is responsible for creating new custom resources.
+/// ReturnBundle is resonsible for return resource to resources view, note 
+/// it not responsible for killing workers. 
+/// ReturnUnusedBundle is responsible for release unused bundle and ruturn resource to
+/// resources view.
 class LocalPlacementGroupManagerInterface {
  public:
   /// Lock the required resources from local available resources. Note that this is phase
@@ -127,5 +133,4 @@ class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface
 };
 
 }  // namespace raylet
-
 }  // end namespace ray

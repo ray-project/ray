@@ -868,9 +868,9 @@ cc_test(
     srcs = ["src/ray/raylet/local_placement_group_manager_test.cc"],
     copts = COPTS,
     deps = [
+        "gcs_test_util_lib",
         "ray_common",
         "raylet_lib",
-        "gcs_test_util_lib", 
         "@com_google_googletest//:gtest_main",
     ],
 )
