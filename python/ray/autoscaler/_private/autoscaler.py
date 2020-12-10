@@ -222,13 +222,14 @@ class StandardAutoscaler:
         if completed:
             for node_id in completed:
                 if self.updaters[node_id].exitcode == 0:
+                    ip = self.provider.internal_ip(node_id)
                     self.num_successful_updates[node_id] += 1
+                    # Mark the node as active to prevent the node recovery logic
+                    # immediately trying to restart Ray on the new node.
+                    self.load_metrics.mark_active(ip)
                 else:
                     self.num_failed_updates[node_id] += 1
                 del self.updaters[node_id]
-            # Mark the node as active to prevent the node recovery logic
-            # immediately trying to restart Ray on the new node.
-            self.load_metrics.mark_active(self.provider.internal_ip(node_id))
             nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -428,15 +429,14 @@ class StandardAutoscaler:
         if not self.can_update(node_id):
             return
         key = self.provider.internal_ip(node_id)
-        if key not in self.load_metrics.last_heartbeat_time_by_ip:
-            self.load_metrics.last_heartbeat_time_by_ip[key] = now
-        last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
-        delta = now - last_heartbeat_time
-        if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
-            return
+        if key in self.load_metrics.last_heartbeat_time_by_ip:
+            last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
+            delta = now - last_heartbeat_time
+            if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
+                return
         logger.warning("StandardAutoscaler: "
-                       "{}: No heartbeat in {}s, "
-                       "restarting Ray to recover...".format(node_id, delta))
+                       "{}: No recent heartbeat, "
+                       "restarting Ray to recover...".format(node_id))
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -547,6 +547,10 @@ class StandardAutoscaler:
             return False
         if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return False
+        status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
+        if status != STATUS_UNINITIALIZED:
+            return False
+
         logger.debug(f"{node_id} is not being updated and "
                      "passes config check (can_update=True).")
         return True
@@ -577,7 +581,7 @@ class StandardAutoscaler:
         string = self.info_string()
         logger.info(string)
 
-    def summary(self, all_node_ids: List[str] = None):
+    def summary(self):
         """Summarizes the active, pending, and failed node launches.
 
         An active node is a node whose raylet is actively reporting heartbeats.
@@ -587,17 +591,10 @@ class StandardAutoscaler:
 
         If a node is not pending or active, it is failed.
 
-        Params:
-            all_node_ids (List[str]): The result of
-                `self.provider.non_terminated_nodes({})`. If not provided,
-                this function will perform an API call to get that
-                information.
-
         Returns:
             (AutoscalerSummary) The summary.
         """
-        if all_node_ids is None:
-            all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
+        all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
 
         active_nodes = Counter()
         pending_nodes = []
@@ -644,8 +641,7 @@ class StandardAutoscaler:
     def info_string(self):
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
-        return format_info_string
-
+        return format_info_string(lm_summary, autoscaler_summary)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
@@ -714,6 +710,7 @@ Usage:
 Demands:
 {demand_report}"""
     return formatted_output
+
 
 def format_info_string_no_node_types(lm_summary):
     header = "=" * 8 + f"Autoscaler status: {datetime.now()}" + "=" * 8

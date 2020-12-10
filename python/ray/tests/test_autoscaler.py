@@ -698,7 +698,11 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
 
@@ -747,7 +751,11 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
 

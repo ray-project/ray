@@ -250,17 +250,21 @@ class Monitor:
         while True:
             self.update_raylet_map()
             self.update_load_metrics()
-            status = {"load_metrics_report": self.load_metrics.summary()._asdict()}
+            status = {
+                "load_metrics_report": self.load_metrics.summary()._asdict()
+            }
 
             # Process autoscaling actions
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
                 self.autoscaler.update()
-                status["autoscaler_report"] = self.autoscaler.summary()._asdict()
+                status[
+                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
 
             as_json = json.dumps(status)
             if _internal_kv_initialized():
-                _internal_kv_put(DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
 
             # Process a round of messages.
             self.process_messages()

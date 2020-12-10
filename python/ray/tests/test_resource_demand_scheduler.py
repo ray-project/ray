@@ -1184,6 +1184,8 @@ class AutoscalingTest(unittest.TestCase):
             config_path,
             lm,
             max_failures=0,
+            max_launch_batch=1,
+            max_concurrent_launches=10,
             process_runner=runner,
             update_interval_s=0)
         assert len(self.provider.non_terminated_nodes({})) == 1
@@ -1191,6 +1193,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
         for ip in self.provider.non_terminated_node_ips({}):
+            print("SETTING LM FOR ", ip)
             lm.update(ip, {"CPU": 2}, {"CPU": 0}, {})
 
         lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {})
@@ -1202,14 +1205,15 @@ class AutoscalingTest(unittest.TestCase):
                         TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
                     })) == 3:
                 break
-            time.sleep(0.1)
 
         # After this section, the p2.xlarge is now in the setup process.
+        runner.ready_to_run.clear()
+
         lm.update(
             head_ip, {"CPU": 16}, {"CPU": 1}, {}, waiting_bundles=[{
                 "GPU": 1
             }])
-        runner.ready_to_run.clear()
+
         autoscaler.update()
         self.waitForNodes(4)
 
@@ -1231,7 +1235,7 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary.active_nodes["m4.large"] == 2
         assert summary.active_nodes["m4.4xlarge"] == 1
-        assert len(summary.active_nodes) == 2
+        assert len(summary.active_nodes) == 2, summary.active_nodes
 
         assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge")]
         assert summary.pending_launches == {"m4.16xlarge": 2}
@@ -1277,7 +1281,8 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: "head",
-            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge"
+            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
         assert len(self.provider.non_terminated_nodes({})) == 1
@@ -1385,7 +1390,8 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: "head",
-            TAG_RAY_USER_NODE_TYPE: "p2.xlarge"
+            TAG_RAY_USER_NODE_TYPE: "p2.xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
         self.provider.finish_starting_nodes()
@@ -1423,7 +1429,8 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         self.provider.create_node({}, {
             TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
-            TAG_RAY_NODE_KIND: "head"
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         runner = MockProcessRunner()
         autoscaler = StandardAutoscaler(
