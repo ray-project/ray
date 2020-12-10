@@ -283,4 +283,3 @@ def encode_exception(exception) -> str:
 def decode_exception(data) -> Exception:
     data = base64.standard_b64decode(data)
     return cloudpickle.loads(data)
-

@@ -37,8 +37,8 @@ def test_get_ray_metadata(ray_start_regular_shared):
         actors_after = ray.actors()
         assert len(actors_after) == 2
         counter_info = ray.actors(counter._actor_id.hex())
-        assert (counter_info["Address"] ==
-               actors_after[counter_info["ActorID"]]["Address"])
+        assert (counter_info["Address"] == actors_after[counter_info[
+            "ActorID"]]["Address"])
 
         objects_before = ray.objects()
         # We put the Counter class as an object

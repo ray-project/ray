@@ -23,11 +23,13 @@ def _all_actors_dead(ray):
     def _all_actors_dead_internal():
         return all(actor["State"] == real_ray.gcs_utils.ActorTableData.DEAD
                    for actor in list(ray.actors().values()))
+
     return _all_actors_dead_internal
 
 
 def test_kill_actor_immediately_after_creation(ray_start_regular):
     with ray_start_client_server() as ray:
+
         @ray.remote
         class A:
             pass
@@ -43,6 +45,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_chain(ray_start_regular, use_force):
     with ray_start_client_server() as ray:
+
         @ray.remote
         class SignalActor:
             def __init__(self):
@@ -56,6 +59,7 @@ def test_cancel_chain(ray_start_regular, use_force):
             async def wait(self, should_wait=True):
                 if should_wait:
                     await self.ready_event.wait()
+
         signaler = SignalActor.remote()
 
         @ray.remote
