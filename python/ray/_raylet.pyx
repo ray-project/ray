@@ -54,6 +54,7 @@ from ray.includes.common cimport (
     CTaskType,
     CPlacementStrategy,
     CRayFunction,
+    CWorkerType,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -73,7 +74,6 @@ from ray.includes.common cimport (
 )
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorCheckpointID,
     CObjectID,
     CNodeID,
     CPlacementGroupID,
@@ -292,13 +292,14 @@ cdef prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             metadata = serialized_arg.metadata
+            metadata_fields = metadata.split(b",")
             if language != Language.PYTHON:
-                if metadata not in [
+                if metadata_fields[0] not in [
                         ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                         ray_constants.OBJECT_METADATA_TYPE_RAW,
                         ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE]:
                     raise Exception("Can't transfer {} data to {}".format(
-                        metadata, language))
+                        metadata_fields[0], language))
             size = serialized_arg.total_bytes
 
             # TODO(edoakes): any objects containing ObjectRefs are spilled to
@@ -334,6 +335,7 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
@@ -356,11 +358,6 @@ cdef execute_task(
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
-        worker.actor_checkpoint_info[actor_id] = (
-            ray.worker.ActorCheckpointInfo(
-                num_tasks_since_last_checkpoint=0,
-                last_checkpoint_timestamp=int(1000 * time.time()),
-                checkpoint_ids=[]))
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -460,7 +457,23 @@ cdef execute_task(
                 task_exception = True
                 try:
                     with ray.worker._changeproctitle(title, next_title):
+                        if debugger_breakpoint != b"":
+                            ray.util.pdb.set_trace(
+                                breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
+                        next_breakpoint = (
+                            ray.worker.global_worker.debugger_breakpoint)
+                        if next_breakpoint != b"":
+                            # If this happens, the user typed "remote" and
+                            # there were no more remote calls left in this
+                            # task. In that case we just exit the debugger.
+                            ray.experimental.internal_kv._internal_kv_put(
+                                "RAY_PDB_{}".format(next_breakpoint),
+                                "{\"exit_debugger\": true}")
+                            ray.experimental.internal_kv._internal_kv_del(
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
+                            )
+                            ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
                 except KeyboardInterrupt as e:
                     raise TaskCancelledError(
@@ -526,6 +539,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
@@ -535,7 +549,7 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_reference_ids, c_return_ids,
-                             returns)
+                             debugger_breakpoint, returns)
             except Exception:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -611,17 +625,19 @@ cdef c_vector[c_string] spill_objects_handler(
 
 
 cdef void restore_spilled_objects_handler(
+        const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
     with gil:
         urls = []
         size = object_urls.size()
         for i in range(size):
             urls.append(object_urls[i])
+        object_refs = VectorToObjectRefs(object_ids_to_restore)
         try:
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
-                external_storage.restore_spilled_objects(urls)
+                external_storage.restore_spilled_objects(object_refs, urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -630,6 +646,46 @@ cdef void restore_spilled_objects_handler(
             ray.utils.push_error_to_driver(
                 ray.worker.global_worker,
                 "restore_spilled_objects_error",
+                traceback.format_exc() + exception_str,
+                job_id=None)
+
+
+cdef void delete_spilled_objects_handler(
+        const c_vector[c_string]& object_urls,
+        CWorkerType worker_type) nogil:
+    with gil:
+        urls = []
+        size = object_urls.size()
+        for i in range(size):
+            urls.append(object_urls[i])
+        try:
+            # Get proctitle.
+            if <int> worker_type == <int> WORKER_TYPE_SPILL_WORKER:
+                original_proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE)
+                proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_DELETE)
+            elif <int> worker_type == <int> WORKER_TYPE_RESTORE_WORKER:
+                original_proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE)
+                proctitle = (
+                    ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE)
+            else:
+                assert False, ("This line shouldn't be reachable.")
+
+            # Delete objects.
+            with ray.worker._changeproctitle(
+                    proctitle,
+                    original_proctitle):
+                external_storage.delete_spilled_objects(urls)
+        except Exception:
+            exception_str = (
+                "An unexpected internal error occurred while the IO worker "
+                "was deleting spilled objects.")
+            logger.exception(exception_str)
+            ray.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "delete_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
 
@@ -742,6 +798,7 @@ cdef class CoreWorker:
         options.gc_collect = gc_collect
         options.spill_objects = spill_objects_handler
         options.restore_spilled_objects = restore_spilled_objects_handler
+        options.delete_spilled_objects = delete_spilled_objects_handler
         options.get_lang_stack = get_py_stack
         options.ref_counting_enabled = True
         options.is_local_mode = local_mode
@@ -1001,6 +1058,7 @@ cdef class CoreWorker:
                     PlacementGroupID placement_group_id,
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
+                    c_string debugger_breakpoint,
                     override_environment_variables):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1027,7 +1085,8 @@ cdef class CoreWorker:
                     &return_ids, max_retries,
                     c_pair[CPlacementGroupID, int64_t](
                         c_placement_group_id, placement_group_bundle_index),
-                    placement_group_capture_child_tasks)
+                    placement_group_capture_child_tasks,
+                    debugger_breakpoint)
 
             return VectorToObjectRefs(return_ids)
 
@@ -1129,6 +1188,18 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().
                 RemovePlacementGroup(c_placement_group_id))
+
+    def wait_placement_group_ready(self,
+                                   PlacementGroupID placement_group_id,
+                                   int32_t timeout_ms):
+        cdef CRayStatus status
+        cdef CPlacementGroupID cplacement_group_id = (
+            CPlacementGroupID.FromBinary(placement_group_id.binary()))
+        cdef int ctimeout_ms = timeout_ms
+        with nogil:
+            status = CCoreWorkerProcess.GetCoreWorker() \
+                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
+        return status.ok()
 
     def submit_actor_task(self,
                           Language language,
@@ -1360,8 +1431,16 @@ cdef class CoreWorker:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
                 data_sizes.push_back(serialized_object.total_bytes)
-                metadatas.push_back(
-                    string_to_buffer(serialized_object.metadata))
+                metadata = serialized_object.metadata
+                if ray.worker.global_worker.debugger_get_breakpoint:
+                    breakpoint = (
+                        ray.worker.global_worker.debugger_get_breakpoint)
+                    metadata += (
+                        b"," + ray_constants.OBJECT_METADATA_DEBUG_PREFIX +
+                        breakpoint.encode())
+                    # Reset debugging context of this worker.
+                    ray.worker.global_worker.debugger_get_breakpoint = b""
+                metadatas.push_back(string_to_buffer(metadata))
                 serialized_objects.append(serialized_object)
                 contained_ids.push_back(
                     ObjectRefsToVector(serialized_object.contained_object_refs)
@@ -1467,26 +1546,6 @@ cdef class CoreWorker:
             job_id.native(), error_type.encode("ascii"),
             error_message.encode("ascii"), timestamp))
 
-    def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef:
-            CActorCheckpointID checkpoint_id
-            CActorID c_actor_id = actor_id.native()
-
-        # PrepareActorCheckpoint will wait for raylet's reply, release
-        # the GIL so other Python threads can run.
-        with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker()
-                .PrepareActorCheckpoint(c_actor_id, &checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.Binary())
-
-    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
-                                             ActorCheckpointID checkpoint_id):
-        check_status(
-            CCoreWorkerProcess.GetCoreWorker()
-            .NotifyActorResumedFromCheckpoint(
-                actor_id.native(), checkpoint_id.native()))
-
     def set_resource(self, basestring resource_name,
                      double capacity, NodeID client_id):
         CCoreWorkerProcess.GetCoreWorker().SetResource(
@@ -1496,6 +1555,10 @@ cdef class CoreWorker:
     def force_spill_objects(self, object_refs):
         cdef c_vector[CObjectID] object_ids
         object_ids = ObjectRefsToVector(object_refs)
+        assert not RayConfig.instance().automatic_object_deletion_enabled(), (
+            "Automatic object deletion is not supported for"
+            "force_spill_objects yet. Please set"
+            "automatic_object_deletion_enabled: False in Ray's system config.")
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .SpillObjects(object_ids))
@@ -1525,9 +1588,12 @@ cdef void async_set_result(shared_ptr[CRayObject] obj,
             cpython.Py_DECREF(py_future)
             return
 
-        if isinstance(result, RayError):
+        if isinstance(result, RayTaskError):
             ray.worker.last_task_error_raise_time = time.time()
             py_future.set_exception(result.as_instanceof_cause())
+        elif isinstance(result, RayError):
+            # Directly raise exception for RayActorError
+            py_future.set_exception(result)
         else:
             py_future.set_result(result)
 

@@ -34,6 +34,9 @@ You can install the latest Ray wheels via the following command. These daily rel
 
 .. note:: ``ray install-nightly`` may not capture updated library dependencies. After running ``ray install-nightly``, consider running ``pip install ray[<library>]`` *without upgrading (via -U)* to update dependencies.
 
+
+.. note:: If you're currently on ``ray<=1.0.1.post1``, ``ray install-nightly`` will not install the most recent nightly wheels. Please use the links below instead.
+
 Alternatively, here are the links to the latest wheels (which are built for each commit on the
 master branch). To install these wheels, use the following ``pip`` command and wheels
 instead of the ones above:
@@ -132,7 +135,7 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
 .. note::
 
-  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local or single machine mode.
+  When you run ``pip install`` to install Ray, Java jars are installed as well. The above dependencies are only used to build your Java code and to run your code in local mode.
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 

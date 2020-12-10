@@ -70,7 +70,7 @@ class MockServer {
     node_info.set_node_manager_port(object_manager_port);
     node_info.set_object_manager_port(object_manager_port);
 
-    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info);
+    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info, nullptr);
     return status;
   }
 
@@ -146,9 +146,11 @@ class TestObjectManagerBase : public ::testing::Test {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
+    uint64_t retry_with_request_id = 0;
     std::shared_ptr<arrow::Buffer> data;
     RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata,
-                               metadata_size, &data));
+                               metadata_size, &retry_with_request_id, &data));
+    RAY_CHECK(retry_with_request_id == 0);
     RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }

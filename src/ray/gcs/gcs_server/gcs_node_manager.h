@@ -19,6 +19,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/client_call.h"
@@ -39,11 +40,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_failure_detector_io_service The event loop of node failure detector.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  /// when detecting the death of nodes.
+  /// \param gcs_resource_manager GCS resource manager.
   explicit GcsNodeManager(boost::asio::io_service &main_io_service,
                           boost::asio::io_service &node_failure_detector_io_service,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                          std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -64,6 +66,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void HandleReportHeartbeat(const rpc::ReportHeartbeatRequest &request,
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle report resource usage rpc come from raylet.
+  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+                                 rpc::ReportResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all resource usage rpc request.
+  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
+                                 rpc::GetAllResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get resource rpc request.
   void HandleGetResources(const rpc::GetResourcesRequest &request,
@@ -165,9 +177,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   // Update node realtime resources.
   void UpdateNodeRealtimeResources(const NodeID &node_id,
                                    const rpc::HeartbeatTableData &heartbeat);
-
-  /// Get cluster realtime resources.
-  const absl::flat_hash_map<NodeID, ResourceSet> &GetClusterRealtimeResources() const;
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
@@ -285,8 +294,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Cluster realtime resources.
-  absl::flat_hash_map<NodeID, ResourceSet> cluster_realtime_resources_;
+  /// Gcs resource manager.
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 

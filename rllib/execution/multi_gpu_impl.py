@@ -62,7 +62,7 @@ class LocalSyncParallelOptimizer:
         self.loss_inputs = input_placeholders + rnn_inputs
         self.build_graph = build_graph
 
-        # First initialize the shared loss network
+        # First initialize the shared loss network.
         with tf1.name_scope(TOWER_SCOPE_NAME):
             self._shared_loss = build_graph(self.loss_inputs)
         shared_ops = tf1.get_collection(
