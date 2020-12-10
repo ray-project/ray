@@ -318,27 +318,6 @@ class ModelV2:
         """
         return self.time_major is True
 
-    # TODO: (sven) Experimental method.
-    def get_input_dict(self, sample_batch,
-                       index: int = -1) -> Dict[str, TensorType]:
-        input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
-            # Create batches of size 1 (single-agent input-dict).
-
-            # Index range.
-            if isinstance(index, tuple):
-                data = sample_batch[view_col][index[0]:index[1] + 1]
-                input_dict[view_col] = np.array([data])
-            # Single index.
-            else:
-                idx = index if index >= 0 else len(sample_batch[view_col]) - 1
-                input_dict[view_col] = sample_batch[view_col][idx:idx + 1]
-
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
-
 
 class NullContextManager:
     """No-op context manager"""
