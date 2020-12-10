@@ -8,10 +8,13 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -167,6 +170,9 @@ def build_tf_policy(
         mixins (Optional[List[type]]): Optional list of any class mixins for
             the returned policy class. These mixins will be applied in order
             and will have higher precedence than the DynamicTFPolicy class.
+        view_requirements_fn (Callable[[Policy],
+            Dict[str, ViewRequirement]]): An optional callable to retrieve
+            additional train view requirements for this policy.
         get_batch_divisibility_req (Optional[Callable[[Policy], int]]):
             Optional callable that returns the divisibility requirement for
             sample batches. If None, will assume a value of 1.
@@ -203,6 +209,8 @@ def build_tf_policy(
                 if extra_action_fetches_fn is None:
                     policy._extra_action_fetches = {}
                 else:
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
                     policy._extra_action_fetches = extra_action_fetches_fn(
                         policy)
 
@@ -244,9 +252,16 @@ def build_tf_policy(
         @override(TFPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return base.optimizer(self)
+                optimizers = base.optimizer(self)
+            optimizers = force_list(optimizers)
+            if getattr(self, "exploration", None):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            return optimizers[0] if optimizers else None
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):

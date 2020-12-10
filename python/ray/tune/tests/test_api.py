@@ -2,6 +2,7 @@ from collections import Counter
 import shutil
 import tempfile
 import copy
+import numpy as np
 import os
 import time
 import unittest
@@ -1019,9 +1020,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
         diff = time.time() - start
         self.assertLess(diff, 9)
 
-    def testMetricCheckingEndToEnd(self):
-        from ray import tune
+    def testInfiniteTrials(self):
+        def train(config):
+            time.sleep(0.5)
+            tune.report(np.random.uniform(-10., 10.))
 
+        start = time.time()
+        out = tune.run(train, num_samples=-1, time_budget_s=10)
+        taken = time.time() - start
+
+        # Allow for init time overhead
+        self.assertLessEqual(taken, 20.)
+        self.assertGreaterEqual(len(out.trials), 0)
+
+        status = dict(Counter([trial.status for trial in out.trials]))
+        self.assertGreaterEqual(status["TERMINATED"], 1)
+        self.assertLessEqual(status.get("PENDING", 0), 1)
+
+    def testMetricCheckingEndToEnd(self):
         def train(config):
             tune.report(val=4, second=8)
 
@@ -1112,6 +1128,50 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertFalse(found)
 
 
+class SerializabilityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def tearDown(self):
+        if "RAY_PICKLE_VERBOSE_DEBUG" in os.environ:
+            del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
+
+    def testNotRaisesNonserializable(self):
+        import threading
+        lock = threading.Lock()
+
+        def train(config):
+            print(lock)
+            tune.report(val=4, second=8)
+
+        with self.assertRaisesRegex(TypeError, "RAY_PICKLE_VERBOSE_DEBUG"):
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+
+    def testRaisesNonserializable(self):
+        os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
+        import threading
+        lock = threading.Lock()
+
+        def train(config):
+            print(lock)
+            tune.report(val=4, second=8)
+
+        with self.assertRaises(TypeError) as cm:
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+        msg = cm.exception.args[0]
+        assert "RAY_PICKLE_VERBOSE_DEBUG" not in msg
+        assert "thread.lock" in msg
+
+
 class ShimCreationTest(unittest.TestCase):
     def testCreateScheduler(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}
@@ -1134,6 +1194,15 @@ class ShimCreationTest(unittest.TestCase):
                                                       **kwargs)
         real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
         assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
+
+    def testExtraParams(self):
+        kwargs = {"metric": "metric_foo", "mode": "min", "extra_param": "test"}
+
+        scheduler = "async_hyperband"
+        tune.create_scheduler(scheduler, **kwargs)
+
+        searcher_ax = "ax"
+        tune.create_searcher(searcher_ax, **kwargs)
 
 
 class ApiTestFast(unittest.TestCase):

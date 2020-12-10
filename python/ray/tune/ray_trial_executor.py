@@ -25,7 +25,7 @@ from ray.tune.utils import warn_if_slow
 
 logger = logging.getLogger(__name__)
 
-RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
+TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
@@ -139,7 +139,7 @@ class RayTrialExecutor(TrialExecutor):
                  queue_trials=False,
                  reuse_actors=False,
                  ray_auto_init=None,
-                 refresh_period=RESOURCE_REFRESH_PERIOD):
+                 refresh_period=None):
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -164,8 +164,15 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+
+        if refresh_period is None:
+            refresh_period = float(
+                os.environ.get("TUNE_STATE_REFRESH_PERIOD",
+                               TUNE_STATE_REFRESH_PERIOD))
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
+        self._last_ip_refresh = float("-inf")
+        self._last_ip_addresses = set()
         self._last_nontrivial_wait = time.time()
         if not ray.is_initialized() and ray_auto_init:
             logger.info("Initializing Ray automatically."
@@ -398,8 +405,8 @@ class RayTrialExecutor(TrialExecutor):
             trial (Trial): Trial to be reset.
             new_config (dict): New configuration for Trial trainable.
             new_experiment_tag (str): New experiment name for trial.
-            logger_creator (Callable[[Dict], Logger]): A function that
-                instantiates a logger on the actor process.
+            logger_creator (Optional[Callable[[Dict], Logger]]): Function
+                that instantiates a logger on the actor process.
 
         Returns:
             True if `reset_config` is successful else False.
@@ -423,11 +430,17 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_alive_node_ips(self):
+        now = time.time()
+        if now - self._last_ip_refresh < self._refresh_period:
+            return self._last_ip_addresses
+        logger.debug("Checking ips from Ray state.")
+        self._last_ip_refresh = now
         nodes = ray.state.nodes()
         ip_addresses = set()
         for node in nodes:
             if node["alive"]:
                 ip_addresses.add(node["NodeManagerAddress"])
+        self._last_ip_addresses = ip_addresses
         return ip_addresses
 
     def get_current_trial_ips(self):
@@ -525,6 +538,9 @@ class RayTrialExecutor(TrialExecutor):
             "Resource invalid: {}".format(resources))
 
     def _update_avail_resources(self, num_retries=5):
+        if time.time() - self._last_resource_refresh < self._refresh_period:
+            return
+        logger.debug("Checking Ray cluster resources.")
         resources = None
         for i in range(num_retries):
             if i > 0:
@@ -534,10 +550,10 @@ class RayTrialExecutor(TrialExecutor):
                 time.sleep(0.5)
             try:
                 resources = ray.cluster_resources()
-            except Exception:
+            except Exception as exc:
                 # TODO(rliaw): Remove this when local mode is fixed.
                 # https://github.com/ray-project/ray/issues/4147
-                logger.debug("Using resources for local machine.")
+                logger.debug(f"{exc}: Using resources for local machine.")
                 resources = ResourceSpec().resolve(True).to_resource_dict()
             if resources:
                 break
@@ -575,9 +591,7 @@ class RayTrialExecutor(TrialExecutor):
         has exceeded self._refresh_period. This also assumes that the
         cluster is not resizing very frequently.
         """
-        if time.time() - self._last_resource_refresh > self._refresh_period:
-            self._update_avail_resources()
-
+        self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
 

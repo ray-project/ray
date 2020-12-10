@@ -236,6 +236,7 @@ def build_torch_policy(
                 get_batch_divisibility_req=get_batch_divisibility_req,
             )
 
+            # Merge Model's view requirements into Policy's.
             self.view_requirements.update(
                 self.model.inference_view_requirements)
 
@@ -244,6 +245,7 @@ def build_torch_policy(
                 _before_loss_init(self, self.observation_space,
                                   self.action_space, config)
 
+            # Perform test runs through postprocessing- and loss functions.
             self._initialize_loss_from_dummy_batch(
                 auto_remove_unneeded_view_reqs=True,
                 stats_fn=stats_fn,
@@ -320,7 +322,7 @@ def build_torch_policy(
             else:
                 optimizers = TorchPolicy.optimizer(self)
             optimizers = force_list(optimizers)
-            if hasattr(self, "exploration"):
+            if getattr(self, "exploration", None):
                 optimizers = self.exploration.get_exploration_optimizer(
                     optimizers)
             return optimizers

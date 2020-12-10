@@ -33,8 +33,8 @@
 
 namespace plasma {
 
-using ray::ObjectID;
 using ray::NodeID;
+using ray::ObjectID;
 using ray::WorkerID;
 
 enum class ObjectLocation : int32_t { Local, Remote, Nonexistent };
@@ -73,7 +73,7 @@ struct ObjectTableEntry {
   /// Offset from the base of the mmap.
   ptrdiff_t offset;
   /// Pointer to the object data. Needed to free the object.
-  uint8_t* pointer;
+  uint8_t *pointer;
   /// Size of the object in bytes.
   int64_t data_size;
   /// Size of the object metadata in bytes.

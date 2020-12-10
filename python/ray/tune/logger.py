@@ -199,8 +199,8 @@ class TBXLogger(Logger):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
-    # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list,
+                     type(None))
 
     def _init(self):
         try:
@@ -630,6 +630,8 @@ class TBXLoggerCallback(LoggerCallback):
         self._trial_result: Dict["Trial", Dict] = {}
 
     def log_trial_start(self, trial: "Trial"):
+        if trial in self._trial_writer:
+            self._trial_writer[trial].close()
         trial.init_logdir()
         self._trial_writer[trial] = self._summary_writer_cls(
             trial.logdir, flush_secs=30)

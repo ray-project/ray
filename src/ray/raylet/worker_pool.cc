@@ -339,8 +339,13 @@ Process WorkerPool::StartWorkerProcess(
   for (const auto &pair : override_environment_variables) {
     env[pair.first] = pair.second;
   }
-
+  // Start a process and measure the startup time.
+  auto start = std::chrono::high_resolution_clock::now();
   Process proc = StartProcess(worker_command_args, env);
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+  stats::ProcessStartupTimeMs.Record(duration.count());
+
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
                  << " worker(s) with pid " << proc.GetId();
   MonitorStartingWorkerProcess(proc, language, worker_type);
@@ -651,6 +656,29 @@ void WorkerPool::PopIOWorkerInternal(
   }
 }
 
+void WorkerPool::PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_CHECK(IsIOWorkerType(worker->GetWorkerType()));
+  if (worker->GetWorkerType() == rpc::WorkerType::RESTORE_WORKER) {
+    PushRestoreWorker(worker);
+  } else {
+    PushSpillWorker(worker);
+  }
+}
+
+void WorkerPool::PopDeleteWorker(
+    std::function<void(std::shared_ptr<WorkerInterface>)> callback) {
+  auto &state = GetStateForLanguage(Language::PYTHON);
+  // Choose an I/O worker with more idle workers.
+  size_t num_spill_idle_workers = state.spill_io_worker_state.idle_io_workers.size();
+  size_t num_restore_idle_workers = state.restore_io_worker_state.idle_io_workers.size();
+
+  if (num_restore_idle_workers < num_spill_idle_workers) {
+    PopSpillWorker(callback);
+  } else {
+    PopRestoreWorker(callback);
+  }
+}
+
 void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   // Since the worker is now idle, unset its assigned task ID.
   RAY_CHECK(worker->GetAssignedTaskId().IsNil())
@@ -883,6 +911,41 @@ std::shared_ptr<WorkerInterface> WorkerPool::PopWorker(
     RAY_CHECK(worker->GetAssignedJobId() == task_spec.JobId());
   }
   return worker;
+}
+
+void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
+                                 int64_t backlog_size) {
+  // Code path of task that needs a dedicated worker: an actor creation task with
+  // dynamic worker options, or any task with environment variable overrides.
+  if ((task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) ||
+      task_spec.OverrideEnvironmentVariables().size() > 0) {
+    return;  // Not handled.
+  }
+
+  auto &state = GetStateForLanguage(task_spec.GetLanguage());
+  // The number of available workers that can be used for this task spec.
+  int num_usable_workers = state.idle.size();
+  for (auto &entry : state.starting_worker_processes) {
+    num_usable_workers += entry.second;
+  }
+  // The number of workers total regardless of suitability for this task.
+  int num_workers_total = 0;
+  for (const auto &worker : GetAllRegisteredWorkers()) {
+    if (!worker->IsDead()) {
+      num_workers_total++;
+    }
+  }
+  auto desired_usable_workers =
+      std::min<int64_t>(num_workers_soft_limit_ - num_workers_total, backlog_size);
+  if (num_usable_workers < desired_usable_workers) {
+    int64_t num_needed = desired_usable_workers - num_usable_workers;
+    RAY_LOG(DEBUG) << "Prestarting " << num_needed << " workers given task backlog size "
+                   << backlog_size << " and soft limit " << num_workers_soft_limit_;
+    for (int i = 0; i < num_needed; i++) {
+      StartWorkerProcess(task_spec.GetLanguage(), rpc::WorkerType::WORKER,
+                         task_spec.JobId());
+    }
+  }
 }
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker) {

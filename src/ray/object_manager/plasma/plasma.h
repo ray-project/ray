@@ -55,8 +55,10 @@ struct PlasmaObject {
   int64_t metadata_size;
   /// Device number object is on.
   int device_num;
+  /// Set if device_num is equal to 0.
+  int64_t mmap_size;
 
-  bool operator==(const PlasmaObject& other) const {
+  bool operator==(const PlasmaObject &other) const {
     return (
 #ifdef PLASMA_CUDA
         (ipc_handle == other.ipc_handle) &&
@@ -94,10 +96,10 @@ struct PlasmaStoreInfo {
 /// \param object_id The object_id of the entry we are looking for.
 /// \return The entry associated with the object_id or NULL if the object_id
 ///         is not present.
-ObjectTableEntry* GetObjectTableEntry(PlasmaStoreInfo* store_info,
-                                      const ObjectID& object_id);
+ObjectTableEntry *GetObjectTableEntry(PlasmaStoreInfo *store_info,
+                                      const ObjectID &object_id);
 
 /// Globally accessible reference to plasma store configuration.
-extern const PlasmaStoreInfo* plasma_config;
+extern const PlasmaStoreInfo *plasma_config;
 
 }  // namespace plasma

@@ -1,6 +1,28 @@
 from ray.experimental.client import ray
+from typing import Tuple
 
 ray.connect("localhost:50051")
+
+
+@ray.remote
+class HelloActor:
+    def __init__(self):
+        self.count = 0
+
+    def say_hello(self, whom: str) -> Tuple[str, int]:
+        self.count += 1
+        return ("Hello " + whom, self.count)
+
+
+actor = HelloActor.remote()
+s, count = ray.get(actor.say_hello.remote("you"))
+print(s, count)
+assert s == "Hello you"
+assert count == 1
+s, count = ray.get(actor.say_hello.remote("world"))
+print(s, count)
+assert s == "Hello world"
+assert count == 2
 
 
 @ray.remote
@@ -18,6 +40,14 @@ def fact(x):
     # So we're on the right track!
     return ray.get(fact.remote(x - 1)) * x
 
+
+@ray.remote
+def get_nodes():
+    return ray.nodes()  # Can access the full Ray API in remote methods.
+
+
+print("Cluster nodes", ray.get(get_nodes.remote()))
+print(ray.nodes())
 
 objectref = ray.put("hello world")
 

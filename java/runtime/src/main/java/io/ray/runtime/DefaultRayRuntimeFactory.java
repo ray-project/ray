@@ -16,7 +16,7 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
   @Override
   public RayRuntime createRayRuntime() {
-    RayConfig rayConfig = RayConfig.getInstance();
+    RayConfig rayConfig = RayConfig.create();
     LoggingUtil.setupLogging(rayConfig);
     Logger logger = LoggerFactory.getLogger(DefaultRayRuntimeFactory.class);
 
