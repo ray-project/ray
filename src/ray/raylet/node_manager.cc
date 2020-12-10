@@ -704,7 +704,6 @@ void NodeManager::GetObjectManagerProfileInfo() {
 }
 
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
-  // SANG-TODO Add logic for new scheduler here.
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
   RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
@@ -837,7 +836,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
 
 void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
-  // SANG-TODO Update this method.
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
@@ -873,7 +871,6 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
 
 void NodeManager::ResourceDeleted(const NodeID &node_id,
                                   const std::vector<std::string> &resource_names) {
-  // SANG-TODO Update this.
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::ostringstream oss;
     for (auto &resource_name : resource_names) {

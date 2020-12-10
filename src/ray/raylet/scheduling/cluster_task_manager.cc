@@ -217,7 +217,6 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
   RAY_LOG(DEBUG) << "Queuing task " << task.GetTaskSpecification().TaskId();
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-  // SANG-TODO Add to the infeasible queue if the shape is infeasible.
   tasks_to_schedule_[scheduling_class].push_back(work);
 }
 
