@@ -5,16 +5,38 @@ The SampleCollector Class is Used to Store and Retrieve Temporary Data
 ----------------------------------------------------------------------
 
 RLlib's RolloutWorkers, when running against a live environment,
-use the `SamplerInput` class to produce batches of experiences from this environment.
+use the `SamplerInput` class to interact with that environment to
+produce batches of experiences.
 The two implemented sub-classes of `SamplerInput` are `SyncSampler` and `AsyncSampler`
 (residing under the `RolloutWorker.sampler` property).
 In case the "_use_trajectory_view_api" top-level config key is set to True, which is the case
 by default since version >=1.2.0, every such sampler object will itself use the
 `SampleCollector` API to store and retrieve temporary environment-, model-, and other data
 during episode rollouts.
-The exact duration (number of transitions) and behavior of a single such rollout is determined
+The exact number of environment transitions and behavior for a single such rollout is determined
 by several important config keys:
-**batch_mode**: Determines, how to build per-RolloutWorker batches, which are then
+**batch_mode []**: The two possible values are "truncate_episodes" (default) and
+  "complete_episodes".
+  In the `batch_mode=truncated_episodes` setting, rollouts are performed over exactly
+  `rollout_fragment_length` (see below) number of steps. Thereby, steps are counted
+  as environment steps by default (see below) or as individual agent steps. It
+  does not matter, whether one or more episodes end within this rollout or whether
+  the rollout starts within an already ongoing episode.
+  In the `batch_mode=complete_episodes` setting, each rollout is exactly one
+  episode long, no matter how long this episode lasts. The `rollout_fragment_length`
+  setting will be ignored. Note that you have to be careful when chosing this batch_mode
+  if your environment does not terminate easily (could lead to enormous batch sizes).
+**rollout_fragment_length [int]**: The exact number of environment- or agent steps to
+  be performed per rollout, if the `batch_mode` setting is "truncate_episodes".
+  `rollout_fragment_length` is ignored, if `batch_mode=complete_episodes`.
+  The unit to count fragments in (environment- or agent steps) is set via `count_steps_by`
+  within the `multiagent` config dict.
+**horizon [int]**:
+**soft_horizon**:
+**no_done_at_end**:
+
+
+Determines, how to build per-RolloutWorker batches, which are then
   usually concat'd to form the train batch. Note that "steps" below can mean different things (either env- or agent-steps) and depends on the
   `count_steps_by` (multiagent) setting below.
     # truncate_episodes: Each produced batch (when calling
