@@ -3,6 +3,7 @@ import socket
 from typing import List
 
 import uvicorn
+from starlette import requests, responses
 
 import ray
 from ray.exceptions import RayTaskError
@@ -126,6 +127,9 @@ class HTTPProxy:
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
+        elif isinstance(result, responses.Response):
+            # Backend has returned a Starlette response, so no need to wrap it.
+            await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
 
