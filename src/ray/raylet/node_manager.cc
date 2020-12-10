@@ -116,8 +116,7 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
 NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         SpaceReleasedCallback on_objects_spilled)
+                         std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
@@ -134,7 +133,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(
-          io_service, config.num_initial_workers, config.num_workers_soft_limit,
+          io_service, config.num_workers_soft_limit,
           config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, config.worker_ports, gcs_client_,
@@ -166,8 +165,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                             [this](const std::vector<ObjectID> &object_ids) {
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
-                            },
-                            on_objects_spilled),
+                            }),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       record_metrics_period_(config.record_metrics_period_ms) {
@@ -347,15 +345,13 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   RAY_CHECK(!job_data.is_dead());
 
   worker_pool_.HandleJobStarted(job_id, job_data.config());
-  if (RayConfig::instance().enable_multi_tenancy()) {
-    // Tasks of this job may already arrived but failed to pop a worker because the job
-    // config is not local yet. So we trigger dispatching again here to try to
-    // reschedule these tasks.
-    if (new_scheduler_enabled_) {
-      ScheduleAndDispatch();
-    } else {
-      DispatchTasks(local_queues_.GetReadyTasksByClass());
-    }
+  // Tasks of this job may already arrived but failed to pop a worker because the job
+  // config is not local yet. So we trigger dispatching again here to try to
+  // reschedule these tasks.
+  if (new_scheduler_enabled_) {
+    ScheduleAndDispatch();
+  } else {
+    DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
 }
 
@@ -576,7 +572,9 @@ void NodeManager::HandleReleaseUnusedBundles(
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
-    if (0 == in_use_bundles.count(worker->GetBundleId())) {
+    const auto &bundle_id = worker->GetBundleId();
+    // We need to filter out the workers used by placement group.
+    if (!bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id)) {
       workers_associated_with_unused_bundles.emplace_back(worker);
     }
   }
@@ -1193,8 +1191,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
-  if ((RayConfig::instance().enable_multi_tenancy() &&
-       (worker_type != rpc::WorkerType::SPILL_WORKER &&
+  if (((worker_type != rpc::WorkerType::SPILL_WORKER &&
         worker_type != rpc::WorkerType::RESTORE_WORKER)) ||
       worker_type == rpc::WorkerType::DRIVER) {
     RAY_CHECK(!job_id.IsNil());
@@ -1627,9 +1624,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
-  // Prestart optimization is only needed when multi-tenancy is on.
-  if (RayConfig::instance().enable_multi_tenancy() &&
-      RayConfig::instance().enable_worker_prestart()) {
+  if (RayConfig::instance().enable_worker_prestart()) {
     auto task_spec = task.GetTaskSpecification();
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
   }
@@ -2140,9 +2135,9 @@ void NodeManager::MarkObjectsAsFailed(
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
     std::shared_ptr<arrow::Buffer> data;
     Status status;
-    status = store_client_.Create(object_id, ref.owner_address(), 0,
-                                  reinterpret_cast<const uint8_t *>(meta.c_str()),
-                                  meta.length(), &data);
+    status = store_client_.TryCreateImmediately(
+        object_id, ref.owner_address(), 0,
+        reinterpret_cast<const uint8_t *>(meta.c_str()), meta.length(), &data);
     if (status.ok()) {
       status = store_client_.Seal(object_id);
     }
@@ -2522,12 +2517,6 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
   task_dependency_manager_.TaskCanceled(task_id);
 
-  if (!RayConfig::instance().enable_multi_tenancy()) {
-    // Unset the worker's assigned job Id if this is not an actor.
-    if (!spec.IsActorCreationTask()) {
-      worker.AssignJobId(JobID::Nil());
-    }
-  }
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
     // direct actor creation calls because this ID is used later if the actor
@@ -2776,9 +2765,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     worker->SetOwnerAddress(spec.CallerAddress());
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      worker->AssignJobId(spec.JobId());
-    }
+    RAY_CHECK(worker->GetAssignedJobId() == spec.JobId());
     // TODO(swang): For actors with multiple actor handles, to
     // guarantee that tasks are replayed in the same order after a
     // failure, we must update the task's execution dependency to be

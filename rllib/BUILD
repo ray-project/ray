@@ -172,6 +172,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -186,6 +187,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--torch"]
@@ -1108,6 +1110,13 @@ py_test(
 #    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 #)
 
+py_test(
+    name = "evaluation/tests/test_rollout_worker",
+    tags = ["evaluation"],
+    size = "medium",
+    srcs = ["evaluation/tests/test_rollout_worker.py"]
+)
+
 
 # --------------------------------------------------------------------
 # Optimizers and Memories
@@ -1409,13 +1418,6 @@ py_test(
     data = ["train.py", "rollout.py"],
     srcs = ["tests/test_rollout.py"],
     args = ["TestRolloutLearntPolicy"]
-)
-
-py_test(
-    name = "tests/test_rollout_worker",
-    tags = ["tests_dir", "tests_dir_R"],
-    size = "medium",
-    srcs = ["tests/test_rollout_worker.py"]
 )
 
 py_test(
