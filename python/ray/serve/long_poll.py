@@ -117,11 +117,10 @@ class LongPollHost:
         immediately if the snapshot_ids are outdated, otherwise it will block
         until there's one updates.
         """
-        # 1. Figure out which keys do we care about
-        watched_keys = set(self.snapshot_ids.keys()).intersection(
-            keys_to_snapshot_ids.keys())
-        if len(watched_keys) == 0:
-            raise ValueError("Keys not found.")
+        watched_keys = keys_to_snapshot_ids.keys()
+        nonexistent_keys = set(watched_keys) - set(self.snapshot_ids.keys())
+        if len(nonexistent_keys) > 0:
+            raise ValueError(f"Keys not found: {nonexistent_keys}.")
 
         # 2. If there are any outdated keys (by comparing snapshot ids)
         #    return immediately.
