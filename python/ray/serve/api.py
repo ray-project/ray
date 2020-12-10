@@ -63,9 +63,9 @@ class Client:
 
     def __del__(self):
         if not self._detached:
-            logger.info("Shutting down Ray Serve because client went out of "
-                        "scope. To prevent this, either keep a reference to "
-                        "the client object or use serve.start(detached=True).")
+            logger.debug("Shutting down Ray Serve because client went out of "
+                         "scope. To prevent this, either keep a reference to "
+                         "the client or use serve.start(detached=True).")
             self.shutdown()
 
     def __reduce__(self):
