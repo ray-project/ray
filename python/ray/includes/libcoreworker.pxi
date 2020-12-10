@@ -9,7 +9,10 @@ import json
 import traceback
 
 
-cdef class CoreWorker:
+# We cannot call this CoreWorker because _raylet.pxd defines an unrelated
+# cdef class CoreWorker and _raylet.pyx does
+# include "includes/libcoreworker.pxi"
+cdef class CoreWorkerWrapper:
     """Cython wrapper class of C++ `ray::CoreWorker`."""
     cdef:
         unique_ptr[CCoreWorker] inner
