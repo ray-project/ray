@@ -48,7 +48,7 @@ void GcsResourceManager::HandleUpdateResources(
       (*iter->second.mutable_items())[entry.first] = entry.second;
     }
     auto on_done = [this, node_id, to_be_updated_resources, reply,
-                    send_reply_callback](const Status &status) {
+        send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
@@ -86,7 +86,7 @@ void GcsResourceManager::HandleDeleteResources(
       RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
     }
     auto on_done = [this, node_id, resource_names, reply,
-                    send_reply_callback](const Status &status) {
+        send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
@@ -135,7 +135,7 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterResources()
-    const {
+const {
   return cluster_scheduling_resources_;
 }
 

@@ -344,7 +344,7 @@ void GcsServer::PrintDebugInfo() {
   RAY_LOG(INFO) << stream.str();
   execute_after(main_service_, [this] { PrintDebugInfo(); },
                 (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
-                 60000) /* milliseconds */);
+                    60000) /* milliseconds */);
 }
 
 }  // namespace gcs

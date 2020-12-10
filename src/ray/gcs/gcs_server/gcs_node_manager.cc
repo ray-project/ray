@@ -44,7 +44,7 @@ void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
                 << ", address = " << request.node_info().node_manager_address();
   AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
   auto on_done = [this, node_id, request, reply,
-                  send_reply_callback](const Status &status) {
+      send_reply_callback](const Status &status) {
     RAY_CHECK_OK(status);
     RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
                   << ", address = " << request.node_info().node_manager_address();
@@ -68,9 +68,9 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     AddDeadNodeToCache(node);
 
     auto on_done = [this, node_id, node, reply,
-                    send_reply_callback](const Status &status) {
+        send_reply_callback](const Status &status) {
       auto on_done = [this, node_id, node, reply,
-                      send_reply_callback](const Status &status) {
+          send_reply_callback](const Status &status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
                                            node->SerializeAsString(), nullptr));
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -136,8 +136,8 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
                                              rpc::GetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
   auto get_system_config = [reply, send_reply_callback](
-                               const ray::Status &status,
-                               const boost::optional<rpc::StoredConfig> &config) {
+      const ray::Status &status,
+      const boost::optional<rpc::StoredConfig> &config) {
     if (config.has_value()) {
       reply->mutable_config()->CopyFrom(config.get());
     }
@@ -162,13 +162,13 @@ void GcsNodeManager::HandleGetAllResourceUsage(
         auto &aggregate_demand = aggregate_load[scheduling_key];
         aggregate_demand.set_num_ready_requests_queued(
             aggregate_demand.num_ready_requests_queued() +
-            demand.num_ready_requests_queued());
+                demand.num_ready_requests_queued());
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
-            demand.num_infeasible_requests_queued());
+                demand.num_infeasible_requests_queued());
         if (RayConfig::instance().report_worker_backlog()) {
           aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
+              demand.backlog_size());
         }
       }
 
