@@ -352,8 +352,8 @@ cdef execute_task(
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
     # Helper method used to exit current asyncio actor.
-    # This is called when a KeyBoardInterrupt is received by the main thread.
-    # Upon receiving a KeyBoardInterrupt signal, Ray will exit the current
+    # This is called when a KeyboardInterrupt is received by the main thread.
+    # Upon receiving a KeyboardInterrupt signal, Ray will exit the current
     # worker. If the worker is processing normal tasks, Ray treat it as task
     # cancellation from ray.cancel(object_ref). If the worker is an asyncio
     # actor, Ray will exit the actor.

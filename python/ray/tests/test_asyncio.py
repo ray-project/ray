@@ -211,7 +211,13 @@ async def test_asyncio_exit_actor(ray_start_regular_shared):
         async def ping(self):
             return "pong"
 
-    a = Actor.remote()
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.options(max_task_retries=0).remote()
+    a.loop_forever.remote()
+    # Make sure exit_actor exits immediately, not once all tasks completed.
     ray.get(a.exit.remote())
 
     with pytest.raises(ray.exceptions.RayActorError):
