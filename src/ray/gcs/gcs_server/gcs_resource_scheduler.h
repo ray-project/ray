@@ -28,6 +28,8 @@ enum SchedulingType {
   SchedulingType_MAX = 4,
 };
 
+typedef std::pair<NodeID, double> NodeScore;
+
 class SchedulingPolicy {
  public:
   SchedulingPolicy(const SchedulingType &type) : type_(type) {}
@@ -78,7 +80,7 @@ class LeastResourceScorer : public NodeScorer {
 class GcsResourceScheduler {
  public:
   GcsResourceScheduler(GcsResourceManager &gcs_resource_manager)
-      : gcs_resource_manager_(gcs_resource_manager) {}
+      : gcs_resource_manager_(gcs_resource_manager), node_scorer_(new LeastResourceScorer()) {}
 
   virtual ~GcsResourceScheduler() = default;
 
@@ -93,6 +95,9 @@ class GcsResourceScheduler {
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
+
+  /// Scorer to make a grade to the node.
+  std::unique_ptr<NodeScorer> node_scorer_;
 };
 
 }  // namespace gcs

@@ -50,16 +50,24 @@ double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requeste
 std::vector<NodeID> GcsResourceScheduler::Schedule(
     std::vector<ResourceSet> required_resources, SchedulingPolicy policy,
     const std::function<bool(const NodeID &)> &node_filter_func) {
+  const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
+
   // Filter candidate nodes.
-  absl::flat_hash_set<NodeID> candidate_nodes =
-      Filter(gcs_resource_manager_.GetClusterResources(), node_filter_func);
+  absl::flat_hash_set<NodeID> candidate_nodes = Filter(cluster_resources, node_filter_func);
   if (candidate_nodes.size() < required_resources.size()) {
     return {};
   }
 
-  // Sco.
+  // TODO(ffbin): Filter required resources.
 
-  // Rank.
+  // Scorer.
+//  std::vector<NodeScore> node_score_list;
+//  for (const auto &iter : cluster_resources) {
+//    double node_score = node_scorer_->MakeGrade(required_resources, iter->second);
+//    node_score_list.emplace_back(NodeScore(iter->first, node_score));
+//  }
+
+  // TODO(ffbin): Rank.
   std::vector<NodeID> result;
   return result;
 }
