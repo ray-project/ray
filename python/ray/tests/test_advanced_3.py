@@ -123,7 +123,7 @@ def test_load_balancing_with_dependencies_disable_light_heartbeat(
     cluster = ray_start_cluster
     num_nodes = 3
     cluster.add_node(
-        _system_config={"light_heartbeat_enabled": False}, num_cpus=1)
+            _system_config={"raylet_heartbeat_timeout_milliseconds": 10}, num_cpus=1)
     for _ in range(num_nodes - 1):
         cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
