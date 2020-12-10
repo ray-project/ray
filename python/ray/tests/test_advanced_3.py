@@ -106,7 +106,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
+        time.sleep(0.020)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
