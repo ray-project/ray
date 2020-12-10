@@ -773,6 +773,7 @@ void SchedulingResources::Acquire(const ResourceSet &resources) {
 // resource which is not exist in total resource to the available resource.
 // (e.g., placement group)
 void SchedulingResources::AddResource(const ResourceSet &resources) {
+  resources_total_.AddResources(resources);
   resources_available_.AddResources(resources);
 }
 
