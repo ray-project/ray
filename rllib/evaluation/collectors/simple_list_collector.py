@@ -198,8 +198,17 @@ class _AgentCollector:
             # `shift` != 0: shifted by that value.
             else:
                 shift = view_req.shift + obs_shift
+
+                # Batch repeat (only provide a value every n timesteps).
+                if view_req.batch_repeat_value > 1:
+                    count = int(
+                        math.ceil((len(np_data[data_col]) - self.shift_before)
+                                  / view_req.batch_repeat_value))
+                    data = np.asarray([np_data[data_col][self.shift_before + (
+                                i * view_req.batch_repeat_value) + shift] for i
+                                       in range(count)])
                 # Shift is exactly 0: Use trajectory as is.
-                if shift == 0:
+                elif shift == 0:
                     data = np_data[data_col][self.shift_before:]
                 # Shift is positive: We still need to 0-pad at the end.
                 elif shift > 0:
@@ -323,8 +332,8 @@ class _PolicyCollector:
             # 1) If col is not in view_requirements, we must have a direct
             # child of the base Policy that doesn't do auto-view req creation.
             # 2) Col is in view-reqs and needed for training.
-            if view_col not in view_requirements or \
-                    view_requirements[view_col].used_for_training:
+            view_req = view_requirements.get(view_col)
+            if view_req is None or view_req.used_for_training:
                 self.buffers[view_col].extend(data)
         # Add the agent's trajectory length to our count.
         self.agent_steps += batch.count
