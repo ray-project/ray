@@ -9,7 +9,7 @@ from ray.actor import ActorHandle
 from ray.serve.constants import LongPollKey
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
-from ray.serve.long_poll import LongPollerAsyncClient
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.utils import logger
 from ray.util import metrics
 
@@ -107,7 +107,8 @@ class ReplicaSet:
                    ) >= self.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
-            logger.debug(f"Replica set assigned {query} to {replica}")
+            logger.debug(f"Assigned query {query.metadata.request_id} "
+                         f"to replica {replica}.")
             ref = replica.handle_request.remote(query)
             self.in_flight_queries[replica].add(ref)
             return ref
@@ -134,7 +135,8 @@ class ReplicaSet:
         """
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
-            logger.debug(f"Failed to assign a replica for query {query}")
+            logger.debug("Failed to assign a replica for "
+                         f"query {query.metadata.request_id}")
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
             num_finished = self._drain_completed_object_refs()
@@ -177,10 +179,10 @@ class Router:
 
     async def setup_in_async_loop(self):
         # NOTE(simon): Instead of performing initialization in __init__,
-        # We separated the init of LongPollerAsyncClient to this method because
-        # __init__ might be called in sync context. LongPollerAsyncClient
+        # We separated the init of LongPollAsyncClient to this method because
+        # __init__ might be called in sync context. LongPollAsyncClient
         # requires async context.
-        self.long_pull_client = LongPollerAsyncClient(
+        self.long_poll_client = LongPollAsyncClient(
             self.controller, {
                 LongPollKey.TRAFFIC_POLICIES: self._update_traffic_policies,
                 LongPollKey.REPLICA_HANDLES: self._update_replica_handles,

@@ -42,8 +42,8 @@ def mock_controller_with_name():
     @ray.remote(num_cpus=0)
     class MockControllerActor:
         def __init__(self):
-            from ray.serve.long_poll import LongPollerHost
-            self.host = LongPollerHost()
+            from ray.serve.long_poll import LongPollHost
+            self.host = LongPollHost()
             self.backend_replicas = defaultdict(list)
             self.backend_configs = dict()
             self.clear()

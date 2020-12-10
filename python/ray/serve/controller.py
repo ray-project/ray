@@ -20,7 +20,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
 from ray.serve.config import BackendConfig, ReplicaConfig
-from ray.serve.long_poll import LongPollerHost
+from ray.serve.long_poll import LongPollHost
 from ray.actor import ActorHandle
 
 import numpy as np
@@ -516,7 +516,7 @@ class ServeController:
         # can be problem at scale, e.g. updating a single backend config
         # will send over the entire configs. In the future, we should
         # optimize the logic to support subscription by key.
-        self.long_poll_host = LongPollerHost()
+        self.long_poll_host = LongPollHost()
         self.notify_backend_configs_changed()
         self.notify_replica_handles_changed()
         self.notify_traffic_policies_changed()
@@ -672,7 +672,6 @@ class ServeController:
         # update to avoid inconsistent state if we crash after pushing the
         # update.
         self._checkpoint()
-
         self.notify_traffic_policies_changed()
 
     async def set_traffic(self, endpoint_name: str,

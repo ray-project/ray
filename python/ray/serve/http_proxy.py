@@ -11,7 +11,7 @@ from ray.serve.context import TaskContext
 from ray.util import metrics
 from ray.serve.utils import _get_logger, get_random_letters
 from ray.serve.http_util import Response
-from ray.serve.long_poll import LongPollerAsyncClient
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Router, RequestMetadata
 
 logger = _get_logger()
@@ -27,7 +27,7 @@ class HTTPProxy:
     def __init__(self, controller_name):
         controller = ray.get_actor(controller_name)
         self.router = Router(controller)
-        self.long_poll_client = LongPollerAsyncClient(controller, {
+        self.long_poll_client = LongPollAsyncClient(controller, {
             LongPollKey.ROUTE_TABLE: self._update_route_table,
         })
 

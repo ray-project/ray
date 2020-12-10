@@ -23,7 +23,7 @@ class UpdatedObject:
 UpdateStateAsyncCallable = Callable[[Any], Awaitable[None]]
 
 
-class LongPollerAsyncClient:
+class LongPollAsyncClient:
     """The asynchronous long polling client.
 
     Internally, it runs `await object_ref` in a `while True` loop. When a
@@ -32,7 +32,7 @@ class LongPollerAsyncClient:
     the next poll.
 
     Args:
-        host_actor(ray.ActorHandle): handle to actor embedding LongPollerHost.
+        host_actor(ray.ActorHandle): handle to actor embedding LongPollHost.
         key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
           callbacks to be called on state update for the corresponding keys.
     """
@@ -61,34 +61,31 @@ class LongPollerAsyncClient:
             self.snapshot_ids)
         return object_ref
 
-    def _update(self, updates: Dict[str, UpdatedObject]):
-        for key, update in updates.items():
-            self.object_snapshots[key] = update.object_snapshot
-            self.snapshot_ids[key] = update.snapshot_id
-
     async def _do_long_poll(self):
         while True:
             try:
                 updates: Dict[str, UpdatedObject] = await self._poll_once()
-                self._update(updates)
-                logger.debug(f"LongPollerClient received updates: {updates}")
-                for key, updated_object in updates.items():
+                logger.debug("LongPollClient received updates for keys: "
+                             f"{list(updates.keys())}.")
+                for key, update in updates.items():
+                    self.object_snapshots[key] = update.object_snapshot
+                    self.snapshot_ids[key] = update.snapshot_id
                     # NOTE(simon):
                     # This blocks the loop from doing another poll. Consider
                     # use loop.create_task here or poll first then call the
                     # callbacks.
                     callback = self.key_listeners[key]
-                    await callback(updated_object.object_snapshot)
+                    await callback(update.object_snapshot)
             except ray.exceptions.RayActorError:
                 # This can happen during shutdown where the controller is
                 # intentionally killed, the client should just gracefully
                 # exit.
-                logger.debug("LongPollerClient failed to connect to host. "
+                logger.debug("LongPollClient failed to connect to host. "
                              "Shutting down.")
                 break
 
 
-class LongPollerHost:
+class LongPollHost:
     """The server side object that manages long pulling requests.
 
     The desired use case is to embed this in an Ray actor. Client will be
@@ -164,7 +161,7 @@ class LongPollerHost:
     def notify_changed(self, object_key: str, updated_object: Any):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
-        logger.debug(f"LongPollerHost: {object_key} = {updated_object}")
+        logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
         if object_key in self.notifier_events:
             for event in self.notifier_events.pop(object_key):

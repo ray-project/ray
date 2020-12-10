@@ -621,7 +621,7 @@ def test_create_infeasible_error(serve_instance):
                 "MagicMLResource": 100
             }})
 
-    # Even each replica might be feasible, the total might not be.
+    # Even though each replica might be feasible, the total might not be.
     current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
     num_replicas = current_cpus + 20
     config = BackendConfig(num_replicas=num_replicas)
@@ -633,9 +633,6 @@ def test_create_infeasible_error(serve_instance):
                 "CPU": 1,
             }},
             config=config)
-
-    # No replica should be created!
-    assert not ray.get(client._controller._list_replicas.remote())["f1"]
 
 
 def test_shutdown():
