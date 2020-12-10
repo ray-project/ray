@@ -1,4 +1,4 @@
-from collections import defaultdict, namedtuple
+from collections import defaultdict, namedtuple, Counter
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -16,7 +16,7 @@ from ray.experimental.internal_kv import _internal_kv_put, \
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_FILE_MOUNTS_CONTENTS,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
-                                 TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE,
+                                 TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH, STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
                                  NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
@@ -40,6 +40,9 @@ UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "init_commands", "start_ray_commands", "docker_config"])
 
+AutoscalerSummary = namedtuple(
+    "AutoscalerSummary",
+    ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
 
 class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
@@ -51,12 +54,7 @@ class StandardAutoscaler:
     configure the right AWS/Cloud roles automatically.
 
     StandardAutoscaler's `update` method is periodically called by `monitor.py`
-    to add and remove nodes as necessary. Currently, load-based autoscaling is
-    not implemented, so all this class does is try to maintain a constant
-    cluster size.
-
-    StandardAutoscaler is also used to bootstrap clusters (by adding workers
-    until the cluster size that can handle the resource demand is met).
+    to add and remove nodes as necessary.
     """
 
     def __init__(self,
@@ -115,9 +113,6 @@ class StandardAutoscaler:
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
-
-        # List of resource bundles the user is requesting of the cluster.
-        self.resource_demand_vector = []
 
         logger.info("StandardAutoscaler: {}".format(self.config))
 
@@ -214,7 +209,8 @@ class StandardAutoscaler:
             self.load_metrics.get_resource_utilization(),
             self.load_metrics.get_pending_placement_groups(),
             self.load_metrics.get_static_node_resources_by_ip(),
-            ensure_min_cluster_size=self.resource_demand_vector)
+            ensure_min_cluster_size=self.load_metrics.get_resource_requests())
+        print("TO LAUNCH: ", to_launch)
         for node_type, count in to_launch.items():
             self.launch_new_node(count, node_type=node_type)
 
@@ -591,6 +587,59 @@ class StandardAutoscaler:
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.debug(tmp)
 
+    def summary(self):
+        """
+        Summarizes the active, pending, and failed node launches.
+
+        An active node is a node whose raylet is actively reporting heartbeats.
+
+        A pending node is non-active node whose node tag is uninitialized, waiting for ssh, syncing files, or setting up.
+
+        If a node is not pending or active, it is failed.
+        """
+        all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
+
+        active_nodes = Counter()
+        pending_nodes = []
+        failed_nodes = []
+
+        for node_id in all_node_ids:
+            # TODO (Alex): Verify the head node case before merging this.
+            ip = self.provider.internal_ip(node_id)
+            node_tags = self.provider.node_tags(node_id)
+            if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
+                continue
+            node_type = node_tags[TAG_RAY_USER_NODE_TYPE]
+
+            print("Going through", ip)
+
+            # TODO (Alex): If a node's raylet has died, it shouldn't be marked as active.
+            is_active = self.load_metrics.is_active(ip)
+            if is_active:
+                active_nodes[node_type] += 1
+            else:
+                status = node_tags[TAG_RAY_NODE_STATUS]
+                pending_states = [STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
+                                  STATUS_SYNCING_FILES, STATUS_SETTING_UP]
+                is_pending = status in pending_states
+                if is_pending:
+                    pending_nodes.append((ip, node_type))
+                else:
+                    failed_nodes.append((ip, node_type))
+
+        # The concurrent counter leaves some 0 counts in, so we need to manually filter those out.
+        pending_launches = {}
+        for node_type, count in self.pending_launches.breakdown().items():
+            if count:
+                pending_launches[node_type] = count
+
+        return AutoscalerSummary(
+            active_nodes=active_nodes,
+            pending_nodes=pending_nodes,
+            pending_launches=pending_launches,
+            failed_nodes=failed_nodes)
+
+
     def info_string(self, nodes):
         suffix = ""
         if self.updaters:
@@ -600,18 +649,6 @@ class StandardAutoscaler:
                 len(self.num_failed_updates))
 
         return "{} nodes{}".format(len(nodes), suffix)
-
-    def request_resources(self, resources: List[dict]):
-        """Called by monitor to request resources.
-
-        Args:
-            resources: A list of resource bundles.
-        """
-        if resources:
-            logger.info(
-                "StandardAutoscaler: resource_requests={}".format(resources))
-        assert isinstance(resources, list), resources
-        self.resource_demand_vector = resources
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")

@@ -55,8 +55,11 @@ class MockProcessRunner:
         self.calls = []
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
+        self.ready_to_run = threading.Event()
+        self.ready_to_run.set()
 
     def check_call(self, cmd, *args, **kwargs):
+        self.ready_to_run.wait()
         for token in self.fail_cmds:
             if token in str(cmd):
                 raise CalledProcessError(1, token,
@@ -180,8 +183,9 @@ class MockProvider(NodeProvider):
     def external_ip(self, node_id):
         return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count):
-        self.ready_to_create.wait()
+    def create_node(self, node_config, tags, count, _skip_wait=False):
+        if not _skip_wait:
+            self.ready_to_create.wait()
         if self.fail_creates:
             return
         with self.lock:

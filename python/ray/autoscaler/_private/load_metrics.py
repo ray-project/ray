@@ -85,6 +85,9 @@ class LoadMetrics:
         logger.info("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
 
+    def is_active(self, ip):
+        return ip in self.last_heartbeat_time_by_ip
+
     def prune_active_ips(self, active_ips):
         active_ips = set(active_ips)
         active_ips.add(self.local_ip)
@@ -174,9 +177,9 @@ class LoadMetrics:
 
     def summary(self):
         available_resources = reduce(add_resources,
-                                     self.dynamic_resources_by_ip.values())
+                                     self.dynamic_resources_by_ip.values()) if self.dynamic_resources_by_ip else {}
         total_resources = reduce(add_resources,
-                                 self.static_resources_by_ip.values())
+                                 self.static_resources_by_ip.values()) if self.static_resources_by_ip else {}
         usage_dict = {}
         for key in total_resources:
             total = total_resources[key]
@@ -218,7 +221,7 @@ class LoadMetrics:
             request_demand=summarized_resource_requests,
             node_types=nodes_summary)
 
-    def set_resource_requeests(self, requested_resources):
+    def set_resource_requests(self, requested_resources):
         if requested_resources:
             logger.info("resource_requests={requested_resources}")
         assert isinstance(requested_resources, list), requested_resources

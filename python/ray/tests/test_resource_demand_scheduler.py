@@ -24,6 +24,7 @@ from ray.core.generated.common_pb2 import Bundle, PlacementStrategy
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND, \
                                 NODE_KIND_WORKER, TAG_RAY_NODE_STATUS, \
                                 STATUS_UP_TO_DATE, STATUS_UNINITIALIZED, \
+                                STATUS_UPDATE_FAILED, \
                                 NODE_KIND_HEAD, NODE_TYPE_LEGACY_WORKER, \
                                 NODE_TYPE_LEGACY_HEAD
 from ray.test_utils import same_elements
@@ -973,8 +974,6 @@ class LoadMetricsTest(unittest.TestCase):
                 strategy=PlacementStrategy.SPREAD,
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
-        print("----")
-        print(pending_placement_groups[0] == pending_placement_groups[1])
         lm.update(
             "1.1.1.1", {}, {}, {},
             pending_placement_groups=pending_placement_groups)
@@ -982,6 +981,7 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testSummary(self):
         lm = LoadMetrics(local_ip="1.1.1.1")
+        assert lm.summary() is not None
         pending_placement_groups = [
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
@@ -1026,7 +1026,7 @@ class LoadMetricsTest(unittest.TestCase):
             }],
             pending_placement_groups=pending_placement_groups)
 
-        lm.set_resource_requeests([{"CPU": 64}, {"GPU": 8}, {"GPU": 8}])
+        lm.set_resource_requests([{"CPU": 64}, {"GPU": 8}, {"GPU": 8}])
 
         summary = lm.summary()
 
@@ -1157,6 +1157,80 @@ class AutoscalingTest(unittest.TestCase):
             self.provider.mock_nodes[0].tags.get(TAG_RAY_USER_NODE_TYPE),
             "empty_node")
 
+    def testSummary(self):
+        from ray.autoscaler._private.cli_logger import cli_logger
+        def do_nothing(*args, **kwargs):
+            pass
+
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
+        config["available_node_types"]["m4.large"]["min_workers"] = \
+            config["min_workers"]
+        config["max_workers"] = 10
+        config["docker"] = {}
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, 1)
+        head_ip = self.provider.non_terminated_node_ips({})[0]
+        lm = LoadMetrics(local_ip=head_ip)
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        assert len(self.provider.non_terminated_nodes({})) == 1
+        autoscaler.update()
+        self.waitForNodes(3)
+
+        for ip in self.provider.non_terminated_node_ips({}):
+            lm.update(ip, {"CPU": 2}, {"CPU": 0}, {})
+
+        lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {})
+        autoscaler.update()
+
+        while True:
+            if len(self.provider.non_terminated_nodes({TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})) == 3:
+                break
+            time.sleep(0.1)
+
+        # After this section, the p2.xlarge is now in the setup process.
+        lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {}, waiting_bundles=[{"GPU": 1}])
+        runner.ready_to_run.clear()
+        autoscaler.update()
+        self.waitForNodes(4)
+
+
+        self.provider.ready_to_create.clear()
+        lm.set_resource_requests([{"CPU": 64}]*2)
+        autoscaler.update()
+
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
+            TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED
+        }, 1, _skip_wait=True)
+        self.waitForNodes(5)
+
+        summary = autoscaler.summary()
+
+        assert summary.active_nodes["m4.large"] == 2
+        assert summary.active_nodes["m4.4xlarge"] == 1
+        assert len(summary.active_nodes) == 2
+
+        assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge")]
+        assert summary.pending_launches == {"m4.16xlarge" : 2}
+
+        assert summary.failed_nodes ==[("172.0.0.4", "m4.4xlarge")]
+
+
+
     def testScaleUpMinSanity(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["m4.large"]["min_workers"] = \
@@ -1164,6 +1238,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1173,8 +1248,7 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(2)
-        autoscaler.update()
-        self.waitForNodes(2)
+
 
     def testPlacementGroup(self):
         # Note this is mostly an integration test. See
@@ -1354,16 +1428,16 @@ class AutoscalingTest(unittest.TestCase):
         # These requests fit on the head node.
         autoscaler.update()
         self.waitForNodes(1)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
         assert len(self.provider.mock_nodes) == 1
-        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(1)
 
         # This request requires an additional worker node.
-        autoscaler.request_resources([{"GPU": 8}] * 2)
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}] * 2)
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
@@ -1384,15 +1458,15 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(0)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
         assert self.provider.mock_nodes[0].node_type == "m4.large"
-        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
-        autoscaler.request_resources([{"CPU": 32}] * 4)
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 32}] * 4)
         autoscaler.update()
         self.waitForNodes(4)
         assert self.provider.mock_nodes[2].node_type == "m4.16xlarge"
@@ -1415,11 +1489,11 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(0)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
         assert self.provider.mock_nodes[0].node_type == "m4.large"
-        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
@@ -1497,15 +1571,15 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(0)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
         assert self.provider.mock_nodes[0].node_type == "m4.large"
-        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
-        autoscaler.request_resources([{"GPU": 1}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 1}] * 9)
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes[2].node_type == "p2.xlarge"
@@ -1550,21 +1624,21 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(0)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
         assert self.provider.mock_nodes[0].node_type == "m4.large"
-        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
-        autoscaler.request_resources([{"GPU": 1}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 1}] * 9)
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes[2].node_type == "p2.xlarge"
         autoscaler.update()
         # Fill up m4, p2.8, p2 and request 2 more CPUs
-        autoscaler.request_resources([{
+        autoscaler.load_metrics.set_resource_requests([{
             "CPU": 2
         }, {
             "CPU": 16
@@ -1643,11 +1717,11 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
         self.waitForNodes(0)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         self.waitForNodes(1)
         assert self.provider.mock_nodes[0].node_type == "m4.large"
-        autoscaler.request_resources([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"

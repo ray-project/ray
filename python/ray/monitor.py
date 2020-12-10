@@ -181,15 +181,6 @@ class Monitor:
         resource_request = json.loads(data)
         self.load_metrics.set_resource_requests(resource_request)
 
-        if not self.autoscaler:
-            return
-
-        try:
-            self.autoscaler.request_resources(resource_request)
-        except Exception:
-            # We don't want this to kill the monitor.
-            traceback.print_exc()
-
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
 
