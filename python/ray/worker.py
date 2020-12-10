@@ -109,6 +109,7 @@ class Worker:
         # by the worker should drop into the debugger at the specified
         # breakpoint ID.
         self.debugger_get_breakpoint = b""
+        self._load_code_from_local = False
 
     @property
     def connected(self):
@@ -122,7 +123,7 @@ class Worker:
     @property
     def load_code_from_local(self):
         self.check_connected()
-        return self.node.load_code_from_local
+        return self._load_code_from_local
 
     @property
     def current_job_id(self):
@@ -221,6 +222,9 @@ class Worker:
             mode: One of SCRIPT_MODE, WORKER_MODE, and LOCAL_MODE.
         """
         self.mode = mode
+
+    def set_load_code_from_local(self, load_code_from_local):
+        self._load_code_from_local = load_code_from_local
 
     def put_object(self, value, object_ref=None, pin_object=True):
         """Put value in the local object store with object reference `object_ref`.
@@ -489,9 +493,7 @@ def init(
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _java_worker_options=None,
-        _code_search_path=None,
         _temp_dir=None,
-        _load_code_from_local=False,
         _lru_evict=False,
         _metrics_export_port=None,
         _system_config=None):
@@ -579,10 +581,7 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _load_code_from_local: Whether code should be loaded from a local
-            module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
-        _code_search_path (list): Java classpath or python import path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -701,9 +700,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
-            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -749,7 +746,6 @@ def init(
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
-            load_code_from_local=_load_code_from_local,
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
