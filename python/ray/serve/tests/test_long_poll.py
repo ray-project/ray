@@ -1,5 +1,4 @@
 import sys
-import functools
 import time
 import asyncio
 import os
@@ -96,14 +95,16 @@ async def test_async_client(serve_instance):
 
     callback_results = dict()
 
-    async def callback(result, key):
-        callback_results[key] = result
+    async def key_1_callback(result):
+        callback_results["key_1"] = result
 
-    client = LongPollAsyncClient(
-        host, {
-            "key_1": functools.partial(callback, key="key_1"),
-            "key_2": functools.partial(callback, key="key_2")
-        })
+    async def key_2_callback(result):
+        callback_results["key_2"] = result
+
+    client = LongPollAsyncClient(host, {
+        "key_1": key_1_callback,
+        "key_2": key_2_callback,
+    })
 
     while len(client.object_snapshots) == 0:
         # Yield the loop for client to get the result
