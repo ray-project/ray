@@ -149,8 +149,7 @@ class ReplicaSet:
                     return_when=asyncio.FIRST_COMPLETED)
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
-            # We are pretty sure a free replica is ready now, let's recurse and
-            # assign this query a replica.
+            # We are pretty sure a free replica is ready now.
             assigned_ref = await self._try_assign_replica(query)
         return assigned_ref
 
