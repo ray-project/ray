@@ -138,7 +138,7 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
-class RayPlacementGroupError(RayTaskError):
+class RayPlacementGroupError(RayError):
     """Indicates that the task failed due to placement errors."""
 
     def __str__(self):
