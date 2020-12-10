@@ -94,6 +94,9 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
+sys.modules["xgboost"] = ChildClassMock()
+sys.modules["xgboost.core"] = ChildClassMock()
+sys.modules["xgboost.callback"] = ChildClassMock()
 
 
 class SimpleClass(object):
