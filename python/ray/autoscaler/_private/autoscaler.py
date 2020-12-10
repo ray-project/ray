@@ -18,7 +18,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE, NODE_KIND_HEAD,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
@@ -170,7 +170,7 @@ class StandardAutoscaler:
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
         # Don't terminate nodes needed by request_resources()
         nodes_allowed_to_terminate: Dict[NodeID, bool] = {}
-        if self.resource_demand_vector:
+        if self.load_metrics.get_resource_requests():
             nodes_allowed_to_terminate = self._get_nodes_allowed_to_terminate(
                 sorted_node_ids)
 
@@ -236,24 +236,16 @@ class StandardAutoscaler:
                     self.num_successful_updates[node_id] += 1
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
-<<<<<<< HEAD
                     self.load_metrics.mark_active(ip)
-=======
-                    self.load_metrics.mark_active(
-                        self.provider.internal_ip(node_id))
->>>>>>> 3fd3cb96ed41cea13881a8a1a04b38a12d9183e0
                 else:
                     logger.error(f"StandardAutoscaler: {node_id}: Terminating "
                                  "failed to setup/initialize node.")
                     nodes_to_terminate.append(node_id)
                     self.num_failed_updates[node_id] += 1
                 del self.updaters[node_id]
-<<<<<<< HEAD
-=======
             if nodes_to_terminate:
                 self.provider.terminate_nodes(nodes_to_terminate)
 
->>>>>>> 3fd3cb96ed41cea13881a8a1a04b38a12d9183e0
             nodes = self.workers()
 
         # Update nodes with out-of-date files.
@@ -362,7 +354,7 @@ class StandardAutoscaler:
         used_resource_requests: List[ResourceDict]
         _, used_resource_requests = \
             get_bin_pack_residual(max_node_resources,
-                                  self.resource_demand_vector)
+                                  self.load_metrics.get_resource_requests())
         # Remove the first entry (the head node).
         max_node_resources.pop(0)
         # Remove the first entry (the head node).
