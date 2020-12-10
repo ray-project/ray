@@ -1377,6 +1377,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "", /* debugger_breakpoint */
                       override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
+                                   actor_creation_options.max_task_retries,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.max_concurrency,
                                    actor_creation_options.is_detached, actor_name,
@@ -1518,6 +1519,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec, actor_id);
   } else {
+    RAY_LOG(ERROR) << "ACTOR HANDLE MAX RETRIES: " << actor_handle->MaxTaskRetries();
     task_manager_->AddPendingTask(rpc_address_, task_spec, CurrentCallSite(),
                                   actor_handle->MaxTaskRetries());
     io_service_.post([this, task_spec]() {
