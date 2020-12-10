@@ -1,0 +1,55 @@
+.. _tune-stoppers:
+
+Stopping mechanisms (tune.stopper)
+==================================
+
+Apart from scheduling decisions like :ref:`ASHA <tune-scheduler-hyperband>`, where a number of
+trials are stopped if they perform subpar, Ray Tune offers abstractions to implement own stopping
+mechanisms. For instance, you can specify to stop trials when they reached a plateau and the metric
+doesn't change anymore.
+
+Ray Tune comes with several stopping mechanisms out of the box. For custom stopping behavior, you can
+inherit from the :class:`Stopper <ray.tune.Stopper>` class.
+
+.. contents::
+    :local:
+    :depth: 1
+
+
+.. _tune-stop-ref:
+
+Stopper (tune.Stopper)
+----------------------
+
+.. autoclass:: ray.tune.Stopper
+    :members: __call__, stop_all
+
+CombinedStopper (tune.stopper.CombinedStopper)
+----------------------------------------------
+
+.. autoclass:: ray.tune.stopper.CombinedStopper
+
+FunctionStopper (tune.stopper.FunctionStopper)
+----------------------------------------------
+
+.. autoclass:: ray.tune.stopper.FunctionStopper
+
+MaximumIterationStopper (tune.stopper.MaximumIterationStopper)
+--------------------------------------------------------------
+
+.. autoclass:: ray.tune.stopper.MaximumIterationStopper
+
+ExperimentPlateauStopper (tune.stopper.ExperimentPlateauStopper)
+----------------------------------------------------------------
+
+.. autoclass:: ray.tune.stopper.ExperimentPlateauStopper
+
+TrialPlateauStopper (tune.stopper.TrialPlateauStopper)
+------------------------------------------------------
+
+.. autoclass:: ray.tune.stopper.TrialPlateauStopper
+
+TimeoutStopper (tune.stopper.TimeoutStopper)
+--------------------------------------------
+
+.. autoclass:: ray.tune.stopper.TimeoutStopper
