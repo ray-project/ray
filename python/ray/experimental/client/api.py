@@ -31,13 +31,13 @@ class APIImpl(ABC):
     """
 
     @abstractmethod
-    def get(self, *args, **kwargs) -> Any:
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         """
         get is the hook stub passed on to replace `ray.get`
 
         Args:
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            vals: [Client]ObjectRef or list of these refs to retrieve.
+            timeout: Optional timeout in milliseconds
         """
         pass
 
@@ -148,8 +148,8 @@ class ClientAPI(APIImpl):
     def __init__(self, worker):
         self.worker = worker
 
-    def get(self, *args, **kwargs):
-        return self.worker.get(*args, **kwargs)
+    def get(self, vals, *, timeout=None):
+        return self.worker.get(vals, timeout=timeout)
 
     def put(self, *args, **kwargs):
         return self.worker.put(*args, **kwargs)

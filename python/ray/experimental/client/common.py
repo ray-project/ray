@@ -4,6 +4,8 @@ from typing import Any
 from typing import Dict
 from ray import cloudpickle
 
+import base64
+
 
 class ClientBaseRef:
     def __init__(self, id):
@@ -23,7 +25,8 @@ class ClientBaseRef:
 
 
 class ClientObjectRef(ClientBaseRef):
-    pass
+    def _unpack_ref(self):
+        return cloudpickle.loads(self.id)
 
 
 class ClientActorRef(ClientBaseRef):
@@ -270,3 +273,14 @@ def convert_to_arg(val):
         out.local = ray_client_pb2.Arg.Locality.INTERNED
         out.data = cloudpickle.dumps(val)
     return out
+
+
+def encode_exception(exception) -> str:
+    data = cloudpickle.dumps(exception)
+    return base64.standard_b64encode(data).decode()
+
+
+def decode_exception(data) -> Exception:
+    data = base64.standard_b64decode(data)
+    return cloudpickle.loads(data)
+

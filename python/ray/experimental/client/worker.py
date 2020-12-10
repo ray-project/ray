@@ -5,6 +5,7 @@ to the server.
 import inspect
 import json
 import logging
+from typing import Any
 from typing import List
 from typing import Tuple
 from typing import Optional
@@ -13,9 +14,11 @@ import ray.cloudpickle as cloudpickle
 from ray.util.inspect import is_cython
 import grpc
 
+from ray.exceptions import TaskCancelledError
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
+from ray.experimental.client.common import decode_exception
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientActorHandle
@@ -48,28 +51,32 @@ class Worker:
         else:
             self.server = stub
 
-    def get(self, ids):
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
         single = False
-        if isinstance(ids, list):
-            to_get = [x.id for x in ids]
-        elif isinstance(ids, ClientObjectRef):
-            to_get = [ids.id]
+        if isinstance(vals, list):
+            to_get = [x.id for x in vals]
+        elif isinstance(vals, ClientObjectRef):
+            to_get = [vals.id]
             single = True
         else:
             raise Exception("Can't get something that's not a "
-                            "list of IDs or just an ID: %s" % type(ids))
-        out = [self._get(x) for x in to_get]
+                            "list of IDs or just an ID: %s" % type(vals))
+        if timeout is None:
+            timeout = 0
+        out = [self._get(x, timeout) for x in to_get]
         if single:
             out = out[0]
         return out
 
-    def _get(self, id: bytes):
-        req = ray_client_pb2.GetRequest(id=id)
-        data = self.server.GetObject(req, metadata=self.metadata)
+    def _get(self, id: bytes, timeout: float):
+        req = ray_client_pb2.GetRequest(id=id, timeout=timeout)
+        try:
+            data = self.server.GetObject(req, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
         if not data.valid:
-            raise Exception(
-                "Client GetObject returned invalid data: id invalid?")
+            raise TaskCancelledError(id)
         return cloudpickle.loads(data.data)
 
     def put(self, vals):

@@ -35,9 +35,6 @@ def test_real_ray_fallback(ray_start_regular_shared):
         nodes = ray.get(get_nodes.remote())
         assert len(nodes) == 1, nodes
 
-        with pytest.raises(NotImplementedError):
-            print(ray.nodes())
-
 
 def test_nested_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
