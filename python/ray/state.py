@@ -918,8 +918,8 @@ def objects(object_ref=None):
     """Fetch and parse the object table info for one or more object refs.
 
     Args:
-        object_ref: A hex string of the object ref ID to fetch information about.
-            If this is None, then the entire object table is fetched.
+        object_ref: An object ref to fetch information about. If this is None,
+            then the entire object table is fetched.
 
     Returns:
         Information from the object table.
