@@ -35,8 +35,8 @@ def attempt_to_load_balance(remote_function,
                             num_attempts=100):
     attempts = 0
     while attempts < num_attempts:
-        refs = [remote_function.remote(*args) for _ in range(total_tasks)]
-        locations = ray.get(refs)
+        locations = ray.get(
+            [remote_function.remote(*args) for _ in range(total_tasks)])
         names = set(locations)
         counts = [locations.count(name) for name in names]
         logger.info(f"Counts are {counts}.")
@@ -44,8 +44,6 @@ def attempt_to_load_balance(remote_function,
                 and all(count >= minimum_count for count in counts)):
             break
         attempts += 1
-        print(refs)
-        print([(name, locations.count(name)) for name in names])
     assert attempts < num_attempts
 
 
