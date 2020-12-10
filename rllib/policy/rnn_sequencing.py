@@ -158,21 +158,20 @@ def add_time_dimension(padded_inputs: TensorType,
         return torch.reshape(padded_inputs, new_shape)
 
 
-# NOTE: This function will be deprecated once chunks already come padded and
-#  correctly chopped from the _SampleCollector object (in time-major fashion
-#  or not). It is already no longer user iff `_use_trajectory_view_api` = True.
 @DeveloperAPI
-def chop_into_sequences(*,
-                        feature_columns,
-                        state_columns,
-                        max_seq_len,
-                        episode_ids=None,
-                        unroll_ids=None,
-                        agent_indices=None,
-                        dynamic_max=True,
-                        shuffle=False,
-                        seq_lens=None,
-                        _extra_padding=0):
+def chop_into_sequences(
+        *,
+        feature_columns,
+        state_columns,
+        max_seq_len,
+        episode_ids=None,
+        unroll_ids=None,
+        agent_indices=None,
+        dynamic_max=True,
+        shuffle=False,
+        seq_lens=None,
+        states_already_reduced_to_init=False,
+        _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
@@ -214,8 +213,6 @@ def chop_into_sequences(*,
         >>> print(seq_lens)
         [2, 3, 1]
     """
-
-    states_already_reduced_to_init = seq_lens is not None
 
     if seq_lens is None:
         prev_id = None
@@ -266,7 +263,7 @@ def chop_into_sequences(*,
     else:
         initial_states = []
         for s in state_columns:
-            # Save unnecessary copy.
+            # Skip unnecessary copy.
             if not isinstance(s, np.ndarray):
                 s = np.array(s)
             s_init = []

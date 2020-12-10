@@ -1,6 +1,5 @@
 from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated.gcs_pb2 import (
-    ActorCheckpointIdData,
     ActorTableData,
     GcsNodeInfo,
     AvailableResources,
@@ -26,7 +25,6 @@ from ray.core.generated.gcs_pb2 import (
 )
 
 __all__ = [
-    "ActorCheckpointIdData",
     "ActorTableData",
     "GcsNodeInfo",
     "AvailableResources",

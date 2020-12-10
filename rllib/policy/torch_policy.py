@@ -10,6 +10,7 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -354,12 +355,19 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
-
-        # Allow Model to modify the train_batch (e.g. zero-pad for RNNs).
+        # Get batch ready for multi-agent, if applicable.
+        if self.batch_divisibility_req > 1:
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+            )
+        # Allow model to preprocess the batch before passing it through the
+        # loss function.
         if self.model:
             postprocessed_batch = self.model.preprocess_train_batch(
                 postprocessed_batch)
-
         # Mark the batch as "is_training" so the Model can use this
         # information.
         postprocessed_batch["is_training"] = True

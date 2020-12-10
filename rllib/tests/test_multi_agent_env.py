@@ -7,11 +7,13 @@ import ray
 from ray.tune.registry import register_env
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
-from ray.rllib.tests.test_rollout_worker import MockPolicy
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
@@ -321,21 +323,31 @@ class TestMultiAgentEnv(unittest.TestCase):
                 if episodes is not None:
                     # Pretend we did a model-based rollout and want to return
                     # the extra trajectory.
-                    builder = episodes[0].new_batch_builder()
-                    rollout_id = random.randint(0, 10000)
-                    for t in range(5):
-                        builder.add_values(
-                            agent_id="extra_0",
-                            policy_id="p1",  # use p1 so we can easily check it
-                            t=t,
-                            eps_id=rollout_id,  # new id for each rollout
-                            obs=obs_batch[0],
-                            actions=0,
-                            rewards=0,
-                            dones=t == 4,
-                            infos={},
-                            new_obs=obs_batch[0])
-                    batch = builder.build_and_reset(episode=None)
+                    env_id = episodes[0].env_id
+                    fake_eps = MultiAgentEpisode(
+                        episodes[0]._policies, episodes[0]._policy_mapping_fn,
+                        lambda: None, lambda x: None, env_id)
+                    builder = get_global_worker().sampler.sample_collector
+                    agent_id = "extra_0"
+                    policy_id = "p1"  # use p1 so we can easily check it
+                    builder.add_init_obs(fake_eps, agent_id, env_id, policy_id,
+                                         -1, obs_batch[0])
+                    for t in range(4):
+                        builder.add_action_reward_next_obs(
+                            episode_id=fake_eps.episode_id,
+                            agent_id=agent_id,
+                            env_id=env_id,
+                            policy_id=policy_id,
+                            agent_done=t == 3,
+                            values=dict(
+                                t=t,
+                                actions=0,
+                                rewards=0,
+                                dones=t == 3,
+                                infos={},
+                                new_obs=obs_batch[0]))
+                    batch = builder.postprocess_episode(
+                        episode=fake_eps, build=True)
                     episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
@@ -350,12 +362,17 @@ class TestMultiAgentEnv(unittest.TestCase):
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },
+            policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda agent_id: "p0",
             rollout_fragment_length=5)
         batch = ev.sample()
+        # 5 environment steps (rollout_fragment_length).
         self.assertEqual(batch.count, 5)
+        # 10 agent steps for p0: 2 agents, both using p0 as their policy.
         self.assertEqual(batch.policy_batches["p0"].count, 10)
-        self.assertEqual(batch.policy_batches["p1"].count, 25)
+        # 20 agent steps for p1: Each time both(!) agents takes 1 step,
+        # p1 takes 4: 5 (rollout-fragment length) * 4 = 20
+        self.assertEqual(batch.policy_batches["p1"].count, 20)
 
     def test_train_multi_agent_cartpole_single_policy(self):
         n = 10

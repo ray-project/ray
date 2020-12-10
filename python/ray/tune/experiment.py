@@ -286,21 +286,12 @@ class Experiment:
             try:
                 register_trainable(name, run_object)
             except (TypeError, PicklingError) as e:
-                msg = (
-                    f"{str(e)}. The trainable ({str(run_object)}) could not "
-                    "be serialized, which is needed for parallel execution. "
-                    "To diagnose the issue, try the following:\n\n"
-                    "\t- Run `tune.utils.diagnose_serialization(trainable)` "
-                    "to check if non-serializable variables are captured "
-                    "in scope.\n"
-                    "\t- Try reproducing the issue by calling "
-                    "`pickle.dumps(trainable)`.\n"
-                    "\t- If the error is typing-related, try removing "
-                    "the type annotations and try again.\n\n"
-                    "If you have any suggestions on how to improve "
-                    "this error message, please reach out to the "
-                    "Ray developers on github.com/ray-project/ray/issues/")
-                raise type(e)(msg) from None
+                extra_msg = (f"Other options: "
+                             "\n-Try reproducing the issue by calling "
+                             "`pickle.dumps(trainable)`. "
+                             "\n-If the error is typing-related, try removing "
+                             "the type annotations and try again.")
+                raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")

@@ -6,6 +6,7 @@ from typing import Dict, List, Union
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.utils import rnn_preprocess_train_batch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -106,6 +107,11 @@ class RecurrentNetwork(TorchModelV2):
         """
         raise NotImplementedError("You must implement this for an RNN model")
 
+    @override(ModelV2)
+    def preprocess_train_batch(self, train_batch):
+        return rnn_preprocess_train_batch(
+            train_batch, self.model_config["max_seq_len"])
+
 
 class LSTMWrapper(RecurrentNetwork, nn.Module):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
@@ -159,10 +165,10 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         if model_config["lstm_use_prev_action"]:
             self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
-                                data_rel_pos=-1)
+                                shift=-1)
         if model_config["lstm_use_prev_reward"]:
             self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
-                ViewRequirement(SampleBatch.REWARDS, data_rel_pos=-1)
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],

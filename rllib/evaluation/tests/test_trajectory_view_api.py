@@ -1,14 +1,17 @@
 import copy
 import gym
 from gym.spaces import Box, Discrete
+import numpy as np
 import time
 import unittest
 
 import ray
+from ray import tune
 from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwareAttentionPolicy, EpisodeEnvAwareLSTMPolicy
@@ -81,7 +84,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].data_rel_pos == 1
+                    assert view_req_policy[key].shift == 1
             rollout_worker = trainer.workers.local_worker()
             sample_batch = rollout_worker.sample()
             expected_count = \
@@ -121,10 +124,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
                 if key == SampleBatch.PREV_ACTIONS:
                     assert view_req_policy[key].data_col == SampleBatch.ACTIONS
-                    assert view_req_policy[key].data_rel_pos == -1
+                    assert view_req_policy[key].shift == -1
                 elif key == SampleBatch.PREV_REWARDS:
                     assert view_req_policy[key].data_col == SampleBatch.REWARDS
-                    assert view_req_policy[key].data_rel_pos == -1
+                    assert view_req_policy[key].shift == -1
                 elif key not in [
                         SampleBatch.NEXT_OBS, SampleBatch.PREV_ACTIONS,
                         SampleBatch.PREV_REWARDS
@@ -132,7 +135,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col is None
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].data_rel_pos == 1
+                    assert view_req_policy[key].shift == 1
             trainer.stop()
 
     def test_traj_view_attention_net(self):
@@ -389,6 +392,38 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         )
         batch = rollout_worker_w_api.sample()
         print(batch)
+
+    def test_counting_by_agent_steps(self):
+        """Test whether a PPOTrainer can be built with all frameworks."""
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        action_space = Discrete(2)
+        obs_space = Box(float("-inf"), float("inf"), (4, ), dtype=np.float32)
+
+        config["num_workers"] = 2
+        config["num_sgd_iter"] = 2
+        config["framework"] = "torch"
+        config["rollout_fragment_length"] = 21
+        config["train_batch_size"] = 147
+        config["multiagent"] = {
+            "policies": {
+                "p0": (None, obs_space, action_space, {}),
+                "p1": (None, obs_space, action_space, {}),
+            },
+            "policy_mapping_fn": lambda aid: "p{}".format(aid),
+            "count_steps_by": "agent_steps",
+        }
+        tune.register_env(
+            "ma_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
+        num_iterations = 2
+        trainer = ppo.PPOTrainer(config=config, env="ma_cartpole")
+        results = None
+        for i in range(num_iterations):
+            results = trainer.train()
+        self.assertGreater(results["timesteps_total"],
+                           num_iterations * config["train_batch_size"])
+        self.assertLess(results["timesteps_total"],
+                        (num_iterations + 1) * config["train_batch_size"])
+        trainer.stop()
 
 
 def analyze_rnn_batch(batch, max_seq_len):

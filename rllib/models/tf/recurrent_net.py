@@ -5,8 +5,8 @@ from typing import Dict, List
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.policy.rnn_sequencing import add_time_dimension, \
-    chop_into_sequences
+from ray.rllib.models.utils import rnn_preprocess_train_batch
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -111,32 +111,8 @@ class RecurrentNetwork(TFModelV2):
 
     @override(ModelV2)
     def preprocess_train_batch(self, train_batch):
-        assert "state_in_0" in train_batch
-        state_keys = []
-        feature_keys_ = []
-        for k, v in train_batch.items():
-            if k.startswith("state_in_"):
-                state_keys.append(k)
-            elif not k.startswith("state_out_") and k != "infos" and \
-                    isinstance(v, np.ndarray):
-                feature_keys_.append(k)
-
-        feature_sequences, initial_states, seq_lens = \
-            chop_into_sequences(
-                episode_ids=train_batch[SampleBatch.EPS_ID],
-                unroll_ids=train_batch[SampleBatch.UNROLL_ID],
-                agent_indices=train_batch[SampleBatch.AGENT_INDEX],
-                feature_columns=[train_batch[k] for k in feature_keys_],
-                state_columns=[train_batch[k] for k in state_keys],
-                max_seq_len=self.model_config["max_seq_len"],
-                dynamic_max=True,
-                shuffle=False)
-        for i, k in enumerate(feature_keys_):
-            train_batch[k] = feature_sequences[i]
-        for i, k in enumerate(state_keys):
-            train_batch[k] = initial_states[i]
-        train_batch["seq_lens"] = seq_lens
-        return train_batch
+        return rnn_preprocess_train_batch(
+            train_batch, self.model_config["max_seq_len"])
 
 
 class LSTMWrapper(RecurrentNetwork):
@@ -208,10 +184,10 @@ class LSTMWrapper(RecurrentNetwork):
         if model_config["lstm_use_prev_action"]:
             self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
-                                data_rel_pos=-1)
+                                shift=-1)
         if model_config["lstm_use_prev_reward"]:
             self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
-                ViewRequirement(SampleBatch.REWARDS, data_rel_pos=-1)
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],

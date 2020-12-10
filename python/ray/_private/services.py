@@ -136,7 +136,7 @@ def find_redis_address(address=None):
     # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
     # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
     # --min_worker_port=10000 --max_worker_port=10999
-    # --node_manager_port=58578 --redis_port=6379 --num_initial_workers=8
+    # --node_manager_port=58578 --redis_port=6379
     # --maximum_startup_concurrency=8
     # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
     # --config_list=plasma_store_as_thread,True
@@ -279,7 +279,8 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None):
+                                redis_password=None,
+                                no_warning=False):
     counter = 0
     while True:
         try:
@@ -290,10 +291,11 @@ def get_address_info_from_redis(redis_address,
                 raise
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            logger.warning(
-                "Some processes that the driver needs to connect to have "
-                "not registered with Redis, so retrying. Have you run "
-                "'ray start' on this node?")
+            if not no_warning:
+                logger.warning(
+                    "Some processes that the driver needs to connect to have "
+                    "not registered with Redis, so retrying. Have you run "
+                    "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
@@ -1251,13 +1253,11 @@ def start_raylet(redis_address,
                  stderr_file=None,
                  config=None,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  huge_pages=False,
                  fate_share=None,
                  socket_to_use=None,
                  head_node=False,
-                 start_initial_python_workers_for_first_job=False,
-                 code_search_path=None):
+                 start_initial_python_workers_for_first_job=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1294,9 +1294,6 @@ def start_raylet(redis_address,
         config (dict|None): Optional Raylet configuration that will
             override defaults in RayConfig.
         java_worker_options (list): The command options for Java worker.
-        code_search_path (list): Code search path for worker. code_search_path
-            is added to worker command in non-multi-tenancy mode and job_config
-            in multi-tenancy mode.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1309,7 +1306,6 @@ def start_raylet(redis_address,
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
     assert resource_spec.resolved()
-    num_initial_workers = resource_spec.num_cpus
     static_resources = resource_spec.to_resource_dict()
 
     # Limit the number of workers that can be started in parallel by the
@@ -1346,7 +1342,6 @@ def start_raylet(redis_address,
             raylet_name,
             redis_password,
             session_dir,
-            code_search_path,
         )
     else:
         java_worker_command = []
@@ -1366,15 +1361,18 @@ def start_raylet(redis_address,
 
     # Create the command that the Raylet will use to start workers.
     start_worker_command = [
-        sys.executable, worker_path, f"--node-ip-address={node_ip_address}",
+        sys.executable,
+        worker_path,
+        f"--node-ip-address={node_ip_address}",
         f"--node-manager-port={node_manager_port}",
         f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}", f"--redis-address={redis_address}",
-        f"--config-list={config_str}", f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}"
+        f"--raylet-name={raylet_name}",
+        f"--redis-address={redis_address}",
+        f"--config-list={config_str}",
+        f"--temp-dir={temp_dir}",
+        f"--metrics-agent-port={metrics_agent_port}",
+        "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
-    if code_search_path:
-        start_worker_command.append(f"--code-search-path={code_search_path}")
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1388,12 +1386,6 @@ def start_raylet(redis_address,
 
     if max_worker_port is None:
         max_worker_port = 0
-
-    if code_search_path is not None and len(code_search_path) > 0:
-        load_code_from_local = True
-
-    if load_code_from_local:
-        start_worker_command += ["--load-code-from-local"]
 
     # Create agent command
     agent_command = [
@@ -1425,7 +1417,6 @@ def start_raylet(redis_address,
         f"--node_ip_address={node_ip_address}",
         f"--redis_address={gcs_ip_address}",
         f"--redis_port={gcs_port}",
-        f"--num_initial_workers={num_initial_workers}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
         f"--config_list={config_str}",
@@ -1485,8 +1476,7 @@ def get_ray_jars_dir():
 
 def build_java_worker_command(java_worker_options, redis_address,
                               node_manager_port, plasma_store_name,
-                              raylet_name, redis_password, session_dir,
-                              code_search_path):
+                              raylet_name, redis_password, session_dir):
     """This method assembles the command used to start a Java worker.
 
     Args:
@@ -1497,7 +1487,6 @@ def build_java_worker_command(java_worker_options, redis_address,
         raylet_name (str): The name of the raylet socket to create.
         redis_password (str): The password of connect to redis.
         session_dir (str): The path of this session.
-        code_search_path (list): Teh job code search path.
     Returns:
         The command string for starting Java worker.
     """
@@ -1518,7 +1507,6 @@ def build_java_worker_command(java_worker_options, redis_address,
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    pairs.append(("ray.job.code-search-path", code_search_path))
     command = ["java"] + ["-D{}={}".format(*pair) for pair in pairs]
 
     command += ["RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER"]

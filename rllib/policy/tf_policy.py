@@ -268,7 +268,8 @@ class TFPolicy(Policy):
         else:
             self._loss = loss
 
-        self._optimizer = self.optimizer()
+        if self._optimizer is None:
+            self._optimizer = self.optimizer()
         self._grads_and_vars = [
             (g, v) for (g, v) in self.gradients(self._optimizer, self._loss)
             if g is not None
@@ -796,7 +797,7 @@ class TFPolicy(Policy):
             feed dict of data
         """
 
-        # Allow Model to modify the train_batch (e.g. zero-pad for RNNs).
+        # Get batch ready for RNNs/Attention Nets, etc.
         train_batch = self.model.preprocess_train_batch(train_batch)
 
         # Mark the batch as "is_training" so the Model can use this
@@ -876,6 +877,9 @@ class EntropyCoeffSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff.load(
+        op_or_none = self.entropy_coeff.assign(
             self.entropy_coeff_schedule.value(global_vars["timestep"]),
-            session=self._sess)
+            read_value=False,  # return tf op (None in eager mode).
+        )
+        if self._sess is not None:
+            self._sess.run(op_or_none)

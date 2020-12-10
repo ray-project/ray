@@ -51,7 +51,9 @@ class Aggregator(ParallelIteratorWorker):
                 .flatten() \
                 .combine(
                     ConcatBatches(
-                        min_batch_size=config["train_batch_size"]))
+                        min_batch_size=config["train_batch_size"],
+                        count_steps_by=config["multiagent"]["count_steps_by"],
+                    ))
 
             for train_batch in it:
                 yield train_batch
