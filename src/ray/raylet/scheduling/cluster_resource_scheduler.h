@@ -356,18 +356,28 @@ class ClusterResourceScheduler {
  private:
   struct Node {
     Node(const NodeResources &resources)
-        : last_reported(resources), local_view(resources) {}
+        : last_reported_(resources), local_view_(resources) {}
 
+    void ResetLocalView() { local_view_ = last_reported_; }
+
+    NodeResources *GetMutableLocalView() { return &local_view_; }
+
+    const NodeResources &GetLocalView() const { return local_view_; }
+
+   private:
     /// The resource information according to the last heartbeat reported by
     /// this node.
     /// NOTE(swang): For the local node, this field should be ignored because
     /// we do not receive heartbeats from ourselves and the local view is
     /// therefore always the most up-to-date.
-    NodeResources last_reported;
+    NodeResources last_reported_;
     /// Our local view of the remote node's resources. This may be dirty
     /// because it includes any resource requests that we allocated to this
-    /// node through spillback since our last heartbeat tick.
-    NodeResources local_view;
+    /// node through spillback since our last heartbeat tick. This view will
+    /// get overwritten by the last reported view on each heartbeat tick, to
+    /// make sure that our local view does not skew too much from the actual
+    /// resources when light heartbeats are enabled.
+    NodeResources local_view_;
   };
 
   /// Decrease the available resources of a node when a task request is
@@ -380,20 +390,6 @@ class ClusterResourceScheduler {
   /// and false otherwise.
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const TaskRequest &task_request);
-
-  /// Set predefined resources.
-  ///
-  /// \param[in] new_resources: New predefined resources.
-  /// \param[out] old_resources: Predefined resources to be updated.
-  void SetPredefinedResources(const NodeResources &new_resources,
-                              NodeResources *old_resources);
-  /// Set custom resources.
-  ///
-  /// \param[in] new_resources: New custom resources.
-  /// \param[out] old_resources: Custom resources to be updated.
-  void SetCustomResources(
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
-      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
