@@ -314,9 +314,8 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
-  bool AllocateLocalTaskResources(
-      const TaskRequest &task_request,
-      std::shared_ptr<TaskResourceInstances> task_allocation);
+  bool AllocateLocalTaskResources(const TaskRequest &task_request,
+                                  std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Subtract the resources required by a given task request (task_req) from a given
   /// remote node.
@@ -357,7 +356,7 @@ class ClusterResourceScheduler {
  private:
   struct Node {
     Node(const NodeResources &resources)
-      : last_reported(resources), local_view(resources) {}
+        : last_reported(resources), local_view(resources) {}
 
     /// The resource information according to the last heartbeat reported by
     /// this node.
@@ -379,7 +378,8 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
-  bool SubtractRemoteNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
+  bool SubtractRemoteNodeAvailableResources(int64_t node_id,
+                                            const TaskRequest &task_request);
 
   /// Set predefined resources.
   ///

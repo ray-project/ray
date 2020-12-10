@@ -1152,21 +1152,24 @@ TEST_F(ClusterResourceSchedulerTest, TestDirtyLocalView) {
 
   for (int num_slots_available = 0; num_slots_available <= 2; num_slots_available++) {
     // Remote node reports updated resource availability.
-    cluster_resources.AddOrUpdateNode("remote", {{"CPU", 2.}}, {{"CPU", num_slots_available}});
+    cluster_resources.AddOrUpdateNode("remote", {{"CPU", 2.}},
+                                      {{"CPU", num_slots_available}});
     auto data = std::make_shared<rpc::HeartbeatTableData>();
     int64_t t;
     for (int i = 0; i < 3; i++) {
       // Heartbeat tick should reset the remote node's resources.
       cluster_resources.Heartbeat(true, data);
       for (int j = 0; j < num_slots_available; j++) {
-        ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t), "remote");
+        ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t),
+                  "remote");
         // Allocate remote resources.
         ASSERT_TRUE(cluster_resources.AllocateRemoteTaskResources("remote", task_spec));
       }
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
       ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t), "");
-      ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
+      ASSERT_FALSE(
+          cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
       ASSERT_FALSE(cluster_resources.AllocateRemoteTaskResources("remote", task_spec));
     }
   }

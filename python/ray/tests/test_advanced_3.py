@@ -22,7 +22,7 @@ import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
                             wait_for_condition, wait_for_num_actors,
-    new_scheduler_enabled)
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 

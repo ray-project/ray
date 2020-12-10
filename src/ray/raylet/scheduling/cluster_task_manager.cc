@@ -416,8 +416,9 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
   if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
-      spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
-    RAY_LOG(INFO) << "Tried to allocate resources for request " << task_spec.TaskId() << " on a remote node that are no longer available";
+          spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
+    RAY_LOG(INFO) << "Tried to allocate resources for request " << task_spec.TaskId()
+                  << " on a remote node that are no longer available";
   }
 
   auto node_info_opt = get_node_info_(spillback_to);

@@ -72,9 +72,11 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
     // This node exists, so update its resources.
     Node &node = it->second;
     SetPredefinedResources(node_resources, &node.last_reported);
-    SetCustomResources(node_resources.custom_resources, &node.last_reported.custom_resources);
+    SetCustomResources(node_resources.custom_resources,
+                       &node.last_reported.custom_resources);
     SetPredefinedResources(node_resources, &node.local_view);
-    SetCustomResources(node_resources.custom_resources, &node.local_view.custom_resources);
+    SetCustomResources(node_resources.custom_resources,
+                       &node.local_view.custom_resources);
   }
 }
 
@@ -217,7 +219,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   // the local node only if there are zero violations.
   const auto local_node_it = nodes_.find(local_node_id_);
   if (local_node_it != nodes_.end()) {
-    if (IsSchedulable(task_req, local_node_it->first, local_node_it->second.local_view) == 0) {
+    if (IsSchedulable(task_req, local_node_it->first, local_node_it->second.local_view) ==
+        0) {
       return local_node_id_;
     }
   }
@@ -240,7 +243,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     // of soft constraint violations.
     int64_t violations = IsSchedulable(task_req, node.first, node.second.local_view);
     if (violations == -1) {
-      if (!local_node_feasible && best_node == -1 && IsFeasible(task_req, node.second.local_view)) {
+      if (!local_node_feasible && best_node == -1 &&
+          IsFeasible(task_req, node.second.local_view)) {
         // If the local node is not feasible, and a better node has not yet
         // been found, and this node does not currently have the resources
         // available but is feasible, then schedule to this node.
@@ -387,7 +391,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
 
   FixedPoint resource_total_fp(resource_total);
   if (idx != -1) {
-    auto diff_capacity = resource_total_fp - it->second.local_view.predefined_resources[idx].total;
+    auto diff_capacity =
+        resource_total_fp - it->second.local_view.predefined_resources[idx].total;
     it->second.local_view.predefined_resources[idx].total += diff_capacity;
     it->second.local_view.predefined_resources[idx].available += diff_capacity;
     if (it->second.local_view.predefined_resources[idx].available < 0) {
