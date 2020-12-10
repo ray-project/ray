@@ -63,16 +63,26 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def Terminate(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":
             object_ref = cloudpickle.loads(request.task_object.id)
-            obj = self.object_refs[object_ref.binary()]
-            ray.cancel(
-                obj,
-                force=request.task_object.force,
-                recursive=request.task_object.recursive)
-            del self.object_refs[object_ref.binary()]
+            try:
+                obj = self.object_refs.get(object_ref.binary(), None)
+                if obj is None:
+                    return ray_client_pb2.TerminateResponse(ok=False)
+                ray.cancel(
+                    obj,
+                    force=request.task_object.force,
+                    recursive=request.task_object.recursive)
+                del self.object_refs[object_ref.binary()]
+            except Exception as e:
+                return_exception_in_context(e, context)
         elif request.WhichOneof("terminate_type") == "actor":
-            actor = self.actor_refs[request.actor.id]
-            ray.kill(actor, no_restart=request.actor.no_restart)
-            del self.actor_refs[request.actor.id]
+            try:
+                actor = self.actor_refs.get(request.actor.id, None)
+                if obj is None:
+                    return ray_client_pb2.TerminateResponse(ok=False)
+                ray.kill(actor, no_restart=request.actor.no_restart)
+                del self.actor_refs[request.actor.id]
+            except Exception as e:
+                return_exception_in_context(e, context)
         else:
             raise RuntimeError(
                 "Client requested termination without providing a valid terminate_type"
@@ -88,10 +98,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
-            if context is not None:
-                context.set_details(encode_exception(e))
-                context.set_code(grpc.StatusCode.INTERNAL)
-            return ray_client_pb2.GetResponse(valid=False)
+            return_exception_in_context(e, context)
         item_ser = cloudpickle.dumps(item)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
 
@@ -230,6 +237,12 @@ def _convert_args(arg_list, prepared_args=None):
         else:
             out.append(t)
     return out
+
+
+def return_exception_in_context(err, context):
+    if context is not None:
+        context.set_details(encode_exception(err))
+        context.set_code(grpc.StatusCode.INTERNAL)
 
 
 def serve(connection_str, test_mode=False):

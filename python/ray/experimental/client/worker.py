@@ -158,20 +158,33 @@ class Worker:
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
+        if not isinstance(actor, ClientActorHandle):
+            raise ValueError("ray.kill() only supported for actors. "
+                             "Got: {}.".format(type(actor)))
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
         term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart
-        term = ray_client_pb2.TerminateRequest(actor=term_actor)
-        self.server.Terminate(term)
+        try:
+            term = ray_client_pb2.TerminateRequest(actor=term_actor)
+            self.server.Terminate(term)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def terminate_task(self, obj: ClientObjectRef, force: bool,
                        recursive: bool) -> None:
+        if not isinstance(obj, ClientObjectRef):
+            raise TypeError(
+                "ray.cancel() only supported for non-actor object refs. "
+                f"Got: {type(obj)}.")
         term_object = ray_client_pb2.TerminateRequest.TaskObjectTerminate()
         term_object.id = obj.id
         term_object.force = force
         term_object.recursive = recursive
-        term = ray_client_pb2.TerminateRequest(task_object=term_object)
-        self.server.Terminate(term)
+        try:
+            term = ray_client_pb2.TerminateRequest(task_object=term_object)
+            self.server.Terminate(term)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
 
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
