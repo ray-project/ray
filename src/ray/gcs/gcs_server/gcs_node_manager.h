@@ -60,31 +60,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle report resource usage rpc come from raylet.
-  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
-                                 rpc::ReportResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle get all resource usage rpc request.
-  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
-                                 rpc::GetAllResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle get resource rpc request.
-  void HandleGetResources(const rpc::GetResourcesRequest &request,
-                          rpc::GetResourcesReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle set internal config.
   void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                rpc::SetInternalConfigReply *reply,
@@ -94,12 +69,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle get available resources of all nodes.
-  void HandleGetAllAvailableResources(
-      const rpc::GetAllAvailableResourcesRequest &request,
-      rpc::GetAllAvailableResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Update resource usage of given node.
   ///
@@ -166,13 +135,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdateNodeRealtimeResources(const NodeID &node_id,
                                    const rpc::ResourcesData &heartbeat);
 
-  /// Update the placement group load information so that it will be reported through
-  /// heartbeat.
-  ///
-  /// \param placement_group_load placement group load protobuf.
-  void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
-
   std::string DebugString() const;
 
  private:
@@ -196,8 +158,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
   /// the list.
   std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
-  /// Cluster resources.
-  absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
   /// A buffer containing resource usage received from node managers in the last tick.
@@ -214,8 +174,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Gcs resource manager.
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   // Debug info.
   enum CountType {
@@ -225,13 +183,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     REPORT_RESOURCE_USAGE_REQUEST = 3,
     GET_HEARTBEAT_REQUEST = 4,
     GET_ALL_RESOURCE_USAGE_REQUEST = 5,
-    GET_RESOURCES_REQUEST = 6,
-    UPDATE_RESOURCES_REQUEST = 7,
-    DELETE_RESOURCES_REQUEST = 8,
-    SET_INTERNAL_CONFIG_REQUEST = 9,
-    GET_INTERNAL_CONFIG_REQUEST = 10,
-    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 11,
-    CountType_MAX = 12,
+    SET_INTERNAL_CONFIG_REQUEST = 6,
+    GET_INTERNAL_CONFIG_REQUEST = 7,
+    CountType_MAX = 8,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

@@ -33,6 +33,9 @@ namespace rpc {
 #define HEARTBEAT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(HeartbeatInfoGcsService, HANDLER)
 
+#define NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(NodeResourceInfoGcsService, HANDLER)
+
 #define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER)
 
@@ -180,26 +183,6 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
-                                         GetAllResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetResources(const GetResourcesRequest &request,
-                                  GetResourcesReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
-                                     UpdateResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
-                                     DeleteResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
                                        SetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -207,11 +190,6 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetInternalConfig(const GetInternalConfigRequest &request,
                                        GetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllAvailableResources(
-      const rpc::GetAllAvailableResourcesRequest &request,
-      rpc::GetAllAvailableResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -233,14 +211,8 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetResources);
-    NODE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
-    NODE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
     NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
   }
 
  private:
@@ -248,6 +220,67 @@ class NodeInfoGrpcService : public GrpcService {
   NodeInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   NodeInfoGcsServiceHandler &service_handler_;
+};
+
+class NodeResourceInfoGcsServiceHandler {
+ public:
+  virtual ~NodeResourceInfoGcsServiceHandler() = default;
+
+  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
+                                         ReportResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetResources(const GetResourcesRequest &request,
+                                  GetResourcesReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
+                                     UpdateResourcesReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
+                                     DeleteResourcesReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllAvailableResources(
+      const rpc::GetAllAvailableResourcesRequest &request,
+      rpc::GetAllAvailableResourcesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `NodeResourceInfoGcsService`.
+class NodeResourceInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit NodeResourceInfoGrpcService(boost::asio::io_service &io_service,
+                                       NodeResourceInfoGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
+  }
+
+ private:
+  /// The grpc async service object.
+  NodeResourceInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  NodeResourceInfoGcsServiceHandler &service_handler_;
 };
 
 class HeartbeatInfoGcsServiceHandler {
@@ -539,6 +572,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
+using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using HeartbeatInfoHandler = HeartbeatInfoGcsServiceHandler;
 using ObjectInfoHandler = ObjectInfoGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
