@@ -48,8 +48,8 @@ struct pair_hash {
 /// request from GCS.
 /// PrepareBundle is responsible for reserving the necessary resources.
 /// CommitBundle is responsible for creating new custom resources.
-/// ReturnBundle is resonsible for return resource to resources view, note 
-/// it not responsible for killing workers. 
+/// ReturnBundle is resonsible for return resource to resources view, note
+/// it not responsible for killing workers.
 /// ReturnUnusedBundle is responsible for release unused bundle and ruturn resource to
 /// resources view.
 class LocalPlacementGroupManagerInterface {
