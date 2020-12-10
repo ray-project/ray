@@ -27,16 +27,16 @@ class TFMultiGPULearner(LearnerThread):
 
     def __init__(self,
                  local_worker: RolloutWorker,
-                 num_gpus: int =1,
-                 lr: float =0.0005,
-                 train_batch_size: int =500,
-                 num_data_loader_buffers: int =1,
-                 minibatch_buffer_size: int =1,
-                 num_sgd_iter: int =1,
-                 learner_queue_size: int =16,
-                 learner_queue_timeout: int =300,
-                 num_data_load_threads: int =16,
-                 _fake_gpus: bool =False):
+                 num_gpus: int = 1,
+                 lr: float = 0.0005,
+                 train_batch_size: int = 500,
+                 num_data_loader_buffers: int = 1,
+                 minibatch_buffer_size: int = 1,
+                 num_sgd_iter: int = 1,
+                 learner_queue_size: int = 16,
+                 learner_queue_timeout: int = 300,
+                 num_data_load_threads: int = 16,
+                 _fake_gpus: bool = False):
         """Initialize a multi-gpu learner thread.
 
         Args:

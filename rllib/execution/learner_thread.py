@@ -23,8 +23,9 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_worker: RolloutWorker, minibatch_buffer_size: int, num_sgd_iter: int,
-                 learner_queue_size: int, learner_queue_timeout: int):
+    def __init__(self, local_worker: RolloutWorker, minibatch_buffer_size: int,
+                 num_sgd_iter: int, learner_queue_size: int,
+                 learner_queue_timeout: int):
         """Initialize the learner thread.
 
         Args:

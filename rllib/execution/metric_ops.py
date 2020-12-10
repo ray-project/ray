@@ -60,8 +60,8 @@ class CollectMetrics:
 
     def __init__(self,
                  workers: WorkerSet,
-                 min_history: int =100,
-                 timeout_seconds: int =180,
+                 min_history: int = 100,
+                 timeout_seconds: int = 180,
                  selected_workers: List["ActorHandle"] = None):
         self.workers = workers
         self.episode_history = []

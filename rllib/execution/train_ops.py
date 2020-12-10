@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import numpy as np
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Any
 
 import ray
 from ray.rllib.evaluation.metrics import get_learner_stats, LEARNER_STATS_KEY
@@ -19,7 +19,6 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.sgd import do_minibatch_sgd, averaged
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
-
 
 tf1, tf, tfv = try_import_tf()
 
@@ -334,7 +333,8 @@ class AverageGradients:
         {"var_0": ..., ...}, 1600  # averaged grads, summed batch count
     """
 
-    def __call__(self, gradients: List[Tuple[ModelGradients, int]]) -> Tuple[ModelGradients, int]:
+    def __call__(self, gradients: List[Tuple[ModelGradients, int]]
+                 ) -> Tuple[ModelGradients, int]:
         acc = None
         sum_count = 0
         for grad, count in gradients:
@@ -369,8 +369,8 @@ class UpdateTargetNetwork:
     def __init__(self,
                  workers: WorkerSet,
                  target_update_freq: int,
-                 by_steps_trained: bool =False,
-                 policies: List[PolicyID] =frozenset([])):
+                 by_steps_trained: bool = False,
+                 policies: List[PolicyID] = frozenset([])):
         self.workers = workers
         self.target_update_freq = target_update_freq
         self.policies = (policies or workers.local_worker().policies_to_train)

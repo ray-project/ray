@@ -55,7 +55,7 @@ class StoreToReplayBuffer:
 def Replay(*,
            local_buffer: LocalReplayBuffer = None,
            actors: List["ActorHandle"] = None,
-           num_async: int =4) -> "LocalIterator[T]":
+           num_async: int = 4) -> LocalIterator[SampleBatchType]:
     """Replay experiences from the given buffer or actors.
 
     This should be combined with the StoreToReplayActors operation using the
@@ -112,7 +112,9 @@ class WaitUntilTimestepsElapsed:
 class SimpleReplayBuffer:
     """Simple replay buffer that operates over batches."""
 
-    def __init__(self, num_slots: int, replay_proportion: Optional[float] = None):
+    def __init__(self,
+                 num_slots: int,
+                 replay_proportion: Optional[float] = None):
         """Initialize SimpleReplayBuffer.
 
         Args:

@@ -1,6 +1,7 @@
 import operator
 from typing import Any, Optional
 
+
 class SegmentTree:
     """A Segment Tree data structure.
 
@@ -28,7 +29,10 @@ class SegmentTree:
     `tree[0]` accesses `internal_array[4]` in the above example.
     """
 
-    def __init__(self, capacity: int, operation: Any, neutral_element: Optional[Any]=None):
+    def __init__(self,
+                 capacity: int,
+                 operation: Any,
+                 neutral_element: Optional[Any] = None):
         """Initializes a Segment Tree object.
 
         Args:
@@ -52,7 +56,7 @@ class SegmentTree:
         self.value = [self.neutral_element for _ in range(2 * capacity)]
         self.operation = operation
 
-    def reduce(self, start: int=0, end: Optional[int]=None) -> Any:
+    def reduce(self, start: int = 0, end: Optional[int] = None) -> Any:
         """Applies `self.operation` to subsequence of our values.
 
         Subsequence is contiguous, includes `start` and excludes `end`.
@@ -159,7 +163,7 @@ class SumSegmentTree(SegmentTree):
         super(SumSegmentTree, self).__init__(
             capacity=capacity, operation=operator.add)
 
-    def sum(self, start: int=0, end: Optional[Any]=None) -> Any:
+    def sum(self, start: int = 0, end: Optional[Any] = None) -> Any:
         """Returns the sum over a sub-segment of the tree."""
         return self.reduce(start, end)
 
@@ -191,6 +195,6 @@ class MinSegmentTree(SegmentTree):
     def __init__(self, capacity: int):
         super(MinSegmentTree, self).__init__(capacity=capacity, operation=min)
 
-    def min(self, start: int=0, end: Optional[Any]=None) -> Any:
+    def min(self, start: int = 0, end: Optional[Any] = None) -> Any:
         """Returns min(arr[start], ...,  arr[end])"""
         return self.reduce(start, end)

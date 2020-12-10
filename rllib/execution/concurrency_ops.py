@@ -3,13 +3,15 @@ import queue
 
 from ray.util.iter import LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
+from ray.rllib.utils.typing import SampleBatchType
 
 
 def Concurrently(ops: List[LocalIterator],
                  *,
-                 mode: str ="round_robin",
+                 mode: str = "round_robin",
                  output_indexes: Optional[List[int]] = None,
-                 round_robin_weights: Optional[List[int]] = None)  -> "LocalIterator[T]":
+                 round_robin_weights: Optional[List[int]] = None
+                 ) -> LocalIterator[SampleBatchType]:
     """Operator that runs the given parent iterators concurrently.
 
     Args:
@@ -99,7 +101,8 @@ class Enqueue:
         return x
 
 
-def Dequeue(input_queue: queue.Queue, check=lambda: True) -> "LocalIterator[T]":
+def Dequeue(input_queue: queue.Queue,
+            check=lambda: True) -> LocalIterator[SampleBatchType]:
     """Dequeue data items from a queue.Queue instance.
 
     The dequeue is non-blocking, so Dequeue operations can executed with

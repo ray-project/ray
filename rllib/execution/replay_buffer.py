@@ -215,7 +215,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch
 
     @DeveloperAPI
-    def update_priorities(self, idxes: List[int], priorities: List[float]) -> None:
+    def update_priorities(self, idxes: List[int],
+                          priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
 
         sets priority of transition at index idxes[i] in buffer
@@ -242,7 +243,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._max_priority = max(self._max_priority, priority)
 
     @DeveloperAPI
-    def stats(self, debug: bool =False) -> Dict:
+    def stats(self, debug: bool = False) -> Dict:
         parent = ReplayBuffer.stats(self, debug)
         if debug:
             parent.update(self._prio_change_stats.stats())
@@ -260,15 +261,15 @@ class LocalReplayBuffer(ParallelIteratorWorker):
     may be created to increase parallelism."""
 
     def __init__(self,
-                 num_shards: int =1,
-                 learning_starts: int =1000,
-                 buffer_size: int =10000,
-                 replay_batch_size: int =1,
-                 prioritized_replay_alpha: float =0.6,
-                 prioritized_replay_beta: float =0.4,
-                 prioritized_replay_eps: float =1e-6,
-                 replay_mode: str ="independent",
-                 replay_sequence_length: int =1):
+                 num_shards: int = 1,
+                 learning_starts: int = 1000,
+                 buffer_size: int = 10000,
+                 replay_batch_size: int = 1,
+                 prioritized_replay_alpha: float = 0.6,
+                 prioritized_replay_beta: float = 0.4,
+                 prioritized_replay_eps: float = 1e-6,
+                 replay_mode: str = "independent",
+                 replay_sequence_length: int = 1):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
@@ -372,7 +373,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 self.replay_buffers[policy_id].update_priorities(
                     batch_indexes, new_priorities)
 
-    def stats(self, debug: bool=False) -> Dict:
+    def stats(self, debug: bool = False) -> Dict:
         stat = {
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),

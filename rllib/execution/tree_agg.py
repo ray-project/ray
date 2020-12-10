@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import List, Dict
+from typing import List, Dict, Any
 
 import ray
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -9,7 +9,7 @@ from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
 from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
-    from_actors
+    from_actors, LocalIterator
 from ray.rllib.utils.typing import SampleBatchType, ModelWeights
 from ray.rllib.evaluation.worker_set import WorkerSet
 
@@ -69,7 +69,8 @@ class Aggregator(ParallelIteratorWorker):
         self.global_vars = global_vars
 
 
-def gather_experiences_tree_aggregation(workers: WorkerSet, config: Dict) -> "LocalIterator[T]":
+def gather_experiences_tree_aggregation(workers: WorkerSet,
+                                        config: Dict) -> "LocalIterator[Any]":
     """Tree aggregation version of gather_experiences_directly()."""
 
     rollouts = ParallelRollouts(workers, mode="raw")
