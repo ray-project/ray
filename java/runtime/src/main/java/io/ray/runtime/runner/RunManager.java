@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.ray.runtime.config.RayConfig;
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -31,12 +30,6 @@ public class RunManager {
    */
   public static void startRayHead(RayConfig rayConfig) {
     LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
-    String codeSearchPath;
-    if (!rayConfig.codeSearchPath.isEmpty()) {
-      codeSearchPath = Joiner.on(File.pathSeparator).join(rayConfig.codeSearchPath);
-    } else {
-      codeSearchPath = System.getProperty("java.class.path");
-    }
     List<String> command = new ArrayList<>();
     command.add("ray");
     command.add("start");
@@ -44,7 +37,6 @@ public class RunManager {
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
     command.add("--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters));
-    command.add("--code-search-path=" + codeSearchPath);
     command.addAll(rayConfig.headArgs);
     String output;
     try {

@@ -196,15 +196,6 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 /// excessive memory usage during object broadcast to many receivers.
 RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
 
-/// Number of workers per Python worker process
-RAY_CONFIG(int, num_workers_per_process_python, 1)
-
-/// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 1)
-
-/// Number of workers per CPP worker process
-RAY_CONFIG(int, num_workers_per_process_cpp, 1)
-
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
@@ -300,11 +291,6 @@ RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
-
-/// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy,
-           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
-               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
 RAY_CONFIG(bool, enable_worker_prestart,

@@ -186,9 +186,6 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      worker->AssignJobId(spec.JobId());
-    }
     worker->SetAssignedTask(task);
     *worker_leased = true;
     dispatched = true;

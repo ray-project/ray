@@ -60,7 +60,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     Ray.shutdown();
     System.setProperty("ray.head-args.0", "--num-cpus=4");
     System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
     Ray.init();
@@ -82,7 +81,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     Ray.shutdown();
     System.setProperty("ray.head-args.0", "--num-cpus=4");
     System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
 
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
@@ -139,7 +137,6 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     Ray.shutdown();
     System.setProperty("ray.head-args.0", "--num-cpus=4");
     System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
 
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
