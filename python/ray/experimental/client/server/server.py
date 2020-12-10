@@ -71,7 +71,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 data = ray.actors()
         elif request.type == ray_client_pb2.ClusterInfoType.OBJECTS:
             if len(request.client_id) != 0:
-                ref = self.object_refs[request.client_id]
+                ref = cloudpickle.loads(request.client_id)
                 data = ray.objects(ref.binary().hex())
             else:
                 data = ray.objects()
