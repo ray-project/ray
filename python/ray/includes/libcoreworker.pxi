@@ -1,9 +1,23 @@
 from libcpp.string cimport string as c_string
 
 from ray.includes.libcoreworker cimport CProfileEvent
+from ray.includes.libcoreworker cimport CCoreWorker
+from ray.includes.unique_ids cimport CNodeID
+from ray.includes.unique_ids cimport NodeID
 
 import json
 import traceback
+
+
+cdef class CoreWorker:
+    """Cython wrapper class of C++ `ray::CoreWorker`."""
+    cdef:
+        unique_ptr[CCoreWorker] inner
+
+    def GetCurrentNodeId(self):
+        cdef CNodeID c_nodeID = inner.get().GetCurrentNodeId()
+        return NodeID(c_nodeID.Binary())
+
 
 cdef class ProfileEvent:
     """Cython wrapper class of C++ `ray::worker::ProfileEvent`."""
