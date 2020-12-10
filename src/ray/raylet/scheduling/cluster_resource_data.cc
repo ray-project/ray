@@ -83,7 +83,8 @@ TaskRequest ResourceMapToTaskRequest(
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       task_request.predefined_resources[MEM].demand = resource.second;
     } else {
-      task_request.custom_resources[i].id = string_to_int_map.Insert(resource.first);
+      string_to_int_map.Insert(resource.first);
+      task_request.custom_resources[i].id = string_to_int_map.Get(resource.first);
       task_request.custom_resources[i].demand = resource.second;
       task_request.custom_resources[i].soft = false;
       i++;

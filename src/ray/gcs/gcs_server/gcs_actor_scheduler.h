@@ -26,15 +26,13 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
-
-using LeaseClientFactoryFn =
-    std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &address)>;
 
 class GcsActor;
 
@@ -91,8 +89,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// schedule actors.
   /// \param schedule_success_handler Invoked when actors are created on the worker
   /// successfully.
-  /// \param lease_client_factory Factory to create remote lease client, default factor
-  /// will be used if not set.
+  /// \param raylet_client_pool Raylet client pool to construct connections to raylets.
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
@@ -100,7 +97,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
-      LeaseClientFactoryFn lease_client_factory = nullptr,
+      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
       rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
 
@@ -275,9 +272,6 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_map<NodeID,
                       absl::flat_hash_map<WorkerID, std::shared_ptr<GcsLeasedWorker>>>
       node_to_workers_when_creating_;
-  /// The cached node clients which are used to communicate with raylet to lease workers.
-  absl::flat_hash_map<NodeID, std::shared_ptr<WorkerLeaseInterface>>
-      remote_lease_clients_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// A publisher for publishing gcs messages.
@@ -288,10 +282,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler_;
   /// Whether or not to report the backlog of actors waiting to be scheduled.
   bool report_worker_backlog_;
-  /// Factory for producing new clients to request leases from remote nodes.
-  LeaseClientFactoryFn lease_client_factory_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
+  /// The cached raylet clients used to communicate with raylet.
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The cached core worker clients which are used to communicate with leased worker.
   rpc::CoreWorkerClientPool core_worker_clients_;
 };

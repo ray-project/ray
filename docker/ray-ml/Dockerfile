@@ -18,6 +18,5 @@ RUN sudo apt-get update \
     # Remove dataclasses & typing because they are included in Py3.7
     && $HOME/anaconda3/bin/pip uninstall dataclasses typing -y  \ 
     && sudo rm requirements.txt && sudo rm requirements_ml_docker.txt \
-    && sudo apt-get remove cmake gcc -y \
     && sudo apt-get clean
 
