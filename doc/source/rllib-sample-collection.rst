@@ -12,18 +12,27 @@ In case the "_use_trajectory_view_api" top-level config key is set to True, whic
 by default since version >=1.2.0, every such sampler object will itself use the
 `SampleCollector` API to store and retrieve temporary environment-, model-, and other data
 during episode rollouts.
-The exact duration (number of transitions) of a single such rollout is determined
-by the "rollout_fragment_length" as well as the "batch_mode" config keys.
+The exact duration (number of transitions) and behavior of a single such rollout is determined
+by several important config keys:
+**batch_mode**: Determines, how to build per-RolloutWorker batches, which are then
+  usually concat'd to form the train batch. Note that "steps" below can mean different things (either env- or agent-steps) and depends on the
+  `count_steps_by` (multiagent) setting below.
+    # truncate_episodes: Each produced batch (when calling
+    #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
+    #   steps. This mode guarantees evenly sized batches, but increases
+    #   variance as the future return must now be estimated at truncation
+    #   boundaries.
+    # complete_episodes: Each unroll happens exactly over one episode, from
+    #   beginning to end. Data collection will not stop unless the episode
+    #   terminates or a configured horizon (hard or soft) is hit.
 
-.. literalinclude:: ../../rllib/evaluation/collectors/sample_collector.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-   :start-after: __sphinx_doc_begin2__
-   :end-before: __sphinx_doc_end2__
+**rollout_fragment_length**:
 
-The methods of the SampleCollector API are:
-
+During these rollouts, a Sampler uses its SampleCollector to store trajectory (episode)
+data and to retrieve this data for a) model compute-action calls, b) calling a Policy's
+postprocessing function (postproces_trajectory), and c) building a final batch to be used for training.
+This latter train-batch may be concatenated with other RolloutWorkers' batches to form the actual train batch
+(of size "train_batch_size").
 
 
 Trajectory View API
