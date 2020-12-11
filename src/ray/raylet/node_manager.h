@@ -70,8 +70,6 @@ struct NodeManagerConfig {
   /// An explicit list of open ports that workers started will bind
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
-  /// The initial number of workers to create.
-  int num_initial_workers;
   /// The soft limit of the number of workers.
   int num_workers_soft_limit;
   /// Number of initial Python workers for the first job.
