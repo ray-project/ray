@@ -111,7 +111,7 @@ class LocalObjectManager {
   /// Spill object as much as min_spilling_size_.
   ///
   /// \return true if spilling succeeds. false if we cannot spill anymore.
-  bool SpillObjectsUptoMinSpillingSize() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void SpillObjectsUptoMinSpillingSize() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Asynchronously spill objects when space is needed.
   /// The callback tries to spill objects as much as num_bytes_to_spill and returns

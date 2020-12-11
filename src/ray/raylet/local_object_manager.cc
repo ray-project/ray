@@ -105,19 +105,23 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 int64_t LocalObjectManager::SpillObjectUptoMaxThroughput() {
+  if (!RayConfig::instance().automatic_object_spilling_enabled()) {
+    return 0;
+  }
   absl::MutexLock lock(&mutex_);
   int64_t required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
   // Spill as much as min spilling size repeatdly until we reach to the max throughput.
   // The loop will be terminated if we cannot spill any more object.
-  while (SpillObjectsUptoMinSpillingSize() && required_bytes > 0) {
+  while (required_bytes >= min_spilling_size_) {
+    SpillObjectsUptoMinSpillingSize();
     required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
   }
   // num_bytes_pending_spill_ has been updated properly after spilling.
   return num_bytes_pending_spill_;
 }
 
-bool LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
-  return SpillObjectsOfSize(min_spilling_size_, 0) <= 0;
+void LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
+  SpillObjectsOfSize(min_spilling_size_, 0);
 }
 
 int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
@@ -280,7 +284,7 @@ void LocalObjectManager::AddSpilledUrls(
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+  RAY_LOG(ERROR) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {

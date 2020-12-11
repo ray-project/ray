@@ -104,8 +104,9 @@ class CreateRequestQueue {
   void RemoveDisconnectedClientRequests(const std::shared_ptr<ClientInterface> &client);
 
   /// Trigger global GC to remove cyclic references among python objects so that we can
-  /// evict them properly.
-  void TriggerGlobalGC();
+  /// evict them properly. This is triggered only at least 10 seconds after the last
+  /// invocation.
+  void TriggerGlobalGCIfNeeded();
 
  private:
   struct CreateRequest {
@@ -181,6 +182,9 @@ class CreateRequestQueue {
   /// while the request is pending and will be set once the request has
   /// finished.
   absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
+
+  /// Last time global gc was invoked in ms.
+  uint64_t last_global_gc_ms_;
 
   friend class CreateRequestQueueTest;
 };
