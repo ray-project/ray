@@ -1106,7 +1106,7 @@ void PlasmaStore::ProcessCreateRequests() {
     return;
   }
   auto status = create_request_queue_.ProcessRequests();
-  // if (GetMemoryUsagePercentage() > 0.95) {
+  // if (GetMemoryUsagePercentage() > 0.98) {
   //   create_request_queue_.TriggerGlobalGC();
   // }
   uint32_t retry_after_ms = 0;
