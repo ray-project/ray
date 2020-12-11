@@ -168,6 +168,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     for (auto &listener : node_added_listeners_) {
       listener(node);
     }
+    RAY_LOG(INFO) << "AddNode*********** node id = " << node_id;
     gcs_resource_manager_->OnNodeAdd(node_id);
   }
 }

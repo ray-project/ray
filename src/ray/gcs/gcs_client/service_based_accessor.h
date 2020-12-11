@@ -163,22 +163,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const NodeID &node_id) const override;
 
-  Status AsyncGetResources(const NodeID &node_id,
-                           const OptionalItemCallback<ResourceMap> &callback) override;
-
-  Status AsyncGetAllAvailableResources(
-      const MultiItemCallback<rpc::AvailableResources> &callback) override;
-
-  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                              const StatusCallback &callback) override;
-
-  Status AsyncDeleteResources(const NodeID &node_id,
-                              const std::vector<std::string> &resource_names,
-                              const StatusCallback &callback) override;
-
-  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
-                                   const StatusCallback &done) override;
-
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
@@ -210,7 +194,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_node_operation_;
-  SubscribeOperation subscribe_resource_operation_;
   SubscribeOperation subscribe_batch_resource_usage_operation_;
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
@@ -243,6 +226,43 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   std::unordered_map<NodeID, GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
+};
+
+/// \class ServiceBasedNodeResourceInfoAccessor
+/// ServiceBasedNodeResourceInfoAccessor is an implementation of
+/// `NodeResourceInfoAccessor` that uses GCS Service as the backend.
+class ServiceBasedNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
+ public:
+  explicit ServiceBasedNodeResourceInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedNodeResourceInfoAccessor() = default;
+
+  Status AsyncGetResources(const NodeID &node_id,
+                           const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override;
+
+  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
+                              const StatusCallback &callback) override;
+
+  Status AsyncDeleteResources(const NodeID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const StatusCallback &callback) override;
+
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override;
+
+ private:
+  /// Save the subscribe operation in this function, so we can call it again when PubSub
+  /// server restarts from a failure.
+  SubscribeOperation subscribe_resource_operation_;
+
+  ServiceBasedGcsClient *client_impl_;
+
+  Sequencer<NodeID> sequencer_;
 };
 
 /// \class ServiceBasedTaskInfoAccessor

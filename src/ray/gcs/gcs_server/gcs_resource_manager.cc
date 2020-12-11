@@ -218,7 +218,7 @@ void GcsResourceManager::UpdateResources(const NodeID &node_id,
 
 void GcsResourceManager::OnNodeAdd(const NodeID &node_id) {
   // Add an empty resources for this node.
-  RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
+  cluster_resources_.emplace(node_id, rpc::ResourceMap());
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
