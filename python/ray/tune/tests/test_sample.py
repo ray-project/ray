@@ -841,6 +841,17 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch
         return self._testPointsToEvaluate(OptunaSearch, config)
 
+    def testPointsToEvaluateSkOpt(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.skopt import SkOptSearch
+        return self._testPointsToEvaluate(SkOptSearch, config)
+
 
 if __name__ == "__main__":
     import pytest
