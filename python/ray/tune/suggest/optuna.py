@@ -134,6 +134,8 @@ class OptunaSearch(Searcher):
 
         self._space = space
 
+        self._points_to_evaluate = points_to_evaluate
+
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
         assert isinstance(self._sampler, BaseSampler), \
@@ -194,12 +196,15 @@ class OptunaSearch(Searcher):
                                                        ot_trial_id)
         ot_trial = self._ot_trials[trial_id]
 
-        # getattr will fetch the trial.suggest_ function on Optuna trials
-        params = {
-            args[0] if len(args) > 0 else kwargs["name"]: getattr(
-                ot_trial, fn)(*args, **kwargs)
-            for (fn, args, kwargs) in self._space
-        }
+        if self._points_to_evaluate:
+            params = self._points_to_evaluate.pop(0)
+        else:
+            # getattr will fetch the trial.suggest_ function on Optuna trials
+            params = {
+                args[0] if len(args) > 0 else kwargs["name"]: getattr(
+                    ot_trial, fn)(*args, **kwargs)
+                for (fn, args, kwargs) in self._space
+            }
         return unflatten_dict(params)
 
     def on_trial_result(self, trial_id: str, result: Dict):
