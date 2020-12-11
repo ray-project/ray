@@ -1,4 +1,4 @@
-load("//bazel:python.bzl", "py_test_run_all_subdirectory", "py_test")
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
