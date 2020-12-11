@@ -74,7 +74,7 @@ class WorkerSet:
             self.add_workers(num_workers)
 
             # If num_workers > 0, get the action_spaces and observation_spaces
-            # to not be forced to create an Env on the driver.
+            # to not be forced to create an Env on the local worker.
             if self._remote_workers:
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
@@ -263,13 +263,13 @@ class WorkerSet:
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
         else:
-            input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
