@@ -4,10 +4,13 @@ from typing import Any
 from typing import Dict
 from ray import cloudpickle
 
+import base64
+
 
 class ClientBaseRef:
-    def __init__(self, id):
+    def __init__(self, id, handle=None):
         self.id = id
+        self.handle = handle
 
     def __repr__(self):
         return "%s(%s)" % (
@@ -21,9 +24,14 @@ class ClientBaseRef:
     def binary(self):
         return self.id
 
+    @classmethod
+    def from_remote_ref(cls, ref: ray_client_pb2.RemoteRef):
+        return cls(id=ref.id, handle=ref.handle)
+
 
 class ClientObjectRef(ClientBaseRef):
-    pass
+    def _unpack_ref(self):
+        return cloudpickle.loads(self.handle)
 
 
 class ClientActorRef(ClientBaseRef):
@@ -88,7 +96,7 @@ class ClientRemoteFunc(ClientStub):
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.FUNCTION
         task.name = self._name
-        task.payload_id = self._ref.id
+        task.payload_id = self._ref.handle
         return task
 
 
@@ -130,7 +138,7 @@ class ClientActorClass(ClientStub):
     def remote(self, *args, **kwargs):
         # Actually instantiate the actor
         ref = ray.call_remote(self, *args, **kwargs)
-        return ClientActorHandle(ClientActorRef(ref.id), self)
+        return ClientActorHandle(ClientActorRef(ref.id, ref.handle), self)
 
     def __repr__(self):
         return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
@@ -146,7 +154,7 @@ class ClientActorClass(ClientStub):
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.ACTOR
         task.name = self._name
-        task.payload_id = self._ref.id
+        task.payload_id = self._ref.handle
         return task
 
 
@@ -174,7 +182,7 @@ class ClientActorHandle(ClientStub):
 
     def _get_ray_remote_impl(self):
         if self._real_actor_handle is None:
-            self._real_actor_handle = cloudpickle.loads(self.actor_ref.id)
+            self._real_actor_handle = cloudpickle.loads(self.actor_ref.handle)
         return self._real_actor_handle
 
     def __getstate__(self) -> Dict:
@@ -189,6 +197,10 @@ class ClientActorHandle(ClientStub):
         self.actor_ref = state["actor_ref"]
         self.actor_class = state["actor_class"]
         self._real_actor_handle = state["_real_actor_handle"]
+
+    @property
+    def _actor_id(self):
+        return self.actor_ref.id
 
     def __getattr__(self, key):
         return ClientRemoteMethod(self, key)
@@ -244,7 +256,7 @@ class ClientRemoteMethod(ClientStub):
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.METHOD
         task.name = self.method_name
-        task.payload_id = self.actor_handle.actor_ref.id
+        task.payload_id = self.actor_handle.actor_ref.handle
         return task
 
 
@@ -266,3 +278,13 @@ def convert_to_arg(val):
         out.local = ray_client_pb2.Arg.Locality.INTERNED
         out.data = cloudpickle.dumps(val)
     return out
+
+
+def encode_exception(exception) -> str:
+    data = cloudpickle.dumps(exception)
+    return base64.standard_b64encode(data).decode()
+
+
+def decode_exception(data) -> Exception:
+    data = base64.standard_b64decode(data)
+    return cloudpickle.loads(data)
