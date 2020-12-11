@@ -34,19 +34,6 @@ spec:
                   head node.
                 type: integer
                 minimum: 0
-              autoscalingMode:
-                description: The mode of the autoscaler, default or aggressive.
-                type: string
-                enum:
-                - default
-                - aggressive
-              targetUtilizationFraction:
-                description: 'The autoscaler will scale up the cluster to this target fraction
-                  of resources usage. For example, if a cluster of 8 nodes is 100% busy # and
-                  targetUtilization was 0.8, it would resize the cluster to 10.'
-                type: number
-                minimum: 0
-                maximum: 1
               upscalingSpeed:
                 description: The autoscaler will scale up the cluster faster with higher upscaling
                   speed. E.g., if the task requires adding more nodes then autoscaler will gradually

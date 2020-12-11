@@ -13,7 +13,8 @@ RAY_CONFIG_DIR = os.path.expanduser("~/ray_cluster_configs")
 CONFIG_SUFFIX = "_config.yaml"
 
 CONFIG_FIELDS = {
-    "targetUtilizationFraction": "target_utilization_fraction",
+    "maxWorkers": "max_workers",
+    "upscalingSpeed": "upscaling_speed",
     "idleTimeoutMinutes": "idle_timeout_minutes",
     "headPodType": "head_node_type",
     "workerDefaultPodType": "worker_default_node_type",
