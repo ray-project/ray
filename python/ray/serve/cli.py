@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import click
-import pprint
 
 import ray
 from ray import serve
@@ -44,13 +43,3 @@ def start(http_host, http_port):
 @cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
 def shutdown():
     serve.connect().shutdown()
-
-
-@cli.command(help="Get info about the endpoints on the Serve instance.")
-def list_endpoints():
-    pprint.pprint(serve.connect().list_endpoints())
-
-
-@cli.command(help="Get info about the backends on the Serve instance.")
-def list_backends():
-    pprint.pprint(serve.connect().list_backends())
