@@ -91,34 +91,9 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
 
   request->error = request->create_callback(evict_if_full, &request->result);
   Status status;
-  auto should_retry_on_oom = max_retries_ == -1 || num_retries_ < max_retries_;
-  if (request->error == PlasmaError::TransientOutOfMemory) {
-    // The object store is full, but we should wait for space to be made
-    // through spilling, so do nothing. The caller must guarantee that
-    // ProcessRequests is called again so that we can try this request again.
-    // NOTE(swang): There could be other requests behind this one that are
-    // actually serviceable. This may be inefficient, but eventually this
-    // request will get served and unblock the following requests, once
-    // enough objects have been spilled.
-    // TODO(swang): Ask the raylet to spill enough space for multiple requests
-    // at once, instead of just the head of the queue.
-    num_retries_ = 0;
+  if (request->error != PlasmaError::OK) {
     status =
         Status::TransientObjectStoreFull("Object store full, queueing creation request");
-  } else if (request->error == PlasmaError::OutOfMemory && should_retry_on_oom) {
-    num_retries_++;
-    RAY_LOG(DEBUG) << "Not enough memory to create the object, after " << num_retries_
-                   << " tries";
-
-    if (trigger_global_gc_) {
-      trigger_global_gc_();
-    }
-
-    status = Status::ObjectStoreFull("Object store full, should retry on timeout");
-  } else if (request->error == PlasmaError::OutOfMemory) {
-    RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id
-                   << " after " << num_retries_
-                   << " tries, will return OutOfMemory to the client";
   }
 
   return status;
@@ -126,9 +101,13 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
 
 Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
+    RAY_LOG(ERROR) << "[ProcessRequests] queue size: " << queue_.size();
     auto request_it = queue_.begin();
     auto status = ProcessRequest(*request_it);
     if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
+      if (!spill_objects_callback_()) {
+        status = Status::ObjectStoreFull("Object store full.");
+      }
       return status;
     }
     FinishRequest(request_it);

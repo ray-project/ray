@@ -104,32 +104,24 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
-int64_t LocalObjectManager::SpillObjectUptoMaxThroughput() {
+bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
   // If object spilling is not configured, there's no space to create by spilling.
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
     return 0;
   }
   absl::MutexLock lock(&mutex_);
-  RAY_CHECK(max_spill_throughput_ >= min_spilling_size_);
-  int64_t required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
 
-  // If required bytes is 0, that means there's no max throughput.
-  if (required_bytes == 0) {
-    SpillObjectsUptoMinSpillingSize();
-    return num_bytes_pending_spill_;
-  }
   // Spill as much as min spilling size repeatdly until we reach to the max throughput.
   // The loop will be terminated if we cannot spill any more object.
-  while (required_bytes > min_spilling_size_) {
-    // If we cannot spill object, break.
+  while (num_active_workers_ < max_active_workers_) {
     if (SpillObjectsOfSize(min_spilling_size_, 0) >= 0) {
       break;
     }
-    required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
+    num_active_workers_ += 1;
   }
-  // num_bytes_pending_spill_ has been updated properly after spilling.
-  return num_bytes_pending_spill_;
+  // true if spilling is possible.
+  return num_active_workers_ > 0;
 }
 
 void LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
@@ -227,6 +219,7 @@ void LocalObjectManager::SpillObjectsInternal(
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
               absl::MutexLock lock(&mutex_);
+              num_active_workers_ -= 1;
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {
@@ -296,7 +289,7 @@ void LocalObjectManager::AddSpilledUrls(
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+  RAY_LOG(ERROR) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {

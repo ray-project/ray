@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
@@ -34,9 +35,11 @@ class CreateRequestQueue {
       std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
   CreateRequestQueue(int32_t max_retries, bool evict_if_full,
+                     ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc)
       : max_retries_(max_retries),
         evict_if_full_(evict_if_full),
+        spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_
                    << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
@@ -161,6 +164,7 @@ class CreateRequestQueue {
   /// always try to evict.
   const bool evict_if_full_;
 
+  ray::SpillObjectsCallback spill_objects_callback_;
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.
   const std::function<void()> trigger_global_gc_;

@@ -48,9 +48,10 @@ class LocalObjectManager {
         object_pinning_enabled_(object_pinning_enabled),
         automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
-        last_free_objects_at_ms_(current_time_ms()) {
+        last_free_objects_at_ms_(current_time_ms()),
+        num_active_workers_(0),
+        max_active_workers_(RayConfig::instance().max_io_workers()) {
     min_spilling_size_ = RayConfig::instance().min_spilling_size();
-    max_spill_throughput_ = min_spilling_size_ * RayConfig::instance().max_io_workers();
   }
 
   /// Pin objects.
@@ -73,7 +74,7 @@ class LocalObjectManager {
   /// Spill objects as much as possible as fast as possible upto the max throughput.
   ///
   /// \return Bytes that will be available after spilling at max throughput.
-  int64_t SpillObjectUptoMaxThroughput();
+  bool SpillObjectUptoMaxThroughput();
 
   /// Spill objects to external storage.
   ///
@@ -228,11 +229,11 @@ class LocalObjectManager {
   /// before all objects within that file are out of scope.
   absl::flat_hash_map<std::string, uint64_t> url_ref_count_;
 
-  /// Maximum spilling throughput of this raylet.
-  int64_t max_spill_throughput_;
-
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
+
+  int64_t num_active_workers_;
+  int64_t max_active_workers_;
 };
 
 };  // namespace raylet
