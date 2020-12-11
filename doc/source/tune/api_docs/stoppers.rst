@@ -10,6 +10,8 @@ doesn't change anymore.
 Ray Tune comes with several stopping mechanisms out of the box. For custom stopping behavior, you can
 inherit from the :class:`Stopper <ray.tune.Stopper>` class.
 
+Other stopping behaviors are described :ref:`in the user guide <tune-stopping>`.
+
 .. contents::
     :local:
     :depth: 1
@@ -22,11 +24,6 @@ Stopper (tune.Stopper)
 
 .. autoclass:: ray.tune.Stopper
     :members: __call__, stop_all
-
-CombinedStopper (tune.stopper.CombinedStopper)
-----------------------------------------------
-
-.. autoclass:: ray.tune.stopper.CombinedStopper
 
 MaximumIterationStopper (tune.stopper.MaximumIterationStopper)
 --------------------------------------------------------------
