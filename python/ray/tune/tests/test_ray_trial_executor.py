@@ -170,7 +170,14 @@ class RayTrialExecutorTest(unittest.TestCase):
     def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
-        return suggester.next_trials()
+        trials = []
+        while not suggester.is_finished():
+            trial = suggester.next_trial()
+            if trial:
+                trials.append(trial)
+            else:
+                break
+        return trials
 
     def process_trial_save(self, trial):
         """Simulates trial runner save."""

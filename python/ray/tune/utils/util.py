@@ -1,10 +1,14 @@
 import copy
+import json
 import logging
+import numbers
 import os
 import inspect
 import threading
 import time
+import uuid
 from collections import defaultdict, deque, Mapping, Sequence
+from datetime import datetime
 from threading import Thread
 
 import numpy as np
@@ -111,14 +115,14 @@ def get_pinned_object(pinned_id):
 
 
 class warn_if_slow:
-    """Prints a warning if a given operation is slower than 100ms.
+    """Prints a warning if a given operation is slower than 500ms.
 
     Example:
         >>> with warn_if_slow("some_operation"):
         ...    ray.get(something)
     """
 
-    DEFAULT_THRESHOLD = 0.5
+    DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
 
     def __init__(self, name, threshold=None):
         self.name = name
@@ -133,10 +137,10 @@ class warn_if_slow:
         now = time.time()
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
+            _duration = now - self.start
             logger.warning(
-                "The `%s` operation took %s seconds to complete, "
-                "which may be a performance bottleneck.", self.name,
-                now - self.start)
+                f"The `{self.name}` operation took {_duration:.3f} s, "
+                "which may be a performance bottleneck.")
 
 
 class Tee(object):
@@ -151,6 +155,14 @@ class Tee(object):
     def flush(self, *args, **kwargs):
         self.stream1.flush(*args, **kwargs)
         self.stream2.flush(*args, **kwargs)
+
+
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def is_nan_or_inf(value):
+    return np.isnan(value) or np.isinf(value)
 
 
 def env_integer(key, default):
@@ -211,7 +223,7 @@ def deep_update(original,
         if isinstance(original.get(k), dict) and isinstance(value, dict):
             # Check old type vs old one. If different, override entire value.
             if k in override_all_if_type_changes and \
-                    "type" in value and "type" in original[k] and \
+                "type" in value and "type" in original[k] and \
                     value["type"] != original[k]["type"]:
                 original[k] = value
             # Allowed key -> ok to add new subkeys.
@@ -246,7 +258,7 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
                             "Found delimiter `{}` in key when trying to "
                             "flatten array. Please avoid using the delimiter "
                             "in your specification.")
-                    add[delimiter.join([key, subkey])] = v
+                    add[delimiter.join([key, str(subkey)])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -256,14 +268,15 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
@@ -306,18 +319,19 @@ def _from_pinnable(obj):
 
 
 def diagnose_serialization(trainable):
-    """Utility for detecting accidentally-scoped objects.
+    """Utility for detecting why your trainable function isn't serializing.
 
     Args:
-        trainable (cls | func): The trainable object passed to
-            tune.run(trainable).
+        trainable (func): The trainable object passed to
+            tune.run(trainable). Currently only supports
+            Function API.
 
     Returns:
         bool | set of unserializable objects.
 
     Example:
 
-    .. code-block::
+    .. code-block:: python
 
         import threading
         # this is not serializable
@@ -389,6 +403,59 @@ def diagnose_serialization(trainable):
               "of these objects or moving them into the scope of "
               "the trainable. ")
         return failure_set
+
+
+def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):
+    """Checks if a given GPU has freed memory.
+
+    Requires ``gputil`` to be installed: ``pip install gputil``.
+
+    Args:
+        gpu_id (Optional[str]): GPU id to check. Must be found
+            within GPUtil.getGPUs(). If none, resorts to
+            the first item returned from `ray.get_gpu_ids()`.
+        gpu_memory_limit (float): If memory usage is below
+            this quantity, the check will break.
+        retry (int): Number of times to check GPU limit. Sleeps 5
+            seconds between checks.
+
+    Returns:
+        bool
+            True if free.
+
+    Raises:
+        RuntimeError
+            If GPUtil is not found, if no GPUs are detected
+            or if the check fails.
+
+    Example:
+
+    .. code-block:: python
+
+        def tune_func(config):
+            tune.util.wait_for_gpu()
+            train()
+
+        tune.run(tune_func, resources_per_trial={"GPU": 1}, num_samples=10)
+    """
+    if GPUtil is None:
+        raise RuntimeError(
+            "GPUtil must be installed if calling `wait_for_gpu`.")
+    if not gpu_id:
+        gpu_id_list = ray.get_gpu_ids()
+        if not gpu_id_list:
+            raise RuntimeError(f"No GPU ids found from {ray.get_gpu_ids()}. "
+                               "Did you set Tune resources correctly?")
+        gpu_id = gpu_id_list[0]
+    gpu_object = GPUtil.getGPUs()[gpu_id]
+    for i in range(int(retry)):
+        if gpu_object.memoryUsed > gpu_memory_limit:
+            logger.info(f"Waiting for GPU {gpu_id} memory to free. "
+                        f"Mem: {gpu_object.memoryUsed:0.3f}")
+            time.sleep(5)
+        else:
+            return True
+    raise RuntimeError("GPU memory was not freed.")
 
 
 def validate_save_restore(trainable_cls,
@@ -477,6 +544,55 @@ def detect_config_single(func):
         logger.debug(str(e))
         use_config_single = False
     return use_config_single
+
+
+def create_logdir(dirname: str, local_dir: str):
+    """Create an empty logdir with name `dirname` in `local_dir`.
+
+    If `local_dir`/`dirname` already exists, a unique string is appended
+    to the dirname.
+
+    Args:
+        dirname (str): Dirname to create in `local_dir`
+        local_dir (str): Root directory for the log dir
+
+    Returns: full path to the newly created logdir.
+    """
+    local_dir = os.path.expanduser(local_dir)
+    logdir = os.path.join(local_dir, dirname)
+    if os.path.exists(logdir):
+        old_dirname = dirname
+        dirname += "_" + uuid.uuid4().hex[:4]
+        logger.info(f"Creating a new dirname {dirname} because "
+                    f"trial dirname '{old_dirname}' already exists.")
+        logdir = os.path.join(local_dir, dirname)
+    os.makedirs(logdir, exist_ok=True)
+    return logdir
+
+
+class SafeFallbackEncoder(json.JSONEncoder):
+    def __init__(self, nan_str="null", **kwargs):
+        super(SafeFallbackEncoder, self).__init__(**kwargs)
+        self.nan_str = nan_str
+
+    def default(self, value):
+        try:
+            if np.isnan(value):
+                return self.nan_str
+
+            if (type(value).__module__ == np.__name__
+                    and isinstance(value, np.ndarray)):
+                return value.tolist()
+
+            if issubclass(type(value), numbers.Integral):
+                return int(value)
+            if issubclass(type(value), numbers.Number):
+                return float(value)
+
+            return super(SafeFallbackEncoder, self).default(value)
+
+        except Exception:
+            return str(value)  # give up, just stringify it (ok for logs)
 
 
 if __name__ == "__main__":

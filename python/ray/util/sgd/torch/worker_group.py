@@ -1,6 +1,7 @@
 import io
 import logging
 import time
+from collections import defaultdict
 from datetime import timedelta
 
 import ray
@@ -191,6 +192,19 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         ]
         return remote_operator_setups
 
+    def _setup_local_rank(self, rank_counter_dict=None):
+        """Sets local rank for all workers."""
+        if rank_counter_dict is None:
+            rank_counter_dict = defaultdict(int)
+        node_ips = ray.get(
+            [w.get_node_ip.remote() for w in self.remote_workers])
+        futures = []
+        for ip, worker in zip(node_ips, self.remote_workers):
+            rank = rank_counter_dict[ip]
+            futures.append(worker.set_local_rank.remote(rank))
+            rank_counter_dict[ip] += 1
+        return futures
+
     def start_workers(self, num_workers):
         logger.debug(f"start_workers: Setting %d workers." % num_workers)
         if num_workers == 1:
@@ -211,6 +225,8 @@ class RemoteWorkerGroup(WorkerGroupInterface):
             ray.get(
                 self._setup_process_group(
                     address=address, world_size=num_workers))
+
+            ray.get(self._setup_local_rank())
 
             ray.get(self._setup_operator())
 
@@ -365,7 +381,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             # Assume 1 resource is already reserved for local worker.
-            potential_remote_size = self._check_potential_remote_workers_size()
+            potential_remote_size = self.new_workers_size()
             return potential_remote_size > 0
         return False
 
@@ -454,6 +470,12 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 timeout=timedelta(self._timeout_s))
             ray.get(remote_pgs)
 
+            local_node_ip = ray.services.get_node_ip_address()
+            rank_dict = defaultdict(int)
+            self.local_worker.set_local_rank(local_rank=0)
+            rank_dict[local_node_ip] += 1
+            self.remote_worker_group._setup_local_rank(rank_dict)
+
             remote_operators = self.remote_worker_group._setup_operator()
             self.local_worker.setup_operator()
             ray.get(remote_operators)
@@ -464,7 +486,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
         return [local_call] + ray.get(remote_calls)
 
     def apply_all_workers(self, fn):
-        remote_calls = self.remote_worker_group.apply_all_workers(fn)
+        remote_calls = self.remote_worker_group._apply_all_workers(fn)
         local_call = self.local_worker.apply(fn)
         return [local_call] + ray.get(remote_calls)
 
@@ -492,7 +514,10 @@ class LocalWorkerGroup(WorkerGroupInterface):
 
     def reset(self):
         """Terminates models without giving up local resource reservation."""
-        self.local_worker.shutdown(cleanup=False)
+        if not isinstance(self.local_worker, LocalDistributedRunner):
+            self.local_worker.shutdown()
+        else:
+            self.local_worker.shutdown(cleanup=False)
         self.remote_worker_group.reset()
 
         self.local_worker = None

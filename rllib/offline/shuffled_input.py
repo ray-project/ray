@@ -20,7 +20,7 @@ class ShuffledInput(InputReader):
     def __init__(self, child: InputReader, n: int = 0):
         """Initialize a MixedInput.
 
-        Arguments:
+        Args:
             child (InputReader): child input reader to shuffle.
             n (int): if positive, shuffle input over this many batches.
         """

@@ -40,7 +40,6 @@ class TestObjectManagerBase : public ::testing::Test {
     static_resource_conf = {{"CPU", 1}, {"GPU", 1}};
     node_manager_config.resource_config =
         ray::raylet::ResourceSet(std::move(static_resource_conf));
-    node_manager_config.num_initial_workers = 0;
     // Use a default worker that can execute empty tasks with dependencies.
     std::vector<std::string> py_worker_command;
     py_worker_command.push_back("python");
@@ -128,14 +127,14 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
 
   int num_connected_clients = 0;
 
-  ClientID node_id_1;
-  ClientID node_id_2;
+  NodeID node_id_1;
+  NodeID node_id_2;
 
   void WaitConnections() {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
     gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+        [this](const NodeID &node_id, const rpc::GcsNodeInfo &data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -196,8 +195,8 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "Server client ids:"
                   << "\n";
-    ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
-    ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_LOG(INFO) << "Server 1: " << node_id_1;
     RAY_LOG(INFO) << "Server 2: " << node_id_2;
 
@@ -205,13 +204,13 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
                   << "All connected clients:"
                   << "\n";
     auto data = gcs_client_2->Nodes().Get(node_id_1);
-    RAY_LOG(INFO) << (ClientID::FromBinary(data->node_id()).IsNil());
-    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data->node_id());
+    RAY_LOG(INFO) << (NodeID::FromBinary(data->node_id()).IsNil());
+    RAY_LOG(INFO) << "NodeID=" << NodeID::FromBinary(data->node_id());
     RAY_LOG(INFO) << "ClientIp=" << data->node_manager_address();
     RAY_LOG(INFO) << "ClientPort=" << data->node_manager_port();
     rpc::GcsNodeInfo data2;
     gcs_client_1->Nodes().Get(node_id_2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2->node_id());
+    RAY_LOG(INFO) << "NodeID=" << NodeID::FromBinary(data2->node_id());
     RAY_LOG(INFO) << "ClientIp=" << data2->node_manager_address();
     RAY_LOG(INFO) << "ClientPort=" << data2->node_manager_port();
   }

@@ -67,34 +67,34 @@ def test_system_config(ray_start_cluster_head):
 def setup_monitor(address):
     monitor = Monitor(
         address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
-    monitor.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
-    monitor.psubscribe(ray.gcs_utils.XRAY_JOB_PATTERN)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
+    monitor.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
     return monitor
 
 
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     while True:
+        monitor.update_load_metrics()
         monitor.process_messages()
         resource_usage = monitor.load_metrics._get_resource_usage()
 
+        if "memory" in resource_usage[0]:
+            del resource_usage[0]["memory"]
+        if "object_store_memory" in resource_usage[1]:
+            del resource_usage[0]["object_store_memory"]
         if "memory" in resource_usage[1]:
             del resource_usage[1]["memory"]
-        if "object_store_memory" in resource_usage[2]:
+        if "object_store_memory" in resource_usage[1]:
             del resource_usage[1]["object_store_memory"]
-        if "memory" in resource_usage[2]:
-            del resource_usage[2]["memory"]
-        if "object_store_memory" in resource_usage[2]:
-            del resource_usage[2]["object_store_memory"]
+        for key in list(resource_usage[0].keys()):
+            if key.startswith("node:"):
+                del resource_usage[0][key]
         for key in list(resource_usage[1].keys()):
             if key.startswith("node:"):
                 del resource_usage[1][key]
-        for key in list(resource_usage[2].keys()):
-            if key.startswith("node:"):
-                del resource_usage[2][key]
 
         if expected_resource_usage is None:
-            if all(x for x in resource_usage[1:]):
+            if all(x for x in resource_usage[0:]):
                 break
         elif all(x == y
                  for x, y in zip(resource_usage, expected_resource_usage)):
@@ -125,7 +125,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     monitor = setup_monitor(cluster.address)
     total_cpus = ray.state.cluster_resources()["CPU"]
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": total_cpus}))
+    verify_load_metrics(monitor, ({"CPU": 0.0}, {"CPU": total_cpus}))
 
     @ray.remote
     def work(signal):
@@ -139,16 +139,12 @@ def test_heartbeats_single(ray_start_cluster_head):
     signal = SignalActor.remote()
 
     work_handle = work.remote(signal)
-    verify_load_metrics(monitor, (1.0 / total_cpus, {
-        "CPU": 1.0
-    }, {
-        "CPU": total_cpus
-    }))
+    verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
 
     ray.get(signal.send.remote())
     ray.get(work_handle)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class Actor:
         def work(self, signal):
             wait_signal = signal.wait.remote()
@@ -162,12 +158,9 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     test_actor = Actor.remote()
     work_handle = test_actor.work.remote(signal)
+    time.sleep(1)  # Time for actor to get placed and the method to start.
 
-    verify_load_metrics(monitor, (1.0 / total_cpus, {
-        "CPU": 1.0
-    }, {
-        "CPU": total_cpus
-    }))
+    verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
 
     ray.get(signal.send.remote())
     ray.get(work_handle)

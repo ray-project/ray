@@ -20,7 +20,9 @@ from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.spaces.repeated import Repeated
+from ray.rllib.utils.test_utils import check
 
 tf1, tf, tfv = try_import_tf()
 _, nn = try_import_torch()
@@ -67,12 +69,6 @@ PLAYER_SPACE = spaces.Dict({
 })
 REPEATED_SPACE = Repeated(PLAYER_SPACE, max_len=MAX_PLAYERS)
 REPEATED_SAMPLES = [REPEATED_SPACE.sample() for _ in range(10)]
-
-
-def one_hot(i, n):
-    out = [0.0] * n
-    out[i] = 1.0
-    return out
 
 
 class NestedDictEnv(gym.Env):
@@ -174,9 +170,11 @@ class TorchSpyModel(TorchModelV2, nn.Module):
             action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
-        pos = input_dict["obs"]["sensors"]["position"].numpy()
-        front_cam = input_dict["obs"]["sensors"]["front_cam"][0].numpy()
-        task = input_dict["obs"]["inner_state"]["job_status"]["task"].numpy()
+        pos = input_dict["obs"]["sensors"]["position"].detach().cpu().numpy()
+        front_cam = input_dict["obs"]["sensors"]["front_cam"][
+            0].detach().cpu().numpy()
+        task = input_dict["obs"]["inner_state"]["job_status"][
+            "task"].detach().cpu().numpy()
         ray.experimental.internal_kv._internal_kv_put(
             "torch_spy_in_{}".format(TorchSpyModel.capture_index),
             pickle.dumps((pos, front_cam, task)),
@@ -226,7 +224,7 @@ def to_list(value):
     elif isinstance(value, int):
         return value
     else:
-        return value.numpy().tolist()
+        return value.detach().cpu().numpy().tolist()
 
 
 class DictSpyModel(TFModelV2):
@@ -336,6 +334,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
                 "framework": "tf",
             })
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        DictSpyModel.capture_index = 0
         pg.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -349,7 +350,7 @@ class NestedSpacesTest(unittest.TestCase):
                 DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
-            self.assertEqual(seen[2][0].tolist(), task_i)
+            check(seen[2][0], task_i)
 
     def do_test_nested_tuple(self, make_env):
         ModelCatalog.register_custom_model("composite2", TupleSpyModel)
@@ -365,6 +366,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
                 "framework": "tf",
             })
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TupleSpyModel.capture_index = 0
         pg.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -377,7 +381,7 @@ class NestedSpacesTest(unittest.TestCase):
             task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
-            self.assertEqual(seen[2][0].tolist(), task_i)
+            check(seen[2][0], task_i)
 
     def test_nested_dict_gym(self):
         self.do_test_nested_dict(lambda _: NestedDictEnv())
@@ -436,6 +440,9 @@ class NestedSpacesTest(unittest.TestCase):
                 },
                 "framework": "tf",
             })
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TupleSpyModel.capture_index = DictSpyModel.capture_index = 0
         pg.train()
 
         for i in range(4):
@@ -448,7 +455,7 @@ class NestedSpacesTest(unittest.TestCase):
                 DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
-            self.assertEqual(seen[2][0].tolist(), task_i)
+            check(seen[2][0], task_i)
 
         for i in range(4):
             seen = pickle.loads(
@@ -459,7 +466,7 @@ class NestedSpacesTest(unittest.TestCase):
             task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
-            self.assertEqual(seen[2][0].tolist(), task_i)
+            check(seen[2][0], task_i)
 
     def test_rollout_dict_space(self):
         register_env("nested", lambda _: NestedDictEnv())
@@ -491,6 +498,9 @@ class NestedSpacesTest(unittest.TestCase):
                 "framework": "torch",
             })
 
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TorchSpyModel.capture_index = 0
         a2c.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -498,13 +508,16 @@ class NestedSpacesTest(unittest.TestCase):
             seen = pickle.loads(
                 ray.experimental.internal_kv._internal_kv_get(
                     "torch_spy_in_{}".format(i)))
+
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
             task_i = one_hot(
                 DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            self.assertEqual(seen[2][0].tolist(), task_i)
+            # Only look at the last entry (-1) in `seen` as we reset (re-use)
+            # the ray-kv indices before training.
+            self.assertEqual(seen[0][-1].tolist(), pos_i)
+            self.assertEqual(seen[1][-1].tolist(), cam_i)
+            check(seen[2][-1], task_i)
 
     # TODO(ekl) should probably also add a test for TF/eager
     def test_torch_repeated(self):
@@ -522,6 +535,9 @@ class NestedSpacesTest(unittest.TestCase):
                 "framework": "torch",
             })
 
+        # Skip first passes as they came from the TorchPolicy loss
+        # initialization.
+        TorchRepeatedSpyModel.capture_index = 0
         a2c.train()
 
         # Check that the model sees the correct reconstructed observations
@@ -529,7 +545,11 @@ class NestedSpacesTest(unittest.TestCase):
             seen = pickle.loads(
                 ray.experimental.internal_kv._internal_kv_get(
                     "torch_rspy_in_{}".format(i)))
-            self.assertEqual(to_list(seen), [to_list(REPEATED_SAMPLES[i])])
+
+            # Only look at the last entry (-1) in `seen` as we reset (re-use)
+            # the ray-kv indices before training.
+            self.assertEqual(
+                to_list(seen[:][-1]), to_list(REPEATED_SAMPLES[i]))
 
 
 if __name__ == "__main__":

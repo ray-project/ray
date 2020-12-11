@@ -1,0 +1,44 @@
+cluster_name: ray-rllib-regression-tests
+
+min_workers: 0
+max_workers: 0
+
+docker:
+    image: anyscale/ray-ml:latest-gpu
+    container_name: ray_container
+    pull_before_run: True
+
+# Cloud-provider specific configuration.
+provider:
+    type: aws
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: False
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
+
+head_node:
+    InstanceType: p2.xlarge  # Cheaper 1GPU K80 instance
+
+    # Set primary volume to 25 GiB
+    BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+              VolumeSize: 100
+
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    - apt-get install -y libglib2.0-0 libcudnn7=7.6.5.32-1+cuda10.1 curl unzip gcc python3-dev
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; OMP_NUM_THREADS=1 ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; OMP_NUM_THREADS=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

@@ -138,6 +138,15 @@ def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
     return resolved_vars, domain_vars, grid_vars
 
 
+def count_variants(spec: Dict) -> int:
+    spec = copy.deepcopy(spec)
+    _, domain_vars, grid_vars = parse_spec_vars(spec)
+    grid_count = 1
+    for path, domain in grid_vars:
+        grid_count *= len(domain.categories)
+    return spec.get("num_samples", 1) * grid_count
+
+
 def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
     spec = copy.deepcopy(spec)
     _, domain_vars, grid_vars = parse_spec_vars(spec)

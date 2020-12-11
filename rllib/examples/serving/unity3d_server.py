@@ -69,7 +69,7 @@ parser.add_argument(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=True)
+    ray.init()
 
     # Create a fake-env for the server. This env will never be used (neither
     # for sampling, nor for evaluation) and its obs/action Spaces do not

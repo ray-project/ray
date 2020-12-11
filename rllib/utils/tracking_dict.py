@@ -11,6 +11,8 @@ class UsageTrackingDict(dict):
     def __init__(self, *args, **kwargs):
         dict.__init__(self, *args, **kwargs)
         self.accessed_keys = set()
+        self.added_keys = set()
+        self.deleted_keys = set()
         self.intercepted_values = {}
         self.get_interceptor = None
 
@@ -22,6 +24,12 @@ class UsageTrackingDict(dict):
         copy.set_get_interceptor(self.get_interceptor)
         return copy
 
+    @property
+    def data(self):
+        # Make sure, if we use UsageTrackingDict wrapping a SampleBatch,
+        # one can still do: sample_batch.data[some_key].
+        return self
+
     def __getitem__(self, key):
         self.accessed_keys.add(key)
         value = dict.__getitem__(self, key)
@@ -31,7 +39,13 @@ class UsageTrackingDict(dict):
             value = self.intercepted_values[key]
         return value
 
+    def __delitem__(self, key):
+        self.deleted_keys.add(key)
+        dict.__delitem__(self, key)
+
     def __setitem__(self, key, value):
+        if key not in self:
+            self.added_keys.add(key)
         dict.__setitem__(self, key, value)
         if key in self.intercepted_values:
             self.intercepted_values[key] = value

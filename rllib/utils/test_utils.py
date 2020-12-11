@@ -2,8 +2,10 @@ import gym
 import logging
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
+    try_import_torch
 
+jax, flax = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 if tf1:
     eager_mode = None
@@ -65,7 +67,10 @@ def framework_iterator(config=None,
             logger.warning(
                 "framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", None]
+        elif fw == "jax" and not jax:
+            logger.warning("framework_iterator skipping JAX (not installed)!")
+            continue
+        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
@@ -179,7 +184,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     else:
         if tf1 is not None:
             # y should never be a Tensor (y=expected value).
-            if isinstance(y, tf1.Tensor):
+            if isinstance(y, (tf1.Tensor, tf1.Variable)):
                 # In eager mode, numpyize tensors.
                 if tf.executing_eagerly():
                     y = y.numpy()
@@ -187,11 +192,11 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     raise ValueError(
                         "`y` (expected value) must not be a Tensor. "
                         "Use numpy.ndarray instead")
-            if isinstance(x, tf1.Tensor):
+            if isinstance(x, (tf1.Tensor, tf1.Variable)):
                 # In eager mode, numpyize tensors.
                 if tf1.executing_eagerly():
                     x = x.numpy()
-                # Otherwise, use a quick tf-session.
+                # Otherwise, use a new tf-session.
                 else:
                     with tf1.Session() as sess:
                         x = sess.run(x)
@@ -204,9 +209,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                             false=false)
         if torch is not None:
             if isinstance(x, torch.Tensor):
-                x = x.detach().numpy()
+                x = x.detach().cpu().numpy()
             if isinstance(y, torch.Tensor):
-                y = y.detach().numpy()
+                y = y.detach().cpu().numpy()
 
         # Using decimals.
         if atol is None and rtol is None:
@@ -243,7 +248,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
 
 
-def check_learning_achieved(tune_results, min_reward):
+def check_learning_achieved(tune_results, min_reward, evaluation=False):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
@@ -253,10 +258,13 @@ def check_learning_achieved(tune_results, min_reward):
         tune_results: The tune.run returned results object.
         min_reward (float): The min reward that must be reached.
 
-    Throws:
+    Raises:
         ValueError: If `min_reward` not reached.
     """
-    if tune_results.trials[0].last_result["episode_reward_mean"] < min_reward:
+    last_result = tune_results.trials[0].last_result
+    avg_reward = last_result["episode_reward_mean"] if not evaluation else \
+        last_result["evaluation"]["episode_reward_mean"]
+    if avg_reward < min_reward:
         raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
     print("ok")
 
@@ -273,7 +281,7 @@ def check_compute_single_action(trainer,
         include_prev_action_reward (bool): Whether to include the prev-action
             and -reward in the `compute_action` call.
 
-    Throws:
+    Raises:
         ValueError: If anything unexpected happens.
     """
     try:
@@ -298,7 +306,8 @@ def check_compute_single_action(trainer,
                 except AttributeError:
                     pass
             else:
-                obs_space = worker_set.local_worker().env.observation_space
+                obs_space = worker_set.local_worker().for_policy(
+                    lambda p: p.observation_space)
         else:
             method_to_test = pol.compute_single_action
             obs_space = pol.observation_space

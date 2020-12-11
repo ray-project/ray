@@ -39,42 +39,42 @@ class SubscriptionExecutor {
   /// Subscribe to operations of all elements.
   /// Repeated subscription will return a failure.
   ///
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each update will be received. Else, only
-  /// messages for the given client will be received.
+  /// messages for the given node will be received.
   /// \param subscribe Callback that will be called each time when an element
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribeAll(const ClientID &client_id,
+  Status AsyncSubscribeAll(const NodeID &node_id,
                            const SubscribeCallback<ID, Data> &subscribe,
                            const StatusCallback &done);
 
   /// Subscribe to operations of an element.
   /// Repeated subscription to an element will return a failure.
   ///
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each update will be received. Else, only
-  /// messages for the given client will be received.
+  /// messages for the given node will be received.
   /// \param id The id of the element to be subscribe to.
   /// \param subscribe Callback that will be called each time when the element
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const ClientID &client_id, const ID &id,
+  Status AsyncSubscribe(const NodeID &node_id, const ID &id,
                         const SubscribeCallback<ID, Data> &subscribe,
                         const StatusCallback &done);
 
   /// Cancel subscription to an element.
   /// Unsubscribing can only be called after the subscription request is completed.
   ///
-  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// \param node_id The type of update to listen to. If this is nil, then a
   /// message for each update will be received. Else, only
-  /// messages for the given client will be received.
+  /// messages for the given node will be received.
   /// \param id The id of the element to be unsubscribed to.
   /// \param done Callback that will be called when cancel subscription is complete.
   /// \return Status
-  Status AsyncUnsubscribe(const ClientID &client_id, const ID &id,
+  Status AsyncUnsubscribe(const NodeID &node_id, const ID &id,
                           const StatusCallback &done);
 
  private:

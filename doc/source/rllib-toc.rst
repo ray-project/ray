@@ -140,6 +140,11 @@ Algorithms
    -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
    -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
 
+*  Exploration-based plug-ins (can be combined with any algo)
+
+   -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+
 Offline Datasets
 ----------------
 *  `Working with Offline Datasets <rllib-offline.html>`__

@@ -18,6 +18,7 @@ Ray Examples
    testing-tips.rst
    progress_bar.rst
    plot_streaming.rst
+   placement-group.rst
 
 .. customgalleryitem::
    :tooltip: Tips for first time users.
@@ -35,6 +36,10 @@ Ray Examples
 .. customgalleryitem::
    :tooltip: Implement a simple streaming application using Ray’s actors.
    :description: :doc:`/auto_examples/plot_streaming`
+
+.. customgalleryitem::
+   :tooltip: Learn placement group use cases with examples.
+   :description: :doc:`/auto_examples/placement-group`
 
 .. raw:: html
 
@@ -90,7 +95,7 @@ Machine Learning Examples
 Reinforcement Learning Examples
 -------------------------------
 
-These are simple examples that show you how to leverage Ray Core. For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
+These are simple examples that show you how to leverage Ray Core. For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/master/rllib.html>`__.
 
 .. raw:: html
 

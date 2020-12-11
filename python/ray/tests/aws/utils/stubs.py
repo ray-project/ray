@@ -12,7 +12,7 @@ def configure_iam_role_default(iam_client_stub):
     iam_client_stub.add_response(
         "get_instance_profile",
         expected_params={
-            "InstanceProfileName": ray.autoscaler.aws.config.
+            "InstanceProfileName": ray.autoscaler._private.aws.config.
             DEFAULT_RAY_INSTANCE_PROFILE
         },
         service_response={"InstanceProfile": DEFAULT_INSTANCE_PROFILE})

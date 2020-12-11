@@ -63,10 +63,9 @@ if os.path.exists(so_path):
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
-    ClientID,
+    NodeID,
     Config as _Config,
     JobID,
     WorkerID,
@@ -86,10 +85,10 @@ from ray.state import (jobs, nodes, actors, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources)  # noqa: E402
 from ray.worker import (  # noqa: F401
-    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, IO_WORKER_MODE, cancel, connect,
-    disconnect, get, get_actor, get_gpu_ids, get_resource_ids,
-    get_dashboard_url, init, is_initialized, put, kill, remote, shutdown,
-    show_in_dashboard, wait,
+    LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
+    SPILL_WORKER_MODE, cancel, connect, disconnect, get, get_actor,
+    get_gpu_ids, get_resource_ids, get_dashboard_url, init, is_initialized,
+    put, kill, remote, shutdown, show_in_dashboard, wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
@@ -110,6 +109,7 @@ __all__ = [
     "get_runtime_context",
     "actor",
     "actors",
+    "workers",
     "available_resources",
     "cancel",
     "cluster_resources",
@@ -148,10 +148,9 @@ __all__ = [
 
 # ID types
 __all__ += [
-    "ActorCheckpointID",
     "ActorClassID",
     "ActorID",
-    "ClientID",
+    "NodeID",
     "JobID",
     "WorkerID",
     "FunctionID",

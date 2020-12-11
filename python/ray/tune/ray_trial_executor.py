@@ -14,17 +14,18 @@ from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
+from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
-from ray.tune.trainable import TrainableUtil
+from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 
 logger = logging.getLogger(__name__)
 
-RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
+TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
@@ -138,7 +139,7 @@ class RayTrialExecutor(TrialExecutor):
                  queue_trials=False,
                  reuse_actors=False,
                  ray_auto_init=None,
-                 refresh_period=RESOURCE_REFRESH_PERIOD):
+                 refresh_period=None):
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -163,8 +164,15 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._resources_initialized = False
+
+        if refresh_period is None:
+            refresh_period = float(
+                os.environ.get("TUNE_STATE_REFRESH_PERIOD",
+                               TUNE_STATE_REFRESH_PERIOD))
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
+        self._last_ip_refresh = float("-inf")
+        self._last_ip_addresses = set()
         self._last_nontrivial_wait = time.time()
         if not ray.is_initialized() and ray_auto_init:
             logger.info("Initializing Ray automatically."
@@ -176,7 +184,7 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
 
     def _setup_remote_runner(self, trial, reuse_allowed):
-        trial.init_logger()
+        trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
@@ -276,13 +284,13 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         if runner is None:
-            # TODO: Right now, we only support reuse if there has been
-            # previously instantiated state on the worker. However,
-            # we should consider the case where function evaluations
-            # can be very fast - thereby extending the need to support
-            # reuse to cases where there has not been previously
-            # instantiated state before.
-            reuse_allowed = checkpoint is not None or trial.has_checkpoint()
+            # We reuse actors when there is previously instantiated state on
+            # the actor. Function API calls are also supported when there is
+            # no checkpoint to continue from.
+            # TODO: Check preconditions - why is previous state needed?
+            reuse_allowed = checkpoint is not None or trial.has_checkpoint() \
+                            or issubclass(trial.get_trainable_cls(),
+                                          FunctionRunner)
             runner = self._setup_remote_runner(trial, reuse_allowed)
         trial.set_runner(runner)
         self.restore(trial, checkpoint)
@@ -296,8 +304,7 @@ class RayTrialExecutor(TrialExecutor):
         elif train and not trial.is_restoring:
             self._train(trial)
 
-    def _stop_trial(self, trial, error=False, error_msg=None,
-                    stop_logger=True):
+    def _stop_trial(self, trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
@@ -307,7 +314,6 @@ class RayTrialExecutor(TrialExecutor):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            stop_logger (bool): Whether to shut down the trial logger.
         """
         self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
         trial.set_location(Location())
@@ -328,8 +334,6 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.set_runner(None)
-            if stop_logger:
-                trial.close_logger()
 
     def start_trial(self, trial, checkpoint=None, train=True):
         """Starts the trial.
@@ -364,11 +368,10 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
-    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+    def stop_trial(self, trial, error=False, error_msg=None):
         """Only returns resources if resources allocated."""
         prior_status = trial.status
-        self._stop_trial(
-            trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             self._return_resources(trial.resources)
@@ -402,14 +405,14 @@ class RayTrialExecutor(TrialExecutor):
             trial (Trial): Trial to be reset.
             new_config (dict): New configuration for Trial trainable.
             new_experiment_tag (str): New experiment name for trial.
-            logger_creator (Callable[[Dict], Logger]): A function that
-                instantiates a logger on the actor process.
+            logger_creator (Optional[Callable[[Dict], Logger]]): Function
+                that instantiates a logger on the actor process.
 
         Returns:
             True if `reset_config` is successful else False.
         """
-        trial.experiment_tag = new_experiment_tag
-        trial.config = new_config
+        trial.set_experiment_tag(new_experiment_tag)
+        trial.set_config(new_config)
         trainable = trial.runner
         with self._change_working_directory(trial):
             with warn_if_slow("reset"):
@@ -427,11 +430,17 @@ class RayTrialExecutor(TrialExecutor):
         return list(self._running.values())
 
     def get_alive_node_ips(self):
+        now = time.time()
+        if now - self._last_ip_refresh < self._refresh_period:
+            return self._last_ip_addresses
+        logger.debug("Checking ips from Ray state.")
+        self._last_ip_refresh = now
         nodes = ray.state.nodes()
         ip_addresses = set()
         for node in nodes:
             if node["alive"]:
                 ip_addresses.add(node["NodeManagerAddress"])
+        self._last_ip_addresses = ip_addresses
         return ip_addresses
 
     def get_current_trial_ips(self):
@@ -529,6 +538,9 @@ class RayTrialExecutor(TrialExecutor):
             "Resource invalid: {}".format(resources))
 
     def _update_avail_resources(self, num_retries=5):
+        if time.time() - self._last_resource_refresh < self._refresh_period:
+            return
+        logger.debug("Checking Ray cluster resources.")
         resources = None
         for i in range(num_retries):
             if i > 0:
@@ -538,10 +550,10 @@ class RayTrialExecutor(TrialExecutor):
                 time.sleep(0.5)
             try:
                 resources = ray.cluster_resources()
-            except Exception:
+            except Exception as exc:
                 # TODO(rliaw): Remove this when local mode is fixed.
                 # https://github.com/ray-project/ray/issues/4147
-                logger.debug("Using resources for local machine.")
+                logger.debug(f"{exc}: Using resources for local machine.")
                 resources = ResourceSpec().resolve(True).to_resource_dict()
             if resources:
                 break
@@ -579,9 +591,7 @@ class RayTrialExecutor(TrialExecutor):
         has exceeded self._refresh_period. This also assumes that the
         cluster is not resizing very frequently.
         """
-        if time.time() - self._last_resource_refresh > self._refresh_period:
-            self._update_avail_resources()
-
+        self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,
                                                  self._committed_resources)
 
@@ -721,7 +731,8 @@ class RayTrialExecutor(TrialExecutor):
                 trial.runner.restore_from_object.remote(value)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if issubclass(trial.get_trainable_cls(), DurableTrainable):
+            if issubclass(trial.get_trainable_cls(),
+                          DurableTrainable) or not trial.sync_on_checkpoint:
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:

@@ -28,12 +28,12 @@ def iter_list(values):
 def make_workers(n):
     local = RolloutWorker(
         env_creator=lambda _: gym.make("CartPole-v0"),
-        policy=PPOTFPolicy,
+        policy_spec=PPOTFPolicy,
         rollout_fragment_length=100)
     remotes = [
         RolloutWorker.as_remote().remote(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=PPOTFPolicy,
+            policy_spec=PPOTFPolicy,
             rollout_fragment_length=100) for _ in range(n)
     ]
     workers = WorkerSet._from_existing(local, remotes)
@@ -151,10 +151,10 @@ def test_concat_batches(ray_start_regular_shared):
 def test_standardize(ray_start_regular_shared):
     workers = make_workers(0)
     a = ParallelRollouts(workers, mode="async")
-    b = a.for_each(StandardizeFields(["t"]))
+    b = a.for_each(StandardizeFields([SampleBatch.EPS_ID]))
     batch = next(b)
-    assert abs(np.mean(batch["t"])) < 0.001, batch
-    assert abs(np.std(batch["t"]) - 1.0) < 0.001, batch
+    assert abs(np.mean(batch[SampleBatch.EPS_ID])) < 0.001, batch
+    assert abs(np.std(batch[SampleBatch.EPS_ID]) - 1.0) < 0.001, batch
 
 
 def test_async_grads(ray_start_regular_shared):

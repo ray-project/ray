@@ -30,13 +30,13 @@ public class FailureTest extends BaseTest {
     // This is needed by `testGetThrowsQuicklyWhenFoundException`.
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
-    oldNumWorkersPerProcess = System.getProperty("ray.raylet.config.num_workers_per_process_java");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
+    System.setProperty("ray.job.num-java-workers-per-process", "1");
   }
 
   @AfterClass
   public void tearDown() {
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", oldNumWorkersPerProcess);
+    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
   }
 
   public static int badFunc() {
@@ -121,6 +121,7 @@ public class FailureTest extends BaseTest {
     } catch (RayActorException e) {
       // When the actor process dies while executing a task, we should receive an
       // RayActorException.
+      Assert.assertEquals(e.actorId, actor.getId());
     }
     try {
       actor.task(BadActor::badMethod).remote().get();

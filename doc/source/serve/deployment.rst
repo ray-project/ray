@@ -110,7 +110,6 @@ these two models.
 While this is a simple operation, you may want to see :ref:`serve-split-traffic` for more information.
 One thing you may want to consider as well is
 :ref:`session-affinity` which gives you the ability to ensure that queries from users/clients always get mapped to the same backend.
-versions.
 
 Now that we're up and running serving two models in production, let's query
 our results several times to see some results. You'll notice that we're now splitting

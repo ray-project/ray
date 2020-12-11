@@ -86,11 +86,6 @@
       <artifactId>commons-lang3</artifactId>
       <version>3.3.2</version>
     </dependency>
-    <dependency>
-      <groupId>com.beust</groupId>
-      <artifactId>jcommander</artifactId>
-      <version>1.27</version>
-    </dependency>
   </dependencies>
 
 </project>

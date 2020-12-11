@@ -91,7 +91,7 @@ def summarize_episodes(
 ) -> ResultDict:
     """Summarizes a set of episode metrics tuples.
 
-    Arguments:
+    Args:
         episodes: smoothed set of episodes including historical ones
         new_episodes: just the new episodes in this iteration. This must be
             a subset of `episodes`. If None, assumes all episodes are new.

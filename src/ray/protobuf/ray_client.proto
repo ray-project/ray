@@ -1,0 +1,143 @@
+// Copyright 2020 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+enum Type { DEFAULT = 0; }
+
+message Arg {
+  enum Locality {
+    INTERNED = 0;
+    REFERENCE = 1;
+  }
+  Locality local = 1;
+  bytes reference_id = 2;
+  bytes data = 3;
+  Type type = 4;
+}
+
+message ClientTask {
+  enum RemoteExecType {
+    FUNCTION = 0;
+    ACTOR = 1;
+    METHOD = 2;
+    STATIC_METHOD = 3;
+  }
+  RemoteExecType type = 1;
+  string name = 2;
+  bytes payload_id = 3;
+  repeated Arg args = 4;
+}
+
+message RemoteRef {
+  bytes id = 1;
+  bytes handle = 2;
+}
+
+message ClientTaskTicket {
+  RemoteRef return_ref = 1;
+}
+
+message PutRequest {
+  bytes data = 1;
+}
+
+message PutResponse {
+  RemoteRef ref = 1;
+}
+
+message GetRequest {
+  bytes handle = 1;
+  float timeout = 2;
+}
+
+message GetResponse {
+  bool valid = 1;
+  bytes data = 2;
+}
+
+message WaitRequest {
+  repeated bytes object_handles = 1;
+  int64 num_returns = 2;
+  double timeout = 3;
+}
+
+message WaitResponse {
+  bool valid = 1;
+  repeated RemoteRef ready_object_ids = 2;
+  repeated RemoteRef remaining_object_ids = 3;
+}
+
+message ClusterInfoType {
+  // Namespace the enum, as it collides in the overall package.
+  enum TypeEnum {
+    IS_INITIALIZED = 0;
+    NODES = 1;
+    CLUSTER_RESOURCES = 2;
+    AVAILABLE_RESOURCES = 3;
+  }
+}
+
+message ClusterInfoRequest {
+  ClusterInfoType.TypeEnum type = 1;
+}
+
+message ClusterInfoResponse {
+  message ResourceTable {
+    map<string, double> table = 1;
+  }
+  ClusterInfoType.TypeEnum type = 1;
+  oneof response_type {
+    string json = 2;
+    ResourceTable resource_table = 3;
+  }
+}
+
+message TerminateRequest {
+  message ActorTerminate {
+    bytes handle = 1;
+    bool no_restart = 2;
+  }
+  message TaskObjectTerminate {
+    bytes handle = 1;
+    bool force = 2;
+    bool recursive = 3;
+  }
+
+  oneof terminate_type {
+    ActorTerminate actor = 1;
+    TaskObjectTerminate task_object = 2;
+  }
+}
+
+message TerminateResponse {
+  bool ok = 1;
+}
+
+service RayletDriver {
+  rpc GetObject(GetRequest) returns (GetResponse) {
+  }
+  rpc PutObject(PutRequest) returns (PutResponse) {
+  }
+  rpc WaitObject(WaitRequest) returns (WaitResponse) {
+  }
+  rpc Schedule(ClientTask) returns (ClientTaskTicket) {
+  }
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {
+  }
+  rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
+  }
+}

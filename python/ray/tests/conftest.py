@@ -1,7 +1,7 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
-
+import os
 from contextlib import contextmanager
 import pytest
 import subprocess
@@ -178,9 +178,8 @@ def ray_start_object_store_memory(request):
 @pytest.fixture
 def call_ray_start(request):
     parameter = getattr(
-        request, "param",
-        "ray start --head --num-cpus=1 --min-worker-port=0 --max-worker-port=0"
-    )
+        request, "param", "ray start --head --num-cpus=1 --min-worker-port=0 "
+        "--max-worker-port=0 --port 0")
     command_args = parameter.split(" ")
     out = ray.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))
@@ -205,6 +204,13 @@ def call_ray_stop_only():
     subprocess.check_call(["ray", "stop"])
 
 
+@pytest.fixture
+def enable_pickle_debug():
+    os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
+    yield
+    del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
+
+
 @pytest.fixture()
 def two_node_cluster():
     system_config = {
@@ -226,5 +232,15 @@ def two_node_cluster():
 @pytest.fixture()
 def error_pubsub():
     p = init_error_pubsub()
+    yield p
+    p.close()
+
+
+@pytest.fixture()
+def log_pubsub():
+    p = ray.worker.global_worker.redis_client.pubsub(
+        ignore_subscribe_messages=True)
+    log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
+    p.psubscribe(log_channel)
     yield p
     p.close()

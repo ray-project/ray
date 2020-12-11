@@ -36,7 +36,7 @@ class JsonWriter(OutputWriter):
                  compress_columns: List[str] = frozenset(["obs", "new_obs"])):
         """Initialize a JsonWriter.
 
-        Arguments:
+        Args:
             path (str): a path/URI of the output directory to save files in.
             ioctx (IOContext): current IO context object.
             max_file_size (int): max size of single files before rolling over.

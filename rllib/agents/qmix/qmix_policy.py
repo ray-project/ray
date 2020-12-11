@@ -57,7 +57,7 @@ class QMixLoss(nn.Module):
                 next_state=None):
         """Forward pass of the loss.
 
-        Arguments:
+        Args:
             rewards: Tensor of shape [B, T, n_agents]
             actions: Tensor of shape [B, T, n_agents]
             terminated: Tensor of shape [B, T, n_agents]
@@ -143,7 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child.
+# TODO(sven): Make this a TorchPolicy child via `build_torch_policy`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -162,6 +162,7 @@ class QMixTorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
+        config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
@@ -530,7 +531,7 @@ def _validate(obs_space, action_space):
 def _mac(model, obs, h):
     """Forward pass of the multi-agent controller.
 
-    Arguments:
+    Args:
         model: TorchModelV2 class
         obs: Tensor of shape [B, n_agents, obs_size]
         h: List of tensors of shape [B, n_agents, h_size]

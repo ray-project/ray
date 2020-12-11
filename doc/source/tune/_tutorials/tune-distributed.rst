@@ -3,59 +3,21 @@
 Tune Distributed Experiments
 ============================
 
-Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview:
-
-  1. How to setup and launch a distributed experiment,
-  2. :ref:`Commonly used commands <tune-distributed-common>`, including fast file mounting, one-line cluster launching, and result uploading to cloud storage.
-
-**Quick Summary**: To run a distributed experiment with Tune, you need to:
-
-  1. Make sure your script has ``ray.init(address=...)`` to connect to the existing Ray cluster.
-  2. If a ray cluster does not exist, start a Ray cluster.
-  3. Run the script on the head node (or use ``ray submit``).
+Tune is commonly used for large-scale distributed hyperparameter optimization. This page will overview how to setup and launch a distributed experiment along with :ref:`commonly used commands <tune-distributed-common>` for Tune when running distributed experiments.
 
 .. contents::
     :local:
     :backlinks: none
 
-Running a distributed experiment
---------------------------------
+Summary
+-------
 
-Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
+To run a distributed experiment with Tune, you need to:
 
-Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
+1. First, :ref:`start a Ray cluster <cluster-index>` if you have not already.
+2. Specify ``ray.init(address=...)`` in your script :ref:`to connect to the existing Ray cluster <using-ray-on-a-cluster>`.
+3. Run the script on the head node (or use :ref:`ray submit <ray-submit-doc>`).
 
-To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray redis address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
-
-One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
-
-.. code-block:: python
-
-    import ray
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--address")
-    args = parser.parse_args()
-    ray.init(address=args.address)
-
-    tune.run(...)
-
-.. code-block:: bash
-
-    # On the head node, connect to an existing ray cluster
-    $ python tune_script.py --ray-address=localhost:XXXX
-
-If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray submit --start``), use:
-
-.. code-block:: bash
-
-    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
-
-.. tip::
-
-    1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
-    2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 .. _tune-distributed-local:
 
@@ -83,28 +45,6 @@ Manual Local Cluster Setup
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you run into issues using the local cluster setup (or want to add nodes manually), you can use :ref:`the manual cluster setup <cluster-index>`. At a glance,
-
-**On the head node**:
-
-.. code-block:: bash
-
-    # If the ``--redis-port`` argument is omitted, Ray will choose a port at random.
-    $ ray start --head --redis-port=6379
-
-The command will print out the address of the Redis server that was started (and some other address information).
-
-**Then on all of the other nodes**, run the following. Make sure to replace ``<address>`` with the value printed by the command on the head node (it should look something like ``123.45.67.89:6379``).
-
-.. code-block:: bash
-
-    $ ray start --address=<address>
-
-Then, you can run your Tune Python script on the head node like:
-
-.. code-block:: bash
-
-    # On the head node, execute using existing ray cluster
-    $ python tune_script.py --ray-address=<address>
 
 .. tune-distributed-cloud:
 
@@ -146,6 +86,46 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
 
 
 Note that you can customize the directory of results by running: ``tune.run(local_dir=..)``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+
+
+Running a distributed experiment
+--------------------------------
+
+Running a distributed (multi-node) experiment requires Ray to be started already. You can do this on local machines or on the cloud.
+
+Across your machines, Tune will automatically detect the number of GPUs and CPUs without you needing to manage ``CUDA_VISIBLE_DEVICES``.
+
+To execute a distributed experiment, call ``ray.init(address=XXX)`` before ``tune.run``, where ``XXX`` is the Ray redis address, which defaults to ``localhost:6379``. The Tune python script should be executed only on the head node of the Ray cluster.
+
+One common approach to modifying an existing Tune experiment to go distributed is to set an ``argparse`` variable so that toggling between distributed and single-node is seamless.
+
+.. code-block:: python
+
+    import ray
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--address")
+    args = parser.parse_args()
+    ray.init(address=args.address)
+
+    tune.run(...)
+
+.. code-block:: bash
+
+    # On the head node, connect to an existing ray cluster
+    $ python tune_script.py --ray-address=localhost:XXXX
+
+If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray submit --start``), use:
+
+.. code-block:: bash
+
+    ray submit tune-default.yaml tune_script.py -- --ray-address=localhost:6379
+
+.. tip::
+
+    1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
+    2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
 Syncing
 -------
@@ -281,10 +261,10 @@ Tune automatically persists the progress of your entire experiment (a ``tune.run
 
 **Settings:**
 
- - The default setting of ``resume=False`` creates a new experiment.
- - ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
- - ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
- - ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
+- The default setting of ``resume=False`` creates a new experiment.
+- ``resume="LOCAL"`` and ``resume=True`` restore the experiment from ``local_dir/[experiment_name]``.
+- ``resume="REMOTE"`` syncs the upload dir down to the local dir and then restores the experiment from ``local_dir/experiment_name``.
+- ``resume="PROMPT"`` will cause Tune to prompt you for whether you want to resume. You can always force a new experiment to be created by changing the experiment name.
 
 Note that trials will be restored to their last checkpoint. If trial checkpointing is not enabled, unfinished trials will be restarted from scratch.
 

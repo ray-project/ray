@@ -3,7 +3,6 @@ try:
 except ImportError:
     print("The dashboard requires aiohttp to run.")
     import sys
-
     sys.exit(1)
 
 import argparse
@@ -12,14 +11,17 @@ import errno
 import logging
 import logging.handlers
 import os
+import platform
 import traceback
 
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.head as dashboard_head
 import ray.new_dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
-import ray.services
+import ray._private.services
 import ray.utils
+from ray.ray_logging import setup_component_logger
+from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -30,7 +32,7 @@ routes = dashboard_utils.ClassMethodRouteTable
 
 def setup_static_dir():
     build_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "client/build")
+        os.path.dirname(os.path.abspath(__file__)), "client", "build")
     module_name = os.path.basename(os.path.dirname(__file__))
     if not os.path.isdir(build_dir):
         raise OSError(
@@ -148,76 +150,62 @@ if __name__ == "__main__":
         "--logging-rotate-bytes",
         required=False,
         type=int,
-        default=dashboard_consts.LOGGING_ROTATE_BYTES,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
         help="Specify the max bytes for rotating "
         "log file, default is {} bytes.".format(
-            dashboard_consts.LOGGING_ROTATE_BYTES))
+            ray_constants.LOGGING_ROTATE_BYTES))
     parser.add_argument(
         "--logging-rotate-backup-count",
         required=False,
         type=int,
-        default=dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
         help="Specify the backup count of rotated log file, default is {}.".
-        format(dashboard_consts.LOGGING_ROTATE_BACKUP_COUNT))
+        format(ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
     parser.add_argument(
         "--log-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of log directory.")
     parser.add_argument(
         "--temp-dir",
-        required=False,
+        required=True,
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
 
     args = parser.parse_args()
     try:
-        if args.temp_dir:
-            temp_dir = "/" + args.temp_dir.strip("/")
-        else:
-            temp_dir = "/tmp/ray"
-        os.makedirs(temp_dir, exist_ok=True)
-
-        if args.log_dir:
-            log_dir = args.log_dir
-        else:
-            log_dir = os.path.join(temp_dir, "session_latest/logs")
-        os.makedirs(log_dir, exist_ok=True)
-
-        if args.logging_filename:
-            logging_handlers = [
-                logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, args.logging_filename),
-                    maxBytes=args.logging_rotate_bytes,
-                    backupCount=args.logging_rotate_backup_count)
-            ]
-        else:
-            logging_handlers = None
-        logging.basicConfig(
-            level=args.logging_level,
-            format=args.logging_format,
-            handlers=logging_handlers)
+        setup_component_logger(
+            logging_level=args.logging_level,
+            logging_format=args.logging_format,
+            log_dir=args.log_dir,
+            filename=args.logging_filename,
+            max_bytes=args.logging_rotate_bytes,
+            backup_count=args.logging_rotate_backup_count)
 
         dashboard = Dashboard(
             args.host,
             args.port,
             args.redis_address,
             redis_password=args.redis_password,
-            log_dir=log_dir)
+            log_dir=args.log_dir)
+        service_discovery = PrometheusServiceDiscoveryWriter(
+            args.redis_address, args.redis_password, args.temp_dir)
+        service_discovery.start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
         message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+                   "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         if isinstance(e, OSError) and e.errno == errno.ENOENT:
             logger.warning(message)
         else:
+            logger.exception(message)
             raise e

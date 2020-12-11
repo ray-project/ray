@@ -23,13 +23,13 @@ namespace raylet {
 ReconstructionPolicy::ReconstructionPolicy(
     boost::asio::io_service &io_service,
     std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
-    int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
+    int64_t initial_reconstruction_timeout_ms, const NodeID &node_id,
     std::shared_ptr<gcs::GcsClient> gcs_client,
     std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
-      client_id_(client_id),
+      node_id_(node_id),
       gcs_client_(gcs_client),
       object_directory_(std::move(object_directory)) {}
 
@@ -88,7 +88,7 @@ void ReconstructionPolicy::OnTaskLeaseNotification(
     return;
   }
 
-  const ClientID node_manager_id = ClientID::FromBinary(task_lease->node_manager_id());
+  const NodeID node_manager_id = NodeID::FromBinary(task_lease->node_manager_id());
   if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
     // The node manager that added the task lease is already removed. The
     // lease is considered inactive.
@@ -148,7 +148,7 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   auto reconstruction_entry = std::make_shared<TaskReconstructionData>();
   reconstruction_entry->set_task_id(task_id.Binary());
   reconstruction_entry->set_num_reconstructions(reconstruction_attempt);
-  reconstruction_entry->set_node_manager_id(client_id_.Binary());
+  reconstruction_entry->set_node_manager_id(node_id_.Binary());
   RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
       reconstruction_entry,
       /*done=*/
@@ -178,9 +178,9 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
         created_object_id, it->second.owner_addresses[created_object_id],
         [this, task_id, reconstruction_attempt](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients) {
-          if (clients.empty()) {
+            const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &nodes,
+            const std::string &spilled_url) {
+          if (nodes.empty() && spilled_url.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
             AttemptReconstruction(task_id, object_id, reconstruction_attempt);

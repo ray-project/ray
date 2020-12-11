@@ -6,12 +6,17 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray.util.placement_group import PlacementGroup, \
-    check_placement_group_index
+from ray.util.placement_group import (
+    PlacementGroup, check_placement_group_index, get_current_placement_group)
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
+from ray.util.inspect import (
+    is_function_or_method,
+    is_class_method,
+    is_static_method,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +200,7 @@ class ActorClassMethodMetadata(object):
         self = cls.__new__(cls)
 
         actor_methods = inspect.getmembers(modified_class,
-                                           ray.utils.is_function_or_method)
+                                           is_function_or_method)
         self.methods = dict(actor_methods)
 
         # Extract the signatures of each of the methods. This will be used
@@ -208,9 +213,8 @@ class ActorClassMethodMetadata(object):
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
-            is_bound = (ray.utils.is_class_method(method)
-                        or ray.utils.is_static_method(modified_class,
-                                                      method_name))
+            is_bound = (is_class_method(method)
+                        or is_static_method(modified_class, method_name))
 
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
@@ -417,7 +421,9 @@ class ActorClass:
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
+                override_environment_variables=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -455,7 +461,11 @@ class ActorClass:
                     name=name,
                     lifetime=lifetime,
                     placement_group=placement_group,
-                    placement_group_bundle_index=placement_group_bundle_index)
+                    placement_group_bundle_index=placement_group_bundle_index,
+                    placement_group_capture_child_tasks=(
+                        placement_group_capture_child_tasks),
+                    override_environment_variables=(
+                        override_environment_variables))
 
         return ActorOptionWrapper()
 
@@ -474,7 +484,9 @@ class ActorClass:
                 name=None,
                 lifetime=None,
                 placement_group=None,
-                placement_group_bundle_index=-1):
+                placement_group_bundle_index=-1,
+                placement_group_capture_child_tasks=None,
+                override_environment_variables=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -508,6 +520,12 @@ class ActorClass:
             placement_group_bundle_index: the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
+            placement_group_capture_child_tasks: Whether or not children tasks
+                of this actor should implicitly use the same placement group
+                as its parent. It is True by default.
+            override_environment_variables: Environment variables to override
+                and/or introduce for this actor.  This is a dictionary mapping
+                variable names to their values.
 
         Returns:
             A handle to the newly created actor.
@@ -565,7 +583,15 @@ class ActorClass:
         else:
             raise ValueError("lifetime must be either `None` or 'detached'")
 
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+
         if placement_group is None:
+            if placement_group_capture_child_tasks:
+                placement_group = get_current_placement_group()
+
+        if not placement_group:
             placement_group = PlacementGroup.empty()
 
         check_placement_group_index(placement_group,
@@ -644,8 +670,11 @@ class ActorClass:
             is_asyncio,
             placement_group.id,
             placement_group_bundle_index,
+            placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
-            extension_data=str(actor_method_cpu))
+            extension_data=str(actor_method_cpu),
+            override_environment_variables=override_environment_variables
+            or dict())
 
         actor_handle = ActorHandle(
             meta.language,
@@ -931,7 +960,7 @@ def modify_class(cls):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    if not ray.utils.is_function_or_method(getattr(Class, "__init__", None)):
+    if not is_function_or_method(getattr(Class, "__init__", None)):
         # Add __init__ if it does not exist.
         # Actor creation will be executed with __init__ together.
 

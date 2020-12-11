@@ -5,8 +5,9 @@
 import argparse
 from gym.spaces import Discrete, Box
 import numpy as np
+import os
 
-from ray.rllib.agents.ppo import PPOTrainer
+from ray import tune
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.examples.models.mobilenet_v2_with_lstm_models import \
     MobileV2PlusRNNModel, TorchMobileV2PlusRNNModel
@@ -21,6 +22,9 @@ cnn_shape_torch = (3, 224, 224)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=200)
+parser.add_argument("--stop-reward", type=float, default=0.0)
+parser.add_argument("--stop-timesteps", type=int, default=100000)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -30,8 +34,15 @@ if __name__ == "__main__":
         "my_model", TorchMobileV2PlusRNNModel
         if args.torch else MobileV2PlusRNNModel)
 
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
     # Configure our Trainer.
     config = {
+        "env": RandomEnv,
         "framework": "torch" if args.torch else "tf",
         "model": {
             "custom_model": "my_model",
@@ -42,6 +53,8 @@ if __name__ == "__main__":
             "max_seq_len": 20,
         },
         "vf_share_layers": True,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,  # no parallelism
         "env_config": {
             "action_space": Discrete(2),
@@ -54,5 +67,4 @@ if __name__ == "__main__":
         },
     }
 
-    trainer = PPOTrainer(config=config, env=RandomEnv)
-    print(trainer.train())
+    tune.run("PPO", config=config, stop=stop, verbose=1)

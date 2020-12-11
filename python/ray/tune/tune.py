@@ -1,4 +1,6 @@
 import logging
+import sys
+import time
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -9,21 +11,16 @@ from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.registry import get_trainable_cls
-from ray.tune.syncer import wait_for_sync, set_sync_periods, SyncConfig
+from ray.tune.syncer import wait_for_sync, set_sync_periods, \
+    SyncConfig
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
-                                 FIFOScheduler, MedianStoppingRule)
+from ray.tune.schedulers import FIFOScheduler
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 
 logger = logging.getLogger(__name__)
-
-_SCHEDULERS = {
-    "FIFO": FIFOScheduler,
-    "MedianStopping": MedianStoppingRule,
-    "HyperBand": HyperBandScheduler,
-    "AsyncHyperBand": AsyncHyperBandScheduler,
-}
 
 try:
     class_name = get_ipython().__class__.__name__
@@ -32,17 +29,9 @@ except NameError:
     IS_NOTEBOOK = False
 
 
-def _make_scheduler(args):
-    if args.scheduler in _SCHEDULERS:
-        return _SCHEDULERS[args.scheduler](**args.scheduler_config)
-    else:
-        raise TuneError("Unknown scheduler: {}, should be one of {}".format(
-            args.scheduler, _SCHEDULERS.keys()))
-
-
 def _check_default_resources_override(run_identifier):
     if not isinstance(run_identifier, str):
-        # If obscure dtype, assume it is overriden.
+        # If obscure dtype, assume it is overridden.
         return True
     trainable_cls = get_trainable_cls(run_identifier)
     return hasattr(trainable_cls, "default_resource_request") and (
@@ -82,9 +71,8 @@ def run(
         checkpoint_score_attr=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
-        verbose=2,
+        verbose=Verbosity.V3_TRIAL_DETAILS,
         progress_reporter=None,
-        loggers=None,
         log_to_file=False,
         trial_name_creator=None,
         trial_dirname_creator=None,
@@ -99,7 +87,9 @@ def run(
         reuse_actors=False,
         trial_executor=None,
         raise_on_failed_trial=True,
+        callbacks=None,
         # Deprecated args
+        loggers=None,
         ray_auto_init=None,
         run_errored_only=None,
         global_checkpoint_period=None,
@@ -177,7 +167,8 @@ def run(
         num_samples (int): Number of times to sample from the
             hyperparameter space. Defaults to 1. If `grid_search` is
             provided as an argument, the grid will be repeated
-            `num_samples` of times.
+            `num_samples` of times. If this is -1, (virtually) infinite
+            samples are generated until a stopping condition is met.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
         search_alg (Searcher): Search algorithm for optimization.
@@ -198,15 +189,13 @@ def run(
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
-        verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
-            1 = only status updates, 2 = status and trial results.
+        verbose (Union[int, Verbosity]): 0, 1, 2, or 3. Verbosity mode.
+            0 = silent, 1 = only status updates, 2 = status and brief trial
+            results, 3 = status and detailed trial results. Defaults to 3.
         progress_reporter (ProgressReporter): Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        loggers (list): List of logger creators to be used with
-            each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
-            See `ray/tune/logger.py`.
         log_to_file (bool|str|Sequence): Log stdout and stderr to files in
             Tune's trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -228,7 +217,7 @@ def run(
         max_failures (int): Try to recover a trial at least this many times.
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
-            Setting to 0 will disable retries. Defaults to 3.
+            Setting to 0 will disable retries. Defaults to 0.
         fail_fast (bool | str): Whether to fail upon the first error.
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
@@ -257,6 +246,11 @@ def run(
         trial_executor (TrialExecutor): Manage the execution of trials.
         raise_on_failed_trial (bool): Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
+        callbacks (list): List of callbacks that will be called at different
+            times in the training loop. Must be instances of the
+            ``ray.tune.callback.Callback`` class. If not passed,
+            `LoggerCallback` and `SyncerCallback` callbacks are automatically
+            added.
 
 
     Returns:
@@ -265,6 +259,7 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+    all_start = time.time()
     if global_checkpoint_period:
         raise ValueError("global_checkpoint_period is deprecated. Set env var "
                          "'TUNE_GLOBAL_CHECKPOINT_S' instead.")
@@ -288,9 +283,14 @@ def run(
             "The `mode` parameter passed to `tune.run()` has to be one of "
             "['min', 'max']")
 
+    set_verbosity(verbose)
+
     config = config or {}
     sync_config = sync_config or SyncConfig()
     set_sync_periods(sync_config)
+
+    if num_samples == -1:
+        num_samples = sys.maxsize
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors, queue_trials=queue_trials)
@@ -314,7 +314,6 @@ def run(
                 sync_to_driver=sync_config.sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
-                loggers=loggers,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
@@ -358,6 +357,10 @@ def run(
             "own `metric` and `mode` parameters. Either remove the arguments "
             "from your scheduler or from your call to `tune.run()`")
 
+    # Create syncer callbacks
+    callbacks = create_default_callbacks(
+        callbacks, sync_config, metric=metric, loggers=loggers)
+
     runner = TrialRunner(
         search_alg=search_alg,
         scheduler=scheduler,
@@ -367,9 +370,10 @@ def run(
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,
-        verbose=bool(verbose > 1),
         fail_fast=fail_fast,
-        trial_executor=trial_executor)
+        trial_executor=trial_executor,
+        callbacks=callbacks,
+        metric=metric)
 
     if not runner.resumed:
         for exp in experiments:
@@ -379,9 +383,18 @@ def run(
 
     if progress_reporter is None:
         if IS_NOTEBOOK:
-            progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+            progress_reporter = JupyterNotebookReporter(
+                overwrite=not has_verbosity(Verbosity.V2_TRIAL_NORM))
         else:
             progress_reporter = CLIReporter()
+
+    if not progress_reporter.set_search_properties(metric, mode):
+        raise ValueError(
+            "You passed a `metric` or `mode` argument to `tune.run()`, but "
+            "the reporter you are using was already instantiated with their "
+            "own `metric` and `mode` parameters. Either remove the arguments "
+            "from your reporter or from your call to `tune.run()`")
+    progress_reporter.set_total_samples(search_alg.total_samples)
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
@@ -390,7 +403,7 @@ def run(
             # "gpu" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
-            # "default_resources" is manually overriden.
+            # "default_resources" is manually overridden.
             pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
@@ -401,17 +414,19 @@ def run(
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
+    tune_start = time.time()
     while not runner.is_finished():
         runner.step()
-        if verbose:
+        if has_verbosity(Verbosity.V1_EXPERIMENT):
             _report_progress(runner, progress_reporter)
+    tune_taken = time.time() - tune_start
 
     try:
         runner.checkpoint(force=True)
     except Exception as e:
         logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
-    if verbose:
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
@@ -428,6 +443,11 @@ def run(
         else:
             logger.error("Trials did not complete: %s", incomplete_trials)
 
+    all_taken = time.time() - all_start
+    if has_verbosity(Verbosity.V1_EXPERIMENT):
+        logger.info(f"Total run time: {all_taken:.2f} seconds "
+                    f"({tune_taken:.2f} seconds for the tuning loop).")
+
     trials = runner.get_trials()
     return ExperimentAnalysis(
         runner.checkpoint_file,
@@ -439,14 +459,15 @@ def run(
 def run_experiments(experiments,
                     scheduler=None,
                     server_port=None,
-                    verbose=2,
+                    verbose=Verbosity.V3_TRIAL_DETAILS,
                     progress_reporter=None,
                     resume=False,
                     queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=True):
+                    concurrent=True,
+                    callbacks=None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -476,7 +497,8 @@ def run_experiments(experiments,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler).trials
+            scheduler=scheduler,
+            callbacks=callbacks).trials
     else:
         trials = []
         for exp in experiments:
@@ -490,5 +512,6 @@ def run_experiments(experiments,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler).trials
+                scheduler=scheduler,
+                callbacks=callbacks).trials
         return trials

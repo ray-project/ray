@@ -7,6 +7,15 @@ External library integrations (tune.integration)
     :local:
     :depth: 1
 
+
+.. _tune-integration-docker:
+
+Docker (tune.integration.docker)
+--------------------------------
+
+.. autofunction:: ray.tune.integration.docker.DockerSyncer
+
+
 .. _tune-integration-keras:
 
 Keras (tune.integration.keras)
@@ -68,7 +77,7 @@ Weights and Biases (tune.integration.wandb)
 
 :ref:`See also here <tune-wandb>`.
 
-.. autoclass:: ray.tune.integration.wandb.WandbLogger
+.. autoclass:: ray.tune.integration.wandb.WandbLoggerCallback
 
 .. autofunction:: ray.tune.integration.wandb.wandb_mixin
 

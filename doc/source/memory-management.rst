@@ -249,18 +249,7 @@ In the above example, the memory quota is specified statically by the decorator,
   # override the memory quota to 1GiB when creating the actor
   SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
 
-**Enforcement**: If an actor exceeds its memory quota, calls to it will throw ``RayOutOfMemoryError`` and it may be killed. Memory quota is currently enforced on a best-effort basis for actors only (but quota is taken into account during scheduling in all cases).
-
 Questions or Issues?
 --------------------
 
-If you have a question or issue that wasn't covered by this page, please get in touch via on of the following channels:
-
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions and feedback.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. include:: /_help.rst

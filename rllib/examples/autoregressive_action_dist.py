@@ -11,6 +11,7 @@ This examples shows both.
 """
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -44,7 +45,8 @@ if __name__ == "__main__":
     config = {
         "env": CorrelatedActionsEnv,
         "gamma": 0.5,
-        "num_gpus": 0,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "model": {
             "custom_model": "autoregressive_model",
             "custom_action_dist": "binary_autoreg_dist",
@@ -58,7 +60,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config)
+    results = tune.run(args.run, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

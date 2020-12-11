@@ -20,11 +20,10 @@ class TestMAML(unittest.TestCase):
         config = maml.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["horizon"] = 200
-        config["rollout_fragment_length"] = 200
         num_iterations = 1
 
         # Test for tf framework (torch not implemented yet).
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
+        for _ in framework_iterator(config, frameworks=("tf")):
             trainer = maml.MAMLTrainer(
                 config=config,
                 env="ray.rllib.examples.env.pendulum_mass.PendulumMassEnv")

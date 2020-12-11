@@ -192,7 +192,7 @@ install_nvm() {
   fi
 }
 
-install_pip() {
+install_upgrade_pip() {
   local python=python
   if command -v python3 > /dev/null; then
     python=python3
@@ -237,10 +237,12 @@ install_dependencies() {
   install_base
   install_toolchains
   install_nvm
-  install_pip
+  install_upgrade_pip
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    # Upgrade the miniconda pip.
+    install_upgrade_pip
   fi
 
   # Install modules needed in all jobs.
@@ -278,14 +280,16 @@ install_dependencies() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
-  # Additional RLlib dependencies.
+  # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
+    # install the following packages for testing on travis only
+    pip install 'recsim>=0.2.4'
   fi
 
   # Additional Tune test dependencies.
@@ -293,15 +297,10 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
   fi
 
-  # Additional Tune dependency for Horovod.
-  if [ "${INSTALL_HOROVOD-}" = 1 ]; then
-    # TODO: eventually pin this to master.
-    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
-  fi
-
   # Additional RaySGD test dependencies.
   if [ "${SGD_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+    # TODO: eventually have a separate requirements file for Ray SGD.
   fi
 
   # Additional Doc test dependencies.
@@ -317,17 +316,23 @@ install_dependencies() {
       1.5) TORCHVISION_VERSION=0.6.0;;
       *) TORCHVISION_VERSION=0.5.0;;
     esac
-
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+    pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
+  fi
+
+  # Additional Tune dependency for Horovod.
+  # This must be run last (i.e., torch cannot be re-installed after this)
+  if [ "${INSTALL_HOROVOD-}" = 1 ]; then
+    # TODO: eventually pin this to master.
+    HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 pip install -U git+https://github.com/horovod/horovod.git
   fi
 
   if [ -n "${PYTHON-}" ] || [ -n "${LINT-}" ] || [ "${MAC_WHEELS-}" = 1 ]; then
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

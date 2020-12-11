@@ -34,7 +34,7 @@ def convert_to_non_torch_type(stats):
     def mapping(item):
         if isinstance(item, torch.Tensor):
             return item.cpu().item() if len(item.size()) == 0 else \
-                item.cpu().detach().numpy()
+                item.detach().cpu().numpy()
         else:
             return item
 
@@ -125,11 +125,11 @@ def minimize_and_clip(optimizer, clip_val=10):
 
 def one_hot(x, space):
     if isinstance(space, Discrete):
-        return nn.functional.one_hot(x, space.n)
+        return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
         return torch.cat(
             [
-                nn.functional.one_hot(x[:, i], n)
+                nn.functional.one_hot(x[:, i].long(), n)
                 for i, n in enumerate(space.nvec)
             ],
             dim=-1)

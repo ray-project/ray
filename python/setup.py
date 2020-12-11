@@ -58,7 +58,8 @@ ray_files = [
     "ray/streaming/_streaming.so",
 ]
 
-if BUILD_JAVA:
+if BUILD_JAVA or os.path.exists(
+        os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
 # These are the directories where automatically generated Python protobuf
@@ -68,43 +69,41 @@ generated_python_directories = [
     "ray/streaming/generated",
 ]
 
-optional_ray_files = ["ray/nightly-wheels.yaml"]
+ray_files.append("ray/nightly-wheels.yaml")
 
-ray_autoscaler_files = [
-    "ray/autoscaler/aws/example-full.yaml",
-    "ray/autoscaler/azure/example-full.yaml",
-    "ray/autoscaler/azure/azure-vm-template.json",
-    "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/example-full.yaml",
-    "ray/autoscaler/local/example-full.yaml",
-    "ray/autoscaler/kubernetes/example-full.yaml",
-    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/ray-schema.json"
+# Autoscaler files.
+ray_files += [
+    "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/_private/azure/azure-vm-template.json",
+    "ray/autoscaler/_private/azure/azure-config-template.json",
+    "ray/autoscaler/gcp/defaults.yaml",
+    "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/kubernetes/defaults.yaml",
+    "ray/autoscaler/_private/kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/staroid/defaults.yaml",
+    "ray/autoscaler/ray-schema.json",
 ]
 
-ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
-    "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt"
+# Dashboard files.
+ray_files += [
+    os.path.join(dirpath, filename) for dirpath, dirnames, filenames in
+    os.walk("ray/new_dashboard/client/build") for filename in filenames
 ]
-
-ray_dashboard_files = [
-    os.path.join(dirpath, filename)
-    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
-    for filename in filenames
-]
-
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
-optional_ray_files += ray_dashboard_files
 
 # If you're adding dependencies for ray extras, please
 # also update the matching section of requirements.txt
 # in this directory
 extras = {
-    "debug": [],
-    "serve": ["uvicorn", "flask", "requests", "pydantic", "dataclasses"],
-    "tune": ["tabulate", "tensorboardX", "pandas", "dataclasses"]
+    "serve": [
+        "uvicorn", "flask", "requests", "pydantic<1.7",
+        "dataclasses; python_version < '3.7'"
+    ],
+    "tune": [
+        "dataclasses; python_version < '3.7'", "pandas", "tabulate",
+        "tensorboardX"
+    ],
+    "k8s": ["kubernetes"]
 }
 
 extras["rllib"] = extras["tune"] + [
@@ -135,7 +134,6 @@ install_requires = [
     "colorama",
     "colorful",
     "filelock",
-    "google",
     "gpustat",
     "grpcio >= 1.28.1",
     "jsonschema",
@@ -145,7 +143,7 @@ install_requires = [
     "py-spy >= 0.2.0",
     "pyyaml",
     "requests",
-    "redis >= 3.3.2, < 3.5.0",
+    "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
 ]
@@ -169,7 +167,8 @@ def is_invalid_windows_platform():
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
-    candidates = ["bazel"]
+    first_candidate = os.getenv("BAZEL_PATH", "bazel")
+    candidates = [first_candidate]
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
@@ -271,7 +270,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle"]
+        pip_packages = ["psutil", "setproctitle==1.1.10"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -356,14 +355,6 @@ def pip_run(build_ext):
 
     for filename in files_to_include:
         move_file(build_ext.build_lib, filename)
-
-    # Try to copy over the optional files.
-    for filename in optional_ray_files:
-        try:
-            move_file(build_ext.build_lib, filename)
-        except Exception:
-            print("Failed to copy optional file {}. This is ok."
-                  .format(filename))
 
 
 def api_main(program, *args):
@@ -458,7 +449,8 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator:main"
         ]
     },
     include_package_data=True,

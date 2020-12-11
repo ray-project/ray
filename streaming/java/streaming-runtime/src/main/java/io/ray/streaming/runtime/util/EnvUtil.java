@@ -1,6 +1,6 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.runtime.RayNativeRuntime;
+import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
@@ -29,13 +29,7 @@ public class EnvUtil {
   }
 
   public static void loadNativeLibraries() {
-    // Explicitly load `RayNativeRuntime`, to make sure `core_worker_library_java`
-    // is loaded before `streaming_java`.
-    try {
-      Class.forName(RayNativeRuntime.class.getName());
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
-    }
+    JniUtils.loadLibrary(BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY, true);
     JniUtils.loadLibrary("streaming_java");
   }
 

@@ -48,11 +48,11 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   log_based_actor_table_.reset(new LogBasedActorTable({primary_context}, this));
   actor_table_.reset(new ActorTable({primary_context}, this));
 
-  // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
-  // We will use NodeID instead of ClientID.
+  // TODO(micafan) Modify NodeTable' Constructor(remove NodeID) in future.
+  // We will use NodeID instead of NodeID.
   // For worker/driver, it might not have this field(NodeID).
   // For raylet, NodeID should be initialized in raylet layer(not here).
-  client_table_.reset(new ClientTable({primary_context}, this));
+  node_table_.reset(new NodeTable({primary_context}, this));
 
   job_table_.reset(new JobTable({primary_context}, this));
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
@@ -63,8 +63,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts, this));
   profile_table_.reset(new ProfileTable(shard_contexts, this));
-  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts, this));
-  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_table_.reset(new WorkerTable(shard_contexts, this));
 
@@ -103,7 +101,7 @@ std::string RedisGcsClient::DebugString() const {
   result << "\n- TaskLeaseTable: " << task_lease_table_->DebugString();
   result << "\n- HeartbeatTable: " << heartbeat_table_->DebugString();
   result << "\n- ProfileTable: " << profile_table_->DebugString();
-  result << "\n- ClientTable: " << client_table_->DebugString();
+  result << "\n- NodeTable: " << node_table_->DebugString();
   result << "\n- JobTable: " << job_table_->DebugString();
   return result.str();
 }
@@ -126,7 +124,7 @@ TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
 
 TaskLeaseTable &RedisGcsClient::task_lease_table() { return *task_lease_table_; }
 
-ClientTable &RedisGcsClient::client_table() { return *client_table_; }
+NodeTable &RedisGcsClient::node_table() { return *node_table_; }
 
 HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
@@ -137,14 +135,6 @@ HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
 
 ProfileTable &RedisGcsClient::profile_table() { return *profile_table_; }
-
-ActorCheckpointTable &RedisGcsClient::actor_checkpoint_table() {
-  return *actor_checkpoint_table_;
-}
-
-ActorCheckpointIdTable &RedisGcsClient::actor_checkpoint_id_table() {
-  return *actor_checkpoint_id_table_;
-}
 
 DynamicResourceTable &RedisGcsClient::resource_table() { return *resource_table_; }
 

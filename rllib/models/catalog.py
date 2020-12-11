@@ -3,11 +3,12 @@ import gym
 import logging
 import numpy as np
 import tree
-from typing import List
+from typing import List, Optional, Type, Union
 
 from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
 from ray.rllib.models.action_dist import ActionDistribution
+from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.tf.recurrent_net import LSTMWrapper
@@ -18,6 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -58,8 +60,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "max_seq_len": 20,
     # Size of the LSTM cell.
     "lstm_cell_size": 256,
-    # Whether to feed a_{t-1}, r_{t-1} to LSTM.
-    "lstm_use_prev_action_reward": False,
+    # Whether to feed a_{t-1} to LSTM (one-hot encoded if discrete).
+    "lstm_use_prev_action": False,
+    # Whether to feed r_{t-1} to LSTM.
+    "lstm_use_prev_reward": False,
     # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
@@ -87,6 +91,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Custom preprocessors are deprecated. Please use a wrapper class around
     # your environment instead to preprocess observations.
     "custom_preprocessor": None,
+
+    # Deprecated keys:
+    # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
+    "lstm_use_prev_action_reward": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -110,19 +118,21 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space: gym.Space,
-                        config: ModelConfigDict,
-                        dist_type: str = None,
-                        framework: str = "tf",
-                        **kwargs) -> (type, int):
+    def get_action_dist(
+            action_space: gym.Space,
+            config: ModelConfigDict,
+            dist_type: Optional[Union[str, Type[ActionDistribution]]] = None,
+            framework: str = "tf",
+            **kwargs) -> (type, int):
         """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (Optional[dict]): Optional model config.
-            dist_type (Optional[str]): Identifier of the action distribution
-                interpreted as a hint.
-            framework (str): One of "tf", "tfe", or "torch".
+            dist_type (Optional[Union[str, Type[ActionDistribution]]]):
+                Identifier of the action distribution (str) interpreted as a
+                hint or the actual ActionDistribution class to use.
+            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
             kwargs (dict): Optional kwargs to pass on to the Distribution's
                 constructor.
 
@@ -134,20 +144,24 @@ class ModelCatalog:
                     distribution.
         """
 
-        dist = None
+        dist_cls = None
         config = config or MODEL_DEFAULTS
         # Custom distribution given.
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
-            dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
+            dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
+                                            action_dist_name)
+            dist_cls = ModelCatalog._get_multi_action_distribution(
+                dist_cls, action_space, {}, framework)
+
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
                 issubclass(dist_type, ActionDistribution) and \
                 dist_type not in (
                 MultiActionDistribution, TorchMultiActionDistribution):
-            dist = dist_type
+            dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
@@ -159,49 +173,43 @@ class ModelCatalog:
                     "using a Tuple action space, or the multi-agent API.")
             # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
-                dist = TorchDiagGaussian if framework == "torch" \
+                dist_cls = TorchDiagGaussian if framework == "torch" \
                     else DiagGaussian
             elif dist_type == "deterministic":
-                dist = TorchDeterministic if framework == "torch" \
+                dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
         # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
-            dist = TorchCategorical if framework == "torch" else Categorical
+            dist_cls = TorchCategorical if framework == "torch" else \
+                JAXCategorical if framework == "jax" else Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
                 isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
-            flat_action_space = flatten_space(action_space)
-            child_dists_and_in_lens = tree.map_structure(
-                lambda s: ModelCatalog.get_action_dist(
-                    s, config, framework=framework), flat_action_space)
-            child_dists = [e[0] for e in child_dists_and_in_lens]
-            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
-            return partial(
-                (TorchMultiActionDistribution
-                 if framework == "torch" else MultiActionDistribution),
-                action_space=action_space,
-                child_distributions=child_dists,
-                input_lens=input_lens), int(sum(input_lens))
+            return ModelCatalog._get_multi_action_distribution(
+                (MultiActionDistribution
+                 if framework == "tf" else TorchMultiActionDistribution),
+                action_space, config, framework)
         # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
                     "Simplex action spaces not supported for torch.")
-            dist = Dirichlet
+            dist_cls = Dirichlet
         # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            dist = TorchMultiCategorical if framework == "torch" else \
+            dist_cls = TorchMultiCategorical if framework == "torch" else \
                 MultiCategorical
-            return partial(dist, input_lens=action_space.nvec), \
+            return partial(dist_cls, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(
                 action_space, dist_type))
 
-        return dist, dist.required_model_output_shape(action_space, config)
+        return dist_cls, dist_cls.required_model_output_shape(
+            action_space, config)
 
     @staticmethod
     @DeveloperAPI
@@ -215,7 +223,7 @@ class ModelCatalog:
         """
 
         if isinstance(action_space, gym.spaces.Discrete):
-            return (tf.int64, (None, ))
+            return (action_space.dtype, (None, ))
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
             return (tf.float32, (None, ) + action_space.shape)
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
@@ -247,6 +255,7 @@ class ModelCatalog:
             action_space (Space): Action space of the target gym env.
             name (str): An optional string to name the placeholder by.
                 Default: "action".
+
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
@@ -274,7 +283,7 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): One of "tf", "tfe", or "torch".
+            framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
@@ -286,8 +295,7 @@ class ModelCatalog:
         """
 
         if model_config.get("custom_model"):
-
-            # Allow model kwargs to be overriden / augmented by
+            # Allow model kwargs to be overridden / augmented by
             # custom_model_config.
             customized_model_kwargs = dict(
                 model_kwargs, **model_config.get("custom_model_config", {}))
@@ -307,7 +315,7 @@ class ModelCatalog:
             model_cls = ModelCatalog._wrap_if_needed(model_cls,
                                                      model_interface)
 
-            if framework in ["tf", "tfe"]:
+            if framework in ["tf2", "tf", "tfe"]:
                 # Track and warn if vars were created but not registered.
                 created = set()
 
@@ -350,7 +358,7 @@ class ModelCatalog:
                         "model.register_variables() on the variables in "
                         "question?".format(not_registered, instance,
                                            registered))
-            else:
+            elif framework == "torch":
                 # PyTorch automatically tracks nn.Modules inside the parent
                 # nn.Module's constructor.
                 # Try calling with kwargs first (custom ModelV2 should
@@ -373,8 +381,14 @@ class ModelCatalog:
                     # Other error -> re-raise.
                     else:
                         raise e
+            else:
+                raise NotImplementedError(
+                    "`framework` must be 'tf2|tf|tfe|torch', but is "
+                    "{}!".format(framework))
+
             return instance
 
+        # Find a default TFModelV2 and wrap with model_interface.
         if framework in ["tf", "tfe", "tf2"]:
             v2_class = None
             # Try to get a default v2 model.
@@ -396,6 +410,8 @@ class ModelCatalog:
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
+
+        # Find a default TorchModelV2 and wrap with model_interface.
         elif framework == "torch":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
@@ -412,6 +428,18 @@ class ModelCatalog:
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
                            name, **model_kwargs)
+
+        # Find a default JAXModelV2 and wrap with model_interface.
+        elif framework == "jax":
+            v2_class = \
+                default_model or ModelCatalog._get_v2_model_class(
+                    obs_space, model_config, framework=framework)
+            if model_config.get("use_lstm"):
+                raise NotImplementedError("JAXModel's not LSTM-wrappable yet!")
+            # Wrap in the requested interface.
+            wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
+            return wrapper(obs_space, action_space, num_outputs, model_config,
+                           name, **model_kwargs)
         else:
             raise NotImplementedError(
                 "`framework` must be 'tf2|tf|tfe|torch', but is "
@@ -419,7 +447,8 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_preprocessor(env: gym.Env, options: dict = None) -> Preprocessor:
+    def get_preprocessor(env: gym.Env,
+                         options: Optional[dict] = None) -> Preprocessor:
         """Returns a suitable preprocessor for the given env.
 
         This is a wrapper for get_preprocessor_for_space().
@@ -530,17 +559,29 @@ class ModelCatalog:
         return wrapper
 
     @staticmethod
-    def _get_v2_model_class(input_space, model_config, framework="tf"):
-        if framework == "torch":
-            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
-                                                      FCNet)
-            from ray.rllib.models.torch.visionnet import (VisionNetwork as
-                                                          VisionNet)
-        else:
+    def _get_v2_model_class(input_space: gym.Space,
+                            model_config: ModelConfigDict,
+                            framework: str = "tf") -> ModelV2:
+
+        VisionNet = None
+
+        if framework in ["tf2", "tf", "tfe"]:
             from ray.rllib.models.tf.fcnet import \
                 FullyConnectedNetwork as FCNet
             from ray.rllib.models.tf.visionnet import \
                 VisionNetwork as VisionNet
+        elif framework == "torch":
+            from ray.rllib.models.torch.fcnet import (FullyConnectedNetwork as
+                                                      FCNet)
+            from ray.rllib.models.torch.visionnet import (VisionNetwork as
+                                                          VisionNet)
+        elif framework == "jax":
+            from ray.rllib.models.jax.fcnet import (FullyConnectedNetwork as
+                                                    FCNet)
+        else:
+            raise ValueError(
+                "framework={} not supported in `ModelCatalog._get_v2_model_"
+                "class`!".format(framework))
 
         # Discrete/1D obs-spaces.
         if isinstance(input_space, gym.spaces.Discrete) or \
@@ -548,4 +589,28 @@ class ModelCatalog:
             return FCNet
         # Default Conv2D net.
         else:
+            if framework == "jax":
+                raise NotImplementedError("No Conv2D default net for JAX yet!")
             return VisionNet
+
+    @staticmethod
+    def _get_multi_action_distribution(dist_class, action_space, config,
+                                       framework):
+        # In case the custom distribution is a child of MultiActionDistr.
+        # If users want to completely ignore the suggested child
+        # distributions, they should simply do so in their custom class'
+        # constructor.
+        if issubclass(dist_class,
+                      (MultiActionDistribution, TorchMultiActionDistribution)):
+            flat_action_space = flatten_space(action_space)
+            child_dists_and_in_lens = tree.map_structure(
+                lambda s: ModelCatalog.get_action_dist(
+                    s, config, framework=framework), flat_action_space)
+            child_dists = [e[0] for e in child_dists_and_in_lens]
+            input_lens = [int(e[1]) for e in child_dists_and_in_lens]
+            return partial(
+                dist_class,
+                action_space=action_space,
+                child_distributions=child_dists,
+                input_lens=input_lens), int(sum(input_lens))
+        return dist_class

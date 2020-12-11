@@ -75,10 +75,7 @@ def java_function(class_name, function_name):
         None,  # accelerator_type,
         None,  # num_returns,
         None,  # max_calls,
-        None,  # max_retries
-        placement_group=None,
-        # TODO(ekl) set default to -1 once we support -1 as "any index"
-        placement_group_bundle_index=0)
+        None)  # max_retries
 
 
 def java_actor_class(class_name):

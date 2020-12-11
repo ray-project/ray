@@ -21,6 +21,7 @@ cc_library(
         "src/ray/util/*.h",
         "src/ray/*.cc",
         "src/ray/*.h",
+        "src/ray/worker/default_worker.cc",
     ]),
     hdrs = glob([
         "include/ray/*.h",
@@ -29,8 +30,8 @@ cc_library(
     ]),
     copts = COPTS,
     linkopts = ["-ldl"],
+    linkstatic = True,
     strip_include_prefix = "include",
-    # linkstatic = False,
     visibility = ["//visibility:public"],
     deps = [
         "//:core_worker_lib",
@@ -44,52 +45,10 @@ cc_library(
 )
 
 cc_binary(
-    name = "default_worker",
-    srcs = [
-        "src/ray/worker/default_worker.cc",
-    ],
-    copts = COPTS,
-    linkstatic = True,
-    deps = [
-        "//:core_worker_lib",
-    ],
-)
-
-genrule(
-    name = "ray_cpp_pkg",
-    srcs = [
-        "default_worker",
-        "ray_api",
-    ],
-    outs = ["ray_cpp_pkg.out"],
-    cmd = """
-        WORK_DIR="$$(pwd)" &&
-        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(location default_worker) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
-        echo "$$WORK_DIR" > $@
-    """,
-    local = 1,
-)
-
-cc_binary(
     name = "example",
     testonly = 1,
     srcs = glob([
         "src/example/example.cc",
-    ]),
-    copts = COPTS,
-    linkstatic = False,
-    deps = [
-        "ray_api",
-    ],
-)
-
-cc_binary(
-    name = "example_cluster_mode",
-    testonly = 1,
-    srcs = glob([
-        "src/example/example_cluster_mode.cc",
     ]),
     copts = COPTS,
     linkstatic = False,
@@ -113,13 +72,31 @@ cc_test(
 
 cc_test(
     name = "cluster_mode_test",
+    testonly = 0,
     srcs = glob([
         "src/ray/test/cluster/*.cc",
     ]),
     copts = COPTS,
-    linkstatic = False,
+    linkstatic = True,
     deps = [
         "ray_api",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+genrule(
+    name = "ray_cpp_pkg",
+    srcs = [
+        "cluster_mode_test",
+        "ray_api",
+    ],
+    outs = ["ray_cpp_pkg.out"],
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        cp -f $(location cluster_mode_test) "$$WORK_DIR/python/ray/core/src/ray/cpp/default_worker" &&
+        cp -f $(locations ray_api) "$$WORK_DIR/python/ray/core/src/ray/cpp/" &&
+        echo "$$WORK_DIR" > $@
+    """,
+    local = 1,
 )

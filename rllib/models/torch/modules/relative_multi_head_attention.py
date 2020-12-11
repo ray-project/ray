@@ -1,6 +1,7 @@
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.utils.torch_ops import sequence_mask
+from ray.rllib.utils.typing import TensorType, Any
 
 torch, nn = try_import_torch()
 
@@ -12,13 +13,13 @@ class RelativeMultiHeadAttention(nn.Module):
     """
 
     def __init__(self,
-                 in_dim,
-                 out_dim,
-                 num_heads,
-                 head_dim,
-                 rel_pos_encoder,
-                 input_layernorm=False,
-                 output_activation=None,
+                 in_dim: int,
+                 out_dim: int,
+                 num_heads: int,
+                 head_dim: int,
+                 rel_pos_encoder: Any,
+                 input_layernorm: bool = False,
+                 output_activation: Any = None,
                  **kwargs):
         """Initializes a RelativeMultiHeadAttention nn.Module object.
 
@@ -66,7 +67,8 @@ class RelativeMultiHeadAttention(nn.Module):
         if input_layernorm:
             self._input_layernorm = torch.nn.LayerNorm(in_dim)
 
-    def forward(self, inputs, memory=None):
+    def forward(self, inputs: TensorType,
+                memory: TensorType = None) -> TensorType:
         T = list(inputs.size())[1]  # length of segment (time)
         H = self._num_heads  # number of attention heads
         d = self._head_dim  # attention head dimension
@@ -119,7 +121,7 @@ class RelativeMultiHeadAttention(nn.Module):
         return self._linear_layer(out)
 
     @staticmethod
-    def rel_shift(x):
+    def rel_shift(x: TensorType) -> TensorType:
         # Transposed version of the shift approach described in [3].
         # https://github.com/kimiyoung/transformer-xl/blob/
         # 44781ed21dbaec88b280f74d9ae2877f52b492a5/tf/model.py#L31

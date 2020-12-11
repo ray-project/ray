@@ -7,7 +7,7 @@ import warnings
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.test_utils import wait_for_condition
+from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
@@ -32,6 +32,29 @@ def ray_start_cluster_with_resource():
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+    }],
+    indirect=True)
+def test_object_transfer_during_oom(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    def put():
+        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+
+    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    remote_ref = put.remote()
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(remote_ref, timeout=1)
+    del local_ref
+    ray.get(remote_ref)
 
 
 # This test is here to make sure that when we broadcast an object to a bunch of
@@ -157,9 +180,8 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Make sure that each object was transferred a reasonable number of times.
     for x_id in object_refs:
         relevant_events = [
-            event for event in transfer_events
-            if event["cat"] == "transfer_send"
-            and event["args"][0] == x_id.hex() and event["args"][2] == 1
+            event for event in transfer_events if
+            event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
         ]
 
         # NOTE: Each event currently appears twice because we duplicate the
@@ -193,78 +215,6 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             # receiver.
             send_counts[(event["pid"], event["tid"])] += 1
         assert all(value == 1 for value in send_counts.values())
-
-
-# The purpose of this test is to make sure that an object that was already been
-# transferred to a node can be transferred again.
-def test_object_transfer_retry(ray_start_cluster):
-    cluster = ray_start_cluster
-
-    repeated_push_delay = 1
-
-    # Force the sending object manager to allow duplicate pushes again sooner.
-    # Also, force the receiving object manager to retry the pull sooner. We
-    # make the chunk size smaller in order to make it easier to test objects
-    # with multiple chunks.
-    config = {
-        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
-        "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
-        "object_manager_default_chunk_size": 1000
-    }
-    object_store_memory = 150 * 1024 * 1024
-    cluster.add_node(
-        object_store_memory=object_store_memory, _system_config=config)
-    cluster.add_node(num_gpus=1, object_store_memory=object_store_memory)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_gpus=1)
-    def f(size):
-        return np.zeros(size, dtype=np.uint8)
-
-    # Transfer an object to warm up the object manager.
-    ray.get(f.remote(10**6))
-
-    x_id = f.remote(10**6)
-    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
-
-    # Get the objects locally to cause them to be transferred. This is the
-    # first time the objects are getting transferred, so it should happen
-    # quickly.
-    start_time = time.time()
-    ray.get(x_id)
-    end_time = time.time()
-    if end_time - start_time > repeated_push_delay:
-        warnings.warn("The initial transfer took longer than the repeated "
-                      "push delay, so this test may not be testing the thing "
-                      "it's supposed to test.")
-
-    def not_exists():
-        return not ray.worker.global_worker.core_worker.object_exists(x_id)
-
-    def force_eviction():
-        for _ in range(20):
-            ray.put(np.zeros(object_store_memory // 10, dtype=np.uint8))
-        wait_for_condition(not_exists)
-
-    # Force the object to be evicted from the local node.
-    force_eviction()
-
-    # Get the object again and make sure it gets transferred.
-    ray.get(x_id)
-    end_transfer_time = time.time()
-    # We should have had to wait for the repeated push delay.
-    assert end_transfer_time - start_time >= repeated_push_delay
-
-    # Force the object to be evicted again and wait longer than the repeated
-    # push delay and make sure that the object is transferred again.
-    force_eviction()
-    time.sleep(repeated_push_delay)
-
-    # Fetch the object again. This should not wait for the delay.
-    start_time = time.time()
-    ray.get(x_id)
-    end_time = time.time()
-    assert end_time - start_time < repeated_push_delay
 
 
 # The purpose of this test is to make sure we can transfer many objects. In the

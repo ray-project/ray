@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import os
 import sys
 from typing import Any, Optional
@@ -12,6 +13,33 @@ TensorType = TensorType
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = TensorStructType
+
+
+def try_import_jax(error=False):
+    """Tries importing JAX and returns the module (or None).
+
+    Args:
+        error (bool): Whether to raise an error if JAX cannot be imported.
+
+    Returns:
+        The jax module.
+
+    Raises:
+        ImportError: If error=True and JAX is not installed.
+    """
+    if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
+        logger.warning("Not importing JAX for test purposes.")
+        return None
+
+    try:
+        import jax
+        import flax
+    except ImportError as e:
+        if error:
+            raise e
+        return None, None
+
+    return jax, flax
 
 
 def try_import_tf(error=False):
@@ -185,12 +213,13 @@ def get_variable(value,
             does not have any (e.g. if it's an initializer w/o explicit value).
         dtype (Optional[TensorType]): An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
+            This should always be a numpy dtype (e.g. np.float32, np.int64).
 
     Returns:
         any: A framework-specific variable (tf.Variable, torch.tensor, or
             python primitive).
     """
-    if framework in ["tf", "tfe"]:
+    if framework in ["tf2", "tf", "tfe"]:
         import tensorflow as tf
         dtype = dtype or getattr(
             value, "dtype", tf.float32
@@ -207,10 +236,13 @@ def get_variable(value,
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
         var_ = torch.from_numpy(value)
-        if dtype == torch.float32:
+        if dtype in [torch.float32, np.float32]:
             var_ = var_.float()
-        elif dtype == torch.int32:
+        elif dtype in [torch.int32, np.int32]:
             var_ = var_.int()
+        elif dtype in [torch.float64, np.float64]:
+            var_ = var_.double()
+
         if device:
             var_ = var_.to(device)
         var_.requires_grad = trainable
@@ -219,11 +251,13 @@ def get_variable(value,
     return value
 
 
-def get_activation_fn(name, framework="tf"):
+# TODO: (sven) move to models/utils.py
+def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (str): One of "relu" (default), "tanh", or "linear".
+        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
+            "linear" or None.
         framework (str): One of "tf" or "torch".
 
     Returns:
@@ -244,6 +278,16 @@ def get_activation_fn(name, framework="tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
+    elif framework == "jax":
+        if name in ["linear", None]:
+            return None
+        jax, flax = try_import_jax()
+        if name == "swish":
+            return jax.nn.swish
+        if name == "relu":
+            return jax.nn.relu
+        elif name == "tanh":
+            return jax.nn.hard_tanh
     else:
         if name in ["linear", None]:
             return None

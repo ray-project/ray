@@ -152,9 +152,6 @@ class TaskDependencyManager {
   /// \return string.
   std::string DebugString() const;
 
-  /// Record metrics.
-  void RecordMetrics() const;
-
   /// Get the address of the owner of this object. An address will only be
   /// returned if the caller previously specified that this object is required
   /// on this node, through a call to SubscribeGetDependencies or

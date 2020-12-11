@@ -15,7 +15,7 @@ def StandardMetricsReporting(
         selected_workers: List["ActorHandle"] = None) -> LocalIterator[dict]:
     """Operator to periodically collect and report metrics.
 
-    Arguments:
+    Args:
         train_op (LocalIterator): Operator for executing training steps.
             We ignore the output values.
         workers (WorkerSet): Rollout workers to collect metrics from.
