@@ -3225,10 +3225,9 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
 }
 
 void NodeManager::TriggerGlobalGC() {
-  RAY_LOG(INFO)
-      << "Broadcasting Python GC request to all raylets since the cluster "
-      << "is low on object store memory. This removes Ray object refs "
-      << "that are stuck in Python reference cycles.";
+  RAY_LOG(INFO) << "Broadcasting Python GC request to all raylets since the cluster "
+                << "is low on object store memory. This removes Ray object refs "
+                << "that are stuck in Python reference cycles.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   should_local_gc_ = true;
