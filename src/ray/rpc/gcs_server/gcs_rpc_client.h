@@ -97,6 +97,8 @@ class GcsRpcClient {
         new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
     node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
         new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    heartbeat_info_grpc_client_ = std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>>(
+        new GrpcClient<HeartbeatInfoGcsService>(address, port, client_call_manager));
     object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
     task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
@@ -155,15 +157,6 @@ class GcsRpcClient {
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
 
-  /// Report heartbeat of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
-                             node_info_grpc_client_, )
-
-  /// Get newest heartbeat of all nodes from GCS Service. Only used when light heartbeat
-  /// enabled.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllHeartbeat,
-                             node_info_grpc_client_, )
-
   /// Report resource usage of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
                              node_info_grpc_client_, )
@@ -194,6 +187,10 @@ class GcsRpcClient {
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllAvailableResources,
                              node_info_grpc_client_, )
+
+  /// Report heartbeat of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
+                             heartbeat_info_grpc_client_, )
 
   /// Get object's locations from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
@@ -278,6 +275,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;

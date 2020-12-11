@@ -347,15 +347,18 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
-  void AsyncReReportHeartbeat() override;
+  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+                                  const StatusCallback &callback) override;
 
-  Status AsyncGetAllHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override {
-    return Status::NotImplemented("AsyncGetAllHeartbeat not implemented");
+  void AsyncReReportResourceUsage() override;
+
+  Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override {
+    return Status::NotImplemented("AsyncGetAllResourceUsage not implemented");
   }
 
-  Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<HeartbeatBatchTableData> &subscribe,
+  Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<ResourceUsageBatchData> &subscribe,
       const StatusCallback &done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
@@ -378,9 +381,9 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
 
-  typedef SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>
+  typedef SubscriptionExecutor<NodeID, ResourceUsageBatchData, ResourceUsageBatchTable>
       HeartbeatBatchSubscriptionExecutor;
-  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
+  HeartbeatBatchSubscriptionExecutor resource_usage_batch_sub_executor_;
 };
 
 /// \class RedisErrorInfoAccessor
