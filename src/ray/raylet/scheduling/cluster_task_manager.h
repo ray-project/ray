@@ -107,11 +107,11 @@ class ClusterTaskManager {
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void Heartbeat(bool light_heartbeat_enabled,
-                 std::shared_ptr<HeartbeatTableData> data) const;
+  void FillResourceUsage(bool light_report_resource_usage_enabled,
+                         std::shared_ptr<rpc::ResourcesData> data) const;
 
   std::string DebugString() const;
 
@@ -129,11 +129,15 @@ class ClusterTaskManager {
   NodeInfoGetter get_node_info_;
 
   /// Queue of lease requests that are waiting for resources to become available.
+  /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
+  /// Tasks move from scheduled | waiting -> dispatch.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+
   /// Tasks waiting for arguments to be transferred locally.
+  /// Tasks move from waiting -> dispatch.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Determine whether a task should be immediately dispatched,
