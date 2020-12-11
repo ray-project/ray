@@ -12,7 +12,7 @@ from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, is_nan_or_inf
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
@@ -315,8 +315,10 @@ class DragonflySearch(Searcher):
                 return None
         self._live_trial_mapping[trial_id] = suggested_config
 
-        return dict(zip(self._point_parameter_names, suggested_config))
-        # return {"point": suggested_config}
+        config = dict(zip(self._point_parameter_names, suggested_config))
+        # Keep backwards compatibility
+        config.update(point=suggested_config)
+        return unflatten_dict(config)
 
     def on_trial_complete(self,
                           trial_id: str,

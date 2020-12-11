@@ -373,7 +373,7 @@ class SearchSpaceTest(unittest.TestCase):
         config2 = searcher2.suggest("0")
 
         self.assertEqual(config1, config2)
-        self.assertLess(config2["point"], 1e-2)
+        self.assertLess(config2["b"]["z"], 1e-2)
 
         searcher = DragonflySearch()
         invalid_config = {"a/b": tune.uniform(4.0, 8.0)}
@@ -388,7 +388,7 @@ class SearchSpaceTest(unittest.TestCase):
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
-        self.assertLess(trial.config["point"], 1e-2)
+        self.assertLess(trial.config["b"]["z"], 1e-2)
 
         mixed_config = {
             "a": tune.uniform(5, 6),
@@ -402,8 +402,8 @@ class SearchSpaceTest(unittest.TestCase):
             mode="max")
         config = searcher.suggest("0")
 
-        self.assertTrue(5 <= config["point"][0] <= 6)
-        self.assertTrue(8 <= config["point"][1] <= 9)
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
