@@ -381,26 +381,11 @@ def test_fetch_local(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2, object_store_memory=75 * 1024 * 1024)
 
-    @ray.remote
-    class Blocker:
-        def __init__(self):
-            self.block = True
-
-        def is_blocking(self):
-            return self.block
-
-        def unblock(self):
-            self.block = False
-
-    block = Blocker.remote()
+    signal_actor = ray.test_utils.SignalActor.remote()
 
     @ray.remote
     def put():
-        while True:
-            blocking = ray.get(block.is_blocking.remote())
-            if blocking is False:
-                break
-            time.sleep(1)
+        ray.wait([signal_actor.wait.remote()])
         return np.random.rand(5 * 1024 * 1024)  # 40 MB data
 
     local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
@@ -409,7 +394,7 @@ def test_fetch_local(ray_start_cluster_head):
     (ready_ref, remaining_ref) = ray.wait(
         [remote_ref], timeout=2, fetch_local=False)
     assert (0, 1) == (len(ready_ref), len(remaining_ref))
-    ray.wait([block.unblock.remote()])
+    ray.wait([signal_actor.send.remote()])
 
     # Data is ready in some node, but not local node.
     (ready_ref, remaining_ref) = ray.wait([remote_ref], fetch_local=False)
@@ -418,7 +403,8 @@ def test_fetch_local(ray_start_cluster_head):
         [remote_ref], timeout=2, fetch_local=True)
     assert (0, 1) == (len(ready_ref), len(remaining_ref))
     del local_ref
-    ray.get(remote_ref)
+    (ready_ref, remaining_ref) = ray.wait([remote_ref], fetch_local=True)
+    assert (1, 0) == (len(ready_ref), len(remaining_ref))
 
 
 def test_nested_functions(ray_start_shared_local_modes):

@@ -1509,6 +1509,7 @@ void NodeManager::ProcessWaitRequestMessage(
   }
   int64_t wait_ms = message->timeout();
   uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+  // TODO Remove in the future since it should have already be done in other place
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, wait_ms, num_required_objects,
       [this, resolve_objects, was_blocked, client, current_task_id](

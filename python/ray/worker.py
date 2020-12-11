@@ -1449,8 +1449,9 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
             returning.
         fetch_local (bool): If True, wait for the object to be downloaded onto
             the local node before returning it as ready. If False, ray.wait()
-            will not trigger fetching of objects to the local node and will return
-            immediately once the object is available anywhere in the cluster.
+            will not trigger fetching of objects to the local node and will
+            return immediately once the object is available anywhere in the
+            cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
