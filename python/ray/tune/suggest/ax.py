@@ -147,6 +147,8 @@ class AxSearch(Searcher):
         self._parameter_constraints = parameter_constraints
         self._outcome_constraints = outcome_constraints
 
+        self._points_to_evaluate = points_to_evaluate.copy()
+
         self.max_concurrent = max_concurrent
 
         self._objective_name = metric
@@ -232,7 +234,13 @@ class AxSearch(Searcher):
         if self.max_concurrent:
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
-        parameters, trial_index = self._ax.get_next_trial()
+
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+            parameters, trial_index = self._ax.attach_trial(config)
+        else:
+            parameters, trial_index = self._ax.get_next_trial()
+
         self._live_trial_mapping[trial_id] = trial_index
         return unflatten_dict(parameters)
 
