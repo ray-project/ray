@@ -1,4 +1,5 @@
-from typing import Dict, List, OrderedDict, Union
+from typing import Dict, List, Union
+from collections import OrderedDict
 from ray import tune
 
 import os
