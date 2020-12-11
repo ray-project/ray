@@ -9,24 +9,24 @@ from ray import serve
 from ray.cluster_utils import Cluster
 
 num_redis_shards = 1
-redis_max_memory = 10**8
-object_store_memory = 10**8
-num_nodes = 5
-cpus_per_node = 2
+redis_max_memory = 10 ** 8
+object_store_memory = 10 ** 8
+num_nodes = 1
+cpus_per_node = 10
 cluster = Cluster()
 for i in range(num_nodes):
     cluster.add_node(
         redis_port=6379 if i == 0 else None,
         num_redis_shards=num_redis_shards if i == 0 else None,
-        num_cpus=2,
+        num_cpus=16,
         num_gpus=0,
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory,
-        dashboard_host="0.0.0.0")
+        dashboard_host="0.0.0.0",
+    )
 
-ray.init(
-    address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
+ray.init(address=cluster.address, dashboard_host="0.0.0.0", log_to_driver=False)
 client = serve.start(detached=True)
 
 
@@ -40,8 +40,7 @@ class RandomKiller:
         controller = self.client._controller
         routers = list(ray.get(controller.get_routers.remote()).values())
         all_handles = routers + [controller]
-        worker_handle_dict = ray.get(
-            controller.get_all_worker_handles.remote())
+        worker_handle_dict = ray.get(controller.get_all_worker_handles.remote())
         for _, replica_dict in worker_handle_dict.items():
             all_handles.extend(list(replica_dict.values()))
 
@@ -49,8 +48,7 @@ class RandomKiller:
 
     def run(self):
         while True:
-            ray.kill(
-                random.choice(self._get_all_serve_actors()), no_restart=False)
+            ray.kill(random.choice(self._get_all_serve_actors()), no_restart=False)
             time.sleep(self.kill_period_s)
 
 
@@ -72,15 +70,15 @@ class RandomTest:
             self.client.delete_endpoint(endpoint_to_delete)
             self.client.delete_backend(endpoint_to_delete)
 
-        new_endpoint = "".join(
-            [random.choice(string.ascii_letters) for _ in range(10)])
+        new_endpoint = "".join([random.choice(string.ascii_letters) for _ in range(10)])
 
         def handler(self, *args):
             return new_endpoint
 
         self.client.create_backend(new_endpoint, handler)
         self.client.create_endpoint(
-            new_endpoint, backend=new_endpoint, route="/" + new_endpoint)
+            new_endpoint, backend=new_endpoint, route="/" + new_endpoint
+        )
 
         self.endpoints.append(new_endpoint)
 
@@ -104,12 +102,14 @@ class RandomTest:
                 random.choices(actions, weights=weights)[0]()
 
             new_time = time.time()
-            print("Iteration {}:\n"
-                  "  - Iteration time: {}.\n"
-                  "  - Absolute time: {}.\n"
-                  "  - Total elapsed time: {}.".format(
-                      iteration, new_time - previous_time, new_time,
-                      new_time - start_time))
+            print(
+                "Iteration {}:\n"
+                "  - Iteration time: {}.\n"
+                "  - Absolute time: {}.\n"
+                "  - Total elapsed time: {}.".format(
+                    iteration, new_time - previous_time, new_time, new_time - start_time
+                )
+            )
             previous_time = new_time
             iteration += 1
 
