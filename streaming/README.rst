@@ -159,7 +159,7 @@ to get more detailed information about the overall design.
 Fault Tolerance Mechanism
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-As mentioned above, different from other frameworks, We designed a special failover mechanism that only needs to rollback the failed node it's own, in most cases, to recover the job. The main is saving messages for each node, and replay them from upstream when node has failure.
+As mentioned above, different from other frameworks, We designed a special failover mechanism that only needs to rollback the failed node it's own, in most cases, to recover the job. The main idea to achieve this feature is saving messages for each node, and replay them from upstream when node has failure.
 
 Check `Fault Tolerance Proposal <https://docs.google.com/document/d/1NKjGr7fi-45cEzWA-N_wJ5CoUgaJfnsW9YeWsSg1shY>`_
 for more detailed information about our fault tolerance mechanism.
@@ -209,6 +209,9 @@ Development Guides
        cd streaming/java/streaming-runtime
        mvn test
 
+Development Guides
+------------------
+
 More Information
 ----------------
 
@@ -218,3 +221,14 @@ More Information
 * `Data Transfer Proposal <https://docs.google.com/document/d/1cpGr40e9N8knmynqUnnrKhbNnz_6ucn5I2Koq2p4Xp8>`_
 * `Ray Streaming Proposal <https://docs.google.com/document/d/1EubVMFSFJqNLmbNztnYKj6m0VMzg3a8ZVQZg-mgbLQ0>`_
 * `Open Source Plan <https://docs.google.com/document/d/1fHFpPgXy853z0m--BZ_L1wmQADf2KXDrLQ1ebFlHLws>`_
+
+Getting Involved
+----------------
+
+- `Community Slack`_: Join our Slack workspace.
+- `GitHub Discussions`_: For discussions about development, questions about usage, and feature requests.
+- `GitHub Issues`_: For reporting bugs.
+
+.. _`GitHub Discussions`: https://github.com/ray-project/ray/discussions
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
