@@ -127,35 +127,6 @@ class BayesOptSearch(Searcher):
                  analysis: Optional[ExperimentAnalysis] = None,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
-        """Instantiate new BayesOptSearch object.
-
-        Args:
-            space (dict): Continuous search space.
-                Parameters will be sampled from
-                this space which will be used to run trials.
-            metric (str): The training result objective value attribute.
-            mode (str): One of {min, max}. Determines whether objective is
-                minimizing or maximizing the metric attribute.
-            utility_kwargs (dict): Parameters to define the utility function.
-                Must provide values for the keys `kind`, `kappa`, and `xi`.
-            random_state (int): Used to initialize BayesOpt.
-            random_search_steps (int): Number of initial random searches.
-                This is necessary to avoid initial local overfitting
-                of the Bayesian process.
-            patience (int): Must be > 0. If the optimizer suggests a set of
-                hyperparameters more than 'patience' times,
-                then the whole experiment will stop.
-            skip_duplicate (bool): If true, BayesOptSearch will not create
-                a trial with a previously seen set of hyperparameters. By
-                default, floating values will be reduced to a digit precision
-                of 5. You can override this by setting
-                ``searcher.repeat_float_precision``.
-            analysis (ExperimentAnalysis): Optionally, the previous analysis
-                to integrate.
-            verbose (int): Sets verbosity level for BayesOpt packages.
-            max_concurrent: Deprecated.
-            use_early_stopped_trials: Deprecated.
-        """
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
@@ -188,6 +159,8 @@ class BayesOptSearch(Searcher):
             self._metric_op = 1.
         elif mode == "min":
             self._metric_op = -1.
+
+        self._points_to_evaluate = points_to_evaluate
 
         self._live_trial_mapping = {}
         self._buffered_trial_results = []
@@ -275,8 +248,11 @@ class BayesOptSearch(Searcher):
             # we stop the suggestion and return None.
             return None
 
-        # We compute the new point to explore
-        config = self.optimizer.suggest(self.utility)
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+        else:
+            # We compute the new point to explore
+            config = self.optimizer.suggest(self.utility)
 
         config_hash = _dict_hash(config, self.repeat_float_precision)
         # Check if already computed
@@ -388,7 +364,6 @@ class BayesOptSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
@@ -409,7 +384,7 @@ class BayesOptSearch(Searcher):
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
                         "The {} sampler will be dropped.".format(sampler))
-                    return (domain.lower, domain.upper)
+                return (domain.lower, domain.upper)
 
             raise ValueError("BayesOpt does not support parameters of type "
                              "`{}`".format(type(domain).__name__))

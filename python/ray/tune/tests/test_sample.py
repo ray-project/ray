@@ -772,6 +772,17 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.ax import AxSearch
         return self._testPointsToEvaluate(AxSearch, config)
 
+    def testPointsToEvaluateBayesOpt(self):
+        config = {
+            "metric": tune.sample.Float(10, 20).uniform(),
+            "a": tune.sample.Float(-30, -20).uniform(),
+            "b": tune.sample.Float(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+        return self._testPointsToEvaluate(BayesOptSearch, config)
+
     def testPointsToEvaluateNevergrad(self):
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
