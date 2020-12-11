@@ -38,7 +38,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             resp.resource_table.CopyFrom(
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(
                     table=float_resources))
-        elif request.type == ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES:
+        elif request.type == \
+                ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES:
             resources = ray.available_resources()
             # Normalize resources into floats
             # (the function may return values that are ints)
@@ -78,7 +79,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 return_exception_in_context(e, context)
         else:
             raise RuntimeError(
-                "Client requested termination without providing a valid terminate_type"
+                "Client requested termination without providing a valid "
+                "terminate_type"
             )
         return ray_client_pb2.TerminateResponse(ok=True)
 
