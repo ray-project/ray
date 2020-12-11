@@ -1,6 +1,7 @@
 from ray.experimental.client.api import ClientAPI
 from ray.experimental.client.api import APIImpl
-from typing import Optional
+from typing import Optional, List, Tuple
+from contextlib import contextmanager
 
 import logging
 
@@ -14,11 +15,38 @@ logger = logging.getLogger(__name__)
 _client_api: Optional[APIImpl] = None
 
 
+@contextmanager
+def stash_api_for_tests(in_test: bool):
+    api = None
+    if in_test:
+        api = stash_api()
+    yield api
+    if in_test:
+        restore_api(api)
+
+
+def stash_api() -> Optional[APIImpl]:
+    global _client_api
+    a = _client_api
+    _client_api = None
+    return a
+
+
+def restore_api(api: Optional[APIImpl]):
+    global _client_api
+    _client_api = api
+
+
 class RayAPIStub:
-    def connect(self, conn_str):
+    def connect(self,
+                conn_str: str,
+                secure: bool = False,
+                metadata: List[Tuple[str, str]] = None,
+                stub=None):
         global _client_api
         from ray.experimental.client.worker import Worker
-        _client_worker = Worker(conn_str)
+        _client_worker = Worker(
+            conn_str, secure=secure, metadata=metadata, stub=stub)
         _client_api = ClientAPI(_client_worker)
 
     def disconnect(self):

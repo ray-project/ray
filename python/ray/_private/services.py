@@ -253,7 +253,8 @@ def get_address_info_from_redis_helper(redis_address,
         client_node_ip_address = client_info["NodeManagerAddress"]
         if (client_node_ip_address == node_ip_address
                 or (client_node_ip_address == "127.0.0.1"
-                    and redis_ip_address == get_node_ip_address())):
+                    and redis_ip_address == get_node_ip_address())
+                or client_node_ip_address == redis_ip_address):
             relevant_client = client_info
             break
     if relevant_client is None:
@@ -278,7 +279,8 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None):
+                                redis_password=None,
+                                no_warning=False):
     counter = 0
     while True:
         try:
@@ -289,10 +291,11 @@ def get_address_info_from_redis(redis_address,
                 raise
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            logger.warning(
-                "Some processes that the driver needs to connect to have "
-                "not registered with Redis, so retrying. Have you run "
-                "'ray start' on this node?")
+            if not no_warning:
+                logger.warning(
+                    "Some processes that the driver needs to connect to have "
+                    "not registered with Redis, so retrying. Have you run "
+                    "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
@@ -1075,46 +1078,6 @@ def start_log_monitor(redis_address,
     return process_info
 
 
-def start_reporter(redis_address,
-                   port,
-                   metrics_export_port,
-                   stdout_file=None,
-                   stderr_file=None,
-                   redis_password=None,
-                   fate_share=None):
-    """Start a reporter process.
-
-    Args:
-        redis_address (str): The address of the Redis instance.
-        port(int): The port to bind the reporter process.
-        metrics_export_port(int): The port at which metrics are exposed to.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
-        redis_password (str): The password of the redis server.
-
-    Returns:
-        ProcessInfo for the process that was started.
-    """
-    reporter_filepath = os.path.join(RAY_PATH, "reporter.py")
-    command = [
-        sys.executable, "-u", reporter_filepath,
-        f"--redis-address={redis_address}", f"--port={port}",
-        f"--metrics-export-port={metrics_export_port}"
-    ]
-    if redis_password:
-        command += ["--redis-password", redis_password]
-
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_REPORTER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
-        fate_share=fate_share)
-    return process_info
-
-
 def start_dashboard(require_dashboard,
                     host,
                     redis_address,
@@ -1823,6 +1786,7 @@ def start_worker(node_ip_address,
 
 
 def start_monitor(redis_address,
+                  logs_dir,
                   stdout_file=None,
                   stderr_file=None,
                   autoscaling_config=None,
@@ -1832,6 +1796,7 @@ def start_monitor(redis_address,
 
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        logs_dir(str): The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1847,6 +1812,7 @@ def start_monitor(redis_address,
         sys.executable,
         "-u",
         monitor_path,
+        f"--logs-dir={logs_dir}",
         "--redis-address=" + str(redis_address),
     ]
     if autoscaling_config:

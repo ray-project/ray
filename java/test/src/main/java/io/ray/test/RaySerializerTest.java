@@ -8,7 +8,8 @@ import io.ray.runtime.object.ObjectSerializer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RaySerializerTest extends BaseMultiLanguageTest {
+@Test(groups = {"cluster"})
+public class RaySerializerTest extends BaseTest {
 
   @Test
   public void testSerializePyActor() {

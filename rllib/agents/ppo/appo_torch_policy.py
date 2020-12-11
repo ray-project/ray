@@ -331,7 +331,7 @@ AsyncPPOTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
     before_init=setup_early_mixins,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     make_model=make_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,

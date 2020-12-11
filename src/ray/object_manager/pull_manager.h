@@ -33,13 +33,12 @@ class PullManager {
   /// \param self_node_id the current node
   /// \param object_is_local A callback which should return true if a given object is
   /// already on the local node. \param send_pull_request A callback which should send a
-  /// pull request to the specified node. \param get_rand_int A callback which returns a
-  /// random integer between [0, N). \param restore_spilled_object A callback which should
+  /// pull request to the specified node.
+  /// \param restore_spilled_object A callback which should
   /// retrieve an spilled object from the external store.
   PullManager(
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-      const std::function<int(int)> get_rand_int,
       const RestoreSpilledObjectCallback restore_spilled_object);
 
   /// Begin a new pull request if necessary.
@@ -75,14 +74,12 @@ class PullManager {
   void Tick();
 
   /// The number of ongoing object pulls.
-  int NumRequests() const;
+  int NumActiveRequests() const;
 
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), client_locations() {}
-    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
-    bool timer_set;
+    PullRequest() : client_locations() {}
     std::vector<NodeID> client_locations;
   };
 
@@ -90,12 +87,14 @@ class PullManager {
   NodeID self_node_id_;
   const std::function<bool(const ObjectID &)> object_is_local_;
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
-  const std::function<int(int)> get_rand_int_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
   std::unordered_map<ObjectID, PullRequest> pull_requests_;
+
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -107,5 +106,7 @@ class PullManager {
   /// \param object_id The object's object id.
   /// \return Void.
   void TryPull(const ObjectID &object_id);
+
+  int GetRandInt(int upper_bound);
 };
 }  // namespace ray

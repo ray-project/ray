@@ -24,6 +24,7 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
@@ -221,8 +222,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Experimental flag to speed up sampling and use "trajectory views" as
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
-    # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": False,
+    "_use_trajectory_view_api": True,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -552,11 +552,22 @@ class Trainer(Trainable):
             elif "." in env:
                 self.env_creator = \
                     lambda env_context: from_config(env, env_context)
-            # Try gym.
+            # Try gym/PyBullet.
             else:
-                import gym  # soft dependency
-                self.env_creator = \
-                    lambda env_context: gym.make(env, **env_context)
+
+                def _creator(env_context):
+                    import gym
+                    # Allow for PyBullet envs to be used as well (via string).
+                    # This allows for doing things like
+                    # `env=CartPoleContinuousBulletEnv-v0`.
+                    try:
+                        import pybullet_envs
+                        pybullet_envs.getList()
+                    except (ModuleNotFoundError, ImportError):
+                        pass
+                    return gym.make(env, **env_context)
+
+                self.env_creator = _creator
         else:
             self.env_creator = lambda env_config: None
 
@@ -1052,10 +1063,23 @@ class Trainer(Trainable):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 
-        if type(config["input_evaluation"]) != list:
+        if isinstance(config["input_evaluation"], tuple):
+            config["input_evaluation"] = list(config["input_evaluation"])
+        elif not isinstance(config["input_evaluation"], list):
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}".format(
+                "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))
+
+        # Check model config.
+        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
+                                               DEPRECATED_VALUE)
+        if prev_a_r != DEPRECATED_VALUE:
+            deprecation_warning(
+                "model.lstm_use_prev_action_reward",
+                "model.lstm_use_prev_action and model.lstm_use_prev_reward",
+                error=False)
+            config["model"]["lstm_use_prev_action"] = prev_a_r
+            config["model"]["lstm_use_prev_reward"] = prev_a_r
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.

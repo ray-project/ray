@@ -180,6 +180,20 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
         client.create_endpoint("test", backend="backend2", route="/test")
 
 
+def test_no_http(serve_instance):
+    client = serve.start(http_host=None)
+
+    assert len(ray.get(client._controller.get_routers.remote())) == 0
+
+    def hello(*args):
+        return "hello"
+
+    client.create_backend("backend", hello)
+    client.create_endpoint("endpoint", backend="backend")
+
+    assert ray.get(client.get_handle("endpoint").remote()) == "hello"
+
+
 def test_set_traffic_missing_data(serve_instance):
     client = serve_instance
 
@@ -193,8 +207,7 @@ def test_set_traffic_missing_data(serve_instance):
         client.set_traffic("nonexistent_endpoint_name", {backend_name: 1.0})
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_scaling_replicas(serve_instance, use_legacy_config):
+def test_scaling_replicas(serve_instance):
     client = serve_instance
 
     class Counter:
@@ -205,9 +218,7 @@ def test_scaling_replicas(serve_instance, use_legacy_config):
             self.count += 1
             return self.count
 
-    config = {
-        "num_replicas": 2
-    } if use_legacy_config else BackendConfig(num_replicas=2)
+    config = BackendConfig(num_replicas=2)
     client.create_backend("counter:v1", Counter, config=config)
 
     client.create_endpoint("counter", backend="counter:v1", route="/increment")
@@ -225,9 +236,7 @@ def test_scaling_replicas(serve_instance, use_legacy_config):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    update_config = {
-        "num_replicas": 1
-    } if use_legacy_config else BackendConfig(num_replicas=1)
+    update_config = BackendConfig(num_replicas=1)
     client.update_backend_config("counter:v1", update_config)
 
     counter_result = []
@@ -239,8 +248,7 @@ def test_scaling_replicas(serve_instance, use_legacy_config):
     assert max(counter_result) - min(counter_result) > 6
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_batching(serve_instance, use_legacy_config):
+def test_batching(serve_instance):
     client = serve_instance
 
     class BatchingExample:
@@ -254,11 +262,7 @@ def test_batching(serve_instance, use_legacy_config):
             return [self.count] * batch_size
 
     # set the max batch size
-    config = {
-        "max_batch_size": 5,
-        "batch_wait_timeout": 1
-    } if use_legacy_config else BackendConfig(
-        max_batch_size=5, batch_wait_timeout=1)
+    config = BackendConfig(max_batch_size=5, batch_wait_timeout=1)
     client.create_backend("counter:v11", BatchingExample, config=config)
     client.create_endpoint(
         "counter1", backend="counter:v11", route="/increment2")
@@ -281,8 +285,7 @@ def test_batching(serve_instance, use_legacy_config):
     assert max(counter_result) < 20
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_batching_exception(serve_instance, use_legacy_config):
+def test_batching_exception(serve_instance):
     client = serve_instance
 
     class NoListReturned:
@@ -293,10 +296,8 @@ def test_batching_exception(serve_instance, use_legacy_config):
         def __call__(self, requests):
             return len(requests)
 
-    # set the max batch size
-    config = {
-        "max_batch_size": 5
-    } if use_legacy_config else BackendConfig(max_batch_size=5)
+    # Set the max batch size.
+    config = BackendConfig(max_batch_size=5)
     client.create_backend("exception:v1", NoListReturned, config=config)
     client.create_endpoint(
         "exception-test", backend="exception:v1", route="/noListReturned")
@@ -306,8 +307,7 @@ def test_batching_exception(serve_instance, use_legacy_config):
         assert ray.get(handle.remote(temp=1))
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_updating_config(serve_instance, use_legacy_config):
+def test_updating_config(serve_instance):
     client = serve_instance
 
     class BatchSimple:
@@ -318,11 +318,7 @@ def test_updating_config(serve_instance, use_legacy_config):
         def __call__(self, request):
             return [1] * len(request)
 
-    config = {
-        "max_batch_size": 2,
-        "num_replicas": 3
-    } if use_legacy_config else BackendConfig(
-        max_batch_size=2, num_replicas=3)
+    config = BackendConfig(max_batch_size=2, num_replicas=3)
     client.create_backend("bsimple:v1", BatchSimple, config=config)
     client.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
@@ -330,9 +326,7 @@ def test_updating_config(serve_instance, use_legacy_config):
     old_replica_tag_list = ray.get(
         controller._list_replicas.remote("bsimple:v1"))
 
-    update_config = {
-        "max_batch_size": 5
-    } if use_legacy_config else BackendConfig(max_batch_size=5)
+    update_config = BackendConfig(max_batch_size=5)
     client.update_backend_config("bsimple:v1", update_config)
     new_replica_tag_list = ray.get(
         controller._list_replicas.remote("bsimple:v1"))
@@ -384,7 +378,16 @@ def test_delete_backend(serve_instance):
     client.create_backend("delete:v1", function2)
     client.set_traffic("delete_backend", {"delete:v1": 1.0})
 
-    assert requests.get("http://127.0.0.1:8000/delete-backend").text == "olleh"
+    for _ in range(10):
+        try:
+            assert requests.get(
+                "http://127.0.0.1:8000/delete-backend").text == "olleh"
+            break
+        except AssertionError:
+            time.sleep(0.5)  # wait for the traffic policy to propogate
+    else:
+        assert requests.get(
+            "http://127.0.0.1:8000/delete-backend").text == "olleh"
 
 
 @pytest.mark.parametrize("route", [None, "/delete-endpoint"])
@@ -502,8 +505,7 @@ def test_multiple_instances():
     client1.delete_backend(backend)
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_parallel_start(serve_instance, use_legacy_config):
+def test_parallel_start(serve_instance):
     client = serve_instance
 
     # Test the ability to start multiple replicas in parallel.
@@ -534,9 +536,7 @@ def test_parallel_start(serve_instance, use_legacy_config):
         def __call__(self, _):
             return "Ready"
 
-    config = {
-        "num_replicas": 2
-    } if use_legacy_config else BackendConfig(num_replicas=2)
+    config = BackendConfig(num_replicas=2)
     client.create_backend("p:v0", LongStartingServable, config=config)
     client.create_endpoint("test-parallel", backend="p:v0")
     handle = client.get_handle("test-parallel")
@@ -588,26 +588,21 @@ def test_list_endpoints(serve_instance):
     assert len(client.list_endpoints()) == 0
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_list_backends(serve_instance, use_legacy_config):
+def test_list_backends(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
     def f():
         pass
 
-    config1 = {
-        "max_batch_size": 10
-    } if use_legacy_config else BackendConfig(max_batch_size=10)
+    config1 = BackendConfig(max_batch_size=10)
     client.create_backend("backend", f, config=config1)
     backends = client.list_backends()
     assert len(backends) == 1
     assert "backend" in backends
     assert backends["backend"].max_batch_size == 10
 
-    config2 = {
-        "num_replicas": 10
-    } if use_legacy_config else BackendConfig(num_replicas=10)
+    config2 = BackendConfig(num_replicas=10)
     client.create_backend("backend2", f, config=config2)
     backends = client.list_backends()
     assert len(backends) == 2
@@ -638,8 +633,7 @@ def test_endpoint_input_validation(serve_instance):
     client.create_endpoint("endpoint", backend="backend")
 
 
-@pytest.mark.parametrize("use_legacy_config", [False, True])
-def test_create_infeasible_error(serve_instance, use_legacy_config):
+def test_create_infeasible_error(serve_instance):
     client = serve_instance
 
     def f():
@@ -657,9 +651,7 @@ def test_create_infeasible_error(serve_instance, use_legacy_config):
     # Even each replica might be feasible, the total might not be.
     current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
     num_replicas = current_cpus + 20
-    config = {
-        "num_replicas": num_replicas
-    } if use_legacy_config else BackendConfig(num_replicas=num_replicas)
+    config = BackendConfig(num_replicas=num_replicas)
     with pytest.raises(RayServeException, match="Cannot scale backend"):
         client.create_backend(
             "f:1",

@@ -221,6 +221,8 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -304,6 +306,11 @@ RAY_CONFIG(bool, enable_multi_tenancy,
            getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
                getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
 
+/// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
+RAY_CONFIG(bool, enable_worker_prestart,
+           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
+               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
+
 /// The interval of periodic idle worker killing. A negative value means worker capping is
 /// disabled.
 RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
@@ -330,9 +337,22 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
+
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
 /// memory.
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+
 /// The maximum number of I/O worker that raylet starts.
 RAY_CONFIG(int, max_io_workers, 1)
+
+/// Ray's object spilling fuses small objects into a single file before flushing them
+/// to optimize the performance.
+/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// default. This value is not recommended to set beyond --object-store-memory.
+RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// Whether to enable automatic object deletion when refs are gone out of scope.
+/// When it is true, manual (force) spilling is not available.
+/// TODO(sang): Fix it.
+RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
