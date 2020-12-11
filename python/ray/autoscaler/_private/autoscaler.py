@@ -643,9 +643,6 @@ class StandardAutoscaler:
             return False
         if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return False
-        status = self.provider.node_tags(node_id)[TAG_RAY_NODE_STATUS]
-        if status != STATUS_UNINITIALIZED:
-            return False
 
         logger.debug(f"{node_id} is not being updated and "
                      "passes config check (can_update=True).")
@@ -790,7 +787,7 @@ def format_info_string(lm_summary, autoscaler_summary):
     formatted_output = f"""{header}
 Node Status
 --------------------------------------------------
-Healthy:
+    Healthy:
 {available_node_report}
 
 Pending:
