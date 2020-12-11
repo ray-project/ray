@@ -17,6 +17,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray.utils
+import ray.worker
 from ray.resource_spec import ResourceSpec
 from ray.utils import try_to_create_directory, try_to_symlink, open_log
 
