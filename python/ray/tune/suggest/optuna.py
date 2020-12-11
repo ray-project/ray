@@ -8,7 +8,6 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
 from ray.tune.utils.util import unflatten_dict
 
 try:
@@ -227,7 +226,6 @@ class OptunaSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict) -> List[Tuple]:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
