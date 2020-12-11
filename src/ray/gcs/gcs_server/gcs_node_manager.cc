@@ -322,7 +322,7 @@ void GcsNodeManager::UpdateNodeResourceUsage(
   }
 }
 
-absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
