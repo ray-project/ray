@@ -1377,6 +1377,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "", /* debugger_breakpoint */
                       override_environment_variables);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_restarts,
+                                   actor_creation_options.max_task_retries,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.max_concurrency,
                                    actor_creation_options.is_detached, actor_name,
