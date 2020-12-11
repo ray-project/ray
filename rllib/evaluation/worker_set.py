@@ -79,7 +79,10 @@ class WorkerSet:
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
                     lambda p, pid: (pid, p.observation_space, p.action_space)))
-                spaces = {e[0]: (e[1], e[2]) for e in remote_spaces}
+                spaces = {
+                    e[0]: (getattr(e[1], "original_space", e[1]), e[2])
+                    for e in remote_spaces
+                }
             else:
                 spaces = None
 
@@ -321,6 +324,7 @@ class WorkerSet:
             tf_session_creator=(session_creator
                                 if config["tf_session_args"] else None),
             rollout_fragment_length=config["rollout_fragment_length"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
             batch_mode=config["batch_mode"],
             episode_horizon=config["horizon"],
             preprocessor_pref=config["preprocessor_pref"],

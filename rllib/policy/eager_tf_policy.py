@@ -393,7 +393,7 @@ def build_eager_tf_policy(name,
                 if action_sampler_fn:
                     dist_inputs = None
                     state_out = []
-                    actions, logp = self.action_sampler_fn(
+                    actions, logp = action_sampler_fn(
                         self,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
@@ -594,14 +594,6 @@ def build_eager_tf_policy(name,
             self._is_training = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
-                # TODO: set seq len and state-in properly
-                state_in = []
-                for i in range(self.num_state_tensors()):
-                    state_in.append(samples["state_in_{}".format(i)])
-                self._state_in = state_in
-
-                model_out, _ = self.model(samples, self._state_in,
-                                          samples.get("seq_lens"))
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()

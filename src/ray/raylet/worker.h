@@ -60,8 +60,6 @@ class WorkerInterface {
   virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  virtual void AssignJobId(const JobID &job_id) = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -151,8 +149,6 @@ class Worker : public WorkerInterface {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;

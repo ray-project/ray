@@ -95,7 +95,6 @@ ray_files += [
 # also update the matching section of requirements.txt
 # in this directory
 extras = {
-    "debug": [],
     "serve": [
         "uvicorn", "flask", "requests", "pydantic<1.7",
         "dataclasses; python_version < '3.7'"
@@ -450,8 +449,10 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
-            "ray-operator=ray.operator:main"
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator:main",
+            "serve=ray.serve.scripts:cli",
         ]
     },
     include_package_data=True,
