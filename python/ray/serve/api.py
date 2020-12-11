@@ -43,6 +43,8 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
+        self._http_host, self._http_port = ray.get(
+            controller.get_http_config.remote())
 
         # NOTE(simon): Used to cache client.get_handle(endpoint) call. It will
         # mostly grow in size, it will only shrink when user calls the
@@ -148,6 +150,29 @@ class Client:
         self._get_result(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
+
+        # Block until the route table has been propagated to all HTTP proxies.
+        if route is not None:
+
+            def check_ready(http_response):
+                return route in http_response.json()
+
+            futures = []
+            for node_id in ray.state.node_ids():
+                future = block_until_http_ready.options(
+                    num_cpus=0, resources={
+                        node_id: 0.01
+                    }).remote(
+                        "http://{}:{}/-/routes".format(self._http_host,
+                                                       self._http_port),
+                        check_ready=check_ready,
+                        timeout=HTTP_PROXY_TIMEOUT)
+                futures.append(future)
+            try:
+                ray.get(futures)
+            except ray.exceptions.RayTaskError:
+                raise TimeoutError("Route not available at HTTP proxies "
+                                   "after {HTTP_PROXY_TIMEOUT}s.")
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
@@ -453,7 +478,11 @@ def start(detached: bool = False,
                     "http://{}:{}/-/routes".format(http_host, http_port),
                     timeout=HTTP_PROXY_TIMEOUT)
             futures.append(future)
-        ray.get(futures)
+        try:
+            ray.get(futures)
+        except ray.exceptions.RayTaskError:
+            raise TimeoutError(
+                "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s.")
 
     return Client(controller, controller_name, detached=detached)
 
