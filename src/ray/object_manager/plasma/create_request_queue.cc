@@ -133,6 +133,7 @@ Status CreateRequestQueue::ProcessRequests() {
     }
     FinishRequest(request_it);
   }
+  // SANG-TODO Get memory usage callback here.
   return Status::OK();
 }
 
@@ -166,6 +167,12 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
       fulfilled_requests_.erase(it);
     }
     it++;
+  }
+}
+
+void CreateRequestQueue::TriggerGlobalGC() {
+  if (trigger_global_gc_) {
+    trigger_global_gc_();
   }
 }
 

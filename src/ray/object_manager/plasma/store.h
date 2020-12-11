@@ -254,6 +254,8 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
+  double GetMemoryUsagePercentage();
+
   // A reference to the asio io context.
   boost::asio::io_service &io_context_;
   /// The name of the socket this object store listens on.
@@ -286,6 +288,8 @@ class PlasmaStore {
   /// A callback to asynchronously spill objects when space is needed. The
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
+  /// NOTE: This function should guarantee the thread-safety because the callback is
+  /// shared with the main raylet thread.
   ray::SpillObjectsCallback spill_objects_callback_;
 
   /// The amount of time to wait before retrying a creation request after an

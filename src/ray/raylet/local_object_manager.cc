@@ -104,6 +104,22 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
+int64_t LocalObjectManager::SpillObjectUptoMaxThroughput() {
+  absl::MutexLock lock(&mutex_);
+  int64_t required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
+  // Spill as much as min spilling size repeatdly until we reach to the max throughput.
+  // The loop will be terminated if we cannot spill any more object.
+  while (SpillObjectsUptoMinSpillingSize() && required_bytes > 0) {
+    required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
+  }
+  // num_bytes_pending_spill_ has been updated properly after spilling.
+  return num_bytes_pending_spill_;
+}
+
+bool LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
+  return SpillObjectsOfSize(min_spilling_size_, 0) <= 0;
+}
+
 int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
                                                int64_t min_bytes_to_spill) {
   RAY_CHECK(num_bytes_to_spill >= min_bytes_to_spill);
@@ -113,13 +129,11 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
     return min_bytes_to_spill;
   }
 
-  absl::MutexLock lock(&mutex_);
-
   RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_to_spill;
   int64_t bytes_to_spill = 0;
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
-  while (bytes_to_spill < num_bytes_to_spill && it != pinned_objects_.end()) {
+  while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end()) {
     bytes_to_spill += it->second->GetSize();
     objects_to_spill.push_back(it->first);
     it++;
@@ -222,7 +236,6 @@ void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  auto num_bytes_spilled = std::make_shared<size_t>(0);
   for (size_t i = 0; i < object_ids.size(); ++i) {
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
@@ -232,15 +245,13 @@ void LocalObjectManager::AddSpilledUrls(
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
         object_id, object_url,
-        [this, object_id, object_url, callback, num_remaining,
-         num_bytes_spilled](Status status) {
+        [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           absl::MutexLock lock(&mutex_);
           // Unpin the object.
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
           num_bytes_pending_spill_ -= it->second->GetSize();
-          *num_bytes_spilled += it->second->GetSize();
           objects_pending_spill_.erase(it);
 
           // Update the object_id -> url_ref_count to use it for deletion later.

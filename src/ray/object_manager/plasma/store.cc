@@ -222,18 +222,14 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // make room.
     if (space_needed > 0) {
       if (spill_objects_callback_) {
-        // If the space needed is too small, we'd like to bump up to the minimum spilling
-        // size. Cap the max size to be lower than the plasma store limit.
-        int64_t byte_to_spill =
-            std::min(PlasmaAllocator::GetFootprintLimit(),
-                     std::max(space_needed, RayConfig::instance().min_spilling_size()));
         // Object spilling is asynchronous so that we do not block the plasma
         // store thread. Therefore the client must try again, even if enough
         // space will be made after the spill is complete.
         // TODO(swang): Only respond to the client with OutOfMemory if we could not
         // make enough space through spilling. If we could make enough space,
         // respond to the plasma client once spilling is complete.
-        space_needed = spill_objects_callback_(byte_to_spill, space_needed);
+        int64_t spilling_bytes = spill_objects_callback_();
+        space_needed -= spilling_bytes;
       }
       if (space_needed > 0) {
         // There is still not enough space, even once all evictable objects
@@ -1096,6 +1092,11 @@ void PlasmaStore::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
+double PlasmaStore::GetMemoryUsagePercentage() {
+  return (double)PlasmaAllocator::Allocated() /
+         (double)PlasmaAllocator::GetFootprintLimit();
+}
+
 void PlasmaStore::ProcessCreateRequests() {
   // Only try to process requests if the timer is not set. If the timer is set,
   // that means that the first request is currently not serviceable because
@@ -1104,8 +1105,10 @@ void PlasmaStore::ProcessCreateRequests() {
   if (create_timer_) {
     return;
   }
-
   auto status = create_request_queue_.ProcessRequests();
+  // if (GetMemoryUsagePercentage() > 0.95) {
+  //   create_request_queue_.TriggerGlobalGC();
+  // }
   uint32_t retry_after_ms = 0;
   if (status.IsTransientObjectStoreFull()) {
     retry_after_ms = delay_on_transient_oom_ms_;

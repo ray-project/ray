@@ -70,22 +70,21 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                                     gcs_client_))
               : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
                     std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
-      object_manager_(main_service, self_node_id_, object_manager_config,
-                      object_directory_,
-                      [this](const ObjectID &object_id, const std::string &spilled_url,
-                             std::function<void(const ray::Status &)> callback) {
-                        node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
-                            object_id, spilled_url, callback);
-                      },
-                      [this](int64_t num_bytes_to_spill, int64_t min_bytes_to_spill) {
-                        return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
-                            num_bytes_to_spill, min_bytes_to_spill);
-                      },
-                      [this]() {
-                        // Post on the node manager's event loop since this
-                        // will be called from the plasma store thread.
-                        main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
-                      }),
+      object_manager_(
+          main_service, self_node_id_, object_manager_config, object_directory_,
+          [this](const ObjectID &object_id, const std::string &spilled_url,
+                 std::function<void(const ray::Status &)> callback) {
+            node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
+                object_id, spilled_url, callback);
+          },
+          [this]() {
+            return node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
+          },
+          [this]() {
+            // Post on the node manager's event loop since this
+            // will be called from the plasma store thread.
+            main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
+          }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),

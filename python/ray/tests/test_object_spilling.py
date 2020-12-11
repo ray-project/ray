@@ -412,7 +412,8 @@ def test_delete_objects(tmp_path, shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 1,
+            "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
@@ -455,6 +456,7 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
+            "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
@@ -581,6 +583,7 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 2,
+            "min_spilling_size": 20 * 1024 * 1024,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
@@ -650,11 +653,11 @@ def test_fusion_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    min_spilling_size = 30 * 1024 * 1024
+    min_spilling_size = 10 * 1024 * 1024
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 3,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
             "object_store_full_initial_delay_ms": 100,
