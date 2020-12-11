@@ -133,8 +133,8 @@ class APIImpl(ABC):
                 that should be canceled.
             force (boolean): Whether to force-kill a running task by killing
                 the worker that is running the task.
-            recursive (boolean): Whether to try to cancel tasks submitted by the
-                task specified.
+            recursive (boolean): Whether to try to cancel tasks submitted by
+                the task specified.
         """
         pass
 
@@ -207,8 +207,8 @@ class ClientAPI(APIImpl):
     def available_resources(self):
         """Get the current available cluster resources.
 
-        This is different from `cluster_resources` in that this will return idle
-        (available) resources rather than total resources.
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
 
         Note that this information can grow stale as tasks start and finish.
 
