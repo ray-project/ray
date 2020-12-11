@@ -416,16 +416,22 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects));
-
-  int64_t num_bytes_required = manager.SpillObjectsOfSize(total_size / 2, total_size / 2);
+  int64_t num_bytes_required;
+  {
+    absl::MutexLock lock(&manager.mutex_);
+    num_bytes_required = manager.SpillObjectsOfSize(total_size / 2, total_size / 2);
+  }
   ASSERT_EQ(num_bytes_required, -object_size / 2);
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
   // Check that this returns the total number of bytes currently being spilled.
-  num_bytes_required = manager.SpillObjectsOfSize(0, 0);
-  ASSERT_EQ(num_bytes_required, -2 * object_size);
+  {
+    absl::MutexLock lock(&manager.mutex_);
+    num_bytes_required = manager.SpillObjectsOfSize(0, 0);
+  }
+  ASSERT_EQ(num_bytes_required, -3 * object_size);
 
   // Check that half the objects get spilled and the URLs get added to the
   // global object directory.
@@ -448,8 +454,11 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   }
 
   // Check that this returns the total number of bytes currently being spilled.
-  num_bytes_required = manager.SpillObjectsOfSize(0, 0);
-  ASSERT_EQ(num_bytes_required, 0);
+  {
+    absl::MutexLock lock(&manager.mutex_);
+    num_bytes_required = manager.SpillObjectsOfSize(0, 0);
+  }
+  ASSERT_EQ(num_bytes_required, -object_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillError) {
@@ -766,7 +775,11 @@ TEST_F(LocalObjectManagerTest,
   // First test when num_bytes_to_spill > min_bytes to spill.
   // It means that we cannot spill the num_bytes_required, but we at least spilled the
   // required amount, which is the min_bytes_to_spill.
-  int64_t num_bytes_required = manager.SpillObjectsOfSize(8000, object_size);
+  int64_t num_bytes_required;
+  {
+    absl::MutexLock lock(&manager.mutex_);
+    num_bytes_required = manager.SpillObjectsOfSize(8000, object_size);
+  }
   // only min bytes to spill is considered.
   ASSERT_TRUE(num_bytes_required <= 0);
 

@@ -106,12 +106,9 @@ class LocalObjectManager {
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
 
  private:
-  friend class LocalObjectManagerTest;
-
-  /// Spill object as much as min_spilling_size_.
-  ///
-  /// \return true if spilling succeeds. false if we cannot spill anymore.
-  void SpillObjectsUptoMinSpillingSize() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
+  FRIEND_TEST(LocalObjectManagerTest,
+              TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
 
   /// Asynchronously spill objects when space is needed.
   /// The callback tries to spill objects as much as num_bytes_to_spill and returns
@@ -130,6 +127,11 @@ class LocalObjectManager {
   /// min_bytes_to_spill.
   int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill, int64_t min_bytes_to_spill)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Spill object as much as min_spilling_size_.
+  ///
+  /// \return true if spilling succeeds. false if we cannot spill anymore.
+  void SpillObjectsUptoMinSpillingSize() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
