@@ -25,6 +25,16 @@
     "use-debounce": "^3.4.3"
   },
   "devDependencies": {
+    "@babel/helper-regex": "^7.10.5",
+    "@babel/plugin-proposal-class-properties": "^7.12.1",
+    "@babel/plugin-proposal-export-namespace-from": "^7.12.1",
+    "@babel/plugin-proposal-logical-assignment-operators": "^7.12.1",
+    "@babel/plugin-proposal-private-methods": "^7.12.1",
+    "@babel/plugin-syntax-class-properties": "^7.12.1",
+    "@babel/plugin-syntax-export-namespace-from": "^7.8.3",
+    "@babel/plugin-syntax-logical-assignment-operators": "^7.10.4",
+    "@babel/plugin-transform-react-pure-annotations": "^7.12.1",
+    "@babel/plugin-transform-unicode-escapes": "^7.12.1",
     "eslint-plugin-import": "^2.20.1",
     "eslint-plugin-prefer-arrow": "^1.1.7",
     "prettier": "^2.0.2"
