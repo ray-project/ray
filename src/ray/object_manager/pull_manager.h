@@ -39,7 +39,8 @@ class PullManager {
   PullManager(
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-      const RestoreSpilledObjectCallback restore_spilled_object);
+      const RestoreSpilledObjectCallback restore_spilled_object,
+      const std::function<double()> get_time, int pull_timeout_ms);
 
   /// Begin a new pull request if necessary.
   ///
@@ -79,8 +80,10 @@ class PullManager {
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
-    PullRequest() : client_locations() {}
+    PullRequest(double first_retry_time)
+        : client_locations(), next_pull_time(first_retry_time) {}
     std::vector<NodeID> client_locations;
+    double next_pull_time;
   };
 
   /// See the constructor's arguments.
@@ -88,6 +91,8 @@ class PullManager {
   const std::function<bool(const ObjectID &)> object_is_local_;
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
+  const std::function<double()> get_time_;
+  int pull_timeout_ms_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
@@ -106,7 +111,5 @@ class PullManager {
   /// \param object_id The object's object id.
   /// \return Void.
   void TryPull(const ObjectID &object_id);
-
-  int GetRandInt(int upper_bound);
 };
 }  // namespace ray

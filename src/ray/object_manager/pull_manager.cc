@@ -5,11 +5,14 @@ namespace ray {
 PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-    const RestoreSpilledObjectCallback restore_spilled_object)
+    const RestoreSpilledObjectCallback restore_spilled_object,
+    const std::function<double()> get_time, int pull_timeout_ms)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       restore_spilled_object_(restore_spilled_object),
+      get_time_(get_time),
+      pull_timeout_ms_(pull_timeout_ms),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
@@ -25,7 +28,7 @@ bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_addr
     return false;
   }
 
-  pull_requests_.emplace(object_id, PullRequest());
+  pull_requests_.emplace(object_id, PullRequest(get_time_() + pull_timeout_ms_ / 1000));
   return true;
 }
 
@@ -87,7 +90,8 @@ void PullManager::TryPull(const ObjectID &object_id) {
 
   // Choose a random client to pull the object from.
   // Generate a random index.
-  int node_index = GetRandInt(node_vector.size());
+  std::uniform_int_distribution<int> distribution(0, node_vector.size() - 1);
+  int node_index = distribution(gen_);
   NodeID node_id = node_vector[node_index];
   // If the object manager somehow ended up choosing itself, choose a different
   // object manager.
@@ -119,17 +123,17 @@ bool PullManager::CancelPull(const ObjectID &object_id) {
 }
 
 void PullManager::Tick() {
-  for (const auto &pair : pull_requests_) {
+  for (auto &pair : pull_requests_) {
     const auto &object_id = pair.first;
-    TryPull(object_id);
+    auto &request = pair.second;
+    const auto time = get_time_();
+    if (time >= request.next_pull_time) {
+      TryPull(object_id);
+      request.next_pull_time = time + pull_timeout_ms_ / 1000;
+    }
   }
 }
 
 int PullManager::NumActiveRequests() const { return pull_requests_.size(); }
-
-int PullManager::GetRandInt(int upper_bound) {
-  std::uniform_int_distribution<int> distribution(0, upper_bound - 1);
-  return distribution(gen_);
-}
 
 }  // namespace ray

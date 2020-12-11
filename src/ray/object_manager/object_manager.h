@@ -51,6 +51,8 @@ struct ObjectManagerConfig {
   /// from other object managers. If this is 0, the object manager will choose
   /// its own port.
   int object_manager_port;
+  /// The object manager's global timer frequency.
+  unsigned int timer_freq_ms;
   /// The time in milliseconds to wait before retrying a pull
   /// that fails due to node id lookup.
   unsigned int pull_timeout_ms;

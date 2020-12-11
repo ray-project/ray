@@ -13,6 +13,7 @@ class PullManagerTest : public ::testing::Test {
         object_is_local_(false),
         num_send_pull_request_calls_(0),
         num_restore_spilled_object_calls_(0),
+        fake_time_(0),
         pull_manager_(self_node_id_,
                       [this](const ObjectID &object_id) { return object_is_local_; },
                       [this](const ObjectID &object_id, const NodeID &node_id) {
@@ -21,12 +22,14 @@ class PullManagerTest : public ::testing::Test {
                       [this](const ObjectID &, const std::string &,
                              std::function<void(const ray::Status &)>) {
                         num_restore_spilled_object_calls_++;
-                      }) {}
+                      },
+                      [this]() { return fake_time_; }, 10000) {}
 
   NodeID self_node_id_;
   bool object_is_local_;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
+  double fake_time_;
   PullManager pull_manager_;
 };
 
@@ -122,13 +125,22 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  for (int i = 0; i < 127; i++) {
+  for (; fake_time_ <= 127 * 10; fake_time_ += 0.1) {
     pull_manager_.Tick();
+  }
+
+  // Rapid set of location changes.
+  for (int i = 0; i < 127; i++) {
+    fake_time_ += 0.1;
+    pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
   // We should make a pull request every tick (even if it's a duplicate to a node we're
   // already pulling from).
-  ASSERT_EQ(num_send_pull_request_calls_, 128);
+  // OnLocationChange also doesn't count towards the retry timer.
+  // To the casual observer, this may seem off-by-one, but this is due to floating point
+  // error (0.1 + 0.1 ... 10k times > 10 == True)
+  ASSERT_EQ(num_send_pull_request_calls_, 127 * 2);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);

@@ -70,7 +70,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       pull_retry_timer_(*main_service_,
-                        boost::posix_time::seconds(config.pull_timeout_ms)) {
+                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
   const auto &object_is_local = [this](const ObjectID &object_id) {
@@ -80,8 +80,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                                          const NodeID &client_id) {
     SendPullRequest(object_id, client_id);
   };
+  const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
-                                      restore_spilled_object_));
+                                      restore_spilled_object_, get_time,
+                                      config.pull_timeout_ms));
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
