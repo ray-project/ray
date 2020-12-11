@@ -155,7 +155,7 @@ class HyperOptSearch(Searcher):
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
 
-        self._points_to_evaluate = points_to_evaluate
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
         self._live_trial_mapping = {}
         if random_state_seed is None:
@@ -190,7 +190,7 @@ class HyperOptSearch(Searcher):
             for i in range(len(self._points_to_evaluate)):
                 config = self._points_to_evaluate[i]
                 self._convert_categories_to_indices(config)
-
+            self._points_to_evaluate = list(reversed(self._points_to_evaluate))
             self._hpopt_trials = generate_trials_to_calculate(
                 self._points_to_evaluate)
             self._hpopt_trials.refresh()

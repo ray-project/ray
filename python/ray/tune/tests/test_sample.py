@@ -740,7 +740,7 @@ class SearchSpaceTest(unittest.TestCase):
     def _testPointsToEvaluate(self, cls, config, **kwargs):
         points_to_evaluate = [{k: v.sample()
                                for k, v in config.items()} for _ in range(2)]
-
+        print(f"Points to evaluate: {points_to_evaluate}")
         searcher = cls(points_to_evaluate=points_to_evaluate, **kwargs)
 
         analysis = tune.run(
@@ -805,6 +805,17 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.dragonfly import DragonflySearch
         return self._testPointsToEvaluate(
             DragonflySearch, config, domain="euclidean", optimizer="bandit")
+
+    def testPointsToEvaluateHyperOpt(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        return self._testPointsToEvaluate(HyperOptSearch, config)
 
     def testPointsToEvaluateNevergrad(self):
         config = {
