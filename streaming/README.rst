@@ -209,8 +209,6 @@ Development Guides
        cd streaming/java/streaming-runtime
        mvn test
 
-Development Guides
-------------------
 
 More Information
 ----------------
