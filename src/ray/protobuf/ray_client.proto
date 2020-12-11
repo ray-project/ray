@@ -42,8 +42,13 @@ message ClientTask {
   repeated Arg args = 4;
 }
 
+message RemoteRef {
+  bytes id = 1;
+  bytes handle = 2;
+}
+
 message ClientTaskTicket {
-  bytes return_id = 1;
+  RemoteRef return_ref = 1;
 }
 
 message PutRequest {
@@ -51,11 +56,11 @@ message PutRequest {
 }
 
 message PutResponse {
-  bytes id = 1;
+  RemoteRef ref = 1;
 }
 
 message GetRequest {
-  bytes id = 1;
+  bytes handle = 1;
   float timeout = 2;
 }
 
@@ -65,15 +70,15 @@ message GetResponse {
 }
 
 message WaitRequest {
-  repeated bytes object_refs = 1;
+  repeated bytes object_handles = 1;
   int64 num_returns = 2;
   double timeout = 3;
 }
 
 message WaitResponse {
   bool valid = 1;
-  repeated bytes ready_object_ids = 2;
-  repeated bytes remaining_object_ids = 3;
+  repeated RemoteRef ready_object_ids = 2;
+  repeated RemoteRef remaining_object_ids = 3;
 }
 
 message ClusterInfoType {
@@ -88,9 +93,6 @@ message ClusterInfoType {
 
 message ClusterInfoRequest {
   ClusterInfoType.TypeEnum type = 1;
-
-  // Optional, used for ACTORS and OBJECTS info.
-  bytes client_id = 2;
 }
 
 message ClusterInfoResponse {
@@ -106,11 +108,11 @@ message ClusterInfoResponse {
 
 message TerminateRequest {
   message ActorTerminate {
-    bytes id = 1;
+    bytes handle = 1;
     bool no_restart = 2;
   }
   message TaskObjectTerminate {
-    bytes id = 1;
+    bytes handle = 1;
     bool force = 2;
     bool recursive = 3;
   }

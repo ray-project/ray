@@ -56,9 +56,9 @@ class Worker:
         to_get = []
         single = False
         if isinstance(vals, list):
-            to_get = [x.id for x in vals]
+            to_get = [x.handle for x in vals]
         elif isinstance(vals, ClientObjectRef):
-            to_get = [vals.id]
+            to_get = [vals.handle]
             single = True
         else:
             raise Exception("Can't get something that's not a "
@@ -70,14 +70,14 @@ class Worker:
             out = out[0]
         return out
 
-    def _get(self, id: bytes, timeout: float):
-        req = ray_client_pb2.GetRequest(id=id, timeout=timeout)
+    def _get(self, handle: bytes, timeout: float):
+        req = ray_client_pb2.GetRequest(handle=handle, timeout=timeout)
         try:
             data = self.server.GetObject(req, metadata=self.metadata)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
         if not data.valid:
-            raise TaskCancelledError(id)
+            raise TaskCancelledError(handle)
         return cloudpickle.loads(data.data)
 
     def put(self, vals):
@@ -98,7 +98,7 @@ class Worker:
         data = cloudpickle.dumps(val)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.server.PutObject(req, metadata=self.metadata)
-        return ClientObjectRef(resp.id)
+        return ClientObjectRef.from_remote_ref(resp.ref)
 
     def wait(self,
              object_refs: List[ClientObjectRef],
@@ -110,8 +110,8 @@ class Worker:
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
         data = {
-            "object_refs": [
-                cloudpickle.dumps(object_ref) for object_ref in object_refs
+            "object_handles": [
+                object_ref.handle for object_ref in object_refs
             ],
             "num_returns": num_returns,
             "timeout": timeout if timeout else -1
@@ -121,12 +121,10 @@ class Worker:
         if not resp.valid:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
-        client_ready_object_ids = [
-            ClientObjectRef(id) for id in resp.ready_object_ids
-        ]
-        client_remaining_object_ids = [
-            ClientObjectRef(id) for id in resp.remaining_object_ids
-        ]
+        client_ready_object_ids = [ClientObjectRef.from_remote_ref(ref)
+            for ref in resp.ready_object_ids]
+        client_remaining_object_ids = [ClientObjectRef.from_remote_ref(ref)
+            for ref in resp.remaining_object_ids]
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
@@ -149,7 +147,7 @@ class Worker:
             task.args.append(pb_arg)
         logging.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ClientObjectRef(ticket.return_id)
+        return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def close(self):
         self.server = None
@@ -162,7 +160,7 @@ class Worker:
             raise ValueError("ray.kill() only supported for actors. "
                              "Got: {}.".format(type(actor)))
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
-        term_actor.id = actor.actor_ref.id
+        term_actor.handle = actor.actor_ref.handle
         term_actor.no_restart = no_restart
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
@@ -177,7 +175,7 @@ class Worker:
                 "ray.cancel() only supported for non-actor object refs. "
                 f"Got: {type(obj)}.")
         term_object = ray_client_pb2.TerminateRequest.TaskObjectTerminate()
-        term_object.id = obj.id
+        term_object.handle = obj.handle
         term_object.force = force
         term_object.recursive = recursive
         try:
@@ -190,9 +188,7 @@ class Worker:
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
         resp = self.server.ClusterInfo(req)
-        if resp.WhichOneof("response_type") == "id":
-            return resp.id
-        elif resp.WhichOneof("response_type") == "resource_table":
+        if resp.WhichOneof("response_type") == "resource_table":
             return resp.resource_table.table
         return json.loads(resp.json)
 

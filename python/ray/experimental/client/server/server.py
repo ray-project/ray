@@ -62,7 +62,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def Terminate(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":
-            object_ref = cloudpickle.loads(request.task_object.id)
+            object_ref = cloudpickle.loads(request.task_object.handle)
             try:
                 obj = self.object_refs.get(object_ref.binary(), None)
                 if obj is None:
@@ -76,11 +76,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 return_exception_in_context(e, context)
         elif request.WhichOneof("terminate_type") == "actor":
             try:
-                actor = self.actor_refs.get(request.actor.id, None)
-                if obj is None:
+                actor = self.actor_refs.get(request.actor.handle, None)
+                if actor is None:
                     return ray_client_pb2.TerminateResponse(ok=False)
                 ray.kill(actor, no_restart=request.actor.no_restart)
-                del self.actor_refs[request.actor.id]
+                del self.actor_refs[request.actor.handle]
             except Exception as e:
                 return_exception_in_context(e, context)
         else:
@@ -90,7 +90,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.TerminateResponse(ok=True)
 
     def GetObject(self, request, context=None):
-        request_ref = cloudpickle.loads(request.id)
+        request_ref = cloudpickle.loads(request.handle)
         if request_ref.binary() not in self.object_refs:
             return ray_client_pb2.GetResponse(valid=False)
         objectref = self.object_refs[request_ref.binary()]
@@ -106,7 +106,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         obj = cloudpickle.loads(request.data)
         objectref = self._put_and_retain_obj(obj)
         pickled_ref = cloudpickle.dumps(objectref)
-        return ray_client_pb2.PutResponse(id=pickled_ref)
+        return ray_client_pb2.PutResponse(
+            ref=make_remote_ref(objectref.binary(), pickled_ref))
 
     def _put_and_retain_obj(self, obj) -> ray.ObjectRef:
         objectref = ray.put(obj)
@@ -116,7 +117,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = [
-            cloudpickle.loads(o)._unpack_ref() for o in request.object_refs
+            cloudpickle.loads(o) for o in request.object_handles
         ]
         num_returns = request.num_returns
         timeout = request.timeout
@@ -136,11 +137,17 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         logger.info("wait: %s %s" % (str(ready_object_refs),
                                      str(remaining_object_refs)))
         ready_object_ids = [
-            cloudpickle.dumps(ready_object_ref)
+            make_remote_ref(
+                id=ready_object_ref.binary(),
+                handle=cloudpickle.dumps(ready_object_ref),
+            )
             for ready_object_ref in ready_object_refs
         ]
         remaining_object_ids = [
-            cloudpickle.dumps(remaining_object_ref)
+            make_remote_ref(
+                id=remaining_object_ref.binary(),
+                handle=cloudpickle.dumps(remaining_object_ref),
+            )
             for remaining_object_ref in remaining_object_refs
         ]
         return ray_client_pb2.WaitResponse(
@@ -178,7 +185,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             output = getattr(actor_handle, task.name).remote(*arglist)
             self.object_refs[output.binary()] = output
             pickled_ref = cloudpickle.dumps(output)
-        return ray_client_pb2.ClientTaskTicket(return_id=pickled_ref)
+        return ray_client_pb2.ClientTaskTicket(
+            return_ref=make_remote_ref(output.binary(), pickled_ref))
 
     def _schedule_actor(self,
                         task: ray_client_pb2.ClientTask,
@@ -199,7 +207,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             actor = remote_class.remote(*arglist)
             actorhandle = cloudpickle.dumps(actor)
             self.actor_refs[actorhandle] = actor
-        return ray_client_pb2.ClientTaskTicket(return_id=actorhandle)
+        return ray_client_pb2.ClientTaskTicket(
+            return_ref=make_remote_ref(actor._actor_id.binary(), actorhandle))
 
     def _schedule_function(
             self,
@@ -223,7 +232,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 raise Exception("already found it")
             self.object_refs[output.binary()] = output
             pickled_output = cloudpickle.dumps(output)
-        return ray_client_pb2.ClientTaskTicket(return_id=pickled_output)
+        return ray_client_pb2.ClientTaskTicket(
+            return_ref=make_remote_ref(output.binary(), pickled_output))
 
 
 def _convert_args(arg_list, prepared_args=None):
@@ -237,6 +247,13 @@ def _convert_args(arg_list, prepared_args=None):
         else:
             out.append(t)
     return out
+
+
+def make_remote_ref(id: bytes, handle: bytes) -> ray_client_pb2.RemoteRef:
+    return ray_client_pb2.RemoteRef(
+        id=id,
+        handle=handle,
+    )
 
 
 def return_exception_in_context(err, context):
