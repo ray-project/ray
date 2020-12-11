@@ -1,6 +1,6 @@
 language: generic
-# Use Ubuntu 18.04
-dist: bionic
+# Use Ubuntu 20.04
+dist: focal
 
 git:
   clone: false  # Clone manually to work around Travis issues like https://github.com/travis-ci/travis-ci/issues/6337
