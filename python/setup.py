@@ -95,7 +95,6 @@ ray_files += [
 # also update the matching section of requirements.txt
 # in this directory
 extras = {
-    "debug": [],
     "serve": [
         "uvicorn", "flask", "requests", "pydantic<1.7",
         "dataclasses; python_version < '3.7'"

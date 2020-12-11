@@ -47,7 +47,7 @@ wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ra
 conda uninstall -y terminado
 pip install -U pip
 pip install -U "$wheel"
-pip install "ray[rllib]" "ray[debug]"
+pip install "ray[rllib]" "ray"
 pip install terminado
 pip install boto3==1.4.8 cython==0.29.0
 

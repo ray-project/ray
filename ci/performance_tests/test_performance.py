@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 logger = logging.getLogger(__name__)
 
