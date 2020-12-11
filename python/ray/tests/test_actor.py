@@ -873,7 +873,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
     [
         # "out_of_scope", TODO(edoakes): enable this once fixed.
         "__ray_terminate__",
-        # "ray.actor.exit_actor", TODO(edoakes): enable this once fixed.
+        "ray.actor.exit_actor",
         "ray.kill"
     ])
 def test_atexit_handler(ray_start_regular_shared, exit_condition):
@@ -904,10 +904,12 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
         del a
     elif exit_condition == "__ray_terminate__":
         ray.wait([a.__ray_terminate__.remote()])
-    elif exit_condition == "ray.exit_actor":
+    elif exit_condition == "ray.actor.exit_actor":
         ray.wait([a.exit.remote()])
     elif exit_condition == "ray.kill":
         ray.kill(a)
+    else:
+        assert False, "Unrecognized condition"
 
     def check_file_written():
         with open(tmpfile.name) as f:
