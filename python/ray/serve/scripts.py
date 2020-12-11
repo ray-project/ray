@@ -8,7 +8,8 @@ from ray import serve
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 
 
-@click.group()
+@click.group(
+    help="[EXPERIMENTAL] CLI for managing Serve instances on a Ray cluster.")
 @click.option(
     "--address",
     "-a",
@@ -21,7 +22,7 @@ def cli(address):
     ray.init(address=address)
 
 
-@cli.command()
+@cli.command(help="Start a detached Serve instance on the Ray cluster.")
 @click.option(
     "--http-host",
     default=DEFAULT_HTTP_HOST,
@@ -40,16 +41,16 @@ def start(http_host, http_port):
     serve.start(detached=True, http_host=http_host, http_port=http_port)
 
 
-@cli.command()
+@cli.command(help="Shutdown the running Serve instance on the Ray cluster.")
 def shutdown():
     serve.connect().shutdown()
 
 
-@cli.command()
+@cli.command(help="Get info about the endpoints on the Serve instance.")
 def list_endpoints():
     pprint.pprint(serve.connect().list_endpoints())
 
 
-@cli.command()
+@cli.command(help="Get info about the backends on the Serve instance.")
 def list_backends():
     pprint.pprint(serve.connect().list_backends())

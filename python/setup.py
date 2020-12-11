@@ -452,7 +452,7 @@ setuptools.setup(
             "rllib=ray.rllib.scripts:cli [rllib]",
             "tune=ray.tune.scripts:cli",
             "ray-operator=ray.operator:main",
-            "serve=ray.serve.scripts:cli [rllib]",
+            "serve=ray.serve.cli:cli",
         ]
     },
     include_package_data=True,
