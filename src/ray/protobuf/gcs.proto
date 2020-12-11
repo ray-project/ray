@@ -304,8 +304,8 @@ message HeartbeatTableData {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
-  // Indicates whether avaialbe resources is changed. Only used when
-  // light heartbeat enabled.
+  // Indicates whether available resources is changed. Only used when light
+  // heartbeat enabled.
   bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 4;

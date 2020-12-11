@@ -29,6 +29,21 @@
 
 using namespace std;
 
+#define ASSERT_RESOURCES_EQ(data, expected_available, expected_total) \
+  {                                                                   \
+    auto available = data->resources_available();                     \
+    ASSERT_EQ(available[kCPU_ResourceLabel], expected_available);     \
+    auto total = data->resources_total();                             \
+    ASSERT_EQ(total[kCPU_ResourceLabel], expected_total);             \
+  }
+
+#define ASSERT_RESOURCES_EMPTY(data)                   \
+  {                                                    \
+    ASSERT_FALSE(data->resources_available_changed()); \
+    ASSERT_TRUE(data->resources_available().empty());  \
+    ASSERT_TRUE(data->resources_total().empty());      \
+  }
+
 namespace ray {
 // Used to path empty vector argiuments.
 vector<int64_t> EmptyIntVector;
@@ -334,11 +349,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     int64_t node_id =
         cluster_resources.GetBestSchedulableNode(task_req, false, &violations);
     ASSERT_TRUE(node_id != -1);
+    ASSERT_EQ(node_id, 1);
     ASSERT_TRUE(violations > 0);
 
     NodeResources nr1, nr2;
     ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, &nr1));
-    cluster_resources.SubtractNodeAvailableResources(node_id, task_req);
+    auto task_allocation = std::make_shared<TaskResourceInstances>();
+    ASSERT_TRUE(cluster_resources.AllocateLocalTaskResources(task_req, task_allocation));
     ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, &nr2));
 
     for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
@@ -1082,6 +1099,79 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     ASSERT_EQ(total["1"], 1);
     ASSERT_EQ(total["2"], 2);
     ASSERT_EQ(total["3"], 3);
+  }
+}
+
+TEST_F(ClusterResourceSchedulerTest, TestLightHeartbeat) {
+  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
+  ClusterResourceScheduler cluster_resources("local", initial_resources);
+
+  // Report heartbeat on initialization.
+  auto data = std::make_shared<rpc::HeartbeatTableData>();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 1, 1);
+
+  // Don't report heartbeats if resource availability hasn't changed.
+  for (int i = 0; i < 3; i++) {
+    data->Clear();
+    cluster_resources.Heartbeat(true, data);
+    ASSERT_RESOURCES_EMPTY(data);
+  }
+
+  // Report heartbeat if resource availability has changed.
+  cluster_resources.AddOrUpdateNode("local", {{"CPU", 1.}}, {{"CPU", 0.}});
+  data->Clear();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_RESOURCES_EQ(data, 0, 1);
+
+  // Don't report heartbeats if resource availability hasn't changed.
+  for (int i = 0; i < 3; i++) {
+    data->Clear();
+    cluster_resources.Heartbeat(true, data);
+    ASSERT_RESOURCES_EMPTY(data);
+  }
+}
+
+TEST_F(ClusterResourceSchedulerTest, TestDirtyLocalView) {
+  std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
+  ClusterResourceScheduler cluster_resources("local", initial_resources);
+  cluster_resources.AddOrUpdateNode("remote", {{"CPU", 2.}}, {{"CPU", 2.}});
+  const std::unordered_map<std::string, double> task_spec = {{"CPU", 1.}};
+
+  // Allocate local resources to force tasks onto the remote node when
+  // resources are available.
+  std::shared_ptr<TaskResourceInstances> task_allocation =
+      std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
+  task_allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
+  // View of local resources is not affected by heartbeats.
+  auto data = std::make_shared<rpc::HeartbeatTableData>();
+  cluster_resources.Heartbeat(true, data);
+  ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
+
+  for (int num_slots_available = 0; num_slots_available <= 2; num_slots_available++) {
+    // Remote node reports updated resource availability.
+    cluster_resources.AddOrUpdateNode("remote", {{"CPU", 2.}},
+                                      {{"CPU", num_slots_available}});
+    auto data = std::make_shared<rpc::HeartbeatTableData>();
+    int64_t t;
+    for (int i = 0; i < 3; i++) {
+      // Heartbeat tick should reset the remote node's resources.
+      cluster_resources.Heartbeat(true, data);
+      for (int j = 0; j < num_slots_available; j++) {
+        ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t),
+                  "remote");
+        // Allocate remote resources.
+        ASSERT_TRUE(cluster_resources.AllocateRemoteTaskResources("remote", task_spec));
+      }
+      // Our local view says there are not enough resources on the remote node to
+      // schedule another task.
+      ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t), "");
+      ASSERT_FALSE(
+          cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
+      ASSERT_FALSE(cluster_resources.AllocateRemoteTaskResources("remote", task_spec));
+    }
   }
 }
 
