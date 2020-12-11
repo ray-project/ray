@@ -32,7 +32,7 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 
 /// The duration that a single handler on the event loop can take before a
 /// warning is logged that the handler is taking too long.
-RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
+RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 1000)
