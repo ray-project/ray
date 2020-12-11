@@ -109,9 +109,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return objectref
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
-        object_refs = [
-            cloudpickle.loads(o) for o in request.object_handles
-        ]
+        object_refs = [cloudpickle.loads(o) for o in request.object_handles]
         num_returns = request.num_returns
         timeout = request.timeout
         object_refs_ids = []
@@ -133,15 +131,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             make_remote_ref(
                 id=ready_object_ref.binary(),
                 handle=cloudpickle.dumps(ready_object_ref),
-            )
-            for ready_object_ref in ready_object_refs
+            ) for ready_object_ref in ready_object_refs
         ]
         remaining_object_ids = [
             make_remote_ref(
                 id=remaining_object_ref.binary(),
                 handle=cloudpickle.dumps(remaining_object_ref),
-            )
-            for remaining_object_ref in remaining_object_refs
+            ) for remaining_object_ref in remaining_object_refs
         ]
         return ray_client_pb2.WaitResponse(
             valid=True,
