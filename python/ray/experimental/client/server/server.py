@@ -80,8 +80,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         else:
             raise RuntimeError(
                 "Client requested termination without providing a valid "
-                "terminate_type"
-            )
+                "terminate_type")
         return ray_client_pb2.TerminateResponse(ok=True)
 
     def GetObject(self, request, context=None):
