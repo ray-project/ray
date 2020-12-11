@@ -54,7 +54,7 @@ install_base() {
         # Unable to locate package docker-ce-cli
         # Unable to locate package containerd.io
         # So we just upgrade docker-ce and cross our fingers.
-        pkg_install_helper docker-ce
+        sudo apt-get install --assume-yes docker-ce
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
         fi
