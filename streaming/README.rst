@@ -147,22 +147,19 @@ Overall Architecture
    :alt: architecture
 
 
-Ray Streaming is built on Ray. We use Ray's actor to run stream operators.
+Ray Streaming is built on Ray. We use Ray's actor to run everything, and use Ray's direct call for communication.
+
+There are two main types of actor: job master and job worker.
+
+When you execute `context.submit()` in your driver, we'll first create a job master, then job master will create all job workers needed to run your operator. Then job master will be responsible to coordinate all workers, including checkpoint, failover, etc.
+
 Check `Ray Streaming Proposal <https://docs.google.com/document/d/1EubVMFSFJqNLmbNztnYKj6m0VMzg3a8ZVQZg-mgbLQ0>`_
 to get more detailed information about the overall design.
 
 Fault Tolerance Mechanism
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-As mentioned above, We designed a special failover mechanism that only needs to rollback the
-failed node it's own, in most cases, to recover the job. This is achieved by saving messages for each node,
-and replay them from upstream when node has failure.
-
-
-.. image:: assets/single_node_restarting.jpg
-   :target: assets/single_node_restarting.jpg
-   :alt: single_node_restarting
-
+As mentioned above, different from other frameworks, We designed a special failover mechanism that only needs to rollback the failed node it's own, in most cases, to recover the job. The main is saving messages for each node, and replay them from upstream when node has failure.
 
 Check `Fault Tolerance Proposal <https://docs.google.com/document/d/1NKjGr7fi-45cEzWA-N_wJ5CoUgaJfnsW9YeWsSg1shY>`_
 for more detailed information about our fault tolerance mechanism.
