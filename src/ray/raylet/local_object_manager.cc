@@ -111,11 +111,21 @@ int64_t LocalObjectManager::SpillObjectUptoMaxThroughput() {
     return 0;
   }
   absl::MutexLock lock(&mutex_);
+  RAY_CHECK(max_spill_throughput_ >= min_spilling_size_);
   int64_t required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
+
+  // If required bytes is 0, that means there's no max throughput.
+  if (required_bytes == 0) {
+    SpillObjectsUptoMinSpillingSize();
+    return num_bytes_pending_spill_;
+  }
   // Spill as much as min spilling size repeatdly until we reach to the max throughput.
   // The loop will be terminated if we cannot spill any more object.
-  while (required_bytes >= min_spilling_size_) {
-    SpillObjectsUptoMinSpillingSize();
+  while (required_bytes > min_spilling_size_) {
+    // If we cannot spill object, break.
+    if (SpillObjectsOfSize(min_spilling_size_, 0) >= 0) {
+      break;
+    }
     required_bytes = max_spill_throughput_ - num_bytes_pending_spill_;
   }
   // num_bytes_pending_spill_ has been updated properly after spilling.
