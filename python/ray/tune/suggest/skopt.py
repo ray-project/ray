@@ -105,7 +105,8 @@ class SkOptSearch(Searcher):
             "height": tune.uniform(-100, 100)
         }
 
-        current_best_params = [{
+        current_best_params = [
+            {
                 "width": 10,
                 "height": 0,
             },
