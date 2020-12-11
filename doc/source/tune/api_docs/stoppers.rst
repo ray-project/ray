@@ -28,11 +28,6 @@ CombinedStopper (tune.stopper.CombinedStopper)
 
 .. autoclass:: ray.tune.stopper.CombinedStopper
 
-FunctionStopper (tune.stopper.FunctionStopper)
-----------------------------------------------
-
-.. autoclass:: ray.tune.stopper.FunctionStopper
-
 MaximumIterationStopper (tune.stopper.MaximumIterationStopper)
 --------------------------------------------------------------
 

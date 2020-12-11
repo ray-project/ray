@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict, Optional
 import time
 from collections import defaultdict, deque
@@ -214,11 +215,11 @@ class ExperimentPlateauStopper(Stopper):
 
 class EarlyStopping(ExperimentPlateauStopper):
     def __init__(self, *args, **kwargs):
-        logger.warning(
+        warnings.warn(
             "The `EarlyStopping` stopper has been renamed to "
             "`ExperimentPlateauStopper`. The reference will be removed "
             "in a future version of Ray. Please use ExperimentPlateauStopper"
-            "instead.")
+            "instead.", DeprecationWarning)
         super(EarlyStopping, self).__init__(*args, **kwargs)
 
 
@@ -309,6 +310,9 @@ class TrialPlateauStopper(Stopper):
 
 class TimeoutStopper(Stopper):
     """Stops all trials after a certain timeout.
+
+    This stopper is automatically created when the `time_budget_s`
+    argument is passed to `tune.run()`.
 
     Args:
         timeout (int|float|datetime.timedelta): Either a number specifying
