@@ -11,7 +11,7 @@ from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
-from zoopt import ValueType
+from zoopt import Solution, ValueType
 
 try:
     import zoopt
@@ -166,6 +166,9 @@ class ZOOptSearch(Searcher):
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
+
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
+
         self._live_trial_mapping = {}
 
         self._dim_keys = []
@@ -190,12 +193,21 @@ class ZOOptSearch(Searcher):
             self._dim_keys.append(k)
             _dim_list.append(self._dim_dict[k])
 
+        init_samples = None
+        if self._points_to_evaluate:
+            logger.warning(
+                "`points_to_evaluate` seems to be ignored by ZOOpt.")
+            init_samples = [
+                Solution(x=tuple([point[dim] for dim in self._dim_keys]))
+                for point in self._points_to_evaluate
+            ]
         dim = zoopt.Dimension2(_dim_list)
-        par = zoopt.Parameter(budget=self._budget)
+        par = zoopt.Parameter(budget=self._budget, init_samples=init_samples)
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
             self.optimizer = SRacosTune(
                 dimension=dim, parameter=par, **self.kwargs)
+            self.optimizer.init_attribute()
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:

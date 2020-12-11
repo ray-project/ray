@@ -852,6 +852,21 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.skopt import SkOptSearch
         return self._testPointsToEvaluate(SkOptSearch, config)
 
+    def testPointsToEvaluateZoOpt(self):
+        # https://github.com/polixir/ZOOpt/issues/5
+        self.skipTest("ZoOpt currently ignores initial points. This test "
+                      "will be enabled after this has been fixed.")
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).uniform()
+        }
+
+        from ray.tune.suggest.zoopt import ZOOptSearch
+        return self._testPointsToEvaluate(
+            ZOOptSearch, config, budget=10, parallel_num=8)
+
 
 if __name__ == "__main__":
     import pytest
