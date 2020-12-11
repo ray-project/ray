@@ -42,19 +42,23 @@ void GcsResourceManager::HandleUpdateResources(
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
-  auto to_be_updated_resources = request.resources();
+  std::unordered_map<std::string, double> to_be_updated_resources;
+  for (auto &entry : request.resources()) {
+    to_be_updated_resources.emplace(entry.first, entry.second.resource_capacity());
+  }
+
   if (iter != cluster_resources_.end()) {
-    for (auto &entry : to_be_updated_resources) {
+    for (auto &entry : request.resources()) {
       (*iter->second.mutable_items())[entry.first] = entry.second;
     }
+    UpdateTotalResources(node_id, to_be_updated_resources);
     auto on_done = [this, node_id, to_be_updated_resources, reply,
         send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       for (auto &it : to_be_updated_resources) {
-        (*node_resource_change.mutable_updated_resources())[it.first] =
-            it.second.resource_capacity();
+        (*node_resource_change.mutable_updated_resources())[it.first] = it.second;
       }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
@@ -82,6 +86,8 @@ void GcsResourceManager::HandleDeleteResources(
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
+    DeleteSchedulingResources(node_id, resource_names);
+
     for (auto &resource_name : resource_names) {
       RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
     }
@@ -115,7 +121,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   for (const auto &iter : cluster_scheduling_resources_) {
     rpc::AvailableResources resource;
     resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second.GetResourceAmountMap()) {
+    for (const auto &res : iter.second.GetAvailableResources().GetResourceAmountMap()) {
       (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
     }
     reply->add_resources_list()->CopyFrom(resource);
@@ -134,14 +140,36 @@ void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, ResourceSet> &GcsResourceManager::GetClusterResources()
-const {
+const absl::flat_hash_map<NodeID, SchedulingResources>
+    &GcsResourceManager::GetClusterResources() const {
   return cluster_scheduling_resources_;
 }
 
-void GcsResourceManager::UpdateResources(const NodeID &node_id,
-                                         const ResourceSet &resources) {
-  cluster_scheduling_resources_[node_id] = resources;
+void GcsResourceManager::UpdateAvailableResources(const NodeID &node_id,
+                                                  const ResourceSet &resources) {
+  cluster_scheduling_resources_[node_id].SetAvailableResources(ResourceSet(resources));
+}
+
+void GcsResourceManager::UpdateTotalResources(
+    const NodeID &node_id,
+    const std::unordered_map<std::string, double> &changed_resources) {
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter != cluster_scheduling_resources_.end()) {
+    SchedulingResources &scheduling_resources = iter->second;
+    for (const auto &entry : changed_resources) {
+      scheduling_resources.UpdateResourceCapacity(entry.first, entry.second);
+    }
+  }
+}
+
+void GcsResourceManager::DeleteSchedulingResources(
+    const NodeID &node_id, const std::vector<std::string> &deleted_resources) {
+  auto iter = cluster_scheduling_resources_.find(node_id);
+  if (iter != cluster_scheduling_resources_.end()) {
+    for (auto &resource_name : deleted_resources) {
+      iter->second.DeleteResource(resource_name);
+    }
+  }
 }
 
 void GcsResourceManager::OnNodeAdd(const NodeID &node_id) {
@@ -158,7 +186,7 @@ bool GcsResourceManager::AcquireResources(const NodeID &node_id,
                                           const ResourceSet &required_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
-    if (!required_resources.IsSubset(iter->second)) {
+    if (!required_resources.IsSubset(iter->second.GetAvailableResources())) {
       return false;
     }
     iter->second.SubtractResourcesStrict(required_resources);
@@ -172,7 +200,7 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
                                           const ResourceSet &acquired_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
-    iter->second.AddResources(acquired_resources);
+    iter->second.Release(acquired_resources);
   }
   // If node dead, we will not find the node. This is a normal scenario, so it returns
   // true.
