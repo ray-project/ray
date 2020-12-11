@@ -495,10 +495,13 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
 
+  std::vector<TaskID> to_cancel;
+
   for (int i = 0; i < 10; i++) {
     Task task = CreateTask({{ray::kCPU_ResourceLabel, 100}});
     task.SetBacklogSize(i);
     task_manager_.QueueTask(task, &reply, callback);
+    to_cancel.push_back(task.GetTaskSpecification().TaskId());
   }
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
@@ -516,6 +519,22 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   auto shape1 = resource_load_by_shape.resource_demands()[0];
 
   ASSERT_EQ(shape1.backlog_size(), 45);
+  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 10);
+  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+
+  for (auto &task_id : to_cancel) {
+    ASSERT_TRUE(task_manager_.CancelTask(task_id));
+  }
+
+  data = std::make_shared<rpc::HeartbeatTableData>();
+  task_manager_.Heartbeat(false, data);
+
+  resource_load_by_shape = data->resource_load_by_shape();
+  shape1 = resource_load_by_shape.resource_demands()[0];
+
+  ASSERT_EQ(shape1.backlog_size(), 0);
+  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
+  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
