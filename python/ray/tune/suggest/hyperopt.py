@@ -222,7 +222,7 @@ class HyperOptSearch(Searcher):
 
                             if isinstance(config_dict[key], int):
                                 msg += "In previous versions, a numerical " \
-                                       "index was expected, but in the " \
+                                       "index was expected for categorical values of `points_to_evaluate`, but in ray>=1.2.0, the categorical value is expected to be directly provided. " \
                                        "current version you should pass the " \
                                        "category value directly. "
 
