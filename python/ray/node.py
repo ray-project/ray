@@ -341,10 +341,6 @@ class Node:
         return self._ray_params.redis_password
 
     @property
-    def load_code_from_local(self):
-        return self._ray_params.load_code_from_local
-
-    @property
     def object_ref_seed(self):
         """Get the seed for deterministic generation of object refs"""
         return self._ray_params.object_ref_seed
@@ -603,38 +599,17 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "log_monitor", unique=True)
         process_info = ray._private.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_file=subprocess.DEVNULL,
+            stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
         ]
-
-    def start_reporter(self):
-        """Start the reporter."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "reporter", unique=True)
-
-        process_info = ray._private.services.start_reporter(
-            self.redis_address,
-            self._ray_params.metrics_agent_port,
-            self._metrics_export_port,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
-        assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
-        if process_info is not None:
-            self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
-                process_info,
-            ]
 
     def start_dashboard(self, require_dashboard):
         """Start the dashboard.
@@ -745,14 +720,12 @@ class Node:
             stderr_file=stderr_file,
             config=self._config,
             java_worker_options=self._ray_params.java_worker_options,
-            load_code_from_local=self._ray_params.load_code_from_local,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job,
-            code_search_path=self._ray_params.code_search_path)
+            start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -762,12 +735,11 @@ class Node:
 
     def start_monitor(self):
         """Start the monitor."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            self._logs_dir,
+            stdout_file=subprocess.DEVNULL,
+            stderr_file=subprocess.DEVNULL,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)

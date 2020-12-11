@@ -58,11 +58,10 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   void beforeMethod() {
     LOGGER.info("beforeTest");
     Ray.shutdown();
-    System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+    System.setProperty("ray.head-args.0", "--num-cpus=4");
+    System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
-    RayConfig.reset();
     Ray.init();
   }
 
@@ -71,6 +70,8 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     LOGGER.info("afterTest");
     Ray.shutdown();
     System.clearProperty("ray.run-mode");
+    System.clearProperty("ray.head-args.0");
+    System.clearProperty("ray.head-args.1");
   }
 
   @Test(timeOut = 300000)
@@ -78,8 +79,8 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}",
         System.getProperty("ray.run-mode"));
     Ray.shutdown();
-    System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+    System.setProperty("ray.head-args.0", "--num-cpus=4");
+    System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
 
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
@@ -134,8 +135,8 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
   @Test(timeOut = 60000)
   public void testWordCount() {
     Ray.shutdown();
-    System.setProperty("ray.resources", "CPU:4,RES-A:4");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+    System.setProperty("ray.head-args.0", "--num-cpus=4");
+    System.setProperty("ray.head-args.1", "--resources={\"RES-A\":4}");
 
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");

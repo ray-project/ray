@@ -4,6 +4,7 @@ import types
 
 from ray import cloudpickle as cloudpickle
 from ray.utils import binary_to_hex, hex_to_binary
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,8 @@ class TuneFunctionEncoder(json.JSONEncoder):
         try:
             return super(TuneFunctionEncoder, self).default(obj)
         except Exception:
-            logger.debug("Unable to encode. Falling back to cloudpickle.")
+            if log_once(f"tune_func_encode:{str(obj)}"):
+                logger.debug("Unable to encode. Falling back to cloudpickle.")
             return self._to_cloudpickle(obj)
 
     def _to_cloudpickle(self, obj):

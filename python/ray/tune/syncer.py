@@ -206,6 +206,9 @@ class Syncer:
         self.last_sync_down_time = float("-inf")
         self.sync_client.reset()
 
+    def close(self):
+        self.sync_client.close()
+
     @property
     def _remote_path(self):
         return self._remote_dir
@@ -445,6 +448,7 @@ class SyncerCallback(Callback):
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
         trial_syncer.sync_down_if_needed()
+        trial_syncer.close()
 
     def on_checkpoint(self, iteration: int, trials: List["Trial"],
                       trial: "Trial", checkpoint: Checkpoint, **info):
@@ -455,7 +459,6 @@ def detect_sync_to_driver(
         sync_to_driver: Union[None, bool, Type],
         cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
     from ray.tune.integration.docker import DockerSyncer
-    from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
 
     if isinstance(sync_to_driver, Type):
         return sync_to_driver
@@ -479,9 +482,19 @@ def detect_sync_to_driver(
         return DockerSyncer
 
     if config.get("provider", {}).get("type", "") == "kubernetes":
+        from ray.tune.integration.kubernetes import (
+            NamespacedKubernetesSyncer, try_import_kubernetes)
+        if not try_import_kubernetes():
+            logger.warning(
+                "Detected Ray autoscaling environment on Kubernetes, "
+                "but Kubernetes Python CLI is not installed. "
+                "Checkpoint syncing may not work properly across "
+                "multiple pods. Be sure to install 'kubernetes' on "
+                "each container.")
+
         namespace = config["provider"].get("namespace", "ray")
         logger.debug(
-            f"Detected Kubernetes autoscaling environment. Using "
+            f"Detected Ray autoscaling environment on Kubernetes. Using "
             f"`NamespacedKubernetesSyncer` with namespace `{namespace}` "
             f"as sync client. If this is not correct or leads to errors, "
             f"please pass a `sync_to_driver` parameter in the `SyncConfig` "

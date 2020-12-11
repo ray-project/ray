@@ -146,18 +146,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo,
                              actor_info_grpc_client_, )
 
-  ///  Add actor checkpoint data to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint,
-                             actor_info_grpc_client_, )
-
-  ///  Get actor checkpoint data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint,
-                             actor_info_grpc_client_, )
-
-  ///  Get actor checkpoint id data from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID,
-                             actor_info_grpc_client_, )
-
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_, )
 
@@ -174,6 +162,14 @@ class GcsRpcClient {
   /// Get newest heartbeat of all nodes from GCS Service. Only used when light heartbeat
   /// enabled.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllHeartbeat,
+                             node_info_grpc_client_, )
+
+  /// Report resource usage of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
+                             node_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
                              node_info_grpc_client_, )
 
   /// Get node's resources from GCS Service.
@@ -269,6 +265,10 @@ class GcsRpcClient {
 
   /// Get information of all placement group from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, GetAllPlacementGroup,
+                             placement_group_info_grpc_client_, )
+
+  /// Wait for placement group until ready via GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady,
                              placement_group_info_grpc_client_, )
 
  private:

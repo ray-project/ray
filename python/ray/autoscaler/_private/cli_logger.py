@@ -283,6 +283,7 @@ class _CliLogger():
         self.indent_level = 0
 
         self._verbosity = 0
+        self._verbosity_overriden = False
         self._color_mode = "auto"
         self._log_style = "record"
         self.pretty = False
@@ -340,12 +341,15 @@ class _CliLogger():
 
     @property
     def verbosity(self):
-        if not self.pretty:
+        if self._verbosity_overriden:
+            return self._verbosity
+        elif not self.pretty:
             return 999
         return self._verbosity
 
     def _set_verbosity(self, x):
         self._verbosity = x
+        self._verbosity_overriden = True
 
     def detect_colors(self):
         """Update color output settings.

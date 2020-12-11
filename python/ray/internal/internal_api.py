@@ -1,7 +1,9 @@
+import ray
 import ray.worker
 from ray import profiling
 
 __all__ = ["free", "global_gc"]
+MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
 
 
 def global_gc():
@@ -22,7 +24,13 @@ def memory_summary():
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     ray.nodes()[0]["NodeManagerPort"])
-    channel = grpc.insecure_channel(raylet_address)
+    channel = grpc.insecure_channel(
+        raylet_address,
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ],
+    )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)

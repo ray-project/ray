@@ -28,29 +28,6 @@ extern "C" {
 
 using ray::NodeID;
 
-JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(JNIEnv *env, jclass) {
-  auto &core_worker = ray::CoreWorkerProcess::GetCoreWorker();
-  const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
-  const auto &task_spec = core_worker.GetWorkerContext().GetCurrentTask();
-  RAY_CHECK(task_spec->IsActorTask());
-  ActorCheckpointID checkpoint_id;
-  auto status = core_worker.PrepareActorCheckpoint(actor_id, &checkpoint_id);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  return IdToJavaByteArray<ActorCheckpointID>(env, checkpoint_id);
-}
-
-JNIEXPORT void JNICALL
-Java_io_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
-    JNIEnv *env, jclass, jbyteArray checkpointId) {
-  const auto &actor_id =
-      ray::CoreWorkerProcess::GetCoreWorker().GetWorkerContext().GetCurrentActorID();
-  const auto checkpoint_id = JavaByteArrayToId<ActorCheckpointID>(env, checkpointId);
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().NotifyActorResumedFromCheckpoint(
-      actor_id, checkpoint_id);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
-}
-
 #ifdef __cplusplus
 }
 #endif
