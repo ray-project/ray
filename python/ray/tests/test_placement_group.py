@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import time
 
 try:
     import pytest_timeout
@@ -674,14 +675,15 @@ def test_atomic_creation(ray_start_cluster):
 
     @ray.remote(num_cpus=3)
     def bothering_task():
-        import time
-        time.sleep(1)
+        time.sleep(4)
         return True
 
     # Schedule tasks to fail initial placement group creation.
     tasks = [bothering_task.remote() for _ in range(2)]
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
+    # The reason we sleep here is we must make sure bothering_task will schedule first.
+    time.sleep(2)
     pg = ray.util.placement_group(
         name="name",
         strategy="SPREAD",
@@ -699,7 +701,7 @@ def test_atomic_creation(ray_start_cluster):
     # Wait on the placement group now. It should be unready
     # because normal actor takes resources that are required
     # for one of bundle creation.
-    ready, unready = ray.wait([pg.ready()], timeout=0)
+    ready, unready = ray.wait([pg.ready()], timeout=0.5)
     assert len(ready) == 0
     assert len(unready) == 1
     # Wait until all tasks are done.
