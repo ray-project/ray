@@ -218,7 +218,8 @@ class HyperOptSearch(Searcher):
                             idx = categories.index(config_dict[key])
                         except ValueError as exc:
                             msg = f"Did not find category with value " \
-                                  f"{config_dict[key]} in hyperopt parameter {key}. "
+                                  f"`{config_dict[key]}` in " \
+                                  f"hyperopt parameter `{key}`. "
 
                             if isinstance(config_dict[key], int):
                                 msg += "In previous versions, a numerical " \
