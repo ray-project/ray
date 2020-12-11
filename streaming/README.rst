@@ -2,8 +2,7 @@
 Ray Streaming
 =============
 
-Ray Streaming is a streaming data processing framework built on ray. It helps your to build a job
-deals with real-time data easily.
+Ray Streaming is a streaming data processing framework built on ray. It will be helpful for you to build jobs dealing with real-time data.
 
 Key Features
 ------------
