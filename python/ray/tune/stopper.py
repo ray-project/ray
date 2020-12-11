@@ -146,7 +146,7 @@ class ExperimentPlateauStopper(Stopper):
         metric (str): The metric to be monitored.
         std (float): The minimal standard deviation after which
             the tuning process has to stop.
-        top (int): The number of best model to consider.
+        top (int): The number of best models to consider.
         mode (str): The mode to select the top results.
             Can either be "min" or "max".
         patience (int): Number of epochs to wait for
