@@ -42,8 +42,13 @@ message ClientTask {
   repeated Arg args = 4;
 }
 
+message RemoteRef {
+  bytes id = 1;
+  bytes handle = 2;
+}
+
 message ClientTaskTicket {
-  bytes return_id = 1;
+  RemoteRef return_ref = 1;
 }
 
 message PutRequest {
@@ -51,27 +56,75 @@ message PutRequest {
 }
 
 message PutResponse {
-  bytes id = 1;
+  RemoteRef ref = 1;
 }
 
 message GetRequest {
-  bytes id = 1;
+  bytes handle = 1;
+  float timeout = 2;
 }
 
 message GetResponse {
   bool valid = 1;
   bytes data = 2;
 }
+
 message WaitRequest {
-  repeated bytes object_refs = 1;
+  repeated bytes object_handles = 1;
   int64 num_returns = 2;
   double timeout = 3;
 }
 
 message WaitResponse {
   bool valid = 1;
-  repeated bytes ready_object_ids = 2;
-  repeated bytes remaining_object_ids = 3;
+  repeated RemoteRef ready_object_ids = 2;
+  repeated RemoteRef remaining_object_ids = 3;
+}
+
+message ClusterInfoType {
+  // Namespace the enum, as it collides in the overall package.
+  enum TypeEnum {
+    IS_INITIALIZED = 0;
+    NODES = 1;
+    CLUSTER_RESOURCES = 2;
+    AVAILABLE_RESOURCES = 3;
+  }
+}
+
+message ClusterInfoRequest {
+  ClusterInfoType.TypeEnum type = 1;
+}
+
+message ClusterInfoResponse {
+  message ResourceTable {
+    map<string, double> table = 1;
+  }
+  ClusterInfoType.TypeEnum type = 1;
+  oneof response_type {
+    string json = 2;
+    ResourceTable resource_table = 3;
+  }
+}
+
+message TerminateRequest {
+  message ActorTerminate {
+    bytes handle = 1;
+    bool no_restart = 2;
+  }
+  message TaskObjectTerminate {
+    bytes handle = 1;
+    bool force = 2;
+    bool recursive = 3;
+  }
+
+  oneof terminate_type {
+    ActorTerminate actor = 1;
+    TaskObjectTerminate task_object = 2;
+  }
+}
+
+message TerminateResponse {
+  bool ok = 1;
 }
 
 service RayletDriver {
@@ -82,5 +135,9 @@ service RayletDriver {
   rpc WaitObject(WaitRequest) returns (WaitResponse) {
   }
   rpc Schedule(ClientTask) returns (ClientTaskTicket) {
+  }
+  rpc Terminate(TerminateRequest) returns (TerminateResponse) {
+  }
+  rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
   }
 }

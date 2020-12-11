@@ -55,7 +55,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   node_table_.reset(new NodeTable({primary_context}, this));
 
   job_table_.reset(new JobTable({primary_context}, this));
-  heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
+  resource_usage_batch_table_.reset(new ResourceUsageBatchTable({primary_context}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts, this));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts, this, command_type_));
@@ -128,8 +128,8 @@ NodeTable &RedisGcsClient::node_table() { return *node_table_; }
 
 HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
-HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
-  return *heartbeat_batch_table_;
+ResourceUsageBatchTable &RedisGcsClient::resource_usage_batch_table() {
+  return *resource_usage_batch_table_;
 }
 
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
