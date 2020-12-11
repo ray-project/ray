@@ -284,7 +284,7 @@ void LocalObjectManager::AddSpilledUrls(
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(ERROR) << "Restoring spilled object " << object_id << " from URL "
+  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
