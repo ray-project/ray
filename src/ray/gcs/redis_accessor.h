@@ -401,6 +401,43 @@ class RedisNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
 };
 
+/// \class RedisNodeResourceInfoAccessor
+/// RedisNodeResourceInfoAccessor is an implementation of `NodeResourceInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
+ public:
+  explicit RedisNodeResourceInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisNodeResourceInfoAccessor() {}
+
+  Status AsyncGetResources(const NodeID &node_id,
+                           const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override {
+    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
+  }
+
+  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
+                              const StatusCallback &callback) override;
+
+  Status AsyncDeleteResources(const NodeID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const StatusCallback &callback) override;
+
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<NodeID, ResourceChangeNotification, DynamicResourceTable>
+      DynamicResourceSubscriptionExecutor;
+  DynamicResourceSubscriptionExecutor resource_sub_executor_;
+};
+
 /// \class RedisErrorInfoAccessor
 /// RedisErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
 /// that uses Redis as the backend storage.
