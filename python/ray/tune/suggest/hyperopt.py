@@ -214,7 +214,24 @@ class HyperOptSearch(Searcher):
                             a.obj for a in space_dict[key].pos_args[1:]
                             if a.name == "literal"
                         ]
-                        idx = categories.index(config_dict[key])
+                        try:
+                            idx = categories.index(config_dict[key])
+                        except ValueError as exc:
+                            msg = f"Did not find category with value " \
+                                  f"`{config_dict[key]}` in " \
+                                  f"hyperopt parameter `{key}`. "
+
+                            if isinstance(config_dict[key], int):
+                                msg += "In previous versions, a numerical " \
+                                       "index was expected for categorical " \
+                                       "values of `points_to_evaluate`, " \
+                                       "but in ray>=1.2.0, the categorical " \
+                                       "value is expected to be directly " \
+                                       "provided. "
+
+                            msg += "Please make sure the specified category " \
+                                   "is valid."
+                            raise ValueError(msg) from exc
                         config_dict[key] = idx
 
         for k in config:
