@@ -80,9 +80,9 @@ class Preprocessor:
         obs_space = gym.spaces.Box(-1., 1., self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
         # automatically in model.py
-        if (isinstance(self, TupleFlatteningPreprocessor)
-                or isinstance(self, DictFlatteningPreprocessor)
-                or isinstance(self, RepeatedValuesPreprocessor)):
+        if isinstance(self, (DictFlatteningPreprocessor, OneHotPreprocessor,
+                             RepeatedValuesPreprocessor,
+                             TupleFlatteningPreprocessor)):
             obs_space.original_space = self._obs_space
         return obs_space
 

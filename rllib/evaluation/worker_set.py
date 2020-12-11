@@ -74,7 +74,7 @@ class WorkerSet:
             self.add_workers(num_workers)
 
             # If num_workers > 0, get the action_spaces and observation_spaces
-            # to not be forced to create an Env on the driver.
+            # to not be forced to create an Env on the local worker.
             if self._remote_workers:
                 remote_spaces = ray.get(self.remote_workers(
                 )[0].foreach_policy.remote(
