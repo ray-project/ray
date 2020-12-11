@@ -1042,8 +1042,8 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
   cluster_resources.AddOrUpdateNode(12345, other_node_resources);
 
   {  // Cluster is idle.
-    auto data = std::make_shared<rpc::HeartbeatTableData>();
-    cluster_resources.Heartbeat(false, data);
+    auto data = std::make_shared<rpc::ResourcesData>();
+    cluster_resources.FillResourceUsage(false, data);
 
     auto available = data->resources_available();
     auto total = data->resources_total();
@@ -1080,8 +1080,8 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
         {"1", 0.1},
     });
     cluster_resources.AllocateLocalTaskResources(allocation_map, allocations);
-    auto data = std::make_shared<rpc::HeartbeatTableData>();
-    cluster_resources.Heartbeat(false, data);
+    auto data = std::make_shared<rpc::ResourcesData>();
+    cluster_resources.FillResourceUsage(false, data);
 
     auto available = data->resources_available();
     auto total = data->resources_total();
@@ -1102,32 +1102,32 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
   }
 }
 
-TEST_F(ClusterResourceSchedulerTest, TestLightHeartbeat) {
+TEST_F(ClusterResourceSchedulerTest, TestLightResourceUsageReport) {
   std::unordered_map<std::string, double> initial_resources({{"CPU", 1}});
   ClusterResourceScheduler cluster_resources("local", initial_resources);
 
-  // Report heartbeat on initialization.
-  auto data = std::make_shared<rpc::HeartbeatTableData>();
-  cluster_resources.Heartbeat(true, data);
+  // Fill resource usage usage on initialization.
+  auto data = std::make_shared<rpc::ResourcesData>();
+  cluster_resources.FillResourceUsage(true, data);
   ASSERT_RESOURCES_EQ(data, 1, 1);
 
-  // Don't report heartbeats if resource availability hasn't changed.
+  // Don't report resource usage if resource availability hasn't changed.
   for (int i = 0; i < 3; i++) {
     data->Clear();
-    cluster_resources.Heartbeat(true, data);
+    cluster_resources.FillResourceUsage(true, data);
     ASSERT_RESOURCES_EMPTY(data);
   }
 
-  // Report heartbeat if resource availability has changed.
+  // Report resource usage if resource availability has changed.
   cluster_resources.AddOrUpdateNode("local", {{"CPU", 1.}}, {{"CPU", 0.}});
   data->Clear();
-  cluster_resources.Heartbeat(true, data);
+  cluster_resources.FillResourceUsage(true, data);
   ASSERT_RESOURCES_EQ(data, 0, 1);
 
-  // Don't report heartbeats if resource availability hasn't changed.
+  // Don't report resource usage if resource availability hasn't changed.
   for (int i = 0; i < 3; i++) {
     data->Clear();
-    cluster_resources.Heartbeat(true, data);
+    cluster_resources.FillResourceUsage(true, data);
     ASSERT_RESOURCES_EMPTY(data);
   }
 }
@@ -1145,20 +1145,20 @@ TEST_F(ClusterResourceSchedulerTest, TestDirtyLocalView) {
   ASSERT_TRUE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
   task_allocation = std::make_shared<TaskResourceInstances>();
   ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
-  // View of local resources is not affected by heartbeats.
-  auto data = std::make_shared<rpc::HeartbeatTableData>();
-  cluster_resources.Heartbeat(true, data);
+  // View of local resources is not affected by resource usage report.
+  auto data = std::make_shared<rpc::ResourcesData>();
+  cluster_resources.FillResourceUsage(true, data);
   ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
 
   for (int num_slots_available = 0; num_slots_available <= 2; num_slots_available++) {
     // Remote node reports updated resource availability.
     cluster_resources.AddOrUpdateNode("remote", {{"CPU", 2.}},
                                       {{"CPU", num_slots_available}});
-    auto data = std::make_shared<rpc::HeartbeatTableData>();
+    auto data = std::make_shared<rpc::ResourcesData>();
     int64_t t;
     for (int i = 0; i < 3; i++) {
-      // Heartbeat tick should reset the remote node's resources.
-      cluster_resources.Heartbeat(true, data);
+      // Resource usage report tick should reset the remote node's resources.
+      cluster_resources.FillResourceUsage(true, data);
       for (int j = 0; j < num_slots_available; j++) {
         ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t),
                   "remote");
