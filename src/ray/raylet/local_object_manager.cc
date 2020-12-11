@@ -191,15 +191,6 @@ void LocalObjectManager::SpillObjectsInternal(
     // Add objects that we are the primary copy for, and that we are not
     // already spilling.
     auto it = pinned_objects_.find(id);
-    // If the pinned object has been already spilled, skip spilling.
-    if (spilled_objects_url_.contains(id)) {
-      if (it != pinned_objects_.end()) {
-        RAY_LOG(ERROR) << "Sang";
-        pinned_objects_.erase(it);
-        continue;
-      }
-    }
-
     if (it != pinned_objects_.end()) {
       RAY_LOG(DEBUG) << "Spilling object " << id;
       objects_to_spill.push_back(id);
