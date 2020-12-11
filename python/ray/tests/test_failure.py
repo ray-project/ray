@@ -1359,60 +1359,6 @@ def test_async_actor_task_retries(ray_start_regular):
     assert ray.get(ref_3) == 3
 
 
-@pytest.mark.parametrize(
-    "exit_condition",
-    [
-        # "out_of_scope", TODO(edoakes): enable this once fixed.
-        "__ray_terminate__",
-        # "ray.actor.exit_actor", TODO(edoakes): enable this once fixed.
-        "ray.kill"
-    ])
-def test_atexit_handler(ray_start_regular, exit_condition):
-    @ray.remote
-    class A():
-        def __init__(self, tmpfile, data):
-            import atexit
-
-            def f(*args, **kwargs):
-                with open(tmpfile, "w") as f:
-                    f.write(data)
-                    f.flush()
-
-            atexit.register(f)
-
-        def ready(self):
-            pass
-
-        def exit(self):
-            ray.actor.exit_actor()
-
-    data = "hello"
-    tmpfile = tempfile.NamedTemporaryFile()
-    a = A.remote(tmpfile.name, data)
-    ray.get(a.ready.remote())
-
-    if exit_condition == "out_of_scope":
-        del a
-    elif exit_condition == "__ray_terminate__":
-        ray.wait([a.__ray_terminate__.remote()])
-    elif exit_condition == "ray.exit_actor":
-        ray.wait([a.exit.remote()])
-    elif exit_condition == "ray.kill":
-        ray.kill(a)
-
-    def check_file_written():
-        with open(tmpfile.name) as f:
-            if f.read() == data:
-                return True
-            return False
-
-    # ray.kill() should not trigger atexit handlers, all other methods should.
-    if exit_condition == "ray.kill":
-        assert not check_file_written()
-    else:
-        wait_for_condition(check_file_written)
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
