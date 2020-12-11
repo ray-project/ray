@@ -1,7 +1,7 @@
 apiVersion: cluster.ray.io/v1
 kind: RayCluster
 metadata:
-  name: example-cluster
+  name: example-cluster2
 spec:
   # The maximum number of workers nodes to launch in addition to the head node.
   maxWorkers: 3

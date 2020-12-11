@@ -67,11 +67,20 @@ Finally, to launch a Ray cluster, we create a RayCluster custom resource.
  raycluster.cluster.ray.io/example-cluster created
 
 The operator will detect the RayCluster resource we've created and will launch an autoscaling Ray cluster.
-Our RayCluster configuration specifies ``minWorkers:2`` in the first entry of ``spec.podTypes``, so we get a head node and two workers upon launch. 
+Our RayCluster configuration specifies ``minWorkers:2`` in the first entry of ``spec.podTypes``, so we get a head node and two workers upon launch.
+
+.. note::
+
+  To learn in more detail about RayCluster resources, we recommend take a looking at the annotated example ``example_cluster.yaml``  applied in the last command. 
 
 .. code-block:: shell
 
  $ kubectl -n ray get pods
+ NAME                               READY   STATUS    RESTARTS   AGE
+ example-cluster-ray-head-hbxvv     1/1     Running   0          72s
+ example-cluster-ray-worker-4hvv6   1/1     Running   0          64s
+ example-cluster-ray-worker-78kp5   1/1     Running   0          64s
+ ray-operator-pod                   1/1     Running   0          2m33s
 
 We see four pods: the operator, the ray head node, and two ray worker nodes. 
 
@@ -85,7 +94,18 @@ We confirm that both clusters are running in our namespace.
 .. code-block:: shell
 
  $ kubectl -n ray get rayclusters
+ NAME               AGE
+ example-cluster    12m
+ example-cluster2   114s
+
  $ kubectl -n ray get pods
+ NAME                                READY   STATUS    RESTARTS   AGE
+ example-cluster-ray-head-th4wv      1/1     Running   0          10m
+ example-cluster-ray-worker-q9pjn    1/1     Running   0          10m
+ example-cluster-ray-worker-qltnp    1/1     Running   0          10m
+ example-cluster2-ray-head-kj5mg     1/1     Running   0          10s
+ example-cluster2-ray-worker-qsgnd   1/1     Running   0          1s
+ ray-operator-pod                    1/1     Running   0          10m
 
 Now we can :ref:`run Ray programs<_ray_k8s-run>` on our Ray clusters.
 
@@ -93,11 +113,32 @@ Monitoring
 ----------
 Autoscaling logs are written to the operator pod's stdout and can be accessed with :code:`kubectl logs`.
 Each line of output is prefixed by the name of the cluster followed by colon.
-The following command get the last fifty lines of autoscaling logs for our second cluster.  
+The following command get the last hundred lines of autoscaling logs for our second cluster.  
 
 .. code-block:: shell
 
- $ kubectl -n ray logs ray-operator-pod | grep ^example-cluster2: | tail -n 50
+ $ kubectl -n ray logs ray-operator-pod | grep ^example-cluster2: | tail -n 100
+
+The output should include monitoring updates that look like this:
+
+.. code-block:: shell
+
+ example-cluster2:2020-12-11 12:01:06,021        DEBUG autoscaler.py:693 -- Cluster status: 1 nodes
+ example-cluster2: - MostDelayedHeartbeats: {'172.17.0.7': 0.04234886169433594, '172.17.0.8': 0.042315006256103516}
+ example-cluster2: - NodeIdleSeconds: Min=241 Mean=246 Max=251
+ example-cluster2: - ResourceUsage: 0.0/2.0 CPU, 0.0 GiB/0.58 GiB memory, 0.0 GiB/0.1 GiB object_store_memory
+ example-cluster2: - TimeSinceLastHeartbeat: Min=0 Mean=0 Max=0
+ example-cluster2:Worker node types:
+ example-cluster2: - worker-nodes: 1
+ example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:148 -- Cluster resources: [{'CPU': 1.0, 'node:172.17.0.7': 1.0, 'memory': 5.0, 'object_store_memory': 1.0}, {'object_store_memory': 1.0, 'memory': 6.0, 'CPU': 1.0, 'node:172.17.0.8': 1.0}]
+ example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:149 -- Node counts: defaultdict(<class 'int'>, {'head-node': 1, 'worker-nodes': 1})
+ example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:159 -- Placement group demands: []
+ example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:186 -- Resource demands: []
+ example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:187 -- Unfulfilled demands: []
+ example-cluster2:2020-12-11 12:01:06,088        INFO resource_demand_scheduler.py:209 -- Node requests: {}
+ example-cluster2:2020-12-11 12:01:06,098        DEBUG autoscaler.py:654 -- example-cluster2-ray-worker-qsgnd is not being updated and passes config check (can_update=True).
+ example-cluster2:2020-12-11 12:01:06,111        DEBUG autoscaler.py:654 -- example-cluster2-ray-worker-qsgnd is not being updated and passes config check (can_update=True).
+
 
 Updating and retrying
 ---------------------
@@ -133,16 +174,27 @@ This behavior may be modified in future releases.
 
 Cleaning up
 -----------
+We shut down a Ray cluster by deleting the associated RayCluster resource.
+Either of the next two commands will delete our second cluster ``example-cluster2``.
 
 .. code-block:: shell
 
- $ kubectl -n ray delete raycluster test-cluster2
+ $ kubectl -n ray delete raycluster example-cluster2
+ # OR
+ $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster2.yaml
 
-We check that the Pods associated with our second cluster are gone.
+The Pods associated with ``example-cluster2`` will go into ``TERMINATING`` status. In a few moments, we check that these pods are gone:
 
 .. code-block:: shell
 
  $ kubectl -n ray get pods
+ NAME                               READY   STATUS    RESTARTS   AGE
+ example-cluster-ray-head-th4wv     1/1     Running   0          57m
+ example-cluster-ray-worker-q9pjn   1/1     Running   0          56m
+ example-cluster-ray-worker-qltnp   1/1     Running   0          56m
+ ray-operator-pod                   1/1     Running   0          57m
+
+Only the operator pod and the first ``example-cluster`` remain.
 
 To finish clean-up, we delete our first cluster and then the operator's resources.
 
@@ -152,10 +204,12 @@ To finish clean-up, we delete our first cluster and then the operator's resource
  $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
 
 If you like, you can delete the RayCluster customer resource definition. 
-(Using the operator again will then require re-applying the CRD.)
+(Using the operator again will then require reapplying the CRD.)
 
 .. code-block:: shell
 
+ $ kubectl delete crd rayclusters.cluster.ray.io
+ # OR
  $ kubectl delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
 
 .. _`Kubernetes Operator`: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
@@ -163,4 +217,3 @@ If you like, you can delete the RayCluster customer resource definition.
 .. _`Kubernetes Custom Resource Definition`: https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/
 .. _`annotation`: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/#attaching-metadata-to-objects
 .. _`permissions`: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
-
