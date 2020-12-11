@@ -28,6 +28,7 @@ First, we need to apply the `Kubernetes Custom Resource Definition`_ (CRD) defin
 .. code-block:: shell
 
  $ kubectl apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/cluster_crd.yaml
+ customresourcedefinition.apiextensions.k8s.io/rayclusters.cluster.ray.io created
 
 Picking a Kubernetes namespace
 -------------------------------
@@ -38,7 +39,7 @@ For this example, we will create a namespace called ``ray``.
 .. code-block:: shell
 
  $ kubectl create namespace ray
-
+ namespace/ray created
 
 Starting the operator. 
 ----------------------
@@ -48,8 +49,13 @@ To launch the operator in our namespace, we execute the following command.
 .. code-block:: shell
 
  $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
-
-This starts a pod named ``ray-operator-pod`` which runs the operator process.
+ serviceaccount/ray-operator-serviceaccount created
+ role.rbac.authorization.k8s.io/ray-operator-role created
+ rolebinding.rbac.authorization.k8s.io/ray-operator-rolebinding created
+ pod/ray-operator-pod created
+ 
+The output shows that we've just launched a pod named ``ray-operator-pod`` -- this is the pod that runs the operator process.
+The service account, role, and role binding we have created grant the pod the `permissions`_ it needs to manage Ray clusters. 
 
 Launching Ray clusters
 ----------------------
@@ -58,6 +64,7 @@ Finally, to launch a Ray cluster, we create a RayCluster custom resource.
 .. code-block:: shell
 
  $ kubectl -n ray apply -f ray/python/ray/autoscaler/kubernetes/operator_configs/example_cluster.yaml
+ raycluster.cluster.ray.io/example-cluster created
 
 The operator will detect the RayCluster resource we've created and will launch an autoscaling Ray cluster.
 Our RayCluster configuration specifies ``minWorkers:2`` in the first entry of ``spec.podTypes``, so we get a head node and two workers upon launch. 
@@ -155,4 +162,5 @@ If you like, you can delete the RayCluster customer resource definition.
 .. _`Kubernetes Custom Resource`: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/
 .. _`Kubernetes Custom Resource Definition`: https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/
 .. _`annotation`: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/#attaching-metadata-to-objects
+.. _`permissions`: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
 
