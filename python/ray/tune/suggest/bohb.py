@@ -139,6 +139,8 @@ class TuneBOHB(Searcher):
         self._space = space
         self._seed = seed
 
+        self._points_to_evaluate = points_to_evaluate
+
         super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
 
         if self._space:
@@ -191,8 +193,11 @@ class TuneBOHB(Searcher):
                     mode=self._mode))
 
         if len(self.running) < self._max_concurrent:
-            # This parameter is not used in hpbandster implementation.
-            config, info = self.bohber.get_config(None)
+            if self._points_to_evaluate:
+                config = self._points_to_evaluate.pop(0)
+            else:
+                # This parameter is not used in hpbandster implementation.
+                config, info = self.bohber.get_config(None)
             self.trial_to_params[trial_id] = copy.deepcopy(config)
             self.running.add(trial_id)
             return unflatten_dict(config)
