@@ -1,7 +1,8 @@
 import gym
 import logging
 from types import FunctionType
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, \
+    Type, TypeVar, Union
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
@@ -14,6 +15,9 @@ from ray.rllib.policy import Policy
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import PolicyID, TrainerConfigDict, EnvType
+
+if TYPE_CHECKING:
+    from ray.actor import ActorHandle
 
 tf1, tf, tfv = try_import_tf()
 
@@ -29,7 +33,6 @@ class WorkerSet:
 
     There must be one local worker copy, and zero or more remote workers.
     """
-
     def __init__(self,
                  *,
                  env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
@@ -76,9 +79,10 @@ class WorkerSet:
             # If num_workers > 0, get the action_spaces and observation_spaces
             # to not be forced to create an Env on the local worker.
             if self._remote_workers:
-                remote_spaces = ray.get(self.remote_workers(
-                )[0].foreach_policy.remote(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)))
+                remote_spaces = ray.get(
+                    self.remote_workers()[0].foreach_policy.remote(
+                        lambda p, pid:
+                        (pid, p.observation_space, p.action_space)))
                 spaces = {
                     e[0]: (getattr(e[1], "original_space", e[1]), e[2])
                     for e in remote_spaces
@@ -131,14 +135,14 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-            self._make_worker(
-                cls=cls,
-                env_creator=self._env_creator,
-                validate_env=None,
-                policy_cls=self._policy_class,
-                worker_index=i + 1,
-                num_workers=num_workers,
-                config=self._remote_config) for i in range(num_workers)
+            self._make_worker(cls=cls,
+                              env_creator=self._env_creator,
+                              validate_env=None,
+                              policy_cls=self._policy_class,
+                              worker_index=i + 1,
+                              num_workers=num_workers,
+                              config=self._remote_config)
+            for i in range(num_workers)
         ])
 
     def reset(self, new_remote_workers: List["ActorHandle"]) -> None:
@@ -230,46 +234,45 @@ class WorkerSet:
     @staticmethod
     def _from_existing(local_worker: RolloutWorker,
                        remote_workers: List["ActorHandle"] = None):
-        workers = WorkerSet(
-            env_creator=None,
-            policy_class=None,
-            trainer_config={},
-            _setup=False)
+        workers = WorkerSet(env_creator=None,
+                            policy_class=None,
+                            trainer_config={},
+                            _setup=False)
         workers._local_worker = local_worker
         workers._remote_workers = remote_workers or []
         return workers
 
     def _make_worker(
-            self,
-            *,
-            cls: Callable,
-            env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType], None]],
-            policy_cls: Type[Policy],
-            worker_index: int,
-            num_workers: int,
-            config: TrainerConfigDict,
-            spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
-                                                  gym.spaces.Space]]] = None,
+        self,
+        *,
+        cls: Callable,
+        env_creator: Callable[[EnvContext], EnvType],
+        validate_env: Optional[Callable[[EnvType], None]],
+        policy_cls: Type[Policy],
+        worker_index: int,
+        num_workers: int,
+        config: TrainerConfigDict,
+        spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
+                                              gym.spaces.Space]]] = None,
     ) -> Union[RolloutWorker, "ActorHandle"]:
         def session_creator():
             logger.debug("Creating TF session {}".format(
                 config["tf_session_args"]))
-            return tf1.Session(
-                config=tf1.ConfigProto(**config["tf_session_args"]))
+            return tf1.Session(config=tf1.ConfigProto(
+                **config["tf_session_args"]))
 
         if isinstance(config["input"], FunctionType):
             input_creator = config["input"]
         elif config["input"] == "sampler":
             input_creator = (lambda ioctx: ioctx.default_sampler_input())
         elif isinstance(config["input"], dict):
-            input_creator = (lambda ioctx: ShuffledInput(
-                MixedInput(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(MixedInput(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
         else:
-            input_creator = (lambda ioctx: ShuffledInput(
-                JsonReader(config["input"], ioctx), config[
-                    "shuffle_buffer_size"]))
+            input_creator = (
+                lambda ioctx: ShuffledInput(JsonReader(config["input"], ioctx),
+                                            config["shuffle_buffer_size"]))
 
         if isinstance(config["output"], FunctionType):
             output_creator = config["output"]
@@ -351,8 +354,8 @@ class WorkerSet:
             remote_env_batch_wait_ms=config["remote_env_batch_wait_ms"],
             soft_horizon=config["soft_horizon"],
             no_done_at_end=config["no_done_at_end"],
-            seed=(config["seed"] + worker_index)
-            if config["seed"] is not None else None,
+            seed=(config["seed"] +
+                  worker_index) if config["seed"] is not None else None,
             fake_sampler=config["fake_sampler"],
             extra_python_environs=extra_python_environs,
             spaces=spaces,
