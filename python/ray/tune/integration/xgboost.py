@@ -74,7 +74,7 @@ class TuneReportCallback(TuneCallback):
             # xgboost>=1.3
             result_dict = flatten_dict(evals_log, delimiter="-")
             for k in list(result_dict):
-                result_dict[k] = result_dict[k][0]
+                result_dict[k] = result_dict[k][-1]
         else:
             # xgboost<1.3
             result_dict = dict(evals_log)
