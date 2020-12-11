@@ -661,7 +661,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # still 1 head node because request_resources fits in the headnode.
         self.waitForNodes(1)
-        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}] + [{"CPU": 2}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{
+            "CPU": 1
+        }] + [{
+            "CPU": 2
+        }] * 9)
         autoscaler.update()
         self.waitForNodes(2)  # Adds a single worker to get its resources.
         autoscaler.update()
@@ -1088,7 +1092,8 @@ class AutoscalingTest(unittest.TestCase):
         def do_nothing(*args, **kwargs):
             pass
 
-        cli_logger._print = type(cli_logger._print)(do_nothing,type(cli_logger))
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
 
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
