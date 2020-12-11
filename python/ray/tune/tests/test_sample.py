@@ -737,25 +737,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
-    def _testPointsToEvaluate(self, cls, **kwargs):
-        config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
-        }
-
-        points_to_evaluate = [{
-            "metric": 1,
-            "a": "t1",
-            "b": 1,
-            "c": 1e-1
-        }, {
-            "metric": 2,
-            "a": "t2",
-            "b": 2,
-            "c": 1e-2
-        }]
+    def _testPointsToEvaluate(self, cls, config, **kwargs):
+        points_to_evaluate = [{k: v.sample()
+                               for k, v in config.items()} for _ in range(2)]
 
         searcher = cls(points_to_evaluate=points_to_evaluate, **kwargs)
 
@@ -778,14 +762,28 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertDictEqual(trial_config_dict, points_to_evaluate[i])
 
     def testPointsToEvaluateAx(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
         from ray.tune.suggest.ax import AxSearch
-        return self._testPointsToEvaluate(AxSearch)
+        return self._testPointsToEvaluate(AxSearch, config)
 
     def testPointsToEvaluateNevergrad(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
         return self._testPointsToEvaluate(
-            NevergradSearch, optimizer=ng.optimizers.OnePlusOne)
+            NevergradSearch, config, optimizer=ng.optimizers.OnePlusOne)
 
 
 if __name__ == "__main__":
