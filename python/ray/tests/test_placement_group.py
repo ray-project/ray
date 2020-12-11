@@ -682,7 +682,8 @@ def test_atomic_creation(ray_start_cluster):
     tasks = [bothering_task.remote() for _ in range(2)]
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
-    # The reason we sleep here is we must make sure bothering_task will schedule first.
+    # The reason we sleep here is we must make sure bothering_task
+    # will schedule first.
     time.sleep(2)
     pg = ray.util.placement_group(
         name="name",
