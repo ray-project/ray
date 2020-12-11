@@ -233,13 +233,45 @@ However, should you need to build from source, follow :ref:`these instructions f
 Docker Source Images
 --------------------
 
-Most users should pull a Docker image from the Ray Docker Hub.
+Most users should pull a Docker image from the `Ray Docker Hub. <https://hub.docker.com/r/rayproject/>`_
 
-- The ``rayproject/ray`` image has ray and all required dependencies. It comes with anaconda and Python 3.7.
-- The ``rayproject/autoscaler`` image has the above features as well as many additional libraries.
+- The ``rayproject/ray`` `image has ray and all required dependencies. It comes with anaconda and Python 3.7. <https://hub.docker.com/r/rayproject/ray>`_
+- The ``rayproject/ray-ml`` `image has the above features as well as many additional libraries. <https://hub.docker.com/r/rayproject/ray-ml>`_
 - The ``rayproject/base-deps`` and ``rayproject/ray-deps`` are for the linux and python dependencies respectively.
 
-These images are tagged by their release number (or commit hash for nightlies) as well as a ``"-gpu"`` if they are GPU compatible.
+Image releases are `tagged` using the following format:
+
+
+.. list-table:: 
+   :widths: 25 50
+   :header-rows: 1
+
+   * - Tag
+     - Description
+   * - latest
+     - The most recent Ray release.
+   * - 1.x.x
+     - A specific Ray release.
+   * - nightly
+     - The most recent Ray build (the most recent commit on Github ``master``)
+   * - Git SHA 
+     - A specific nightly build (uses a SHA from the Github ``master``).
+
+
+Each tag has `variants` that add or change functionality:
+
+.. list-table:: 
+   :widths: 16 40
+   :header-rows: 1
+
+   * - Variant
+     - Description
+   * - -gpu
+     - These are based off of an NVIDIA CUDA image. They require the Nvidia Docker Runtime.
+   * - -cpu
+     - These are based off of an Ubuntu image.
+   * - <no tag>
+     - Aliases to ``-cpu`` tagged images
 
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:
