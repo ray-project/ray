@@ -105,7 +105,9 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 int64_t LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  if (!RayConfig::instance().automatic_object_spilling_enabled()) {
+  // If object spilling is not configured, there's no space to create by spilling.
+  if (RayConfig::instance().object_spilling_config().empty() ||
+      !RayConfig::instance().automatic_object_spilling_enabled()) {
     return 0;
   }
   absl::MutexLock lock(&mutex_);
