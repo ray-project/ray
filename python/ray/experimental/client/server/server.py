@@ -62,25 +62,18 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def Terminate(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":
-            object_ref = cloudpickle.loads(request.task_object.handle)
             try:
-                obj = self.object_refs.get(object_ref.binary(), None)
-                if obj is None:
-                    return ray_client_pb2.TerminateResponse(ok=False)
+                object_ref = cloudpickle.loads(request.task_object.handle)
                 ray.cancel(
-                    obj,
+                    object_ref,
                     force=request.task_object.force,
                     recursive=request.task_object.recursive)
-                del self.object_refs[object_ref.binary()]
             except Exception as e:
                 return_exception_in_context(e, context)
         elif request.WhichOneof("terminate_type") == "actor":
             try:
-                actor = self.actor_refs.get(request.actor.handle, None)
-                if actor is None:
-                    return ray_client_pb2.TerminateResponse(ok=False)
-                ray.kill(actor, no_restart=request.actor.no_restart)
-                del self.actor_refs[request.actor.handle]
+                actor_ref = cloudpickle.loads(request.actor.handle)
+                ray.kill(actor_ref, no_restart=request.actor.no_restart)
             except Exception as e:
                 return_exception_in_context(e, context)
         else:
