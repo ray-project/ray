@@ -101,11 +101,11 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
 
 Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
-    RAY_LOG(ERROR) << "[ProcessRequests] queue size: " << queue_.size();
     auto request_it = queue_.begin();
     auto status = ProcessRequest(*request_it);
     if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
       if (!spill_objects_callback_()) {
+        RAY_LOG(ERROR) << "Cannot spill any more, raise OOM.";
         status = Status::ObjectStoreFull("Object store full.");
       }
       return status;

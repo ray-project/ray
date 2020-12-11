@@ -147,14 +147,14 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
     it++;
   }
   if (!objects_to_spill.empty()) {
-    RAY_LOG(INFO) << "Spilling objects of total size " << bytes_to_spill;
+    RAY_LOG(ERROR) << "Spilling objects of total size " << bytes_to_spill << " num objects " << objects_to_spill.size();
     auto start_time = current_time_ms();
     SpillObjectsInternal(
         objects_to_spill, [bytes_to_spill, start_time](const Status &status) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
           } else {
-            RAY_LOG(INFO) << "Spilled " << bytes_to_spill << " in "
+            RAY_LOG(ERROR) << "Spilled " << bytes_to_spill << " in "
                           << (current_time_ms() - start_time) << "ms";
           }
         });
