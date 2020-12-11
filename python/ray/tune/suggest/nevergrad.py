@@ -54,7 +54,7 @@ class NevergradSearch(Searcher):
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
-            for future parameters. Needs to be a list of dict containing the
+            for future parameters. Needs to be a list of dicts containing the
             configurations.
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.

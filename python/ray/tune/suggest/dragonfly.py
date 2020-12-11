@@ -71,7 +71,7 @@ class DragonflySearch(Searcher):
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
-            for future parameters. Needs to be a list of dict containing the
+            for future parameters. Needs to be a list of dicts containing the
             configurations.
         evaluated_rewards (list): If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
@@ -166,12 +166,16 @@ class DragonflySearch(Searcher):
                 space = self.convert_search_space(space)
 
         self._space = space
-        self._points_to_evaluate = [
-            config["point"] for config in points_to_evaluate
-        ]
+        if points_to_evaluate:
+            self._points_to_evaluate = [
+                list(config.values()) for config in points_to_evaluate
+            ]
+        else:
+            self._points_to_evaluate = []
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
+        self._point_parameter_names = []
 
         self._opt = None
         if isinstance(optimizer, BlackboxOptimiser):
@@ -207,6 +211,8 @@ class DragonflySearch(Searcher):
             raise ValueError(
                 "You have to set a `domain` when initializing dragonfly. "
                 "Choose one of [Cartesian, Euclidean].")
+
+        self._point_parameter_names = [param["name"] for param in self._space]
 
         if self._domain.lower().startswith("cartesian"):
             function_caller_cls = CPFunctionCaller
@@ -308,7 +314,9 @@ class DragonflySearch(Searcher):
                     "parallelism in the experiment: %s", str(exc))
                 return None
         self._live_trial_mapping[trial_id] = suggested_config
-        return {"point": suggested_config}
+
+        return dict(zip(self._point_parameter_names, suggested_config))
+        # return {"point": suggested_config}
 
     def on_trial_complete(self,
                           trial_id: str,
