@@ -120,6 +120,34 @@ void GcsNodeManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
+void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
+                                             rpc::SetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto on_done = [reply, send_reply_callback, request](const Status &status) {
+    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
+                                                             request.config(), on_done));
+  ++counts_[CountType::SET_INTERNAL_CONFIG_REQUEST];
+}
+
+void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                                             rpc::GetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto get_system_config = [reply, send_reply_callback](
+                               const ray::Status &status,
+                               const boost::optional<rpc::StoredConfig> &config) {
+    if (config.has_value()) {
+      reply->mutable_config()->CopyFrom(config.get());
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(
+      gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
+  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
+}
+
 void GcsNodeManager::HandleGetAllResourceUsage(
     const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -167,34 +195,6 @@ void GcsNodeManager::HandleGetAllResourceUsage(
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
-}
-
-void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
-                                             rpc::SetInternalConfigReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
-  auto on_done = [reply, send_reply_callback, request](const Status &status) {
-    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
-                                                             request.config(), on_done));
-  ++counts_[CountType::SET_INTERNAL_CONFIG_REQUEST];
-}
-
-void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
-                                             rpc::GetInternalConfigReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
-  auto get_system_config = [reply, send_reply_callback](
-                               const ray::Status &status,
-                               const boost::optional<rpc::StoredConfig> &config) {
-    if (config.has_value()) {
-      reply->mutable_config()->CopyFrom(config.get());
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  RAY_CHECK_OK(
-      gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
-  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
 }
 
 void GcsNodeManager::UpdateNodeResourceUsage(
