@@ -375,7 +375,7 @@ def address_to_ip(address):
     return ":".join([ip_address] + address_parts[1:])
 
 
-def node_ip_address_from_perspective(address="8.8.8.8:53"):
+def node_ip_address_from_perspective(address):
     """IP address by which the local node can be reached *from* the `address`.
 
     Args:
