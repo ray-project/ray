@@ -44,16 +44,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   virtual ~GcsResourceManager() {}
 
-  /// Handle report resource usage rpc come from raylet.
-  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
-                                 rpc::ReportResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle get all resource usage rpc request.
-  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
-                                 rpc::GetAllResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle get resource rpc request.
   void HandleGetResources(const rpc::GetResourcesRequest &request,
                           rpc::GetResourcesReply *reply,
@@ -112,13 +102,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \return True if release resources successfully. False otherwise.
   bool ReleaseResources(const NodeID &node_id, const ResourceSet &acquired_resources);
 
-  /// Update the placement group load information so that it will be reported through
-  /// heartbeat.
-  ///
-  /// \param placement_group_load placement group load protobuf.
-  void UpdatePlacementGroupLoad(
-      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
-
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
@@ -136,8 +119,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Map from node id to the resources of the node.
   absl::flat_hash_map<NodeID, ResourceSet> cluster_scheduling_resources_;
-  /// Placement group load information that is used for autoscaler.
-  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   /// Debug info.
   enum CountType {

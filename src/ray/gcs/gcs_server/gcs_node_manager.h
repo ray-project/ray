@@ -60,6 +60,16 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle report resource usage rpc come from raylet.
+  void HandleReportResourceUsage(const rpc::ReportResourceUsageRequest &request,
+                                 rpc::ReportResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all resource usage rpc request.
+  void HandleGetAllResourceUsage(const rpc::GetAllResourceUsageRequest &request,
+                                 rpc::GetAllResourceUsageReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle set internal config.
   void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                rpc::SetInternalConfigReply *reply,
@@ -135,6 +145,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void UpdateNodeRealtimeResources(const NodeID &node_id,
                                    const rpc::ResourcesData &heartbeat);
 
+  /// Update the placement group load information so that it will be reported through
+  /// heartbeat.
+  ///
+  /// \param placement_group_load placement group load protobuf.
+  void UpdatePlacementGroupLoad(
+      const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load);
+
   std::string DebugString() const;
 
  private:
@@ -174,6 +191,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Gcs resource manager.
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
+  /// Placement group load information that is used for autoscaler.
+  absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
   // Debug info.
   enum CountType {

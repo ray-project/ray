@@ -163,6 +163,11 @@ class GcsRpcClient {
 
   /// Report resource usage of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
+                             node_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
+                             node_info_grpc_client_, )
 
   /// Set internal config of the cluster in the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
@@ -171,14 +176,6 @@ class GcsRpcClient {
   /// Get internal config of the node from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
-
-  /// Report resource usage of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, ReportResourceUsage,
-                             node_resource_info_grpc_client_, )
-
-  /// Get resource usage of all nodes from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllResourceUsage,
-                             node_resource_info_grpc_client_, )
 
   /// Get node's resources from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetResources,

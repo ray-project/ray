@@ -183,6 +183,14 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
+                                         ReportResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
                                        SetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -211,6 +219,8 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
     NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
@@ -225,14 +235,6 @@ class NodeInfoGrpcService : public GrpcService {
 class NodeResourceInfoGcsServiceHandler {
  public:
   virtual ~NodeResourceInfoGcsServiceHandler() = default;
-
-  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
-                                         GetAllResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetResources(const GetResourcesRequest &request,
                                   GetResourcesReply *reply,
@@ -268,8 +270,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
