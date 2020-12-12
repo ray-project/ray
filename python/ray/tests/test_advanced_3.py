@@ -21,7 +21,8 @@ import setproctitle
 import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,13 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-def test_load_balancing_with_dependencies(ray_start_cluster):
+@pytest.mark.parametrize("fast", [True, False])
+def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+    if fast and new_scheduler_enabled:
+        # Load-balancing on new scheduler can be inefficient if (task
+        # duration:heartbeat interval) is small enough.
+        pytest.skip()
+
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -104,7 +111,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
+        if fast:
+            time.sleep(0.010)
+        else:
+            time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
@@ -474,16 +484,6 @@ def test_decorated_function(ray_start_regular):
     assert ray.get(result_id) == (3, 2, 1, 5)
 
 
-def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_refs, values):
-        return [value for value in values if value > 0]
-
-    ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
-
-    assert ray.get(
-        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
-
-
 def test_export_after_shutdown(ray_start_regular):
     # This test checks that we can use actor and remote function definitions
     # across multiple Ray sessions.
@@ -610,9 +610,10 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    time.sleep(
-        1)  # Sleep for an amount longer than the reconstruction timeout.
-    assert len(ray.objects()) == 0, ray.objects()
+    def _no_objects():
+        return len(ray.objects()) == 0
+
+    wait_for_condition(_no_objects, timeout=10)
 
 
 @pytest.mark.parametrize(

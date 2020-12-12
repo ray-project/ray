@@ -49,7 +49,7 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     ComputeResources();
   }
   // Return the bundle_id
-  std::pair<PlacementGroupID, int64_t> BundleId() const;
+  BundleID BundleId() const;
 
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;

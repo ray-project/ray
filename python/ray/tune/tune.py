@@ -189,9 +189,9 @@ def run(
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
             This has no effect when using the Functional Training API.
-        verbose (int): 0, 1, 2, or 3. Verbosity mode. 0 = silent,
-            1 = only status updates, 2 = status and brief trial results,
-            3 = status and detailed trial results. Defaults to 3.
+        verbose (Union[int, Verbosity]): 0, 1, 2, or 3. Verbosity mode.
+            0 = silent, 1 = only status updates, 2 = status and brief trial
+            results, 3 = status and detailed trial results. Defaults to 3.
         progress_reporter (ProgressReporter): Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -248,7 +248,7 @@ def run(
             trial (of ERROR state) when the experiments complete.
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
-            ``ray.tune.trial_runner.Callback`` class. If not passed,
+            ``ray.tune.callback.Callback`` class. If not passed,
             `LoggerCallback` and `SyncerCallback` callbacks are automatically
             added.
 

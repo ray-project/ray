@@ -1,6 +1,28 @@
-import ray.experimental.client as ray
+from ray.experimental.client import ray
+from typing import Tuple
 
 ray.connect("localhost:50051")
+
+
+@ray.remote
+class HelloActor:
+    def __init__(self):
+        self.count = 0
+
+    def say_hello(self, whom: str) -> Tuple[str, int]:
+        self.count += 1
+        return ("Hello " + whom, self.count)
+
+
+actor = HelloActor.remote()
+s, count = ray.get(actor.say_hello.remote("you"))
+print(s, count)
+assert s == "Hello you"
+assert count == 1
+s, count = ray.get(actor.say_hello.remote("world"))
+print(s, count)
+assert s == "Hello world"
+assert count == 2
 
 
 @ray.remote
@@ -18,6 +40,14 @@ def fact(x):
     # So we're on the right track!
     return ray.get(fact.remote(x - 1)) * x
 
+
+@ray.remote
+def get_nodes():
+    return ray.nodes()  # Can access the full Ray API in remote methods.
+
+
+print("Cluster nodes", ray.get(get_nodes.remote()))
+print(ray.nodes())
 
 objectref = ray.put("hello world")
 
@@ -43,3 +73,18 @@ print(ray.get(ref3))
 ref4 = fact.remote(5)
 # `120`
 print(ray.get(ref4))
+
+ref5 = fact.remote(10)
+
+print([ref2, ref3, ref4, ref5])
+# should return ref2, ref3, ref4
+res = ray.wait([ref5, ref2, ref3, ref4], num_returns=3)
+print(res)
+assert [ref2, ref3, ref4] == res[0]
+assert [ref5] == res[1]
+
+# should return ref2, ref3, ref4, ref5
+res = ray.wait([ref2, ref3, ref4, ref5], num_returns=4)
+print(res)
+assert [ref2, ref3, ref4, ref5] == res[0]
+assert [] == res[1]

@@ -98,17 +98,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncUnsubscribe(const ActorID &actor_id) override;
 
-  Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
-                            const StatusCallback &callback) override;
-
-  Status AsyncGetCheckpoint(
-      const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointData> &callback) override;
-
-  Status AsyncGetCheckpointID(
-      const ActorID &actor_id,
-      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
-
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
   bool IsActorUnsubscribed(const ActorID &actor_id) override;
@@ -147,7 +136,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~ServiceBasedNodeInfoAccessor() = default;
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+                      const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
@@ -192,13 +182,19 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
-  void AsyncReReportHeartbeat() override;
+  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+                                  const StatusCallback &callback) override;
 
-  Status AsyncGetAllHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override;
+  void AsyncReReportResourceUsage() override;
 
-  Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+  /// Fill resource fields with cached resources. Used by light resource usage report.
+  void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
+
+  Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override;
+
+  Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
       const StatusCallback &done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
@@ -215,18 +211,18 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// server restarts from a failure.
   SubscribeOperation subscribe_node_operation_;
   SubscribeOperation subscribe_resource_operation_;
-  SubscribeOperation subscribe_batch_heartbeat_operation_;
+  SubscribeOperation subscribe_batch_resource_usage_operation_;
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
 
-  // Mutex to protect the cached_heartbeat_ field.
+  // Mutex to protect the cached_resource_usage_ field.
   absl::Mutex mutex_;
 
-  /// Save the heartbeat data, so we can resend it again when GCS server restarts from a
-  /// failure.
-  rpc::ReportHeartbeatRequest cached_heartbeat_ GUARDED_BY(mutex_);
+  /// Save the resource usage data, so we can resend it again when GCS server restarts
+  /// from a failure.
+  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
 
   void HandleNotification(const GcsNodeInfo &node_info);
 
@@ -458,6 +454,9 @@ class ServiceBasedPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
+                             const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_;

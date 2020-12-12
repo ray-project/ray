@@ -79,11 +79,12 @@ class ObjectRecoveryManager {
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
   ///
-  /// \return OK if recovery for the object has successfully started, Invalid
-  /// if the object is not recoverable because we do not own it. Note that the
-  /// Status::OK value only indicates that the recovery operation has started,
-  /// but does not guarantee that the recovery operation is successful.
-  Status RecoverObject(const ObjectID &object_id);
+  /// \return True if recovery for the object has successfully started, false
+  /// if the object is not recoverable because we do not have any metadata
+  /// about the object. If this returns true, then eventually recovery will
+  /// either succeed (a value will be put into the memory store) or fail (the
+  /// reconstruction failure callback will be called for this object).
+  bool RecoverObject(const ObjectID &object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that

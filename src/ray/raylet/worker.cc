@@ -38,7 +38,7 @@ Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &l
       port_(-1),
       connection_(connection),
       assigned_job_id_(job_id),
-      placement_group_id_(PlacementGroupID::Nil()),
+      bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
@@ -111,11 +111,6 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignJobId(const JobID &job_id) {
-  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
-  assigned_job_id_ = job_id;
-}
-
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
@@ -182,13 +177,9 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
       });
 }
 
-const PlacementGroupID &Worker::GetPlacementGroupId() const {
-  return placement_group_id_;
-}
+const BundleID &Worker::GetBundleId() const { return bundle_id_; }
 
-void Worker::SetPlacementGroupId(const PlacementGroupID &placement_group_id) {
-  placement_group_id_ = placement_group_id;
-}
+void Worker::SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
 }  // namespace raylet
 

@@ -1,12 +1,12 @@
+from typing import List, Optional
+
 import logging
 import os
-from typing import List, Optional
 
 from ray.tune.callback import Callback
 from ray.tune.progress_reporter import TrialProgressCallback
-from ray.tune.syncer import SyncConfig
-from ray.tune.logger import CSVLoggerCallback, CSVLogger, \
-    LoggerCallback, \
+from ray.tune.syncer import SyncConfig, detect_sync_to_driver
+from ray.tune.logger import CSVLoggerCallback, CSVLogger, LoggerCallback, \
     JsonLoggerCallback, JsonLogger, LegacyLoggerCallback, Logger, \
     TBXLoggerCallback, TBXLogger
 from ray.tune.syncer import SyncerCallback
@@ -115,8 +115,11 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     # If no SyncerCallback was found, add
     if not has_syncer_callback and os.environ.get(
             "TUNE_DISABLE_AUTO_CALLBACK_SYNCER", "0") != "1":
-        syncer_callback = SyncerCallback(
-            sync_function=sync_config.sync_to_driver)
+
+        # Detect Docker and Kubernetes environments
+        _sync_to_driver = detect_sync_to_driver(sync_config.sync_to_driver)
+
+        syncer_callback = SyncerCallback(sync_function=_sync_to_driver)
         callbacks.append(syncer_callback)
         syncer_index = len(callbacks) - 1
 

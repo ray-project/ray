@@ -77,11 +77,6 @@ class GlobalStateAccessorTest : public ::testing::Test {
     TestSetupUtil::FlushAllRedisServers();
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
-  }
-
   // GCS server.
   gcs::GcsServerConfig config;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -191,12 +186,11 @@ TEST_F(GlobalStateAccessorTest, TestInternalConfig) {
   }
 }
 
-TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
-  std::unique_ptr<std::string> heartbeats = global_state_->GetAllHeartbeat();
-  rpc::HeartbeatBatchTableData heartbeat_batch_data;
-  heartbeat_batch_data.ParseFromString(*heartbeats.get());
-
-  ASSERT_EQ(heartbeat_batch_data.batch_size(), 0);
+TEST_F(GlobalStateAccessorTest, TestGetAllResourceUsage) {
+  std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
+  rpc::ResourceUsageBatchData resource_usage_batch_data;
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 0);
 
   auto node_table_data = Mocker::GenNodeInfo();
   std::promise<bool> promise;
@@ -206,67 +200,68 @@ TEST_F(GlobalStateAccessorTest, TestGetAllHeartbeat) {
   auto node_table = global_state_->GetAllNodeInfo();
   ASSERT_EQ(node_table.size(), 1);
 
-  // Report heartbeat first time.
+  // Report resource usage first time.
   std::promise<bool> promise1;
-  auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_client_id(node_table_data->node_id());
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
-      heartbeat1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
+  auto resources1 = std::make_shared<rpc::ResourcesData>();
+  resources1->set_node_id(node_table_data->node_id());
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+      resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
   WaitReady(promise1.get_future(), timeout_ms_);
 
-  heartbeats = global_state_->GetAllHeartbeat();
-  heartbeat_batch_data.ParseFromString(*heartbeats.get());
-  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
 
-  // Report heartbeat with resources changed.
+  // Report changed resource usage.
   std::promise<bool> promise2;
-  auto heartbeat2 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat2->set_client_id(node_table_data->node_id());
+  auto heartbeat2 = std::make_shared<rpc::ResourcesData>();
+  heartbeat2->set_node_id(node_table_data->node_id());
   (*heartbeat2->mutable_resources_total())["CPU"] = 1;
   (*heartbeat2->mutable_resources_total())["GPU"] = 10;
   heartbeat2->set_resources_available_changed(true);
   (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
       heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
   WaitReady(promise2.get_future(), timeout_ms_);
 
-  heartbeats = global_state_->GetAllHeartbeat();
-  heartbeat_batch_data.ParseFromString(*heartbeats.get());
-  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
-  auto heartbeat_data = heartbeat_batch_data.mutable_batch()->at(0);
-  ASSERT_EQ(heartbeat_data.resources_total_size(), 2);
-  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["CPU"], 1.0);
-  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["GPU"], 10.0);
-  ASSERT_EQ(heartbeat_data.resources_available_size(), 1);
-  ASSERT_EQ((*heartbeat_data.mutable_resources_available())["GPU"], 5.0);
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  auto resources_data = resource_usage_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(resources_data.resources_total_size(), 2);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(resources_data.resources_available_size(), 1);
+  ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
 
-  // Report heartbeat with resources unchanged. (Only works with light heartbeat enabled)
+  // Report unchanged resource usage. (Only works with light resource usage report
+  // enabled)
   std::promise<bool> promise3;
-  auto heartbeat3 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat3->set_client_id(node_table_data->node_id());
+  auto heartbeat3 = std::make_shared<rpc::ResourcesData>();
+  heartbeat3->set_node_id(node_table_data->node_id());
   (*heartbeat3->mutable_resources_available())["CPU"] = 1;
   (*heartbeat3->mutable_resources_available())["GPU"] = 6;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
       heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
   WaitReady(promise3.get_future(), timeout_ms_);
 
-  heartbeats = global_state_->GetAllHeartbeat();
-  heartbeat_batch_data.ParseFromString(*heartbeats.get());
-  ASSERT_EQ(heartbeat_batch_data.batch_size(), 1);
-  heartbeat_data = heartbeat_batch_data.mutable_batch()->at(0);
-  ASSERT_EQ(heartbeat_data.resources_total_size(), 2);
-  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["CPU"], 1.0);
-  ASSERT_EQ((*heartbeat_data.mutable_resources_total())["GPU"], 10.0);
-  ASSERT_EQ(heartbeat_data.resources_available_size(), 1);
-  ASSERT_EQ((*heartbeat_data.mutable_resources_available())["GPU"], 5.0);
+  resources = global_state_->GetAllResourceUsage();
+  resource_usage_batch_data.ParseFromString(*resources.get());
+  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
+  resources_data = resource_usage_batch_data.mutable_batch()->at(0);
+  ASSERT_EQ(resources_data.resources_total_size(), 2);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
+  ASSERT_EQ(resources_data.resources_available_size(), 1);
+  ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
 }
 
 TEST_F(GlobalStateAccessorTest, TestProfileTable) {
   int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
   ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
   for (int index = 0; index < profile_count; ++index) {
-    auto client_id = NodeID::FromRandom();
-    auto profile_table_data = Mocker::GenProfileTableData(client_id);
+    auto node_id = NodeID::FromRandom();
+    auto profile_table_data = Mocker::GenProfileTableData(node_id);
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
         profile_table_data,

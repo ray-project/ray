@@ -60,8 +60,6 @@ class WorkerInterface {
   virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  virtual void AssignJobId(const JobID &job_id) = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -83,8 +81,8 @@ class WorkerInterface {
 
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
-  virtual const PlacementGroupID &GetPlacementGroupId() const = 0;
-  virtual void SetPlacementGroupId(const PlacementGroupID &placement_group_id) = 0;
+  virtual const BundleID &GetBundleId() const = 0;
+  virtual void SetBundleId(const BundleID &bundle_id) = 0;
 
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
@@ -151,8 +149,6 @@ class Worker : public WorkerInterface {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
@@ -174,8 +170,8 @@ class Worker : public WorkerInterface {
 
   void DirectActorCallArgWaitComplete(int64_t tag);
 
-  const PlacementGroupID &GetPlacementGroupId() const;
-  void SetPlacementGroupId(const PlacementGroupID &placement_group_id);
+  const BundleID &GetBundleId() const;
+  void SetBundleId(const BundleID &bundle_id);
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
@@ -245,9 +241,9 @@ class Worker : public WorkerInterface {
   JobID assigned_job_id_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
-  /// The worker's placement group ID. It is used to detect if the worker is
-  /// associated with a placement group.
-  PlacementGroupID placement_group_id_;
+  /// The worker's placement group bundle. It is used to detect if the worker is
+  /// associated with a placement group bundle.
+  BundleID bundle_id_;
   /// Whether the worker is dead.
   bool dead_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
