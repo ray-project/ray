@@ -126,8 +126,7 @@ class LocalObjectManager {
   /// \return The number of bytes of space still required after the
   /// spill is complete. This return the value is less than 0 if it satifies the
   /// min_bytes_to_spill.
-  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill, int64_t min_bytes_to_spill)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool SpillObjectsOfSize(int64_t num_bytes_to_spill) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Spill object as much as min_spilling_size_.
   ///
@@ -234,6 +233,7 @@ class LocalObjectManager {
 
   int64_t num_active_workers_;
   int64_t max_active_workers_;
+  int64_t last_spill_success_ns_ = 0;
 };
 
 };  // namespace raylet

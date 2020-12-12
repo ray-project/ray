@@ -77,7 +77,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   return {result, error};
 }
 
-Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
+bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
   // Return an OOM error to the client if we have hit the maximum number of
   // retries.
   bool evict_if_full = evict_if_full_;
@@ -88,30 +88,23 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     // Always try to evict after the first attempt.
     evict_if_full = true;
   }
-
   request->error = request->create_callback(evict_if_full, &request->result);
-  Status status;
-  if (request->error != PlasmaError::OK) {
-    status =
-        Status::TransientObjectStoreFull("Object store full, queueing creation request");
-  }
-
-  return status;
+  return request->error == PlasmaError::OK;
 }
 
 Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
-    auto status = ProcessRequest(*request_it);
-    if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
-      if (!spill_objects_callback_()) {
-        RAY_LOG(ERROR) << "Cannot spill any more, raise OOM.";
-        FinishRequest(request_it);
-        status = Status::ObjectStoreFull("Object store full.");
-      }
-      return status;
+    auto create_ok = ProcessRequest(*request_it);
+    if (create_ok) {
+      FinishRequest(request_it);
+    } else if (spill_objects_callback_()) {
+      return Status::TransientObjectStoreFull("Waiting for spilling.");
+    } else {
+      RAY_LOG(ERROR) << "Cannot spill any more, raise OOM.";
+      FinishRequest(request_it);
+      return Status::ObjectStoreFull("Object store full.");
     }
-    FinishRequest(request_it);
   }
   // SANG-TODO Get memory usage callback here.
   return Status::OK();
