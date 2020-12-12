@@ -106,6 +106,7 @@ Status CreateRequestQueue::ProcessRequests() {
     if (status.IsTransientObjectStoreFull() || status.IsObjectStoreFull()) {
       if (!spill_objects_callback_()) {
         RAY_LOG(ERROR) << "Cannot spill any more, raise OOM.";
+        FinishRequest(request_it);
         status = Status::ObjectStoreFull("Object store full.");
       }
       return status;
