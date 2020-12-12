@@ -38,7 +38,28 @@ install_base() {
       pkg_install_helper build-essential curl unzip libunwind-dev python3-pip python3-setuptools \
         tmux gdb
       if [ "${LINUX_WHEELS-}" = 1 ]; then
-        pkg_install_helper docker
+        # Travis already has docker-ce 18.06 installed.
+        # If we install docker.io instead, it will stop the Docker service.
+        # Removing docker-ce (18.06.0~ce~3-0~ubuntu) ...
+        # Selecting previously unselected package containerd.
+        # Selecting previously unselected package docker.io.
+        # Created symlink /etc/systemd/system/multi-user.target.wants/containerd.service → /lib/systemd/system/containerd.service.
+        # Setting up docker.io (19.03.6-0ubuntu1~18.04.2) ...
+        # docker.service is a disabled or a static unit, not starting it.
+        # Job for docker.socket failed.
+        # And then when you try to use Docker:
+        # Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+        # There are ways to fix that, but it would be simpler to upgrade what they already have.
+        # Unfortunately, whatever Travis is doing with the cache/index, docker-ce-cli and containerd.io are not available:
+        # Unable to locate package docker-ce-cli
+        # Unable to locate package containerd.io
+        # And if we just apt-get install --assume-yes docker-ce, on bionic, we can't get anything newer than 18.06.
+        # And upgrading to focal breaks the build.
+        # So to use the newer Docker features, we'll have to go through the whole process.
+        # https://packages.ubuntu.com/bionic/docker.io
+        sudo apt-get install --assume-yes docker.io
+        sudo systemctl unmask docker
+        sudo systemctl restart docker
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
         fi
@@ -192,7 +213,7 @@ install_nvm() {
   fi
 }
 
-install_pip() {
+install_upgrade_pip() {
   local python=python
   if command -v python3 > /dev/null; then
     python=python3
@@ -237,10 +258,12 @@ install_dependencies() {
   install_base
   install_toolchains
   install_nvm
-  install_pip
+  install_upgrade_pip
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    # Upgrade the miniconda pip.
+    install_upgrade_pip
   fi
 
   # Install modules needed in all jobs.
@@ -278,12 +301,12 @@ install_dependencies() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
-  # Additional RLlib dependencies.
+  # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
     # install the following packages for testing on travis only
@@ -314,8 +337,7 @@ install_dependencies() {
       1.5) TORCHVISION_VERSION=0.6.0;;
       *) TORCHVISION_VERSION=0.5.0;;
     esac
-
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+    pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
       torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
       tensorflow=="${TF_VERSION-2.2.0}" gym
   fi
@@ -331,7 +353,7 @@ install_dependencies() {
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

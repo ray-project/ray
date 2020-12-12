@@ -107,23 +107,6 @@ class RemoteFunction:
                         f"of running '{self._function_name}()', "
                         f"try '{self._function_name}.remote()'.")
 
-    def _submit(self,
-                args=None,
-                kwargs=None,
-                num_returns=None,
-                num_cpus=None,
-                num_gpus=None,
-                resources=None):
-        logger.warning(
-            "WARNING: _submit() is being deprecated. Please use _remote().")
-        return self._remote(
-            args=args,
-            kwargs=kwargs,
-            num_returns=num_returns,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources)
-
     def options(self,
                 args=None,
                 kwargs=None,
@@ -275,8 +258,12 @@ class RemoteFunction:
                 placement_group.id,
                 placement_group_bundle_index,
                 placement_group_capture_child_tasks,
+                worker.debugger_breakpoint,
                 override_environment_variables=override_environment_variables
                 or dict())
+            # Reset worker's debug context from the last "remote" command
+            # (which applies only to this .remote call).
+            worker.debugger_breakpoint = b""
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

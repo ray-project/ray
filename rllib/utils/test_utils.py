@@ -2,8 +2,10 @@ import gym
 import logging
 import numpy as np
 
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
+    try_import_torch
 
+jax, flax = try_import_jax()
 tf1, tf, tfv = try_import_tf()
 if tf1:
     eager_mode = None
@@ -65,7 +67,10 @@ def framework_iterator(config=None,
             logger.warning(
                 "framework_iterator skipping tf2.x (tf version is < 2.0)!")
             continue
-        assert fw in ["tf2", "tf", "tfe", "torch", None]
+        elif fw == "jax" and not jax:
+            logger.warning("framework_iterator skipping JAX (not installed)!")
+            continue
+        assert fw in ["tf2", "tf", "tfe", "torch", "jax", None]
 
         # Do we need a test session?
         sess = None
@@ -243,7 +248,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                         "ERROR: x ({}) is the same as y ({})!".format(x, y)
 
 
-def check_learning_achieved(tune_results, min_reward):
+def check_learning_achieved(tune_results, min_reward, evaluation=False):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
@@ -256,7 +261,10 @@ def check_learning_achieved(tune_results, min_reward):
     Raises:
         ValueError: If `min_reward` not reached.
     """
-    if tune_results.trials[0].last_result["episode_reward_mean"] < min_reward:
+    last_result = tune_results.trials[0].last_result
+    avg_reward = last_result["episode_reward_mean"] if not evaluation else \
+        last_result["evaluation"]["episode_reward_mean"]
+    if avg_reward < min_reward:
         raise ValueError("`stop-reward` of {} not reached!".format(min_reward))
     print("ok")
 

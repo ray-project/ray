@@ -8,6 +8,7 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
+from ray.test_utils import new_scheduler_enabled
 
 from ray._raylet import GlobalStateAccessor
 
@@ -143,6 +144,7 @@ def test_global_state_actor_entry(ray_start_regular):
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_load_report(shutdown_only, max_shapes):
     resource1 = "A"
     resource2 = "B"
@@ -171,13 +173,14 @@ def test_load_report(shutdown_only, max_shapes):
             self.report = None
 
         def check_load_report(self):
-            message = global_state_accessor.get_all_heartbeat()
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
                 message)
-            self.report = heartbeat.resource_load_by_shape.resource_demands
+            self.report = \
+                resource_usage.resource_load_by_shape.resource_demands
             if max_shapes == 0:
                 return True
             elif max_shapes == 2:
@@ -213,6 +216,7 @@ def test_load_report(shutdown_only, max_shapes):
     global_state_accessor.disconnect()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
@@ -224,40 +228,40 @@ def test_placement_group_load_report(ray_start_cluster):
 
     class PgLoadChecker:
         def nothing_is_ready(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 2
             return False
 
         def only_first_one_ready(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 1
             return False
 
         def two_infeasible_pg(self):
-            heartbeat = self._read_heartbeat()
-            if not heartbeat:
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
                 return False
-            if heartbeat.HasField("placement_group_load"):
-                pg_load = heartbeat.placement_group_load
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
                 return len(pg_load.placement_group_data) == 2
             return False
 
-        def _read_heartbeat(self):
-            message = global_state_accessor.get_all_heartbeat()
+        def _read_resource_usage(self):
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
                 message)
-            return heartbeat
+            return resource_usage
 
     checker = PgLoadChecker()
 
@@ -281,6 +285,7 @@ def test_placement_group_load_report(ray_start_cluster):
     global_state_accessor.disconnect()
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
         num_cpus=1, _system_config={
@@ -297,13 +302,14 @@ def test_backlog_report(shutdown_only):
         return None
 
     def backlog_size_set():
-        message = global_state_accessor.get_all_heartbeat()
+        message = global_state_accessor.get_all_resource_usage()
         if message is None:
             return False
 
-        heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
+        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
         aggregate_resource_load = \
-            heartbeat.resource_load_by_shape.resource_demands
+            resource_usage.resource_load_by_shape.resource_demands
         if len(aggregate_resource_load) == 1:
             backlog_size = aggregate_resource_load[0].backlog_size
             print(backlog_size)

@@ -7,6 +7,7 @@ from typing import Union, List, Any, Callable, Type
 import time
 
 import ray
+from ray.actor import ActorHandle
 from ray.async_compat import sync_to_async
 
 from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
@@ -14,9 +15,13 @@ from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Query
-from ray.serve.constants import (DEFAULT_LATENCY_BUCKET_MS,
-                                 BACKEND_RECONFIGURE_METHOD)
+from ray.serve.constants import (
+    BACKEND_RECONFIGURE_METHOD,
+    DEFAULT_LATENCY_BUCKET_MS,
+    LongPollKey,
+)
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -109,14 +114,14 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
             else:
                 _callable = func_or_class(*init_args)
 
+            assert controller_name, "Must provide a valid controller_name"
+            controller_handle = ray.get_actor(controller_name)
             self.backend = RayServeReplica(backend_tag, replica_tag, _callable,
-                                           backend_config, is_function)
+                                           backend_config, is_function,
+                                           controller_handle)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
-
-        def update_config(self, new_config: BackendConfig):
-            return self.backend.update_config(new_config)
 
         def ready(self):
             pass
@@ -145,7 +150,8 @@ class RayServeReplica:
     """Handles requests with the provided callable."""
 
     def __init__(self, backend_tag: str, replica_tag: str, _callable: Callable,
-                 backend_config: BackendConfig, is_function: bool) -> None:
+                 backend_config: BackendConfig, is_function: bool,
+                 controller_handle: ActorHandle) -> None:
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
@@ -164,6 +170,10 @@ class RayServeReplica:
                          "processed in this replica"),
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
+
+        self.long_poll_client = LongPollAsyncClient(controller_handle, {
+            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
+        })
 
         self.error_counter = metrics.Count(
             "backend_error_counter",
@@ -369,7 +379,13 @@ class RayServeReplica:
                                          BACKEND_RECONFIGURE_METHOD)
             reconfigure_method(user_config)
 
-    def update_config(self, new_config: BackendConfig) -> None:
+    async def _update_backend_configs(self, backend_configs):
+        # TODO(ilr) remove this loop when we poll per key
+        for backend_tag, config in backend_configs.items():
+            if backend_tag == self.backend_tag:
+                self._update_config(config)
+
+    def _update_config(self, new_config: BackendConfig) -> None:
         self.config = new_config
         self.batch_queue.set_config(self.config.max_batch_size or 1,
                                     self.config.batch_wait_timeout)

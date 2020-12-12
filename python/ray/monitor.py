@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import logging.handlers
 import os
 import time
 import traceback
@@ -17,7 +18,7 @@ from ray.autoscaler._private.constants import \
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.ray_logging import setup_logger
+from ray.ray_logging import setup_component_logger
 from ray._raylet import GlobalStateAccessor
 
 import redis
@@ -138,25 +139,25 @@ class Monitor:
         self.primary_subscribe_client.subscribe(channel)
 
     def update_load_metrics(self):
-        """Fetches heartbeat data from GCS and updates load metrics."""
+        """Fetches resource usage data from GCS and updates load metrics."""
 
-        all_heartbeat = self.global_state_accessor.get_all_heartbeat()
-        heartbeat_batch_data = \
-            ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
-        for heartbeat_message in heartbeat_batch_data.batch:
-            resource_load = dict(heartbeat_message.resource_load)
-            total_resources = dict(heartbeat_message.resources_total)
-            available_resources = dict(heartbeat_message.resources_available)
+        all_resources = self.global_state_accessor.get_all_resource_usage()
+        resources_batch_data = \
+            ray.gcs_utils.ResourceUsageBatchData.FromString(all_resources)
+        for resource_message in resources_batch_data.batch:
+            resource_load = dict(resource_message.resource_load)
+            total_resources = dict(resource_message.resources_total)
+            available_resources = dict(resource_message.resources_available)
 
             waiting_bundles, infeasible_bundles = parse_resource_demands(
-                heartbeat_batch_data.resource_load_by_shape)
+                resources_batch_data.resource_load_by_shape)
 
             pending_placement_groups = list(
-                heartbeat_batch_data.placement_group_load.placement_group_data)
+                resources_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
-            client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
-            ip = self.raylet_id_to_ip_map.get(client_id)
+            node_id = ray.utils.binary_to_hex(resource_message.node_id)
+            ip = self.raylet_id_to_ip_map.get(node_id)
             if ip:
                 self.load_metrics.update(ip, total_resources,
                                          available_resources, resource_load,
@@ -164,7 +165,7 @@ class Monitor:
                                          pending_placement_groups)
             else:
                 logger.warning(
-                    f"Monitor: could not find ip for client {client_id}")
+                    f"Monitor: could not find ip for node {node_id}")
 
     def autoscaler_resource_request_handler(self, _, data):
         """Handle a notification of a resource request for the autoscaler.
@@ -340,8 +341,43 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument(
+        "--logging-filename",
+        required=False,
+        type=str,
+        default=ray_constants.MONITOR_LOG_FILE_NAME,
+        help="Specify the name of log file, "
+        "log to stdout if set empty, default is "
+        f"\"{ray_constants.MONITOR_LOG_FILE_NAME}\"")
+    parser.add_argument(
+        "--logs-dir",
+        required=True,
+        type=str,
+        help="Specify the path of the temporary directory used by Ray "
+        "processes.")
+    parser.add_argument(
+        "--logging-rotate-bytes",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
+        help="Specify the max bytes for rotating "
+        "log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+    parser.add_argument(
+        "--logging-rotate-backup-count",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        help="Specify the backup count of rotated log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
     args = parser.parse_args()
-    setup_logger(args.logging_level, args.logging_format)
+    setup_component_logger(
+        logging_level=args.logging_level,
+        logging_format=args.logging_format,
+        log_dir=args.logs_dir,
+        filename=args.logging_filename,
+        max_bytes=args.logging_rotate_bytes,
+        backup_count=args.logging_rotate_backup_count)
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)

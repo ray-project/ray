@@ -325,6 +325,8 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   uint8_t id_[kLength];
 };
 
+typedef std::pair<PlacementGroupID, int64_t> BundleID;
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),

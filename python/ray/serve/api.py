@@ -1,6 +1,7 @@
 import atexit
 from functools import wraps
 import os
+from uuid import UUID
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
@@ -42,6 +43,8 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
+        self._http_host, self._http_port = ray.get(
+            controller.get_http_config.remote())
 
         # NOTE(simon): Used to cache client.get_handle(endpoint) call. It will
         # mostly grow in size, it will only shrink when user calls the
@@ -62,9 +65,9 @@ class Client:
 
     def __del__(self):
         if not self._detached:
-            logger.info("Shutting down Ray Serve because client went out of "
-                        "scope. To prevent this, either keep a reference to "
-                        "the client object or use serve.start(detached=True).")
+            logger.debug("Shutting down Ray Serve because client went out of "
+                         "scope. To prevent this, either keep a reference to "
+                         "the client or use serve.start(detached=True).")
             self.shutdown()
 
     def __reduce__(self):
@@ -82,6 +85,13 @@ class Client:
             ray.get(self._controller.shutdown.remote())
             ray.kill(self._controller, no_restart=True)
             self._shutdown = True
+
+    @_ensure_connected
+    def _get_result(self, result_object_id: ray.ObjectRef) -> bool:
+        result_id: UUID = ray.get(result_object_id)
+        result = ray.get(self._controller.wait_for_event.remote(result_id))
+        logger.debug(f"Getting result_id ({result_id}) with result: {result}")
+        return result
 
     @_ensure_connected
     def create_endpoint(self,
@@ -137,9 +147,32 @@ class Client:
                     "an element of type {}".format(type(method)))
             upper_methods.append(method.upper())
 
-        ray.get(
+        self._get_result(
             self._controller.create_endpoint.remote(
                 endpoint_name, {backend: 1.0}, route, upper_methods))
+
+        # Block until the route table has been propagated to all HTTP proxies.
+        if route is not None:
+
+            def check_ready(http_response):
+                return route in http_response.json()
+
+            futures = []
+            for node_id in ray.state.node_ids():
+                future = block_until_http_ready.options(
+                    num_cpus=0, resources={
+                        node_id: 0.01
+                    }).remote(
+                        "http://{}:{}/-/routes".format(self._http_host,
+                                                       self._http_port),
+                        check_ready=check_ready,
+                        timeout=HTTP_PROXY_TIMEOUT)
+                futures.append(future)
+            try:
+                ray.get(futures)
+            except ray.exceptions.RayTaskError:
+                raise TimeoutError("Route not available at HTTP proxies "
+                                   "after {HTTP_PROXY_TIMEOUT}s.")
 
     @_ensure_connected
     def delete_endpoint(self, endpoint: str) -> None:
@@ -149,7 +182,7 @@ class Client:
         """
         if endpoint in self._handle_cache:
             del self._handle_cache[endpoint]
-        ray.get(self._controller.delete_endpoint.remote(endpoint))
+        self._get_result(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
@@ -191,7 +224,9 @@ class Client:
         if not isinstance(config_options, (BackendConfig, dict)):
             raise TypeError(
                 "config_options must be a BackendConfig or dictionary.")
-        ray.get(
+        if isinstance(config_options, dict):
+            config_options = BackendConfig.parse_obj(config_options)
+        self._get_result(
             self._controller.update_backend_config.remote(
                 backend_tag, config_options))
 
@@ -288,7 +323,7 @@ class Client:
             raise TypeError("config must be a BackendConfig or a dictionary.")
 
         backend_config._validate_complete()
-        ray.get(
+        self._get_result(
             self._controller.create_backend.remote(backend_tag, backend_config,
                                                    replica_config))
 
@@ -306,7 +341,7 @@ class Client:
 
         The backend must not currently be used by any endpoints.
         """
-        ray.get(self._controller.delete_backend.remote(backend_tag))
+        self._get_result(self._controller.delete_backend.remote(backend_tag))
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
@@ -325,7 +360,7 @@ class Client:
             traffic_policy_dictionary (dict): a dictionary maps backend names
                 to their traffic weights. The weights must sum to 1.
         """
-        ray.get(
+        self._get_result(
             self._controller.set_traffic.remote(endpoint_name,
                                                 traffic_policy_dictionary))
 
@@ -351,7 +386,7 @@ class Client:
                           (float, int)) or not 0 <= proportion <= 1:
             raise TypeError("proportion must be a float from 0 to 1.")
 
-        ray.get(
+        self._get_result(
             self._controller.shadow_traffic.remote(endpoint_name, backend_tag,
                                                    proportion))
 
@@ -397,7 +432,7 @@ def start(detached: bool = False,
         http_host (str): Host for HTTP servers to listen on. Defaults to
             "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0". One HTTP server will be started on each node in
-            the Ray cluster.
+            the Ray cluster. To not start HTTP servers, set this to None.
         http_port (int): Port for HTTP server. Defaults to 8000.
         http_middlewares (list): A list of Starlette middlewares that will be
             applied to the HTTP servers in the cluster.
@@ -433,16 +468,21 @@ def start(detached: bool = False,
         http_middlewares,
         detached=detached)
 
-    futures = []
-    for node_id in ray.state.node_ids():
-        future = block_until_http_ready.options(
-            num_cpus=0, resources={
-                node_id: 0.01
-            }).remote(
-                "http://{}:{}/-/routes".format(http_host, http_port),
-                timeout=HTTP_PROXY_TIMEOUT)
-        futures.append(future)
-    ray.get(futures)
+    if http_host is not None:
+        futures = []
+        for node_id in ray.state.node_ids():
+            future = block_until_http_ready.options(
+                num_cpus=0, resources={
+                    node_id: 0.01
+                }).remote(
+                    "http://{}:{}/-/routes".format(http_host, http_port),
+                    timeout=HTTP_PROXY_TIMEOUT)
+            futures.append(future)
+        try:
+            ray.get(futures)
+        except ray.exceptions.RayTaskError:
+            raise TimeoutError(
+                "HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s.")
 
     return Client(controller, controller_name, detached=detached)
 

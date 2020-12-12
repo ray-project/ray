@@ -48,10 +48,12 @@ class ClusterTaskManager {
   /// the state of the cluster.
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
-  /// \param gcs_client: A gcs client.
+  /// \param is_owner_alive: A callback which returns if the owner process is alive
+  /// (according to our ownership model). \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
+                     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
@@ -105,13 +107,13 @@ class ClusterTaskManager {
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void Heartbeat(bool light_heartbeat_enabled,
-                 std::shared_ptr<HeartbeatTableData> data) const;
+  void FillResourceUsage(bool light_report_resource_usage_enabled,
+                         std::shared_ptr<rpc::ResourcesData> data) const;
 
-  std::string DebugString();
+  std::string DebugString() const;
 
  private:
   /// Helper method to try dispatching a single task from the queue to an
@@ -123,9 +125,9 @@ class ClusterTaskManager {
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::function<bool(const Task &)> fulfills_dependencies_func_;
+  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   NodeInfoGetter get_node_info_;
 
-  // TODO (Alex): Implement fair queuing for these queues
   /// Queue of lease requests that are waiting for resources to become available.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 

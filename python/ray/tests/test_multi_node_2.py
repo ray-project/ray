@@ -34,7 +34,7 @@ def test_shutdown():
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, object_timeout_milliseconds=12345)
+            num_heartbeats_timeout=2, object_timeout_milliseconds=12345)
     ],
     indirect=True)
 def test_system_config(ray_start_cluster_head):
@@ -52,12 +52,12 @@ def test_system_config(ray_start_cluster_head):
     @ray.remote
     def f():
         assert ray._config.object_timeout_milliseconds() == 12345
-        assert ray._config.num_heartbeats_timeout() == 20
+        assert ray._config.num_heartbeats_timeout() == 2
 
     ray.get([f.remote() for _ in range(5)])
 
     cluster.remove_node(worker, allow_graceful=False)
-    time.sleep(1)
+    time.sleep(0.9)
     assert ray.cluster_resources()["CPU"] == 2
 
     time.sleep(2)
@@ -144,7 +144,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(signal.send.remote())
     ray.get(work_handle)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class Actor:
         def work(self, signal):
             wait_signal = signal.wait.remote()
@@ -158,6 +158,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     test_actor = Actor.remote()
     work_handle = test_actor.work.remote(signal)
+    time.sleep(1)  # Time for actor to get placed and the method to start.
 
     verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
 

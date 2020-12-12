@@ -35,19 +35,21 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
-/// Whether to send heartbeat lightly. When it is enalbed, only changed part,
-/// like should_global_gc or changed resources, will be included in the heartbeat,
-/// and gcs only broadcast the changed heartbeat.
-RAY_CONFIG(bool, light_heartbeat_enabled, true)
+RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 1000)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
+RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
+
+/// The duration between reporting resources sent by the raylets.
+RAY_CONFIG(int64_t, raylet_report_resources_period_milliseconds, 100)
+/// Whether to report resource usage lightly. When it is enalbed, only changed part,
+/// like should_global_gc or changed resources, will be included in the message.
+RAY_CONFIG(bool, light_report_resource_usage_enabled, true)
 
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
@@ -196,15 +198,6 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 /// excessive memory usage during object broadcast to many receivers.
 RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
 
-/// Number of workers per Python worker process
-RAY_CONFIG(int, num_workers_per_process_python, 1)
-
-/// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 1)
-
-/// Number of workers per CPP worker process
-RAY_CONFIG(int, num_workers_per_process_cpp, 1)
-
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
@@ -221,6 +214,8 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -299,10 +294,10 @@ RAY_CONFIG(bool, report_worker_backlog, true)
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
 
-/// Whether to enable multi tenancy features.
-RAY_CONFIG(bool, enable_multi_tenancy,
-           getenv("RAY_ENABLE_MULTI_TENANCY") == nullptr ||
-               getenv("RAY_ENABLE_MULTI_TENANCY") == std::string("1"))
+/// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
+RAY_CONFIG(bool, enable_worker_prestart,
+           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
+               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
 
 /// The interval of periodic idle worker killing. A negative value means worker capping is
 /// disabled.
@@ -330,9 +325,22 @@ RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
 /// Python IO workers to determine how to store/restore an object to/from
 /// external storage.
 RAY_CONFIG(std::string, object_spilling_config, "")
+
 /// Whether to enable automatic object spilling. If enabled, then
 /// Ray will choose objects to spill when the object store is out of
 /// memory.
 RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+
 /// The maximum number of I/O worker that raylet starts.
 RAY_CONFIG(int, max_io_workers, 1)
+
+/// Ray's object spilling fuses small objects into a single file before flushing them
+/// to optimize the performance.
+/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// default. This value is not recommended to set beyond --object-store-memory.
+RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// Whether to enable automatic object deletion when refs are gone out of scope.
+/// When it is true, manual (force) spilling is not available.
+/// TODO(sang): Fix it.
+RAY_CONFIG(bool, automatic_object_deletion_enabled, true)

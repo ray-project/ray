@@ -62,5 +62,6 @@ pip install --upgrade pip
 pip install -U tensorflow==1.14
 pip install -q -U "$wheel" Click
 pip install -q "ray[all]" "gym[atari]"
-python "workloads/$workload.py"
+cd ..
+python "./workloads/$workload.py"
 

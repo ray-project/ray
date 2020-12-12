@@ -174,14 +174,14 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   return config_proto.SerializeAsString();
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetAllHeartbeat() {
-  std::unique_ptr<std::string> heartbeat_batch_data;
+std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
+  std::unique_ptr<std::string> resource_batch_data;
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllHeartbeat(
-      TransformForItemCallback<rpc::HeartbeatBatchTableData>(heartbeat_batch_data,
-                                                             promise)));
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllResourceUsage(
+      TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
+                                                            promise)));
   promise.get_future().get();
-  return heartbeat_batch_data;
+  return resource_batch_data;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
@@ -201,17 +201,6 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
       TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
   promise.get_future().get();
   return actor_table_data;
-}
-
-std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
-    const ActorID &actor_id) {
-  std::unique_ptr<std::string> actor_checkpoint_id_data;
-  std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
-      actor_id, TransformForOptionalItemCallback<rpc::ActorCheckpointIdData>(
-                    actor_checkpoint_id_data, promise)));
-  promise.get_future().get();
-  return actor_checkpoint_id_data;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(

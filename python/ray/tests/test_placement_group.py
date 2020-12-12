@@ -50,7 +50,7 @@ def test_placement_group_pack(ray_start_cluster):
                 "CPU": 2
             }
         ])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -96,7 +96,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -142,7 +142,7 @@ def test_placement_group_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -192,7 +192,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    ray.get(placement_group.ready())
+    assert placement_group.wait(10000)
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -1162,14 +1162,13 @@ ray.shutdown()
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 
 
-@pytest.mark.skip("This test is flaky.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=3, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
-def test_create_placement_group_after_gcs_server_restarts(
+def test_create_placement_group_after_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
     cluster.add_node(num_cpus=2)
@@ -1178,7 +1177,7 @@ def test_create_placement_group_after_gcs_server_restarts(
 
     # Create placement group 1 successfully.
     placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group1.ready(), timeout=10)
+    assert placement_group1.wait(10000)
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
@@ -1188,7 +1187,7 @@ def test_create_placement_group_after_gcs_server_restarts(
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    ray.get(placement_group2.ready(), timeout=10)
+    assert placement_group2.wait(10000)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
 
@@ -1201,11 +1200,10 @@ def test_create_placement_group_after_gcs_server_restarts(
     assert table["state"] == "PENDING"
 
 
-@pytest.mark.skip("This test is flaky.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=3, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_actor_with_placement_group_after_gcs_server_restart(
@@ -1226,11 +1224,10 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     assert ray.get(actor_2.method.remote(1)) == 3
 
 
-@pytest.mark.skip("This test is flaky.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
-            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+            num_heartbeats_timeout=3, ping_gcs_rpc_server_max_retries=60)
     ],
     indirect=True)
 def test_create_placement_group_during_gcs_server_restart(
@@ -1252,8 +1249,22 @@ def test_create_placement_group_during_gcs_server_restart(
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
 
-    for i in range(0, 10):
-        ray.get(placement_groups[i].ready())
+    for i in range(0, 100):
+        assert placement_groups[i].wait(10000)
+
+
+def test_placement_group_wait_api(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group(
+        name="name", strategy="PACK", bundles=[{
+            "CPU": 2,
+        }, {
+            "CPU": 2
+        }])
+    assert placement_group.wait(10000)
 
 
 if __name__ == "__main__":
