@@ -278,7 +278,7 @@ class SerializationContext:
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return ObjectLostError(ray.ObjectRef(object_ref.binary()))
-            elif error_type == ErrorType.Value("PLACEMENT_GROUP_FAILURE"):
+            elif error_type == ErrorType.Value("PLACEMENT_GROUP_ERROR"):
                 return RayPlacementGroupError()
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \

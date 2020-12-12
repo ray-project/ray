@@ -332,6 +332,8 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 }
 
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker) {
+  // Used to destroy workers when its the bundle resource is released (unused or
+  // placementgroup is deleted.)
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
@@ -1324,6 +1326,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
+  // intentional_disconnect is true when it is disconnected due to resource bundle
+  // release, NOTE(khu, sangcho): change this to a more explicit message.
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1377,27 +1381,35 @@ void NodeManager::ProcessDisconnectClientMessage(
     const TaskID &task_id = worker->GetAssignedTaskId();
     // If the worker was running a task or actor, clean up the task and push an
     // error to the driver, unless the worker is already dead.
+    auto error_type = ErrorType::WORKER_DIED;
+    // TODO(rkn): Define this constant somewhere else.
+    std::string type_str;
+    std::ostringstream error_message;
+    if (!intentional_disconnect) {
+      type_str = "worker_died";
+      error_message << "A worker died or was killed while executing task " << task_id
+                    << ".";
+    } else {
+      error_type = ErrorType::PLACEMENT_GROUP_ERROR;
+      type_str = "placement_group_error";
+      error_message << "A worker was killed while executing task " << task_id
+                    << " due to placement group error."
+                    << ".";
+    }
+
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         Task task;
         if (local_queues_.RemoveTask(task_id, &task)) {
-          TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
+          TreatTaskAsFailed(task, error_type);
         }
       }
-
-      if (!intentional_disconnect) {
-        // Push the error to driver.
-        const JobID &job_id = worker->GetAssignedJobId();
-        // TODO(rkn): Define this constant somewhere else.
-        std::string type = "worker_died";
-        std::ostringstream error_message;
-        error_message << "A worker died or was killed while executing task " << task_id
-                      << ".";
-        auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
-                                                        current_time_ms(), job_id);
-        RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-      }
+      // Push the error to driver.
+      const JobID &job_id = worker->GetAssignedJobId();
+      auto error_data_ptr = gcs::CreateErrorTableData(type_str, error_message.str(),
+                                                      current_time_ms(), job_id);
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
 
     // Remove the dead client from the pool and stop listening for messages.
