@@ -39,6 +39,7 @@ class GroupManager(object):
     could belong to multiple collective groups. The membership information
     and other metadata are stored in the global `_group_mgr` object.
     """
+
     def __init__(self):
         self._name_group_map = {}
         self._group_name_map = {}
@@ -260,7 +261,8 @@ def _check_single_tensor_input(tensor):
         if isinstance(tensor, types.th.Tensor):
             return
     raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
-                       "np.ndarray, torch.Tensor, cupy.ndarray.".format(type(tensor)))
+                       "np.ndarray, torch.Tensor, cupy.ndarray.".format(
+                           type(tensor)))
 
 
 def _check_inside_actor():

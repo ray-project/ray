@@ -7,7 +7,6 @@ _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
 
-
 try:
     import torch as th  # noqa: F401
 except ImportError:

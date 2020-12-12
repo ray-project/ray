@@ -16,6 +16,7 @@ class NCCLUniqueIDStore:
         name (str): the unique name for this named actor.
         nccl_id (str): the NCCLUniqueID held in this store.
     """
+
     def __init__(self, name):
         self.name = name
         self.nccl_id = None

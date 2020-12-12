@@ -33,6 +33,7 @@ class Rendezvous:
     Args:
         group_name (str): the unique user-specified group name.
     """
+
     def __init__(self, group_name):
         if not group_name:
             raise ValueError("Invalid group name.")
