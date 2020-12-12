@@ -166,12 +166,7 @@ class DragonflySearch(Searcher):
                 space = self.convert_search_space(space)
 
         self._space = space
-        if points_to_evaluate:
-            self._points_to_evaluate = [
-                list(config.values()) for config in points_to_evaluate
-            ]
-        else:
-            self._points_to_evaluate = []
+        self._points_to_evaluate = points_to_evaluate
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
@@ -258,6 +253,13 @@ class DragonflySearch(Searcher):
         self.init_dragonfly()
 
     def init_dragonfly(self):
+        if self._points_to_evaluate:
+            self._points_to_evaluate = [[
+                config[par] for par in self._point_parameter_names
+            ] for config in self._points_to_evaluate]
+        else:
+            self._points_to_evaluate = []
+
         self._opt.initialise()
         if self._points_to_evaluate and self._evaluated_rewards:
             self._opt.tell([(self._points_to_evaluate,
