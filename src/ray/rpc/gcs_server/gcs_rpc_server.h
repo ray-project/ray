@@ -283,57 +283,6 @@ class NodeResourceInfoGrpcService : public GrpcService {
   NodeResourceInfoGcsServiceHandler &service_handler_;
 };
 
-class NodeResourceInfoGcsServiceHandler {
- public:
-  virtual ~NodeResourceInfoGcsServiceHandler() = default;
-
-  virtual void HandleGetResources(const GetResourcesRequest &request,
-                                  GetResourcesReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
-                                     UpdateResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
-                                     DeleteResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllAvailableResources(
-      const rpc::GetAllAvailableResourcesRequest &request,
-      rpc::GetAllAvailableResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `NodeResourceInfoGcsService`.
-class NodeResourceInfoGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit NodeResourceInfoGrpcService(boost::asio::io_service &io_service,
-                                       NodeResourceInfoGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
-  }
-
- private:
-  /// The grpc async service object.
-  NodeResourceInfoGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  NodeResourceInfoGcsServiceHandler &service_handler_;
-};
-
 class HeartbeatInfoGcsServiceHandler {
  public:
   virtual ~HeartbeatInfoGcsServiceHandler() = default;
