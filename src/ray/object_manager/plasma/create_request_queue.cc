@@ -157,6 +157,7 @@ void CreateRequestQueue::TriggerGlobalGCIfNeeded() {
   // Invoke only once per 1 seconds.
   if (trigger_global_gc_ && current_time_ms() - last_global_gc_ms_ > 1000) {
     trigger_global_gc_();
+    RAY_LOG(ERROR) << "Trigger global gc";
     last_global_gc_ms_ = current_time_ms();
   }
 }
