@@ -52,7 +52,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
         wait_request,
         [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
           if (!status.ok()) {
-            RAY_LOG(WARNING) << "Worker failed. Unpinning object " << object_id;
+            RAY_LOG(DEBUG) << "Worker failed. Unpinning object " << object_id;
           }
           ReleaseFreedObject(object_id);
         });
@@ -105,36 +105,28 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  // If object spilling is not configured, there's no space to create by spilling.
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
-    return 0;
+    return false;
   }
   absl::MutexLock lock(&mutex_);
 
-  // Spill as much as min spilling size repeatdly until we reach to the max throughput.
-  // The loop will be terminated if we cannot spill any more object.
+  // Spill as fast as we can using all our spill workers.
   while (num_active_workers_ < max_active_workers_) {
-    if (SpillObjectsOfSize(min_spilling_size_, 0) >= 0) {
+    if (!SpillObjectsOfSize(min_spilling_size_)) {
       break;
     }
     num_active_workers_ += 1;
   }
-  // true if spilling is possible.
+
+  // Return whether spilling is still in progress.
   return num_active_workers_ > 0;
 }
 
-void LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
-  SpillObjectsOfSize(min_spilling_size_, 0);
-}
-
-int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
-                                               int64_t min_bytes_to_spill) {
-  RAY_CHECK(num_bytes_to_spill >= min_bytes_to_spill);
-
+bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
-    return min_bytes_to_spill;
+    return false;
   }
 
   RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_to_spill;
@@ -161,13 +153,9 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
                            << (current_time_ms() - start_time) << "ms";
           }
         });
+    return true;
   }
-  //  We do not track a mapping between objects that need to be created to
-  //  objects that are being spilled, so we just subtract the total number of
-  //  bytes that are currently being spilled from the amount of space
-  //  requested. If the space is claimed by another client, this client may
-  //  need to request space again.
-  return min_bytes_to_spill - num_bytes_pending_spill_;
+  return false;
 }
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,

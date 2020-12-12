@@ -782,9 +782,6 @@ void CoreWorker::PutObjectIntoPlasma(const RayObject &object, const ObjectID &ob
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
-          RAY_LOG(ERROR) << "[RELEASE][PutObjectIntoPlasma] PutObjectIntoPlasma release "
-                            "the object. id:"
-                         << object_id;
           if (!plasma_store_provider_->Release(object_id).ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
@@ -878,7 +875,6 @@ Status CoreWorker::Put(const RayObject &object,
           [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
             // Only release the object once the raylet has responded to avoid the race
             // condition that the object could be evicted before the raylet pins it.
-            RAY_LOG(ERROR) << "[RELEASE][Put] Put release the object. id:" << object_id;
             if (!plasma_store_provider_->Release(object_id).ok()) {
               RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                              << "), might cause a leak in plasma.";
@@ -939,7 +935,6 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
         [this, object_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
           // Only release the object once the raylet has responded to avoid the race
           // condition that the object could be evicted before the raylet pins it.
-          RAY_LOG(ERROR) << "[RELEASE][Seal] Seal release the object. id:" << object_id;
           if (!plasma_store_provider_->Release(object_id).ok()) {
             RAY_LOG(ERROR) << "Failed to release ObjectID (" << object_id
                            << "), might cause a leak in plasma.";
@@ -1008,7 +1003,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   bool will_throw_exception = false;
   for (size_t i = 0; i < ids.size(); i++) {
     auto pair = result_map.find(ids[i]);
-    RAY_LOG(ERROR) << "[GET] Get request is returned. id:" << pair->first;
     if (pair != result_map.end()) {
       (*results)[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());

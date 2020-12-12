@@ -256,8 +256,6 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  double GetMemoryUsagePercentage();
-
   // A reference to the asio io context.
   boost::asio::io_service &io_context_;
   /// The name of the socket this object store listens on.
@@ -301,6 +299,12 @@ class PlasmaStore {
   /// The amount of time to wait before retrying a creation request after a
   /// transient OOM error.
   const uint32_t delay_on_transient_oom_ms_ = 10;
+
+  /// The amount of time to wait between logging space usage debug messages.
+  const uint64_t usage_log_interval_ns_;
+
+  /// The last time space usage was logged.
+  uint64_t last_usage_log_ns_ = 0;
 
   /// A timer that is set when the first request in the queue is not
   /// serviceable because there is not enough memory. The request will be

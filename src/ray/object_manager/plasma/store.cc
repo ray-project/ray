@@ -133,6 +133,8 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
+      usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
+                             1e9),
       create_request_queue_(
           RayConfig::instance().object_store_full_max_retries(),
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
@@ -243,6 +245,13 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     GetMallocMapinfo(pointer, fd, map_size, offset);
     RAY_CHECK(*fd != INVALID_FD);
     *error = PlasmaError::OK;
+  }
+
+  auto now = absl::GetCurrentTimeNanos();
+  if (now - last_usage_log_ns_ > usage_log_interval_ns_) {
+    RAY_LOG(INFO) << "Object store current usage " << (PlasmaAllocator::Allocated() / 1e9)
+                  << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
+    last_usage_log_ns_ = now;
   }
   return pointer;
 }
@@ -502,8 +511,6 @@ void PlasmaStore::UpdateObjectGetRequests(const ObjectID &object_id) {
 
     // If this get request is done, reply to the client.
     if (get_req->num_satisfied == get_req->num_objects_to_wait_for) {
-      // RAY_LOG(ERROR) << "[GET][UpdateObjectGetRequests] Get request is returned. Will
-      // respond to the get request. id:" << object_id;
       ReturnFromGet(get_req);
     } else {
       // The call to ReturnFromGet will remove the current element in the
@@ -530,22 +537,18 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
   std::vector<ObjectID> evicted_ids;
   std::vector<ObjectTableEntry *> evicted_entries;
   for (auto object_id : object_ids) {
-    // RAY_LOG(ERROR) << "[GET][ProcessGetRequest] Get object for object id is received
-    // for the first time id:" << object_id; Check if this object is already present
+    // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     if (entry && entry->state == ObjectState::PLASMA_SEALED) {
-      // RAY_LOG(ERROR) << "[GET][ProcessGetRequest] Object was already sealed. id:" <<
-      // object_id; Update the get request to take into account the present object.
+      // Update the get request to take into account the present object.
       PlasmaObject_init(&get_req->objects[object_id], entry);
       get_req->num_satisfied += 1;
       // If necessary, record that this client is using this object. In the case
       // where entry == NULL, this will be called from SealObject.
       AddToClientObjectIds(object_id, entry, client);
     } else if (entry && entry->state == ObjectState::PLASMA_EVICTED) {
-      // RAY_LOG(ERROR) << "[GET][ProcessGetRequest] Object was already evcited. This
-      // shouldn't happen. id:" << object_id; Make sure the object pointer is not already
-      // allocated
+      // Make sure the object pointer is not already allocated
       RAY_CHECK(!entry->pointer);
 
       PlasmaError error = PlasmaError::OK;
@@ -566,9 +569,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
         entry->state = ObjectState::PLASMA_EVICTED;
       }
     } else {
-      RAY_LOG(ERROR)
-          << "[GET][ProcessGetRequest] Something else. Get request is preserved. id:"
-          << object_id;
       // Add a placeholder plasma object to the get request to indicate that the
       // object is not present. This will be parsed by the client. We set the
       // data size to -1 to indicate that the object is not present.
@@ -626,8 +626,6 @@ int PlasmaStore::RemoveFromClientObjectIds(const ObjectID &object_id,
   if (it != client->object_ids.end()) {
     client->object_ids.erase(it);
     // Decrease reference count.
-    // RAY_LOG(ERROR) << "[Release][RemoveFromClientObjectIds] Remove client object id and
-    // decrease ref count. id:" << object_id;
     entry->ref_count--;
 
     // If no more clients are using this object, notify the eviction policy
@@ -670,8 +668,6 @@ void PlasmaStore::ReleaseObject(const ObjectID &object_id,
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   RAY_CHECK(entry != nullptr);
   // Remove the client from the object's array of clients.
-  // RAY_LOG(ERROR) << "[RELEASE][ReleaseObject] release object request. id:" <<
-  // object_id;
   RAY_CHECK(RemoveFromClientObjectIds(object_id, entry, client) == 1);
 }
 
@@ -711,8 +707,6 @@ void PlasmaStore::SealObjects(const std::vector<ObjectID> &object_ids) {
   PushNotifications(infos);
 
   for (size_t i = 0; i < object_ids.size(); ++i) {
-    // RAY_LOG(ERROR) << "[GET][SealObjects] Object is sealed and will update the info.
-    // id:" << object_ids[i];
     UpdateObjectGetRequests(object_ids[i]);
   }
 }
@@ -1098,11 +1092,6 @@ void PlasmaStore::DoAccept() {
                                               boost::asio::placeholders::error));
 }
 
-double PlasmaStore::GetMemoryUsagePercentage() {
-  return (double)PlasmaAllocator::Allocated() /
-         (double)PlasmaAllocator::GetFootprintLimit();
-}
-
 void PlasmaStore::ProcessCreateRequests() {
   // Only try to process requests if the timer is not set. If the timer is set,
   // that means that the first request is currently not serviceable because
@@ -1111,10 +1100,8 @@ void PlasmaStore::ProcessCreateRequests() {
   if (create_timer_) {
     return;
   }
+
   auto status = create_request_queue_.ProcessRequests();
-  // if (GetMemoryUsagePercentage() > 0.98) {
-  //   create_request_queue_.TriggerGlobalGC();
-  // }
   uint32_t retry_after_ms = 0;
   if (status.IsTransientObjectStoreFull()) {
     retry_after_ms = delay_on_transient_oom_ms_;
