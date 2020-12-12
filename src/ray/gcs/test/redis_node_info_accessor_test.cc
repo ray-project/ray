@@ -25,7 +25,7 @@ namespace gcs {
 
 class NodeDynamicResourceTest : public AccessorTestBase<NodeID, ResourceTableData> {
  protected:
-  typedef NodeInfoAccessor::ResourceMap ResourceMap;
+  typedef NodeResourceInfoAccessor::ResourceMap ResourceMap;
   virtual void GenTestData() {
     for (size_t node_index = 0; node_index < node_number_; ++node_index) {
       NodeID id = NodeID::FromRandom();
