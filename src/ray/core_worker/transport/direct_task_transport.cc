@@ -281,8 +281,20 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = task_queue.front();
+  rpc::Address best_node_address;
+  if (raylet_address == nullptr &&
+      RayConfig::instance().locality_aware_leasing_enabled()) {
+    // If no raylet address is given, try to find the best worker for our next lease
+    // request.
+    if (auto addr = lessor_picker_->GetBestNodeForTask(resource_spec)) {
+      best_node_address = addr.value();
+      raylet_address = &best_node_address;
+    }
+    // If no best worker returned, then we fall back to the default behavior, in which
+    // the local node is chosen in GetOrConnectLeaseClient.
+  }
+  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskID task_id = resource_spec.TaskId();
   // Subtract 1 so we don't double count the task we are requesting for.
   int64_t queue_size = task_queue.size() - 1;
