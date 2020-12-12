@@ -125,6 +125,13 @@ void ObjectManager::Stop() {
   }
 }
 
+bool ObjectManager::IsPlasmaObjectEvictable(const ObjectID &object_id) {
+  if (plasma::plasma_store_runner != nullptr) {
+    return plasma::plasma_store_runner->IsPlasmaObjectEvictable(object_id);
+  }
+  return false;
+}
+
 void ObjectManager::RunRpcService() { rpc_service_.run(); }
 
 void ObjectManager::StartRpcService() {

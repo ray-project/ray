@@ -142,12 +142,15 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
   while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end()) {
-    bytes_to_spill += it->second->GetSize();
-    objects_to_spill.push_back(it->first);
+    if (is_plasma_object_evictable_(it->first)) {
+      bytes_to_spill += it->second->GetSize();
+      objects_to_spill.push_back(it->first);
+    }
     it++;
   }
   if (!objects_to_spill.empty()) {
-    RAY_LOG(ERROR) << "Spilling objects of total size " << bytes_to_spill << " num objects " << objects_to_spill.size();
+    RAY_LOG(ERROR) << "Spilling objects of total size " << bytes_to_spill
+                   << " num objects " << objects_to_spill.size();
     auto start_time = current_time_ms();
     SpillObjectsInternal(
         objects_to_spill, [bytes_to_spill, start_time](const Status &status) {
@@ -155,7 +158,7 @@ int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
             RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
           } else {
             RAY_LOG(ERROR) << "Spilled " << bytes_to_spill << " in "
-                          << (current_time_ms() - start_time) << "ms";
+                           << (current_time_ms() - start_time) << "ms";
           }
         });
   }

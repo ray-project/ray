@@ -86,7 +86,10 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
             main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
           }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
-                    gcs_client_, object_directory_),
+                    gcs_client_, object_directory_,
+                    [this](const ObjectID &object_id) {
+                      return object_manager_.IsPlasmaObjectEvictable(object_id);
+                    }),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {

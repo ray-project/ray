@@ -162,7 +162,7 @@ table PlasmaCreateRetryRequest {
   object_id: string;
   // The ID of the request to retry.
   request_id: uint64;
-  }
+}
 
 table CudaHandle {
   handle: [ubyte];

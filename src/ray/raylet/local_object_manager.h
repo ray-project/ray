@@ -39,7 +39,8 @@ class LocalObjectManager {
                      gcs::ObjectInfoAccessor &object_info_accessor,
                      rpc::CoreWorkerClientPool &owner_client_pool,
                      bool object_pinning_enabled, bool automatic_object_deletion_enabled,
-                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed)
+                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
+                     std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable)
       : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -50,7 +51,8 @@ class LocalObjectManager {
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
         num_active_workers_(0),
-        max_active_workers_(RayConfig::instance().max_io_workers()) {
+        max_active_workers_(RayConfig::instance().max_io_workers()),
+        is_plasma_object_evictable_(is_plasma_object_evictable) {
     min_spilling_size_ = RayConfig::instance().min_spilling_size();
   }
 
@@ -234,6 +236,7 @@ class LocalObjectManager {
 
   int64_t num_active_workers_;
   int64_t max_active_workers_;
+  std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable_;
 };
 
 };  // namespace raylet

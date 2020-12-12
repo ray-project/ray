@@ -206,6 +206,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// signals from Raylet.
   void Stop();
 
+  bool IsPlasmaObjectEvictable(const ObjectID &object_id);
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///

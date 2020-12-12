@@ -202,6 +202,10 @@ Status SendEvictReply(const std::shared_ptr<Client> &client, int64_t num_bytes);
 
 Status ReadEvictReply(uint8_t *data, size_t size, int64_t &num_bytes);
 
+Status SendObjectsEvictable(const std::vector<ObjectID> &object_ids);
+
+Status ReplyObjectsEvictable(uint8_t *data);
+
 /* Data messages. */
 
 Status SendDataRequest(const std::shared_ptr<StoreConn> &store_conn, ObjectID object_id,

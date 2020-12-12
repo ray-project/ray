@@ -964,6 +964,7 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    fb::MessageType type,
                                    const std::vector<uint8_t> &message) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
@@ -1148,6 +1149,12 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
+}
+
+bool PlasmaStore::IsObjectEvictable(const ObjectID &object_id) {
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
+  auto entry = GetObjectTableEntry(&store_info_, object_id);
+  return entry->ref_count == 1;
 }
 
 }  // namespace plasma

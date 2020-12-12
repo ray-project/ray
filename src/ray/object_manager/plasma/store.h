@@ -186,6 +186,8 @@ class PlasmaStore {
                         plasma::flatbuf::MessageType type,
                         const std::vector<uint8_t> &message);
 
+  bool IsObjectEvictable(const ObjectID &object_id);
+
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     notification_listener_ = notification_listener;
@@ -307,6 +309,8 @@ class PlasmaStore {
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
+
+  std::recursive_mutex mutex_;
 };
 
 }  // namespace plasma

@@ -135,7 +135,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              std::function<bool(const ObjectID &)> is_plasma_object_evictable);
 
   /// Process a new client connection.
   ///
@@ -749,6 +750,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Pool of RPC client connections to core workers.
   rpc::CoreWorkerClientPool worker_rpc_pool_;
+
+  std::function<bool(const ObjectID &)> is_plasma_object_evictable_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
