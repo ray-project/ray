@@ -695,8 +695,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled_;
-  /// Whether we have printed out a resource deadlock warning.
-  bool resource_deadlock_warned_ = false;
+  /// Incremented each time we encounter a potential resource deadlock condition.
+  /// This is reset to zero when the condition is cleared.
+  int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.

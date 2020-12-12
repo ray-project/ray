@@ -648,7 +648,7 @@ void NodeManager::WarnResourceDeadlock() {
       continue;
     }
     // Progress is being made, don't warn.
-    resource_deadlock_warned_ = false;
+    resource_deadlock_warned_ = 0;
     return;
   }
 
@@ -675,13 +675,17 @@ void NodeManager::WarnResourceDeadlock() {
   }
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
-  if (any_pending) {
+  // To avoid spurious triggers, only take action starting with the second time.
+  // case resource_deadlock_warned_:  0 => first time, don't do anything yet
+  // case resource_deadlock_warned_:  1 => second time, print a warning
+  // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
+  if (any_pending && resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
     // Trigger global GC to hopefully free up resource slots.
     TriggerGlobalGC();
 
     // Suppress duplicates warning messages.
-    if (resource_deadlock_warned_) {
+    if (resource_deadlock_warned_ > 2) {
       return;
     }
 
@@ -702,7 +706,6 @@ void NodeManager::WarnResourceDeadlock() {
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-    resource_deadlock_warned_ = true;
   }
 }
 
@@ -3226,7 +3229,7 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
 
 void NodeManager::TriggerGlobalGC() {
   RAY_LOG(INFO) << "Broadcasting Python GC request to all raylets since the cluster "
-                << "is low on object store memory. This removes Ray object refs "
+                << "is low on resources. This removes Ray actor and object refs "
                 << "that are stuck in Python reference cycles.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
