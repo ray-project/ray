@@ -211,9 +211,7 @@ class SkOptSearch(Searcher):
                     dict(zip(self._parameter_names, point))
                     for point in self._points_to_evaluate
                 ]
-            else:
-                # self._points_to_evaluate is already in correct format
-                pass
+            # Else: self._points_to_evaluate is already in correct format
 
         _validate_warmstart(self._parameter_names, self._points_to_evaluate,
                             self._evaluated_rewards)
@@ -279,12 +277,10 @@ class SkOptSearch(Searcher):
                 return None
         if self._initial_points:
             suggested_config = self._initial_points.pop(0)
-            print(f"SUGG1: {suggested_config}")
             skopt_config = [suggested_config[par] for par in self._parameters]
         else:
             skopt_config = self._skopt_opt.ask()
             suggested_config = dict(zip(self._parameters, skopt_config))
-            print(f"SUGG2: {suggested_config}")
         self._live_trial_mapping[trial_id] = skopt_config
         return unflatten_dict(suggested_config)
 
