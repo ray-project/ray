@@ -53,8 +53,12 @@ install_base() {
         # Unfortunately, whatever Travis is doing with the cache/index, docker-ce-cli and containerd.io are not available:
         # Unable to locate package docker-ce-cli
         # Unable to locate package containerd.io
-        # So we just upgrade docker-ce and cross our fingers.
-        sudo apt-get install --assume-yes docker-ce
+        # And if we just apt-get install --assume-yes docker-ce, on bionic, we can't get anything newer than 18.06.
+        # And upgrading to focal breaks the build.
+        # So to use the newer Docker features, we'll have to go through the whole process.
+        # https://packages.ubuntu.com/bionic/docker.io
+        sudo apt-get install --assume-yes docker.io
+        sudo systemctl restart docker
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
         fi
