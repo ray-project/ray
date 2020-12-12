@@ -27,7 +27,8 @@ import org.testng.annotations.Test;
 public class ReferenceCountingTest extends BaseTest {
   @BeforeClass
   public void setUp() {
-    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + 100L * 1024 * 1024 + "\" ]");
+    long memory = 100L * 1024 * 1024;
+    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + memory + "\" ]");
   }
 
   /**

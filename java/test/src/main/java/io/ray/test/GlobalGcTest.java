@@ -17,7 +17,8 @@ public class GlobalGcTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + 140L * 1024 * 1024 + "\" ]");
+    long memory = 140L * 1024 * 1024;
+    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + memory + "\" ]");
   }
 
   public static class LargeObjectWithCyclicRef {
