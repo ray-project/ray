@@ -101,11 +101,14 @@ Status CreateRequestQueue::ProcessRequests() {
       FinishRequest(request_it);
       last_success_ns_ = now;
     } else {
-      TriggerGlobalGCIfNeeded();
+      if (trigger_global_gc_) {
+        trigger_global_gc_();
+      }
       if (spill_objects_callback_()) {
         last_success_ns_ = absl::GetCurrentTimeNanos();
         return Status::TransientObjectStoreFull("Waiting for spilling.");
       } else if (now - last_success_ns_ < 5e9) {
+        // TODO(ekl) make this threshold a ray config def.
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
@@ -116,7 +119,6 @@ Status CreateRequestQueue::ProcessRequests() {
       }
     }
   }
-  // SANG-TODO Get memory usage callback here.
   return Status::OK();
 }
 
@@ -150,15 +152,6 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
       fulfilled_requests_.erase(it);
     }
     it++;
-  }
-}
-
-void CreateRequestQueue::TriggerGlobalGCIfNeeded() {
-  // Invoke only once per 1 seconds.
-  if (trigger_global_gc_ && current_time_ms() - last_global_gc_ms_ > 1000) {
-    trigger_global_gc_();
-    RAY_LOG(ERROR) << "Trigger global gc";
-    last_global_gc_ms_ = current_time_ms();
   }
 }
 
