@@ -33,14 +33,14 @@ namespace raylet {
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
  public:
-  LocalObjectManager(boost::asio::io_service &io_context, size_t free_objects_batch_size,
-                     int64_t free_objects_period_ms,
-                     IOWorkerPoolInterface &io_worker_pool,
-                     gcs::ObjectInfoAccessor &object_info_accessor,
-                     rpc::CoreWorkerClientPool &owner_client_pool,
-                     bool object_pinning_enabled, bool automatic_object_deletion_enabled,
-                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
-                     std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable)
+  LocalObjectManager(
+      boost::asio::io_service &io_context, size_t free_objects_batch_size,
+      int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
+      gcs::ObjectInfoAccessor &object_info_accessor,
+      rpc::CoreWorkerClientPool &owner_client_pool, bool object_pinning_enabled,
+      bool automatic_object_deletion_enabled,
+      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
+      std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable)
       : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),

@@ -112,9 +112,11 @@ Status CreateRequestQueue::ProcessRequests() {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
+        num_retries_ += 1;
         return Status::TransientObjectStoreFull("Waiting for grace period.");
       } else {
         FinishRequest(request_it);
+        num_retries_ = 0;
         return Status::ObjectStoreFull("Object store full.");
       }
     }
