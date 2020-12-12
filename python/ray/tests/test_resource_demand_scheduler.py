@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 import time
 import yaml
 import tempfile
@@ -13,8 +14,10 @@ from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
-from ray.autoscaler._private.autoscaler import StandardAutoscaler
-from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
+    AutoscalerSummary, format_info_string, format_info_string_no_node_types
+from ray.autoscaler._private.load_metrics import LoadMetrics, \
+    LoadMetricsSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
 from ray.autoscaler._private.resource_demand_scheduler import \
     _utilization_score, _add_min_workers_nodes, \
@@ -1194,7 +1197,6 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
         for ip in self.provider.non_terminated_node_ips({}):
-            print("SETTING LM FOR ", ip)
             lm.update(ip, {"CPU": 2}, {"CPU": 0}, {})
 
         lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {})
@@ -2077,6 +2079,131 @@ class AutoscalingTest(unittest.TestCase):
         for _ in range(10):
             autoscaler.update()
         self.waitForNodes(2)
+
+
+def test_info_string():
+    lm_summary = LoadMetricsSummary(
+        head_ip="0.0.0.0",
+        usage={
+            "CPU": (530, 544),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (0, 2),
+            "memory": (0, 1583.19),
+            "object_store_memory": (0, 471.02)
+        },
+        resource_demand=[({
+            "CPU": 1
+        }, 150)],
+        pg_demand=[{
+            "bundles": [({
+                "CPU": 4
+            }, 5)],
+            "strategy": "PACK"
+        }],
+        request_demand=[({
+            "CPU": 1
+        }, 100)],
+        node_types=[])
+    autoscaler_summary = AutoscalerSummary(
+        active_nodes={
+            "p3.2xlarge": 2,
+            "m4.4xlarge": 20
+        },
+        pending_nodes=[("1.2.3.4", "m4.4xlarge"), ("1.2.3.5", "m4.4xlarge")],
+        pending_launches={"m4.4xlarge": 2},
+        failed_nodes=[("1.2.3.6", "p3.2xlarge")])
+
+    expected = """
+========Autoscaler status: 2020-12-28 01:02:03========
+Node Status
+--------------------------------------------------
+Healthy:
+  2 p3.2xlarge
+  20 m4.4xlarge
+
+Pending:
+  m4.4xlarge, 2 launching
+  1.2.3.4: m4.4xlarge, setting up
+  1.2.3.5: m4.4xlarge, setting up
+
+Recent failures:
+
+
+Resources
+--------------------------------------------------
+Usage:
+  530/544 CPU
+  2/2 GPU
+  0/2 AcceleratorType:V100
+  0/1583.19 memory
+  0/471.02 object_store_memory
+
+Demands:
+  {'CPU': 1}: 150 pending tasks/actors
+  {'CPU': 1}: strategy pending placement groups
+    """.strip()
+
+    actual = format_info_string(
+        lm_summary,
+        autoscaler_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
+    assert expected == actual
+
+
+def test_info_string_no_node_type():
+    lm_summary = LoadMetricsSummary(
+        head_ip="0.0.0.0",
+        usage={
+            "CPU": (530, 544),
+            "GPU": (2, 2),
+            "AcceleratorType:V100": (0, 2),
+            "memory": (0, 1583.19),
+            "object_store_memory": (0, 471.02)
+        },
+        resource_demand=[({
+            "CPU": 1
+        }, 150)],
+        pg_demand=[{
+            "bundles": [({
+                "CPU": 4
+            }, 5)],
+            "strategy": "PACK"
+        }],
+        request_demand=[({
+            "CPU": 1
+        }, 100)],
+        node_types=[({
+            "CPU": 1
+        }, 2), ({
+            "GPU": 4,
+            "CPU": 1
+        }, 4)])
+
+    expected = """
+========Autoscaler status: 2020-12-28 01:02:03========
+Node Status
+--------------------------------------------------
+  2 node(s) with resources: {'CPU': 1}
+  4 node(s) with resources: {'GPU': 4, 'CPU': 1}
+
+Resources
+--------------------------------------------------
+Usage:
+  530/544 CPU
+  2/2 GPU
+  0/2 AcceleratorType:V100
+  0/1583.19 memory
+  0/471.02 object_store_memory
+
+Demands:
+  {'CPU': 1}: 150 pending tasks/actors
+  {'CPU': 1}: strategy pending placement groups
+    """.strip()
+
+    actual = format_info_string_no_node_types(
+        lm_summary,
+        time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
+    assert expected == actual
 
 
 if __name__ == "__main__":

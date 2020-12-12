@@ -157,6 +157,7 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id)
             for node_id in self.all_workers()
         ])
+        logger.debug(logger.info_string())
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -196,6 +197,7 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
+            logger.debug(logger.info_string())
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
@@ -209,6 +211,7 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
+            logger.debug(logger.info_string())
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
@@ -222,6 +225,7 @@ class StandardAutoscaler:
             self.launch_new_node(count, node_type=node_type)
 
         nodes = self.workers()
+        logger.debug(logger.info_string())
 
         # Process any completed updates
         completed = []
@@ -247,6 +251,7 @@ class StandardAutoscaler:
                 self.provider.terminate_nodes(nodes_to_terminate)
 
             nodes = self.workers()
+            logger.debug(logger.info_string())
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause
@@ -272,7 +277,7 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
-        self.log_info_string()
+        logger.info(self.info_string())
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -670,10 +675,6 @@ class StandardAutoscaler:
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
-    def log_info_string(self):
-        string = self.info_string()
-        logger.info(string)
-
     def summary(self):
         """Summarizes the active, pending, and failed node launches.
 
@@ -745,49 +746,51 @@ class StandardAutoscaler:
             len(nodes)))
 
 
-def format_info_string(lm_summary, autoscaler_summary):
-    header = "=" * 8 + f"Autoscaler status: {datetime.now()}" + "=" * 8
+def format_info_string(lm_summary, autoscaler_summary, time=None):
+    if time is None:
+        time = datetime.now()
+    header = "=" * 8 + f"Autoscaler status: {time}" + "=" * 8
     available_node_report_lines = []
     for node_type, count in autoscaler_summary.active_nodes.items():
-        line = f"\t{count} {node_type}"
+        line = f"  {count} {node_type}"
         available_node_report_lines.append(line)
     available_node_report = "\n".join(available_node_report_lines)
 
     pending_lines = []
     for node_type, count in autoscaler_summary.pending_launches.items():
-        line = f"\t{node_type}, {count} launching"
+        line = f"  {node_type}, {count} launching"
         pending_lines.append(line)
     for ip, node_type in autoscaler_summary.pending_nodes:
-        line = f"\t{ip}: {node_type}, setting up"
+        line = f"  {ip}: {node_type}, setting up"
         pending_lines.append(line)
     pending_report = "\n".join(pending_lines)
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f"\t{ip}: {node_type}"
+        line = f"  {ip}: {node_type}"
     failure_report = "\n".join(failure_lines)
 
     usage_lines = []
     for resource, (used, total) in lm_summary.usage.items():
-        line = f"\t{used}/{total} {resource}"
+        line = f"  {used}/{total} {resource}"
         usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
 
     demand_lines = []
     for bundle, count in lm_summary.resource_demand:
-        line = f"\t{bundle}: {count} pending tasks/actors"
+        line = f"  {bundle}: {count} pending tasks/actors"
         demand_lines.append(line)
     for pg, count in lm_summary.pg_demand:
-        line = f"\t{bundle}: {count} pending placement groups"
+        line = f"  {bundle}: {count} pending placement groups"
         demand_lines.append(line)
     for bundle, count in lm_summary.request_demand:
-        line = f"\t{bundle}: {count} from request_resources()"
+        line = f"  {bundle}: {count} from request_resources()"
     demand_report = "\n".join(demand_lines)
 
     formatted_output = f"""{header}
 Node Status
 --------------------------------------------------
-    Healthy:
+Healthy:
 {available_node_report}
 
 Pending:
@@ -806,30 +809,32 @@ Demands:
     return formatted_output
 
 
-def format_info_string_no_node_types(lm_summary):
-    header = "=" * 8 + f"Autoscaler status: {datetime.now()}" + "=" * 8
+def format_info_string_no_node_types(lm_summary, time=None):
+    if time is None:
+        time = datetime.now()
+    header = "=" * 8 + f"Autoscaler status: {time}" + "=" * 8
 
     node_lines = []
     for node_type, count in lm_summary.node_types:
-        line = f"\t{count} node(s) with resources: {node_type}"
+        line = f"  {count} node(s) with resources: {node_type}"
         node_lines.append(line)
     node_report = "\n".join(node_lines)
 
     usage_lines = []
     for resource, (used, total) in lm_summary.usage.items():
-        line = f"\t{used}/{total} {resource}"
+        line = f"  {used}/{total} {resource}"
         usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
 
     demand_lines = []
     for bundle, count in lm_summary.resource_demand:
-        line = f"\t{bundle}: {count} pending tasks/actors"
+        line = f"  {bundle}: {count} pending tasks/actors"
         demand_lines.append(line)
     for pg, count in lm_summary.pg_demand:
-        line = f"\t{bundle}: {count} pending placement groups"
+        line = f"  {bundle}: {count} pending placement groups"
         demand_lines.append(line)
     for bundle, count in lm_summary.request_demand:
-        line = f"\t{bundle}: {count} from request_resources()"
+        line = f"  {bundle}: {count} from request_resources()"
     demand_report = "\n".join(demand_lines)
 
     formatted_output = f"""{header}
