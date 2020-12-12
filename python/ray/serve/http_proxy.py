@@ -135,7 +135,9 @@ class HTTPProxy:
                                 "supported by Ray Serve.  Consider using "
                                 "another Starlette response type such as "
                                 "Response, HTMLResponse, PlainTextResponse, "
-                                "or JSONResponse.")
+                                "or JSONResponse.  If support for "
+                                "StreamingResponse is desired, please let "
+                                "the Ray team know by making a Github issue!")
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
