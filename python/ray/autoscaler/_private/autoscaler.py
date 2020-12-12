@@ -157,7 +157,7 @@ class StandardAutoscaler:
             self.provider.internal_ip(node_id)
             for node_id in self.all_workers()
         ])
-        logger.debug(logger.info_string())
+        logger.debug(self.info_string())
 
         # Terminate any idle or out of date nodes
         last_used = self.load_metrics.last_used_time_by_ip
@@ -197,7 +197,7 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            logger.debug(logger.info_string())
+            logger.debug(self.info_string())
 
         # Terminate nodes if there are too many
         nodes_to_terminate = []
@@ -211,7 +211,7 @@ class StandardAutoscaler:
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
-            logger.debug(logger.info_string())
+            logger.debug(self.info_string())
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
@@ -225,7 +225,7 @@ class StandardAutoscaler:
             self.launch_new_node(count, node_type=node_type)
 
         nodes = self.workers()
-        logger.debug(logger.info_string())
+        logger.debug(self.info_string())
 
         # Process any completed updates
         completed = []
@@ -251,7 +251,7 @@ class StandardAutoscaler:
                 self.provider.terminate_nodes(nodes_to_terminate)
 
             nodes = self.workers()
-            logger.debug(logger.info_string())
+            logger.debug(self.info_string())
 
         # Update nodes with out-of-date files.
         # TODO(edoakes): Spawning these threads directly seems to cause

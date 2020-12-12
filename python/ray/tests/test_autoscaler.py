@@ -539,7 +539,7 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker", TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER}, 10)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         autoscaler = StandardAutoscaler(
