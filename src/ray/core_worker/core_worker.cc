@@ -2368,7 +2368,7 @@ void CoreWorker::HandleRestoreSpilledObjects(
     }
     auto total =
         options_.restore_spilled_objects(object_ids_to_restore, spilled_objects_url);
-    reply->set_restored_bytes_total(total);
+    reply->set_bytes_restored_total(total);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(

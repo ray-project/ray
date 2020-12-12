@@ -641,6 +641,8 @@ cdef c_vector[c_string] spill_objects_handler(
 cdef int64_t restore_spilled_objects_handler(
         const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
+    cdef:
+        int64_t bytes_restored = 0
     with gil:
         urls = []
         size = object_urls.size()
@@ -651,7 +653,8 @@ cdef int64_t restore_spilled_objects_handler(
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
-                external_storage.restore_spilled_objects(object_refs, urls)
+                bytes_restored = external_storage.restore_spilled_objects(
+                    object_refs, urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -662,6 +665,7 @@ cdef int64_t restore_spilled_objects_handler(
                 "restore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+    return bytes_restored
 
 
 cdef void delete_spilled_objects_handler(
