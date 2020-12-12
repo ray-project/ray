@@ -322,6 +322,11 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
   }
 }
 
+void GcsNodeManager::UpdatePlacementGroupLoad(
+    const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  placement_group_load_ = absl::make_optional(placement_group_load);
+}
+
 void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
     const auto &node_id = sorted_dead_node_list_.begin()->first;

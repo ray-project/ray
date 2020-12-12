@@ -164,36 +164,6 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
-message SetInternalConfigRequest {
-  StoredConfig config = 1;
-}
-
-message SetInternalConfigReply {
-  GcsStatus status = 1;
-}
-
-message GetInternalConfigRequest {
-}
-
-message GetInternalConfigReply {
-  GcsStatus status = 1;
-  StoredConfig config = 2;
-}
-
-// Service for node info access.
-service NodeInfoGcsService {
-  // Register a node to GCS Service.
-  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Unregister a node from GCS Service.
-  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
-  // Get information of all nodes from GCS Service.
-  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Set cluster internal config.
-  rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
-}
-
 message ReportResourceUsageRequest {
   ResourcesData resources = 1;
 }
