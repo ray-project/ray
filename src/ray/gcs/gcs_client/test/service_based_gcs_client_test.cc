@@ -328,10 +328,10 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeBatchHeartbeat(
-      const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe) {
+  bool SubscribeBatchResourceUsage(
+      const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchedResourceUsage(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -340,6 +340,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
         heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+        resources, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -715,80 +722,76 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   ASSERT_TRUE(GetResources(node_id).empty());
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
+TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> heartbeat_batch_count(0);
-  auto on_subscribe =
-      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
-        ++heartbeat_batch_count;
-      };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
 
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
 
-  // Report heartbeat of a node to GCS.
+  // Report resource usage of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_node_id(node_id.Binary());
-  // Set this flag because GCS won't publish unchanged heartbeat.
-  heartbeat->set_should_global_gc(true);
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(heartbeat_batch_count, 1);
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  resource->set_should_global_gc(true);
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 1);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeatWithLightHeartbeat) {
+TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> heartbeat_batch_count(0);
-  auto on_subscribe =
-      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
-        ++heartbeat_batch_count;
-      };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
 
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
 
-  // Report unchanged heartbeat of a node to GCS.
+  // Report unchanged resource usage of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_node_id(node_id.Binary());
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(heartbeat_batch_count, 0);
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 0);
 
-  // Report changed heartbeat of a node to GCS.
-  auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_node_id(node_id.Binary());
-  heartbeat1->set_resources_available_changed(true);
-  ASSERT_TRUE(ReportHeartbeat(heartbeat1));
-  WaitForExpectedCount(heartbeat_batch_count, 1);
+  // Report changed resource usage of a node to GCS.
+  auto resource1 = std::make_shared<rpc::ResourcesData>();
+  resource1->set_node_id(node_id.Binary());
+  resource1->set_resources_available_changed(true);
+  ASSERT_TRUE(ReportResourceUsage(resource1));
+  WaitForExpectedCount(resource_batch_count, 1);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> heartbeat_batch_count(0);
-  auto on_subscribe =
-      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
-        ++heartbeat_batch_count;
-      };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
 
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
 
-  // Report heartbeat of a node to GCS.
+  // Report resource usage of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_node_id(node_id.Binary());
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
   // Set this flag to indicate resources has changed.
-  heartbeat->set_resources_available_changed(true);
-  (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
-  (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(heartbeat_batch_count, 1);
+  resource->set_resources_available_changed(true);
+  (*resource->mutable_resources_available())["CPU"] = 1.0;
+  (*resource->mutable_resources_available())["GPU"] = 10.0;
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 1);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -798,28 +801,28 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
   EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResourcesWithLightHeartbeat) {
+TEST_F(ServiceBasedGcsClientTest,
+       TestGetAllAvailableResourcesWithLightResourceUsageReport) {
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> heartbeat_batch_count(0);
-  auto on_subscribe =
-      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
-        ++heartbeat_batch_count;
-      };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
 
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
 
-  // Report heartbeat of a node to GCS.
+  // Report resource usage of a node to GCS.
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_node_id(node_id.Binary());
-  heartbeat->set_resources_available_changed(true);
-  (*heartbeat->mutable_resources_available())["CPU"] = 1.0;
-  (*heartbeat->mutable_resources_available())["GPU"] = 10.0;
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(heartbeat_batch_count, 1);
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  resource->set_resources_available_changed(true);
+  (*resource->mutable_resources_available())["CPU"] = 1.0;
+  (*resource->mutable_resources_available())["GPU"] = 10.0;
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 1);
 
   // Assert get all available resources right.
   std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
@@ -828,12 +831,12 @@ TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResourcesWithLightHeartbeat
   EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
   EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
 
-  // Report unchanged heartbeat of a node to GCS.
-  auto heartbeat1 = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat1->set_node_id(node_id.Binary());
-  (*heartbeat1->mutable_resources_available())["GPU"] = 8.0;
-  ASSERT_TRUE(ReportHeartbeat(heartbeat1));
-  WaitForExpectedCount(heartbeat_batch_count, 1);
+  // Report unchanged resource usage of a node to GCS.
+  auto resource1 = std::make_shared<rpc::ResourcesData>();
+  resource1->set_node_id(node_id.Binary());
+  (*resource1->mutable_resources_available())["GPU"] = 8.0;
+  ASSERT_TRUE(ReportResourceUsage(resource1));
+  WaitForExpectedCount(resource_batch_count, 1);
 
   // The value would remain unchanged.
   std::vector<rpc::AvailableResources> resources1 = GetAllAvailableResources();
@@ -1145,24 +1148,24 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(SubscribeToResources(resource_subscribe));
 
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> batch_heartbeat_count(0);
-  auto batch_heartbeat_subscribe =
-      [&batch_heartbeat_count](const rpc::HeartbeatBatchTableData &result) {
-        ++batch_heartbeat_count;
+  std::atomic<int> batch_resource_usage_count(0);
+  auto batch_resource_usage_subscribe =
+      [&batch_resource_usage_count](const rpc::ResourceUsageBatchData &result) {
+        ++batch_resource_usage_count;
       };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(batch_heartbeat_subscribe));
+  ASSERT_TRUE(SubscribeBatchResourceUsage(batch_resource_usage_subscribe));
 
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
   NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_node_id(node_info->node_id());
-  // Set this flag because GCS won't publish unchanged heartbeat.
-  heartbeat->set_should_global_gc(true);
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(batch_heartbeat_count, 1);
+  auto resources = std::make_shared<rpc::ResourcesData>();
+  resources->set_node_id(node_info->node_id());
+  // Set this flag because GCS won't publish unchanged resources.
+  resources->set_should_global_gc(true);
+  ASSERT_TRUE(ReportResourceUsage(resources));
+  WaitForExpectedCount(batch_resource_usage_count, 1);
 
   RestartGcsServer();
 
@@ -1170,12 +1173,12 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(RegisterNode(*node_info));
   node_id = NodeID::FromBinary(node_info->node_id());
   ASSERT_TRUE(UpdateResources(node_id, key));
-  heartbeat->set_node_id(node_info->node_id());
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  resources->set_node_id(node_info->node_id());
+  ASSERT_TRUE(ReportResourceUsage(resources));
 
   WaitForExpectedCount(node_change_count, 2);
   WaitForExpectedCount(resource_change_count, 2);
-  WaitForExpectedCount(batch_heartbeat_count, 2);
+  WaitForExpectedCount(batch_resource_usage_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
