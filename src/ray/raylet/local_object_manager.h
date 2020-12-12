@@ -51,8 +51,7 @@ class LocalObjectManager {
         last_free_objects_at_ms_(current_time_ms()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
-        max_active_workers_(RayConfig::instance().max_io_workers()) {
-  }
+        max_active_workers_(RayConfig::instance().max_io_workers()) {}
 
   /// Pin objects.
   ///

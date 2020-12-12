@@ -531,8 +531,9 @@ void NodeManager::ReportResourceUsage() {
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
-  auto now = absl::GetCurrentTimeNanos()
-  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) && now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
+  auto now = absl::GetCurrentTimeNanos();
+  if ((should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) &&
+      now - last_local_gc_ns_ > local_gc_min_interval_ns_) {
     DoLocalGC();
     should_local_gc_ = false;
     last_local_gc_ns_ = now;

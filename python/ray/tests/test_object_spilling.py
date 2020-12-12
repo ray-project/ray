@@ -4,7 +4,6 @@ import os
 import random
 import platform
 import sys
-import time
 
 import numpy as np
 import pytest

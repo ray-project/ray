@@ -785,7 +785,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The interval in nanoseconds between local GC automatic triggers.
   const int64_t local_gc_interval_ns_;
 
-  /// The min interval in nanoseconds between local GC runs (auto + memory pressure triggered).
+  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
+  /// triggered).
   const int64_t local_gc_min_interval_ns_;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
