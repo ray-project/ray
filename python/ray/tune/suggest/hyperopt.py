@@ -190,6 +190,7 @@ class HyperOptSearch(Searcher):
             for i in range(len(self._points_to_evaluate)):
                 config = self._points_to_evaluate[i]
                 self._convert_categories_to_indices(config)
+            # HyperOpt treats initial points as LIFO, reverse to get FIFO
             self._points_to_evaluate = list(reversed(self._points_to_evaluate))
             self._hpopt_trials = generate_trials_to_calculate(
                 self._points_to_evaluate)
