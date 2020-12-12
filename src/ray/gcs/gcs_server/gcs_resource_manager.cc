@@ -157,12 +157,14 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
 bool GcsResourceManager::AcquireResources(const NodeID &node_id,
                                           const ResourceSet &required_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
-  RAY_CHECK(iter != cluster_scheduling_resources_.end())
-      << "Node " << node_id << " not exist.";
-  if (!required_resources.IsSubset(iter->second)) {
-    return false;
+  if (iter != cluster_scheduling_resources_.end()) {
+    if (!required_resources.IsSubset(iter->second)) {
+      return false;
+    }
+    iter->second.SubtractResourcesStrict(required_resources);
   }
-  iter->second.SubtractResourcesStrict(required_resources);
+  // If node dead, we will not find the node. This is a normal scenario, so it returns
+  // true.
   return true;
 }
 
