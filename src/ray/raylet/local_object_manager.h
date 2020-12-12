@@ -244,6 +244,9 @@ class LocalObjectManager {
   /// The total number of bytes spilled.
   int64_t spilled_bytes_total_ = 0;
 
+  /// The total number of objects spilled.
+  int64_t spilled_objects_total_ = 0;
+
   /// The last time a restore operation finished.
   int64_t last_restore_finish_ns_ = 0;
 
@@ -252,6 +255,9 @@ class LocalObjectManager {
 
   /// The total number of bytes restored.
   int64_t restored_bytes_total_ = 0;
+
+  /// The total number of objects restored.
+  int64_t restored_objects_total_ = 0;
 
   /// The last time a spill log finished.
   int64_t last_spill_log_ns_ = 0;

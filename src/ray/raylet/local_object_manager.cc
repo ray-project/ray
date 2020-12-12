@@ -144,7 +144,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     RAY_LOG(INFO) << "Spilling objects of total size " << bytes_to_spill
                   << " num objects " << objects_to_spill.size();
     auto start_time = absl::GetCurrentTimeNanos();
-    SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill,
+    SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {
       if (!status.ok()) {
         RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
@@ -153,13 +153,15 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         RAY_LOG(INFO) << "Spilled " << bytes_to_spill << " in "
                       << (now - start_time) / 1e6 << "ms";
         spilled_bytes_total_ += bytes_to_spill;
+        spilled_objects_total_ += objects_to_spill.size();
         // Adjust throughput timing to account for concurrent spill operations.
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
           RAY_LOG(ERROR) << "Spilled "
                          << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
-                         << " MiB total, write throughput "
+                         << " MiB, " << spilled_objects_total_
+                         << " objects, write throughput "
                          << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
                                              spill_time_total_s_)
                          << " MiB/s";
@@ -317,6 +319,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             RAY_LOG(INFO) << "Restored " << restored_bytes << " in "
                           << (now - start_time) / 1e6 << "ms";
             restored_bytes_total_ += restored_bytes;
+            restored_objects_total_ += 1;
             // Adjust throughput timing to account for concurrent restore operations.
             restore_time_total_s_ +=
                 (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
@@ -324,7 +327,8 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
               last_restore_log_ns_ = now;
               RAY_LOG(ERROR) << "Restored "
                              << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
-                             << " MiB total, read throughput "
+                             << " MiB, " << restored_objects_total_
+                             << " objects, read throughput "
                              << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
                                                  restore_time_total_s_)
                              << " MiB/s";
