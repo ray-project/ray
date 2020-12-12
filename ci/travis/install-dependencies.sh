@@ -58,6 +58,7 @@ install_base() {
         # So to use the newer Docker features, we'll have to go through the whole process.
         # https://packages.ubuntu.com/bionic/docker.io
         sudo apt-get install --assume-yes docker.io
+        sudo systemctl unmask docker
         sudo systemctl restart docker
         if [ -n "${TRAVIS-}" ]; then
           sudo usermod -a -G docker travis
