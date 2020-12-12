@@ -52,7 +52,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
         wait_request,
         [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
           if (!status.ok()) {
-            RAY_LOG(WARNING) << "Worker failed. Unpinning object " << object_id;
+            RAY_LOG(DEBUG) << "Worker failed. Unpinning object " << object_id;
           }
           ReleaseFreedObject(object_id);
         });
