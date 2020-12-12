@@ -112,13 +112,9 @@ The python script can also be used to launch the Ray job to the ray cluster whic
 The following `launch.py` and `sbatch_template.sh` implement this idea and you can copy them to your own project as helper files.
 Concretely, the `launch.py` does the following things:
 
-1. It automatically writes your requirements, e.g. number of CPUs, GPUs per node, the number of nodes and so on,
-to a sbatch script name `{exp-name}_{date}-{time}.sh`.
-Your command (`--command`) to launch your own job is also written into the sbatch script.
+1. It automatically writes your requirements, e.g. number of CPUs, GPUs per node, the number of nodes and so on, to a sbatch script name `{exp-name}_{date}-{time}.sh`. Your command (`--command`) to launch your own job is also written into the sbatch script.
 2. Then it will submit the sbatch script to slurm manager via a new process.
-3. Finally, the python process will terminate itself and leaves a log file named `{exp-name}_{date}-{time}.log`
-to record the progress of your submitted command. At the mean time, the ray cluster and your job is running in the
-slurm cluster.
+3. Finally, the python process will terminate itself and leaves a log file named `{exp-name}_{date}-{time}.log` to record the progress of your submitted command. At the mean time, the ray cluster and your job is running in the slurm cluster.
 
 
 If you want to utilize multiple computing node in slurm and let ray recognizes them, please use:
