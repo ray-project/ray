@@ -105,29 +105,22 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
 }
 
 bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
-  // If object spilling is not configured, there's no space to create by spilling.
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
     return false;
   }
   absl::MutexLock lock(&mutex_);
 
-  // Spill as much as min spilling size repeatdly until we reach to the max throughput.
-  // The loop will be terminated if we cannot spill any more object.
+  // Spill as fast as we can using all our spill workers.
   while (num_active_workers_ < max_active_workers_) {
     if (!SpillObjectsOfSize(min_spilling_size_)) {
       break;
     }
     num_active_workers_ += 1;
   }
-  // true if spilling is active
-  // Give a two second grace period since the last spill, since it seems to take a bit of
-  // time for space to free up (TODO(ekl))
-  return num_active_workers_ > 0;
-}
 
-void LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
-  SpillObjectsOfSize(min_spilling_size_);
+  // Return whether spilling is still in progress.
+  return num_active_workers_ > 0;
 }
 
 bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {

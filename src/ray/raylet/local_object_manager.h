@@ -49,9 +49,9 @@ class LocalObjectManager {
         automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
+        min_spilling_size_(RayConfig::instance().min_spilling_size()),
         num_active_workers_(0),
         max_active_workers_(RayConfig::instance().max_io_workers()) {
-    min_spilling_size_ = RayConfig::instance().min_spilling_size();
   }
 
   /// Pin objects.
@@ -71,9 +71,9 @@ class LocalObjectManager {
   void WaitForObjectFree(const rpc::Address &owner_address,
                          const std::vector<ObjectID> &object_ids);
 
-  /// Spill objects as much as possible as fast as possible upto the max throughput.
+  /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
-  /// \return Bytes that will be available after spilling at max throughput.
+  /// \return True if spilling is in progress.
   bool SpillObjectUptoMaxThroughput();
 
   /// Spill objects to external storage.
@@ -127,11 +127,6 @@ class LocalObjectManager {
   /// spill is complete. This return the value is less than 0 if it satifies the
   /// min_bytes_to_spill.
   bool SpillObjectsOfSize(int64_t num_bytes_to_spill) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Spill object as much as min_spilling_size_.
-  ///
-  /// \return true if spilling succeeds. false if we cannot spill anymore.
-  void SpillObjectsUptoMinSpillingSize() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
@@ -231,7 +226,10 @@ class LocalObjectManager {
   /// Minimum bytes to spill to a single IO spill worker.
   int64_t min_spilling_size_;
 
+  /// The current number of active spill workers.
   int64_t num_active_workers_;
+
+  /// The max number of active spill workers.
   int64_t max_active_workers_;
 };
 

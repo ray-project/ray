@@ -254,8 +254,6 @@ class PlasmaStore {
   // Start listening for clients.
   void DoAccept();
 
-  double GetMemoryUsagePercentage();
-
   // A reference to the asio io context.
   boost::asio::io_service &io_context_;
   /// The name of the socket this object store listens on.

@@ -8,7 +8,6 @@ import time
 
 import numpy as np
 import pytest
-import psutil
 import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
@@ -123,127 +122,6 @@ def test_url_generation_and_parse():
     assert parsed_result.base_url == url
     assert parsed_result.offset == offset
     assert parsed_result.size == size
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_manually(object_spilling_config, shutdown_only):
-    # Limit our object store to 75 MiB of memory.
-    ray.init(
-        object_store_memory=75 * 1024 * 1024,
-        _system_config={
-            "object_store_full_max_retries": 0,
-            "automatic_object_spilling_enabled": False,
-            "max_io_workers": 4,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
-            "automatic_object_deletion_enabled": False,
-        })
-    arr = np.random.rand(1024 * 1024)  # 8 MB data
-    replay_buffer = []
-    pinned_objects = set()
-
-    # Create objects of more than 200 MiB.
-    for _ in range(25):
-        ref = None
-        while ref is None:
-            try:
-                ref = ray.put(arr)
-                replay_buffer.append(ref)
-                pinned_objects.add(ref)
-            except ray.exceptions.ObjectStoreFullError:
-                ref_to_spill = pinned_objects.pop()
-                ray.experimental.force_spill_objects([ref_to_spill])
-
-    def is_worker(cmdline):
-        return cmdline and cmdline[0].startswith("ray::")
-
-    # Make sure io workers are spawned with proper name.
-    processes = [
-        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
-        if is_worker(x.info["cmdline"])
-    ]
-    assert (
-        ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE in processes)
-
-    # Spill 2 more objects so we will always have enough space for
-    # restoring objects back.
-    refs_to_spill = (pinned_objects.pop(), pinned_objects.pop())
-    ray.experimental.force_spill_objects(refs_to_spill)
-
-    # randomly sample objects
-    for _ in range(100):
-        ref = random.choice(replay_buffer)
-        sample = ray.get(ref)
-        assert np.array_equal(sample, arr)
-
-    # Make sure io workers are spawned with proper name.
-    processes = [
-        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
-        if is_worker(x.info["cmdline"])
-    ]
-    assert (
-        ray.ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE in processes)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_manually_from_workers(object_spilling_config,
-                                             shutdown_only):
-    # Limit our object store to 100 MiB of memory.
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "object_store_full_max_retries": 0,
-            "automatic_object_spilling_enabled": False,
-            "max_io_workers": 4,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
-            "automatic_object_deletion_enabled": False,
-        })
-
-    @ray.remote
-    def _worker():
-        arr = np.random.rand(1024 * 1024)  # 8 MB data
-        ref = ray.put(arr)
-        ray.experimental.force_spill_objects([ref])
-        return ref
-
-    # Create objects of more than 200 MiB.
-    replay_buffer = [ray.get(_worker.remote()) for _ in range(25)]
-    values = {ref: np.copy(ray.get(ref)) for ref in replay_buffer}
-    # Randomly sample objects.
-    for _ in range(100):
-        ref = random.choice(replay_buffer)
-        sample = ray.get(ref)
-        assert np.array_equal(sample, values[ref])
-
-
-@pytest.mark.skip(reason="Not implemented yet.")
-def test_spill_objects_manually_with_workers(object_spilling_config,
-                                             shutdown_only):
-    # Limit our object store to 75 MiB of memory.
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "object_store_full_max_retries": 0,
-            "automatic_object_spilling_enabled": False,
-            "max_io_workers": 4,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
-            "automatic_object_deletion_enabled": False,
-        })
-    arrays = [np.random.rand(100 * 1024) for _ in range(50)]
-    objects = [ray.put(arr) for arr in arrays]
-
-    @ray.remote
-    def _worker(object_refs):
-        ray.experimental.force_spill_objects(object_refs)
-
-    ray.get([_worker.remote([o]) for o in objects])
-
-    for restored, arr in zip(ray.get(objects), arrays):
-        assert np.array_equal(restored, arr)
 
 
 @pytest.mark.skipif(
