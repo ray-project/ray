@@ -132,11 +132,15 @@ class ClusterTaskManager {
   const bool report_worker_backlog_;
 
   /// Queue of lease requests that are waiting for resources to become available.
+  /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
+  /// Tasks move from scheduled | waiting -> dispatch.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+
   /// Tasks waiting for arguments to be transferred locally.
+  /// Tasks move from waiting -> dispatch.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.

@@ -10,7 +10,7 @@ Basics
 
 The Ray Cluster Launcher will automatically enable a load-based autoscaler. The scheduler will look at the task, actor, and placement group resource demands from the cluster, and tries to add the minimum set of nodes that can fulfill these demands. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
-To avoid launching too many nodes at once, the number of nodes allowed to be pending is limited by the ``upscaling_speed`` setting. By default it is set to ``1.0``, which means the cluster can grow in size by at most ``100%`` at a time (doubling in size each time). This fraction can be set to as high as needed, e.g., ``99999`` to allow the cluster to quickly grow to its max size.
+To avoid launching too many nodes at once, the number of nodes allowed to be pending is limited by the ``upscaling_speed`` setting. By default it is set to ``1.0``, which means the cluster can be growing in size by at most ``100%`` at any time (e.g., if the cluster currently has 20 nodes, at most 20 pending launches are allowed). This fraction can be set to as high as needed, e.g., ``99999`` to allow the cluster to quickly grow to its max size.
 
 In more detail, the autoscaler implements the following control loop:
 

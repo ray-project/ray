@@ -234,6 +234,9 @@ int main(int argc, char *argv[]) {
         ray::ObjectManagerConfig object_manager_config;
         object_manager_config.object_manager_port = object_manager_port;
         object_manager_config.store_socket_name = store_socket_name;
+
+        object_manager_config.timer_freq_ms =
+            RayConfig::instance().object_manager_timer_freq_ms();
         object_manager_config.pull_timeout_ms =
             RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
