@@ -5,6 +5,7 @@ to the server.
 import inspect
 import json
 import logging
+import uuid
 from typing import Any
 from typing import List
 from typing import Tuple
@@ -23,6 +24,7 @@ from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientActorHandle
 from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client.dataclient import DataClient
 
 logger = logging.getLogger(__name__)
 
@@ -31,26 +33,23 @@ class Worker:
     def __init__(self,
                  conn_str: str = "",
                  secure: bool = False,
-                 metadata: List[Tuple[str, str]] = None,
-                 stub=None):
+                 metadata: List[Tuple[str, str]] = None):
         """Initializes the worker side grpc client.
 
         Args:
-            stub: custom grpc stub.
             secure: whether to use SSL secure channel or not.
             metadata: additional metadata passed in the grpc request headers.
         """
         self.metadata = metadata
         self.channel = None
-        if stub is None:
-            if secure:
-                credentials = grpc.ssl_channel_credentials()
-                self.channel = grpc.secure_channel(conn_str, credentials)
-            else:
-                self.channel = grpc.insecure_channel(conn_str)
-            self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
+        self._client_id = make_client_id()
+        if secure:
+            credentials = grpc.ssl_channel_credentials()
+            self.channel = grpc.secure_channel(conn_str, credentials)
         else:
-            self.server = stub
+            self.channel = grpc.insecure_channel(conn_str)
+        self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
+        self.data_client = DataClient(self.channel, self._client_id)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -201,3 +200,8 @@ class Worker:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
+
+
+def make_client_id() -> str:
+    id = uuid.uuid4()
+    return id.hex()

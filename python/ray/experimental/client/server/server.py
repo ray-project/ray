@@ -61,6 +61,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             raise TypeError("Unsupported cluster info type")
         return json.dumps(data)
 
+    def release(client_id: str, id: bytes) -> bool:
+        # TODO
+        return False
+
     def Terminate(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":
             try:

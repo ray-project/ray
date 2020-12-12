@@ -99,7 +99,7 @@ class RayAPIStub:
                 stub=None):
         from ray.experimental.client.worker import Worker
         _client_worker = Worker(
-            conn_str, secure=secure, metadata=metadata, stub=stub)
+            conn_str, secure=secure, metadata=metadata)
         _set_client_api(ClientAPI(_client_worker))
 
     def disconnect(self):

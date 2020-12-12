@@ -40,6 +40,7 @@ message ClientTask {
   string name = 2;
   bytes payload_id = 3;
   repeated Arg args = 4;
+  bytes client_id = 5;
 }
 
 message RemoteRef {
@@ -139,5 +140,36 @@ service RayletDriver {
   rpc Terminate(TerminateRequest) returns (TerminateResponse) {
   }
   rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
+  }
+}
+
+message ReleaseRequest {
+  repeated bytes ids = 1;
+}
+
+message ReleaseResponse {
+  repeated bool ok = 2;
+}
+
+message DataRequest {
+  int32 req_id = 1;
+  oneof type {
+    GetRequest get = 2;
+    PutRequest put = 3;
+    ReleaseRequest release = 4;
+  }
+}
+
+message DataResponse {
+  int32 req_id = 1;
+  oneof type {
+    GetResponse get = 2;
+    PutResponse put = 3;
+    ReleaseResponse release = 4;
+  }
+}
+
+service RayletDataStreamer {
+  rpc Datapath(stream DataRequest) returns (stream DataResponse) {
   }
 }
