@@ -156,8 +156,8 @@ class ClusterTaskManager {
 
   void Spillback(const NodeID &spillback_to, const Work &work);
 
-  void AddToBacklog(const Task &task);
-  void RemoveFromBacklog(const Task &task);
+  void AddToBacklogTracker(const Task &task);
+  void RemoveFromBacklogTracker(const Task &task);
 };
 }  // namespace raylet
 }  // namespace ray

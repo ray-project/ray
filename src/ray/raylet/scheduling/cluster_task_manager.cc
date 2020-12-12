@@ -202,7 +202,7 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   tasks_to_schedule_[scheduling_class].push_back(work);
-  AddToBacklog(task);
+  AddToBacklogTracker(task);
 }
 
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
@@ -242,7 +242,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
-        RemoveFromBacklog(task);
+        RemoveFromBacklogTracker(task);
         RAY_LOG(DEBUG) << "Canceling task " << task_id;
         ReplyCancelled(*work_it);
         work_queue.erase(work_it);
@@ -259,7 +259,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
       const auto &task = std::get<0>(*work_it);
       if (task.GetTaskSpecification().TaskId() == task_id) {
-        RemoveFromBacklog(task);
+        RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -273,7 +273,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   auto iter = waiting_tasks_.find(task_id);
   if (iter != waiting_tasks_.end()) {
     const auto &task = std::get<0>(iter->second);
-    RemoveFromBacklog(task);
+    RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
     waiting_tasks_.erase(iter);
     return true;
@@ -286,7 +286,7 @@ void ClusterTaskManager::FillResourceUsage(
     bool light_report_resource_usage_enabled,
     std::shared_ptr<rpc::ResourcesData> data) const {
   if (max_resource_shapes_per_load_report_ == 0) {
-                                                  return;
+    return;
   }
   // TODO (WangTao): Find a way to check if load changed and combine it with light
   // heartbeat. Now we just report it every time.
@@ -521,14 +521,14 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
   send_reply_callback();
 }
 
-void ClusterTaskManager::AddToBacklog(const Task &task) {
+void ClusterTaskManager::AddToBacklogTracker(const Task &task) {
   if (report_worker_backlog_) {
     auto cls = task.GetTaskSpecification().GetSchedulingClass();
     backlog_tracker_[cls] += task.BacklogSize();
   }
 }
 
-void ClusterTaskManager::RemoveFromBacklog(const Task &task) {
+void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
   if (report_worker_backlog_) {
     SchedulingClass cls = task.GetTaskSpecification().GetSchedulingClass();
     backlog_tracker_[cls] -= task.BacklogSize();
