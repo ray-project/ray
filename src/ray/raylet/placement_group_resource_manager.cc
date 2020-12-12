@@ -76,7 +76,8 @@ bool OldPlacementGroupResourceManager::PrepareBundle(
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
 
-void OldPlacementGroupResourceManager::CommitBundle(const BundleSpecification &bundle_spec) {
+void OldPlacementGroupResourceManager::CommitBundle(
+    const BundleSpecification &bundle_spec) {
   const auto &bundle_id = bundle_spec.BundleId();
   auto it = bundle_state_map_.find(bundle_id);
   // When bundle is committed, it should've been prepared already.
@@ -107,7 +108,8 @@ void OldPlacementGroupResourceManager::CommitBundle(const BundleSpecification &b
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
-void OldPlacementGroupResourceManager::ReturnBundle(const BundleSpecification &bundle_spec) {
+void OldPlacementGroupResourceManager::ReturnBundle(
+    const BundleSpecification &bundle_spec) {
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());

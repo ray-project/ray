@@ -27,11 +27,13 @@ namespace ray {
 class OldPlacementGroupResourceManagerTest : public ::testing::Test {
  public:
   OldPlacementGroupResourceManagerTest() {
-    old_placement_group_resource_manager_.reset(new raylet::OldPlacementGroupResourceManager(
-        local_available_resources_, cluster_resource_map_, self_node_id_));
+    old_placement_group_resource_manager_.reset(
+        new raylet::OldPlacementGroupResourceManager(
+            local_available_resources_, cluster_resource_map_, self_node_id_));
   }
 
-  std::unique_ptr<raylet::OldPlacementGroupResourceManager> old_placement_group_resource_manager_;
+  std::unique_ptr<raylet::OldPlacementGroupResourceManager>
+      old_placement_group_resource_manager_;
 
   void InitLocalAvailableResource(
       std::unordered_map<std::string, double> &unit_resource) {
@@ -68,7 +70,8 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestPrepareBundleResource) {
   /// 3. prepare bundle resource.
   old_placement_group_resource_manager_->PrepareBundle(bundle_spec);
   /// 4. check remaining resources is correct.
-  auto &remaining_resource = old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
+  auto &remaining_resource =
+      old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
   ResourceSet result_resource;
   ASSERT_EQ(0, local_available_resources_.AvailableResources().size());
   ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
@@ -105,7 +108,8 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestCommitBundleResource) {
   old_placement_group_resource_manager_->PrepareBundle(bundle_spec);
   old_placement_group_resource_manager_->CommitBundle(bundle_spec);
   /// 4. check remaining resources is correct.
-  auto &remaining_resource = old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
+  auto &remaining_resource =
+      old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
   std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
                                               "CPU_group_1_" + group_id.Hex()};
   std::vector<double> resource_capacity = {1.0, 1.0};
@@ -133,7 +137,8 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestReturnBundleResource) {
   /// 4. return bundle resource.
   old_placement_group_resource_manager_->ReturnBundle(bundle_spec);
   /// 5. check remaining resources is correct.
-  auto &remaining_resource = old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
+  auto &remaining_resource =
+      old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
   ResourceSet result_resource(unit_resource);
   ASSERT_EQ(1, local_available_resources_.AvailableResources().size());
   ASSERT_EQ(1, remaining_resource.GetAvailableResources().IsEqual(result_resource))
@@ -161,7 +166,8 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestMultipleBundlesCommitAndReturn)
   old_placement_group_resource_manager_->CommitBundle(first_bundle_spec);
   old_placement_group_resource_manager_->CommitBundle(second_bundle_spec);
   /// 4. check remaining resources is correct after commit phase.
-  auto &remaining_resource = old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
+  auto &remaining_resource =
+      old_placement_group_resource_manager_->GetAllResourceSetWithoutId();
   std::vector<std::string> resource_labels = {"CPU_group_" + group_id.Hex(),
                                               "CPU_group_1_" + group_id.Hex(),
                                               "CPU_group_2_" + group_id.Hex()};
