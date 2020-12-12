@@ -94,7 +94,11 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> unit_resource_;
 
-  /// Store all bundle resource labels, e.g., CPU -> CPU_group_i, CPU_group_YYY_i.
+  /// When a bundle is assigned on a node, we'll add the following special resources on that node:
+  /// 1) `CPU_group_${group_id}`: this is the requested resource when the actor or task specifies
+  /// placement group without bundle id.
+  /// 2) `CPU_group_${bundle_index}_${group_id}`: this is the requested resource when the actor
+  /// or task specifies placement group with bundle id.
   std::unordered_map<std::string, double> bundle_resource_labels_;
 
   mutable ScheduleBundleCallback on_schedule_ = nullptr;

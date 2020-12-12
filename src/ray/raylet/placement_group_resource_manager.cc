@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License
 
-#include "ray/raylet/local_placement_group_manager.h"
+#include "ray/raylet/placement_group_resource_manager.h"
 
 #include <cctype>
 #include <fstream>
@@ -22,7 +22,7 @@ namespace ray {
 
 namespace raylet {
 
-OldLocalPlacementGroupManager::OldLocalPlacementGroupManager(
+OldPlacementGroupResourceManager::OldPlacementGroupResourceManager(
     ResourceIdSet &local_available_resources_,
     std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
     const NodeID &self_node_id_)
@@ -30,9 +30,9 @@ OldLocalPlacementGroupManager::OldLocalPlacementGroupManager(
       cluster_resource_map_(cluster_resource_map_),
       self_node_id_(self_node_id_) {}
 
-bool OldLocalPlacementGroupManager::PrepareBundle(
+bool OldPlacementGroupResourceManager::PrepareBundle(
     const BundleSpecification &bundle_spec) {
-  // We will first delete the existing bundle to ensure idempotent.
+  // We will first delete the existing bundle to ensure idempotence.
   // The reason why we do this is: after GCS restarts, placement group can be rescheduled
   // directly without rolling back the operations performed before the restart.
   const auto &bundle_id = bundle_spec.BundleId();
@@ -76,7 +76,7 @@ bool OldLocalPlacementGroupManager::PrepareBundle(
   return bundle_state->acquired_resources.AvailableResources().size() > 0;
 }
 
-void OldLocalPlacementGroupManager::CommitBundle(const BundleSpecification &bundle_spec) {
+void OldPlacementGroupResourceManager::CommitBundle(const BundleSpecification &bundle_spec) {
   const auto &bundle_id = bundle_spec.BundleId();
   auto it = bundle_state_map_.find(bundle_id);
   // When bundle is committed, it should've been prepared already.
@@ -107,7 +107,7 @@ void OldLocalPlacementGroupManager::CommitBundle(const BundleSpecification &bund
       << "Prepare should've been failed if there were no acquireable resources.";
 }
 
-void OldLocalPlacementGroupManager::ReturnBundle(const BundleSpecification &bundle_spec) {
+void OldPlacementGroupResourceManager::ReturnBundle(const BundleSpecification &bundle_spec) {
   // We should commit resources if it weren't because
   // ReturnBundleResources requires resources to be committed when it is called.
   auto it = bundle_state_map_.find(bundle_spec.BundleId());
@@ -134,7 +134,7 @@ void OldLocalPlacementGroupManager::ReturnBundle(const BundleSpecification &bund
       ResourceSet(placement_group_resource_labels));
 }
 
-void OldLocalPlacementGroupManager::ReturnUnusedBundle(
+void OldPlacementGroupResourceManager::ReturnUnusedBundle(
     const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {

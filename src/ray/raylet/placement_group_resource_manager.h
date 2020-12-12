@@ -44,15 +44,9 @@ struct pair_hash {
   }
 };
 
-/// LocalPlacementGroupManagerInterface is responsible for handle the register bundle
-/// request from GCS.
-/// PrepareBundle is responsible for reserving the necessary resources.
-/// CommitBundle is responsible for creating new custom resources.
-/// ReturnBundle is resonsible for return resource to resources view, note
-/// it not responsible for killing workers.
-/// ReturnUnusedBundle is responsible for release unused bundle and ruturn resource to
-/// resources view.
-class LocalPlacementGroupManagerInterface {
+/// `PlacementGroupResourceManager` responsible for managing the resources that
+/// about allocated for placement group bundles.
+class PlacementGroupResourceManager {
  public:
   /// Lock the required resources from local available resources. Note that this is phase
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
@@ -77,11 +71,11 @@ class LocalPlacementGroupManagerInterface {
   virtual void ReturnUnusedBundle(
       const std::unordered_set<BundleID, pair_hash> &in_use_bundles) = 0;
 
-  virtual ~LocalPlacementGroupManagerInterface() {}
+  virtual ~PlacementGroupResourceManager() {}
 };
 
 /// Associated with old scheduler.
-class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface {
+class OldPlacementGroupResourceManager : public PlacementGroupResourceManager {
  public:
   /// Create a local placement group manager.
   ///
@@ -91,12 +85,12 @@ class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface
   /// are currently available.
   /// \param self_node_id_: The related raylet with current
   /// placement group manager.
-  OldLocalPlacementGroupManager(
+  OldPlacementGroupResourceManager(
       ResourceIdSet &local_available_resources_,
       std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_,
       const NodeID &self_node_id_);
 
-  virtual ~OldLocalPlacementGroupManager() = default;
+  virtual ~OldPlacementGroupResourceManager() = default;
 
   bool PrepareBundle(const BundleSpecification &bundle_spec);
 
@@ -116,6 +110,7 @@ class OldLocalPlacementGroupManager : public LocalPlacementGroupManagerInterface
 
  private:
   /// The resources (and specific resource IDs) that are currently available.
+  /// These two resource container is shared with `NodeManager`.
   ResourceIdSet &local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> &cluster_resource_map_;
 

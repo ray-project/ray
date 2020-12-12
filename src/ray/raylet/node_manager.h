@@ -40,7 +40,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
-#include "ray/raylet/local_placement_group_manager.h"
+#include "ray/raylet/placement_group_resource_manager.h"
 // clang-format on
 
 namespace ray {
@@ -690,6 +690,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
+  /// These two resource container is shared with `PlacementGroupResourceManager`.
   ResourceIdSet local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
@@ -791,7 +792,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   uint64_t metrics_num_task_spilled_back_;
 
   /// Managers all bundle-related operations.
-  std::shared_ptr<LocalPlacementGroupManagerInterface> local_placement_group_manager_;
+  std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 };
 
 }  // namespace raylet

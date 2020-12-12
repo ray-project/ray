@@ -675,16 +675,19 @@ def test_atomic_creation(ray_start_cluster):
 
     @ray.remote(num_cpus=3)
     def bothering_task():
-        time.sleep(4)
+        time.sleep(6)
         return True
 
     # Schedule tasks to fail initial placement group creation.
     tasks = [bothering_task.remote() for _ in range(2)]
+
+    # Make sure the two common task has scheduled.
+    def tasks_scheduled():
+        return ray.available_resources()["CPU"] == 2.0
+    wait_for_condition(tasks_scheduled)
+
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
-    # The reason we sleep here is we must make sure bothering_task
-    # will schedule first.
-    time.sleep(2)
     pg = ray.util.placement_group(
         name="name",
         strategy="SPREAD",
