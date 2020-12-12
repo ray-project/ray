@@ -3,7 +3,7 @@ import socket
 from typing import List
 
 import uvicorn
-from starlette import requests, responses
+import starlette
 
 import ray
 from ray.exceptions import RayTaskError
@@ -127,8 +127,15 @@ class HTTPProxy:
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
-        elif isinstance(result, responses.Response):
-            # Backend has returned a Starlette response, so no need to wrap it.
+        elif isinstance(result, starlette.responses.Response):
+            if isinstance(result, starlette.responses.StreamingResponse):
+                raise TypeError("Starlette StreamingResponse returned by "
+                                f"backend for endpoint {endpoint_name}. "
+                                "StreamingResponse is unserializable and not "
+                                "supported by Ray Serve.  Consider using "
+                                "another Starlette response type such as "
+                                "Response, HTMLResponse, PlainTextResponse, "
+                                "or JSONResponse.")
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
