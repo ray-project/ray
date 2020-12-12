@@ -98,7 +98,7 @@ extras = {
     "debug": [],
     "serve": [
         "uvicorn", "flask", "requests", "pydantic<1.7",
-        "dataclasses; python_version < '3.7'"
+        "dataclasses; python_version < '3.7'", "starlette"
     ],
     "tune": [
         "dataclasses; python_version < '3.7'", "pandas", "tabulate",
