@@ -172,6 +172,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                             }),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
+      last_local_gc_ns_(absl::GetCurrentTimeNanos()),
+      local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_(config.record_metrics_period_ms) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
@@ -528,9 +530,11 @@ void NodeManager::ReportResourceUsage() {
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
   // to at most once per heartbeat interval.
-  if (should_local_gc_) {
+  auto now = absl::GetCurrentTimeNanos();
+  if (should_local_gc_ || now - last_local_gc_ns_ > local_gc_interval_ns_) {
     DoLocalGC();
     should_local_gc_ = false;
+    last_local_gc_ns_ = now;
   }
 
   if (resources_data->resources_total_size() > 0 ||
@@ -553,14 +557,14 @@ void NodeManager::DoLocalGC() {
   for (const auto &driver : worker_pool_.GetAllRegisteredDrivers()) {
     all_workers.push_back(driver);
   }
-  RAY_LOG(WARNING) << "Sending local GC request to " << all_workers.size()
-                   << " workers. It is due to memory pressure on the local node.";
+  RAY_LOG(INFO) << "Sending Python GC request to " << all_workers.size()
+                << " local workers to clean up Python cyclic references.";
   for (const auto &worker : all_workers) {
     rpc::LocalGCRequest request;
     worker->rpc_client()->LocalGC(
         request, [](const ray::Status &status, const rpc::LocalGCReply &r) {
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send local GC request: " << status.ToString();
+            RAY_LOG(DEBUG) << "Failed to send local GC request: " << status.ToString();
           }
         });
   }
@@ -3221,9 +3225,9 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
 }
 
 void NodeManager::TriggerGlobalGC() {
-  RAY_LOG(WARNING)
-      << "Broadcasting global GC request to all raylets. This is usually because "
-         "clusters have memory pressure, and ray needs to GC unused memory.";
+  RAY_LOG(INFO) << "Broadcasting Python GC request to all raylets since the cluster "
+                << "is low on object store memory. This removes Ray object refs "
+                << "that are stuck in Python reference cycles.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   should_local_gc_ = true;

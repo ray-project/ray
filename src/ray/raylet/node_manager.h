@@ -779,6 +779,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
+  /// The last time local GC was triggered.
+  int64_t last_local_gc_ns_ = 0;
+
+  /// The interval in nanoseconds between local GC automatic triggers.
+  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
+
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
