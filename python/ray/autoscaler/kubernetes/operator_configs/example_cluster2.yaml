@@ -16,7 +16,7 @@ spec:
   headPodType: head-node
   # Specify the default pod type for ray the worker nodes (as configured below).
   workerDefaultPodType: worker-nodes
-  # Specify the allowed pod types for this ray cluster.
+  # Specify the allowed pod types for this ray cluster and the resources they provide.
   podTypes:
   - name: head-node
     podConfig:
@@ -72,6 +72,11 @@ spec:
     minWorkers: 1
     # Maximum number of Ray workers of this Pod type. Takes precedence over minWorkers.
     maxWorkers: 3
+    # User-specified custom resources for use by Ray 
+    rayResources: {"Custom1": 1, "is_spot": 1}
+    # Optional commands to run before starting the Ray runtime.
+    setupCommands: 
+      - pip install numpy # Example
     podConfig:
       apiVersion: v1
       kind: Pod

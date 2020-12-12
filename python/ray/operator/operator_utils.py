@@ -27,6 +27,8 @@ NODE_TYPE_FIELDS = {
     "minWorkers": "min_workers",
     "maxWorkers": "max_workers",
     "podConfig": "node_config",
+    "rayResources": "resources",
+    "setupCommands": "worker_setup_commands"
 }
 
 PROVIDER_CONFIG = {

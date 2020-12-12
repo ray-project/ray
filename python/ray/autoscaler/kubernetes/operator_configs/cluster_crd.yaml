@@ -26,8 +26,6 @@ spec:
             - podTypes
             - headPodType
             - workerDefaultPodType
-            - headStartRayCommands
-            - workerStartRayCommands
             properties:
               maxWorkers:
                 description: The maximum number of workers nodes to launch in addition to the
@@ -63,6 +61,17 @@ spec:
                     maxWorkers:
                       type: integer
                       description: Maximum number of Ray workers of this Pod type.
+                    rayResources:
+                      type: object
+                      description: User-specified custom resources for use by Ray.
+                      # TODO (dmitri): Validate that values are numeric [patternProperties not supported by OpenAPI v3.0]
+                      x-kubernetes-preserve-unknown-fields: true 
+                    setupCommands:
+                      description: Commands to run before starting the Ray runtime.
+                      type: array
+                      items:
+                        type: string
+                        description: shell command
                     podConfig:
                       type: object
                       description: Pod configuration.

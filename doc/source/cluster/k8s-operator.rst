@@ -113,7 +113,7 @@ Monitoring
 ----------
 Autoscaling logs are written to the operator pod's stdout and can be accessed with :code:`kubectl logs`.
 Each line of output is prefixed by the name of the cluster followed by colon.
-The following command get the last hundred lines of autoscaling logs for our second cluster.  
+The following command gets the last hundred lines of autoscaling logs for our second cluster.  
 
 .. code-block:: shell
 
@@ -123,21 +123,22 @@ The output should include monitoring updates that look like this:
 
 .. code-block:: shell
 
- example-cluster2:2020-12-11 12:01:06,021        DEBUG autoscaler.py:693 -- Cluster status: 1 nodes
- example-cluster2: - MostDelayedHeartbeats: {'172.17.0.7': 0.04234886169433594, '172.17.0.8': 0.042315006256103516}
- example-cluster2: - NodeIdleSeconds: Min=241 Mean=246 Max=251
- example-cluster2: - ResourceUsage: 0.0/2.0 CPU, 0.0 GiB/0.58 GiB memory, 0.0 GiB/0.1 GiB object_store_memory
- example-cluster2: - TimeSinceLastHeartbeat: Min=0 Mean=0 Max=0
- example-cluster2:Worker node types:
- example-cluster2: - worker-nodes: 1
- example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:148 -- Cluster resources: [{'CPU': 1.0, 'node:172.17.0.7': 1.0, 'memory': 5.0, 'object_store_memory': 1.0}, {'object_store_memory': 1.0, 'memory': 6.0, 'CPU': 1.0, 'node:172.17.0.8': 1.0}]
- example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:149 -- Node counts: defaultdict(<class 'int'>, {'head-node': 1, 'worker-nodes': 1})
- example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:159 -- Placement group demands: []
- example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:186 -- Resource demands: []
- example-cluster2:2020-12-11 12:01:06,067        INFO resource_demand_scheduler.py:187 -- Unfulfilled demands: []
- example-cluster2:2020-12-11 12:01:06,088        INFO resource_demand_scheduler.py:209 -- Node requests: {}
- example-cluster2:2020-12-11 12:01:06,098        DEBUG autoscaler.py:654 -- example-cluster2-ray-worker-qsgnd is not being updated and passes config check (can_update=True).
- example-cluster2:2020-12-11 12:01:06,111        DEBUG autoscaler.py:654 -- example-cluster2-ray-worker-qsgnd is not being updated and passes config check (can_update=True).
+    example-cluster2:2020-12-12 13:55:36,814        DEBUG autoscaler.py:693 -- Cluster status: 1 nodes
+    example-cluster2: - MostDelayedHeartbeats: {'172.17.0.4': 0.04093289375305176, '172.17.0.5': 0.04084634780883789}
+    example-cluster2: - NodeIdleSeconds: Min=36 Mean=38 Max=41
+    example-cluster2: - ResourceUsage: 0.0/2.0 CPU, 0.0/1.0 Custom1, 0.0/1.0 is_spot, 0.0 GiB/0.58 GiB memory, 0.0 GiB/0.1 GiB object_store_memory
+    example-cluster2: - TimeSinceLastHeartbeat: Min=0 Mean=0 Max=0
+    example-cluster2:Worker node types:
+    example-cluster2: - worker-nodes: 1
+    example-cluster2:2020-12-12 13:55:36,870        INFO resource_demand_scheduler.py:148 -- Cluster resources: [{'object_store_memory': 1.0, 'node:172.17.0.4': 1.0, 'memory': 5.0, 'CPU': 1.0}, {'object_store_memory': 1.0, 'is_spot': 1.0, 'memory': 6.0, 'node:172.17.0.5': 1.0, 'Custom1': 1.0, 'CPU': 1.0}]
+    example-cluster2:2020-12-12 13:55:36,870        INFO resource_demand_scheduler.py:149 -- Node counts: defaultdict(<class 'int'>, {'head-node': 1, 'worker-nodes
+    ': 1})
+    example-cluster2:2020-12-12 13:55:36,870        INFO resource_demand_scheduler.py:159 -- Placement group demands: []
+    example-cluster2:2020-12-12 13:55:36,870        INFO resource_demand_scheduler.py:186 -- Resource demands: []
+    example-cluster2:2020-12-12 13:55:36,870        INFO resource_demand_scheduler.py:187 -- Unfulfilled demands: []
+    example-cluster2:2020-12-12 13:55:36,891        INFO resource_demand_scheduler.py:209 -- Node requests: {}
+    example-cluster2:2020-12-12 13:55:36,903        DEBUG autoscaler.py:654 -- example-cluster2-ray-worker-tdxdr is not being updated and passes config check (can_update=True).
+    example-cluster2:2020-12-12 13:55:36,923        DEBUG autoscaler.py:654 -- example-cluster2-ray-worker-tdxdr is not being updated and passes config check (can_update=True).
 
 
 Updating and retrying
