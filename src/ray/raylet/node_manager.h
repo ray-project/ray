@@ -49,9 +49,9 @@ namespace raylet {
 using rpc::ActorTableData;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
+using rpc::ResourceUsageBatchData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -70,8 +70,6 @@ struct NodeManagerConfig {
   /// An explicit list of open ports that workers started will bind
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
-  /// The initial number of workers to create.
-  int num_initial_workers;
   /// The soft limit of the number of workers.
   int num_workers_soft_limit;
   /// Number of initial Python workers for the first job.
@@ -85,6 +83,8 @@ struct NodeManagerConfig {
   std::string agent_command;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
+  /// The time between reports resources in milliseconds.
+  uint64_t report_resources_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
@@ -220,6 +220,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Send heartbeats to the GCS.
   void Heartbeat();
 
+  /// Report resource usage to the GCS.
+  void ReportResourceUsage();
+
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -232,16 +235,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void GetObjectManagerProfileInfo();
 
-  /// Handler for a heartbeat notification from the GCS.
+  /// Handler for a resource usage notification from the GCS.
   ///
-  /// \param id The ID of the node manager that sent the heartbeat.
-  /// \param data The heartbeat data including load information.
+  /// \param id The ID of the node manager that sent the resources data.
+  /// \param data The resources data including load information.
   /// \return Void.
-  void HeartbeatAdded(const NodeID &id, const HeartbeatTableData &data);
-  /// Handler for a heartbeat batch notification from the GCS
+  void ResourceUsageAdded(const NodeID &id, const rpc::ResourcesData &data);
+  /// Handler for a resource usage batch notification from the GCS
   ///
-  /// \param heartbeat_batch The batch of heartbeat data.
-  void HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch);
+  /// \param resource_usage_batch The batch of resource usage data.
+  void ResourceUsageBatchAdded(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
 
@@ -682,6 +685,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.
   std::chrono::milliseconds heartbeat_period_;
+  /// The timer used to report resources.
+  boost::asio::steady_timer report_resources_timer_;
+  /// The period used for the resources report timer.
+  std::chrono::milliseconds report_resources_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
   /// Whether to enable fair queueing between task classes in raylet.
@@ -700,8 +707,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// Only the changed part will be included in heartbeat if this is true.
-  const bool light_heartbeat_enabled_;
+  /// Only the changed part will be included in resource usage if this is true.
+  const bool light_report_resource_usage_enabled_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -771,6 +778,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Whether to trigger local GC in the next heartbeat. This will trigger gc
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
+
+  /// The last time local GC was triggered.
+  int64_t last_local_gc_ns_ = 0;
+
+  /// The interval in nanoseconds between local GC automatic triggers.
+  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

@@ -58,6 +58,8 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.set_actor_cursor(task_spec.ReturnId(0).Binary());
   inner.set_extension_data(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
+  inner.set_max_task_retries(
+      actor_table_data.task_spec().actor_creation_task_spec().max_task_retries());
   return inner;
 }
 
