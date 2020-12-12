@@ -93,6 +93,18 @@ def test_starlette_response(serve_instance):
     assert requests.get("http://127.0.0.1:8000/json_response").json()[
         "hello"] == "world"
 
+    def redirect_response(_):
+        return starlette.responses.RedirectResponse(
+            url="http://127.0.0.1:8000/basic_response")
+
+    client.create_backend("redirect_response", redirect_response)
+    client.create_endpoint(
+        "redirect_response",
+        backend="redirect_response",
+        route="/redirect_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
+
 
 def test_backend_user_config(serve_instance):
     client = serve_instance
