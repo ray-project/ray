@@ -1234,6 +1234,7 @@ class AutoscalingTest(unittest.TestCase):
             _skip_wait=True)
         self.waitForNodes(5)
 
+        print(f"Head ip: {head_ip}")
         summary = autoscaler.summary()
 
         assert summary.active_nodes["m4.large"] == 2
@@ -1360,11 +1361,13 @@ class AutoscalingTest(unittest.TestCase):
         } == {"p2.8xlarge", "m4.large"}
         self.provider.create_node({}, {
             TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 2)
         self.provider.create_node({}, {
             TAG_RAY_USER_NODE_TYPE: "m4.16xlarge",
-            TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            TAG_RAY_NODE_KIND: NODE_KIND_WORKER,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 2)
         assert len(self.provider.non_terminated_nodes({})) == 6
         # Make sure that after idle_timeout_minutes we don't kill idle

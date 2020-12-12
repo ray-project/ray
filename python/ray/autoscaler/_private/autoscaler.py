@@ -708,6 +708,7 @@ class StandardAutoscaler:
             if is_active:
                 active_nodes[node_type] += 1
             else:
+                print(f"{ip}: {node_tags}")
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 pending_states = [
                     STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,

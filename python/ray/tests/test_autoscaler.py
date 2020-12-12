@@ -169,19 +169,24 @@ class MockProvider(NodeProvider):
             ]
 
     def is_running(self, node_id):
-        return self.mock_nodes[node_id].state == "running"
+        with self.lock:
+            return self.mock_nodes[node_id].state == "running"
 
     def is_terminated(self, node_id):
-        return self.mock_nodes[node_id].state in ["stopped", "terminated"]
+        with self.lock:
+            return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
-        return self.mock_nodes[node_id].tags
+        with self.lock:
+            return self.mock_nodes[node_id].tags
 
     def internal_ip(self, node_id):
-        return self.mock_nodes[node_id].internal_ip
+        with self.lock:
+            return self.mock_nodes[node_id].internal_ip
 
     def external_ip(self, node_id):
-        return self.mock_nodes[node_id].external_ip
+        with self.lock:
+            return self.mock_nodes[node_id].external_ip
 
     def create_node(self, node_config, tags, count, _skip_wait=False):
         if not _skip_wait:
@@ -205,7 +210,8 @@ class MockProvider(NodeProvider):
                 self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
-        self.mock_nodes[node_id].tags.update(tags)
+        with self.lock:
+            self.mock_nodes[node_id].tags.update(tags)
 
     def terminate_node(self, node_id):
         with self.lock:
