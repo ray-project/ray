@@ -305,14 +305,14 @@ public class RayConfig {
   /**
    * Used by unit tests only.
    */
-  public static void setClassLevel(String... configStringList) {
+  public static void forTestClass(String... configStringList) {
     unitTestClassOverrides = toConfigList(configStringList);
   }
 
   /**
    * Used by unit tests only.
    */
-  public static void setMethodLevel(String... configStringList) {
+  public static void forTestMethod(String... configStringList) {
     unitTestMethodOverrides = toConfigList(configStringList);
   }
 

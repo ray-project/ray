@@ -49,7 +49,7 @@ public class CrossLanguageInvocationTest extends BaseTest {
       throw new RuntimeException(e);
     }
 
-    RayConfig.setClassLevel(
+    RayConfig.forTestClass(
         "ray.job.code-search-path: \"" + System.getProperty("java.class.path")
         + File.pathSeparator + tempDir.getAbsolutePath() + "\"");
   }

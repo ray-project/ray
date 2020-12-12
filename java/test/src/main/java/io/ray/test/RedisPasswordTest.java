@@ -11,7 +11,7 @@ public class RedisPasswordTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.setClassLevel("ray.redis.password: \"12345678\"");
+    RayConfig.forTestClass("ray.redis.password: \"12345678\"");
   }
 
   public static String echo(String str) {

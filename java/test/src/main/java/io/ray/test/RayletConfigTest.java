@@ -14,7 +14,7 @@ public class RayletConfigTest extends BaseTest {
 
   @BeforeClass
   public void beforeClass() {
-    RayConfig.setClassLevel(
+    RayConfig.forTestClass(
         "ray.raylet.config." + RAY_CONFIG_KEY + ": " + RAY_CONFIG_VALUE);
   }
 

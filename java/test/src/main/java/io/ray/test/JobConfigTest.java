@@ -12,7 +12,7 @@ public class JobConfigTest extends BaseTest {
 
   @BeforeClass
   public void setupJobConfig() {
-    RayConfig.setClassLevel(
+    RayConfig.forTestClass(
         String.join("\n",
             "ray.job {",
             "num-java-workers-per-process: 3",

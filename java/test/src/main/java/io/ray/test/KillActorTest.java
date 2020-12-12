@@ -16,7 +16,7 @@ public class KillActorTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.setClassLevel("ray.job.num-java-workers-per-process: 1");
+    RayConfig.forTestClass("ray.job.num-java-workers-per-process: 1");
   }
 
   public static class HangActor {

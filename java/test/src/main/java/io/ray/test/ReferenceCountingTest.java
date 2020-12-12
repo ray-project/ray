@@ -28,7 +28,7 @@ public class ReferenceCountingTest extends BaseTest {
   @BeforeClass
   public void setUp() {
     long memory = 100L * 1024 * 1024;
-    RayConfig.setClassLevel("ray.head-args: [ \"--object-store-memory=" + memory + "\" ]");
+    RayConfig.forTestClass("ray.head-args: [ \"--object-store-memory=" + memory + "\" ]");
   }
 
   /**

@@ -12,7 +12,7 @@ public class RayConfigTest {
     // Test parsing of string form here because all values from system properties are of
     // string type. We need to make sure numbers and booleans passed from system
     // properties can be parsed with correct types.
-    RayConfig.setMethodLevel(
+    RayConfig.forTestMethod(
         "ray.job.code-search-path: path/to/ray/job/resource/path",
         String.join("\n",
             "ray.raylet.config {",

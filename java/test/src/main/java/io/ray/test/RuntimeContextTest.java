@@ -24,7 +24,7 @@ public class RuntimeContextTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    RayConfig.setClassLevel("ray.job.id: " + JOB_ID.toString());
+    RayConfig.forTestClass("ray.job.id: " + JOB_ID.toString());
   }
 
   @Test
