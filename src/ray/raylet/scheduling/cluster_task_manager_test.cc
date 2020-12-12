@@ -512,7 +512,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(fulfills_dependencies_calls_, 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  auto data = std::make_shared<rpc::FillResourceUsageTableData>();
+  auto data = std::make_shared<rpc::ResourcesData>();
   task_manager_.FillResourceUsage(false, data);
 
   auto resource_load_by_shape = data->resource_load_by_shape();
@@ -526,7 +526,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
     ASSERT_TRUE(task_manager_.CancelTask(task_id));
   }
 
-  data = std::make_shared<rpc::FillResourceUsageTableData>();
+  data = std::make_shared<rpc::ResourcesData>();
   task_manager_.FillResourceUsage(false, data);
 
   resource_load_by_shape = data->resource_load_by_shape();
