@@ -46,6 +46,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   if (!spilled_url.empty()) {
+    RAY_LOG(ERROR) << "OnLocationChange " << spilled_url << " num clients " << client_ids.size();
     // Try to restore the spilled object.
     restore_spilled_object_(object_id, spilled_url,
                             [this, object_id](const ray::Status &status) {
