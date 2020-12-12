@@ -234,6 +234,26 @@ class LocalObjectManager {
 
   /// The max number of active spill workers.
   int64_t max_active_workers_;
+
+  /// The last time a spill operation finished.
+  int64_t last_spill_finish_ms_ = 0;
+
+  /// The total wall time in seconds spent in spilling.
+  int64_t spill_time_total_s_ = 0;
+
+  /// The total number of bytes spilled.
+  int64_t spilled_bytes_total_ = 0;
+
+  /// The last time a restore operation finished.
+  int64_t last_restore_finish_ms_ = 0;
+
+  /// The total wall time in seconds spent in restoring.
+  int64_t restore_time_total_s_ = 0;
+
+  /// The total number of bytes restored.
+  int64_t restored_bytes_total_ = 0;
+
+  /// Callback to check if a plasma object is pinned in workers.
   std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable_;
 };
 

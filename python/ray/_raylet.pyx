@@ -638,7 +638,7 @@ cdef c_vector[c_string] spill_objects_handler(
         return return_urls
 
 
-cdef void restore_spilled_objects_handler(
+cdef int64_t restore_spilled_objects_handler(
         const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
     with gil:

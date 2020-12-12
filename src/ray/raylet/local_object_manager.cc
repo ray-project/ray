@@ -141,18 +141,26 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     it++;
   }
   if (!objects_to_spill.empty()) {
-    RAY_LOG(ERROR) << "Spilling objects of total size " << bytes_to_spill
-                   << " num objects " << objects_to_spill.size();
+    RAY_LOG(INFO) << "Spilling objects of total size " << bytes_to_spill
+                  << " num objects " << objects_to_spill.size();
     auto start_time = current_time_ms();
-    SpillObjectsInternal(
-        objects_to_spill, [bytes_to_spill, start_time](const Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
-          } else {
-            RAY_LOG(ERROR) << "Spilled " << bytes_to_spill << " in "
-                           << (current_time_ms() - start_time) << "ms";
-          }
-        });
+    SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill,
+                                            start_time](const Status &status) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+      } else {
+        auto now = current_time_ms();
+        RAY_LOG(INFO) << "Spilled " << bytes_to_spill << " in " << (now - start_time)
+                      << "ms";
+        spilled_bytes_total_ += bytes_to_spill;
+        // Adjust throughput timing to account for concurrent spill operations.
+        spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ms_)) / 1000;
+        last_spill_finish_ms_ = now;
+        RAY_LOG(ERROR) << "Spilled " << (spilled_bytes_total_ / 1e6)
+                       << "MB total, mean throughput "
+                       << (spilled_bytes_total_ / 1e6 / spill_time_total_s_) << "MB/s.";
+      }
+    });
     return true;
   }
   return false;
@@ -282,6 +290,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     std::function<void(const ray::Status &)> callback) {
   RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
                  << object_url;
+  auto start_time = current_time_ms();
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
@@ -297,7 +306,19 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
-            RAY_LOG(DEBUG) << "Restored object " << object_id;
+            auto now = current_time_ms();
+            auto restored_bytes = r.bytes_restored_total();
+            RAY_LOG(INFO) << "Restored " << restored_bytes << " in " << (now - start_time)
+                          << "ms";
+            restored_bytes_total_ += restored_bytes;
+            // Adjust throughput timing to account for concurrent restore operations.
+            restore_time_total_s_ +=
+                (now - std::max(start_time, last_restore_finish_ms_)) / 1000;
+            last_restore_finish_ms_ = now;
+            RAY_LOG(ERROR) << "Restored " << (restored_bytes_total_ / 1e6)
+                           << "MB total, mean throughput "
+                           << (restored_bytes_total_ / 1e6 / restore_time_total_s_)
+                           << "MB/s.";
           }
           if (callback) {
             callback(status);
