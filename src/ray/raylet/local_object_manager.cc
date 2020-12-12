@@ -108,7 +108,7 @@ bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
   // If object spilling is not configured, there's no space to create by spilling.
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
-    return 0;
+    return false;
   }
   absl::MutexLock lock(&mutex_);
 
@@ -121,10 +121,9 @@ bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
     num_active_workers_ += 1;
   }
   // true if spilling is active
-  // Give a one second grace period since the last spill, since it seems to take a bit of
+  // Give a two second grace period since the last spill, since it seems to take a bit of
   // time for space to free up (TODO(ekl))
-  return num_active_workers_ > 0 ||
-         absl::GetCurrentTimeNanos() - last_spill_success_ns_ < 1e9;
+  return num_active_workers_ > 0;
 }
 
 void LocalObjectManager::SpillObjectsUptoMinSpillingSize() {
@@ -217,7 +216,6 @@ void LocalObjectManager::SpillObjectsInternal(
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
               absl::MutexLock lock(&mutex_);
               num_active_workers_ -= 1;
-              last_spill_success_ns_ = absl::GetCurrentTimeNanos();
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {

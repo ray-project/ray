@@ -96,14 +96,24 @@ Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
     auto create_ok = ProcessRequest(*request_it);
+    auto now = absl::GetCurrentTimeNanos();
     if (create_ok) {
       FinishRequest(request_it);
-    } else if (spill_objects_callback_()) {
-      return Status::TransientObjectStoreFull("Waiting for spilling.");
+      last_success_ns_ = now;
     } else {
-      RAY_LOG(ERROR) << "Cannot spill any more, raise OOM.";
-      FinishRequest(request_it);
-      return Status::ObjectStoreFull("Object store full.");
+      TriggerGlobalGCIfNeeded();
+      if (spill_objects_callback_()) {
+        last_success_ns_ = absl::GetCurrentTimeNanos();
+        return Status::TransientObjectStoreFull("Waiting for spilling.");
+      } else if (now - last_success_ns_ < 5e9) {
+        // We need a grace period since (1) global GC takes a bit of time to
+        // kick in, and (2) there is a race between spilling finishing and space
+        // actually freeing up in the object store.
+        return Status::TransientObjectStoreFull("Waiting for grace period.");
+      } else {
+        FinishRequest(request_it);
+        return Status::ObjectStoreFull("Object store full.");
+      }
     }
   }
   // SANG-TODO Get memory usage callback here.
@@ -144,8 +154,8 @@ void CreateRequestQueue::RemoveDisconnectedClientRequests(
 }
 
 void CreateRequestQueue::TriggerGlobalGCIfNeeded() {
-  // Invoke only once per 10 seconds.
-  if (trigger_global_gc_ && current_time_ms() - last_global_gc_ms_ > 10000) {
+  // Invoke only once per 1 seconds.
+  if (trigger_global_gc_ && current_time_ms() - last_global_gc_ms_ > 1000) {
     trigger_global_gc_();
     last_global_gc_ms_ = current_time_ms();
   }

@@ -233,7 +233,6 @@ class LocalObjectManager {
 
   int64_t num_active_workers_;
   int64_t max_active_workers_;
-  int64_t last_spill_success_ns_ = 0;
 };
 
 };  // namespace raylet

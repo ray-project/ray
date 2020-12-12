@@ -190,6 +190,9 @@ class CreateRequestQueue {
   /// Last time global gc was invoked in ms.
   uint64_t last_global_gc_ms_;
 
+  /// Last successful object creation or spill invocation.
+  int64_t last_success_ns_ = 0;
+
   friend class CreateRequestQueueTest;
 };
 
