@@ -57,6 +57,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -70,6 +71,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
+  node_resource_accessor_.reset(new ServiceBasedNodeResourceInfoAccessor(this));
   task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
   object_accessor_.reset(new ServiceBasedObjectInfoAccessor(this));
   stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));

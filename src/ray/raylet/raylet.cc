@@ -136,8 +136,8 @@ ray::Status Raylet::RegisterGcs() {
       resource->set_resource_capacity(resource_pair.second);
       resources.emplace(resource_pair.first, resource);
     }
-    RAY_CHECK_OK(
-        gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_,
+                                                                   resources, nullptr));
 
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };
