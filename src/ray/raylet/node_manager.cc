@@ -175,6 +175,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_(config.record_metrics_period_ms) {
+  placement_group_resource_manager_ = std::make_shared<OldPlacementGroupResourceManager>(
+      local_available_resources_, cluster_resource_map_, self_node_id_);
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -622,14 +624,7 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Return unused bundle resources.
-  for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
-    if (0 == in_use_bundles.count(iter->first)) {
-      ReturnBundleResources(*iter->second);
-      bundle_spec_map_.erase(iter++);
-    } else {
-      iter++;
-    }
-  }
+  placement_group_resource_manager_->ReturnUnusedBundle(in_use_bundles);
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -1742,7 +1737,7 @@ void NodeManager::HandlePrepareBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
                  << bundle_spec.DebugString();
-  auto prepared = PrepareBundle(cluster_resource_map_, bundle_spec);
+  auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
   // Call task dispatch to assign work to the new group.
@@ -1758,7 +1753,7 @@ void NodeManager::HandleCommitBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
                  << bundle_spec.DebugString();
-  CommitBundle(cluster_resource_map_, bundle_spec);
+  placement_group_resource_manager_->CommitBundle(bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Call task dispatch to assign work to the new group.
@@ -1797,7 +1792,7 @@ void NodeManager::HandleCancelResourceReserve(
   }
 
   // Return bundle resources.
-  ReturnBundleResources(bundle_spec);
+  placement_group_resource_manager_->ReturnBundle(bundle_spec);
   TryLocalInfeasibleTaskScheduling();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 
@@ -1944,89 +1939,6 @@ void NodeManager::ProcessSetResourceRequest(
     data_map.emplace(resource_name, resource_table_data);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(node_id, data_map, nullptr));
   }
-}
-
-bool NodeManager::PrepareBundle(
-    std::unordered_map<NodeID, SchedulingResources> &resource_map,
-    const BundleSpecification &bundle_spec) {
-  // We will first delete the existing bundle to ensure idempotent.
-  // The reason why we do this is: after GCS restarts, placement group can be rescheduled
-  // directly without rolling back the operations performed before the restart.
-  const auto &bundle_id = bundle_spec.BundleId();
-  auto iter = bundle_state_map_.find(bundle_id);
-  if (iter != bundle_state_map_.end()) {
-    if (iter->second->state == CommitState::COMMITTED) {
-      // If the bundle state is already committed, it means that prepare request is just
-      // stale.
-      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly.";
-      return true;
-    } else {
-      // If there was a bundle in prepare state, it already locked resources, we will
-      // return bundle resources.
-      ReturnBundleResources(bundle_spec);
-    }
-  }
-
-  if (resource_map.count(self_node_id_) > 0) {
-    resource_map[self_node_id_].SetLoadResources(local_queues_.GetTotalResourceLoad());
-  }
-  // Invoke the scheduling policy.
-  auto reserve_resource_success =
-      scheduling_policy_.ScheduleBundle(resource_map, self_node_id_, bundle_spec);
-
-  auto bundle_state = std::make_shared<BundleState>();
-  if (reserve_resource_success) {
-    // Register states.
-    auto it = bundle_state_map_.find(bundle_id);
-    // Same bundle cannot be rescheduled.
-    RAY_CHECK(it == bundle_state_map_.end());
-
-    // Prepare resources. This shouldn't create formatted placement group resources
-    // because that'll be done at the commit phase.
-    bundle_state->acquired_resources =
-        local_available_resources_.Acquire(bundle_spec.GetRequiredResources());
-    resource_map[self_node_id_].PrepareBundleResources(
-        bundle_spec.PlacementGroupId(), bundle_spec.Index(),
-        bundle_spec.GetRequiredResources());
-
-    // Register bundle state.
-    bundle_state->state = CommitState::PREPARED;
-    bundle_state_map_.emplace(bundle_id, bundle_state);
-    bundle_spec_map_.emplace(
-        bundle_id, std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
-  }
-  return bundle_state->acquired_resources.AvailableResources().size() > 0;
-}
-
-void NodeManager::CommitBundle(
-    std::unordered_map<NodeID, SchedulingResources> &resource_map,
-    const BundleSpecification &bundle_spec) {
-  // TODO(sang): It is currently not idempotent because we don't retry. Make it idempotent
-  // once retry is implemented.
-  const auto &bundle_id = bundle_spec.BundleId();
-  auto it = bundle_state_map_.find(bundle_id);
-  // When bundle is committed, it should've been prepared already.
-  // If GCS call `CommitBundleResources` after `CancelResourceReserve`, we will skip it
-  // directly.
-  if (it == bundle_state_map_.end()) {
-    RAY_LOG(INFO) << "The bundle has been cancelled. Skip it directly. Bundle info is "
-                  << bundle_spec.DebugString();
-    return;
-  }
-  const auto &bundle_state = it->second;
-  bundle_state->state = CommitState::COMMITTED;
-  const auto &acquired_resources = bundle_state->acquired_resources;
-  for (auto resource : acquired_resources.AvailableResources()) {
-    local_available_resources_.CommitBundleResourceIds(bundle_spec.PlacementGroupId(),
-                                                       bundle_spec.Index(),
-                                                       resource.first, resource.second);
-  }
-
-  resource_map[self_node_id_].CommitBundleResources(bundle_spec.PlacementGroupId(),
-                                                    bundle_spec.Index(),
-                                                    bundle_spec.GetRequiredResources());
-  RAY_CHECK(bundle_state->acquired_resources.AvailableResources().size() > 0)
-      << "Prepare should've been failed if there were no acquireable resources.";
 }
 
 void NodeManager::ScheduleTasks(
@@ -3273,31 +3185,6 @@ void NodeManager::RecordMetrics() {
 
   object_manager_.RecordMetrics();
   local_queues_.RecordMetrics();
-}
-
-bool NodeManager::ReturnBundleResources(const BundleSpecification &bundle_spec) {
-  // We should commit resources if it weren't because
-  // ReturnBundleResources requires resources to be committed when it is called.
-  auto it = bundle_state_map_.find(bundle_spec.BundleId());
-  if (it == bundle_state_map_.end()) {
-    RAY_LOG(INFO) << "Duplicate cancel request, skip it directly.";
-    return false;
-  }
-  const auto &bundle_state = it->second;
-  if (bundle_state->state == CommitState::PREPARED) {
-    CommitBundle(cluster_resource_map_, bundle_spec);
-  }
-  bundle_state_map_.erase(it);
-
-  // Return resources.
-  const auto &resource_set = bundle_spec.GetRequiredResources();
-  for (const auto &resource : resource_set.GetResourceMap()) {
-    local_available_resources_.ReturnBundleResources(bundle_spec.PlacementGroupId(),
-                                                     bundle_spec.Index(), resource.first);
-  }
-  cluster_resource_map_[self_node_id_].ReturnBundleResources(
-      bundle_spec.PlacementGroupId(), bundle_spec.Index());
-  return true;
 }
 
 }  // namespace raylet
