@@ -440,13 +440,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
 
-  /// Destroy a worker.
+  /// Disconnect and kill a worker.
   /// We will disconnect the worker connection first and then kill the worker.
   ///
-  /// \param worker The worker to destroy.
+  /// \param worker The worker to stop.
   /// \return Void.
-  void DestroyWorker(std::shared_ptr<WorkerInterface> worker,
-                     ClientDisconnectType disconnect_type);
+  void DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
+                               ClientDisconnectType disconnect_type);
 
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                         ClientDisconnectType disconnect_type);

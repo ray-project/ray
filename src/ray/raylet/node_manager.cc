@@ -331,8 +331,8 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
-void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
-                                ClientDisconnectType disconnect_type) {
+void NodeManager::DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
+                                          ClientDisconnectType disconnect_type) {
   // Used to destroy workers when its the bundle resource is released (unused or
   // placementgroup is deleted.)
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
@@ -571,9 +571,9 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Kill all workers that are currently associated with the unused bundles.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_unused_bundles` separately.
+  // NOTE: We can't traverse directly with `leased_workers_`, because
+  // `DisconnectAndKillWorker` will delete the element of `leased_workers_`. So we need to
+  // filter out `workers_associated_with_unused_bundles` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
@@ -592,7 +592,7 @@ void NodeManager::HandleReleaseUnusedBundles(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker, RELEASE_UNUSED_RESOURCE);
+    DisconnectAndKillWorker(worker, RELEASE_UNUSED_RESOURCE);
   }
 
   // Return unused bundle resources.
@@ -1757,9 +1757,9 @@ void NodeManager::HandleCancelResourceReserve(
                 << bundle_spec.DebugString();
 
   // Kill all workers that are currently associated with the placement group.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_pg` separately.
+  // NOTE: We can't traverse directly with `leased_workers_`, because
+  // `DisconnectAndKillWorker` will delete the element of `leased_workers_`. So we need to
+  // filter out `workers_associated_with_pg` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
@@ -1775,7 +1775,7 @@ void NodeManager::HandleCancelResourceReserve(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker, PLACEGROUP_REMOVED);
+    DisconnectAndKillWorker(worker, PLACEGROUP_REMOVED);
   }
 
   // Return bundle resources.
