@@ -445,7 +445,7 @@ enum ClientDisconnectType {
   // Intended worker exit.
   FINISHED = 0;
   // Unintended worker exit.
-  UNEXPECTED_EXITED = 1;
+  UNEXPECTED_EXIT = 1;
   // Worker exit due to resource bundle release.
   RELEASE_UNUSED_RESOURCE = 2;
   // Worker exit due to placement group removal.

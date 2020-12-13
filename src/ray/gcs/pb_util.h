@@ -88,7 +88,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const NodeID &raylet_id, const WorkerID &worker_id, const std::string &address,
     int32_t port, int64_t timestamp = std::time(nullptr),
     const rpc::ClientDisconnectType disconnect_type =
-        rpc::ClientDisconnectType::UNEXPECTED_EXITED) {
+        rpc::ClientDisconnectType::UNEXPECTED_EXIT) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());

@@ -1219,7 +1219,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
         fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
           if (!status.ok()) {
-            DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXITED);
+            DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXIT);
           }
         });
   };
@@ -1376,7 +1376,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // TODO(rkn): Define this constant somewhere else.
     std::string type_str;
     std::ostringstream error_message;
-    if (disconnect_type == rpc::ClientDisconnectType::UNEXPECTED_EXITED) {
+    if (disconnect_type == rpc::ClientDisconnectType::UNEXPECTED_EXIT) {
       type_str = "worker_died";
       error_message << "A worker died or was killed while executing task " << task_id
                     << ".";
@@ -1543,7 +1543,7 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
-          DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXITED);
+          DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXIT);
         }
       });
   RAY_CHECK_OK(status);
@@ -1798,8 +1798,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   if (worker) {
     if (request.disconnect_worker()) {
-      DisconnectClient(worker->Connection(),
-                       rpc::ClientDisconnectType::UNEXPECTED_EXITED);
+      DisconnectClient(worker->Connection(), rpc::ClientDisconnectType::UNEXPECTED_EXIT);
     } else {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
@@ -2808,7 +2807,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
-    DisconnectClient(worker->Connection(), rpc::ClientDisconnectType::UNEXPECTED_EXITED);
+    DisconnectClient(worker->Connection(), rpc::ClientDisconnectType::UNEXPECTED_EXIT);
     // Queue this task for future assignment. We need to do this since
     // DispatchTasks() removed it from the ready queue. The task will be
     // assigned to a worker once one becomes available.

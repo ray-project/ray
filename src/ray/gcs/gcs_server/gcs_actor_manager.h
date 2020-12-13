@@ -251,7 +251,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// worker was an actor, we should not attempt to restart the actor.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
                     rpc::ClientDisconnectType disconnect_type =
-                        rpc::ClientDisconnectType::UNEXPECTED_EXITED);
+                        rpc::ClientDisconnectType::UNEXPECTED_EXIT);
 
   /// Handle actor creation task failure. This should be called when scheduling
   /// an actor creation task is infeasible.
