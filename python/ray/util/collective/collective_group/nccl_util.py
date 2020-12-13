@@ -115,3 +115,30 @@ def get_tensor_n_elements(tensor):
             return torch.numel(tensor)
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
+
+def get_devices(inputs):
+    """Returns a list of devices (ints) from the inputs"""
+    devices = []
+    for i in range(len(inputs)):
+        if isinstance(inputs[i], cupy.ndarray):
+            try:
+                devices[i] = inputs[i].device.id
+            except AttributeError as e:
+                raise RuntimeError("not all inputs on a GPU device.")
+        elif torch_available() and isinstance(inputs[i], torch.Tensor):
+            index = inputs[i].device.index
+            if index is None:
+                raise RuntimeError("not all inputs on a GPU device.")
+        raise ValueError("Unsupported tensor type. "
+                         "Got: {}.".format(type(tensor)))
+    return devices
+
+def get_key_from_devices(devices):
+    """Return key from a list of devices"""
+    return ", ".join([str(d) for d in devices])
+
+def check_collective_input(inputs):
+    """Check the validity of inputs for collective operations"""
+    if len(inputs) == 0:
+        raise ValueError("Collective inputs have 0 elements.")
+

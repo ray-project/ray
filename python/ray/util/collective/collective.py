@@ -55,17 +55,6 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise NotImplementedError()
         elif backend == types.Backend.NCCL:
-            # create the ncclUniqueID
-            if rank == 0:
-                # availability has been checked before entering here.
-                group_uid = nccl_util.get_nccl_unique_id()
-                store_name = get_nccl_store_name(group_name)
-                # Avoid a potential circular dependency in ray/actor.py
-                from ray.util.collective.util import NCCLUniqueIDStore
-                store = NCCLUniqueIDStore.options(
-                    name=store_name, lifetime="detached").remote(store_name)
-                ray.wait([store.set_id.remote(group_uid)])
-
             logger.debug("creating NCCL group: '{}'".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g

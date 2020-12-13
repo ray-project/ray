@@ -4,7 +4,7 @@ import time
 
 import ray
 import cupy
-
+from cupy.cuda.nccl import groupStart, groupEnd
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
@@ -111,10 +111,10 @@ class NCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
-        self._nccl_uid = None
+        #self._nccl_uid = None
 
         # TODO(Hao): change this to a be a cache
-        self._nccl_comm = None
+        #self._nccl_comm = None
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -122,39 +122,27 @@ class NCCLGroup(BaseGroup):
         if nccl_util.get_nccl_runtime_version() < 2704:
             logger.warning("NCCL send/recv calls requires NCCL>=2.7.4")
 
-        self._rendezvous = Rendezvous(self.group_name)
-        self._rendezvous.meet()
-
-        # Setup the nccl uid using the store
-        self._init_nccl_unique_id()
-
         # Setup a tensor for barrier calls
         self._barrier_tensor = cupy.array([1])
 
-    def _init_nccl_unique_id(self):
-        """
-        Init the NCCL unique ID required for setting up NCCL communicator.
-
-        """
-        self._nccl_uid = self._rendezvous.get_nccl_id()
-
-    @property
-    def nccl_uid(self):
-        return self._nccl_uid
+        self._dev_comm_map = dict()
 
     def destroy_group(self):
         """
         Destroy the group and release the NCCL communicators safely.
 
         """
-        if self._nccl_comm is not None:
+        if len(self._dev_comm_map.keys()) > 0:
             self.barrier()
             # We also need a barrier call here.
             stream = self._get_cuda_stream()
             stream.synchronize()
             # destroy the communicator
-            self._nccl_comm.destroy()
-            self._nccl_comm = None
+            for _, comms in self._dev_comm_map.items():
+                [comm.destroy() for c in comms)
+
+            self._barrier_tensor = None
+            self._dev_comm_map = None
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
@@ -171,19 +159,24 @@ class NCCLGroup(BaseGroup):
 
         Returns:
         """
+        nccl_util.check_collective_inputs(tensor) 
+        devices = nccl_util.get_device(tensor)
         # obtain the communicator
-        comm = self._get_nccl_communicator()
         # obtain the stream: using default stream by now
         # TODO(Hao): implement a simple stream manager here
         stream = self._get_cuda_stream()
-
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        comms = self._get_nccl_communicator(devices)
         reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
-
-        # in-place allreduce
-        comm.allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
+        
+        # for non-blocking calls of all-reduce
+        groupStart()
+        for i in range(len(tensor)):
+            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
+            ptr = nccl_util.get_tensor_ptr(tensor[i])
+            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
+            # in-place allreduce
+            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
+        groupEnd()
 
     def barrier(self, barrier_options=BarrierOptions()):
         """
@@ -196,17 +189,45 @@ class NCCLGroup(BaseGroup):
         """
         self.allreduce(self._barrier_tensor)
 
-    def _get_nccl_communicator(self):
+    def _get_nccl_communicator(self, devices):
         """
         Create or use a cached NCCL communicator for the collective task.
 
         """
         # TODO(Hao): later change this to use device keys and query from cache.
         # TODO(Hao): implement a thin wrapper
-        if not self._nccl_comm:
-            self._nccl_comm = nccl_util.create_nccl_communicator(
-                self.world_size, self.nccl_uid, self.rank)
-        return self._nccl_comm
+        # try to find from cache
+        key = nccl_util.get_key_from_devices(devices)
+        if key in self._dev_comm_map.keys():
+            return self._dev_comm_map[key]
+        else: # create a new one and cache
+            _group_name = self.group_name + key
+            if self.rank == 0:
+                uid = nccl_util.get_nccl_unique_id()
+                _store_name = get_nccl_store_name(_group_name)
+                from ray.util.collective.util import NCCLUniqueIDStore
+                store = NCCLUniqueIDStore.options(
+                    name=_store_name, lifetime="detached").remote(_store_name)
+                ray.wait([store.set_id.remote(_uid)])
+
+            rendezvous = Rendezvous(_group_name)
+            rendezvous.meet()
+            nccl_uid = rendezvous.get_nccl_id()
+
+            _world_size = len(devices) * self.world_size
+            comms = []
+            
+            # for non-blocking communicator creation
+            groupStart()
+            for i in range(len(devices)):
+                _rank = self.rank * len(devices) + i
+                groupStart()
+                comms.append(nccl_util.create_nccl_communicator(
+                                _world_size, nccl_uid, _rank))
+            groupEnd()
+
+        # cache the result
+        self._dev_comm_map[key] = comms
 
     @staticmethod
     def _get_cuda_stream():
