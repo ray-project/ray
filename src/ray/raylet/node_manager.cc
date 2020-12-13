@@ -1385,7 +1385,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       error_type = ErrorType::PLACEMENT_GROUP_ERROR;
       type_str = "placement_group_error";
       error_message << "A worker was killed while executing task " << task_id
-                    << " due to placement group error"
+                    << " due to placement group removal"
                     << ".";
     }
 
