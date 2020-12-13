@@ -1458,7 +1458,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
 void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  DisconnectClient(client, FINISHED);
+  auto message = flatbuffers::GetRoot<protocol::DisconnectClient>(message_data);
+  auto disconnect_type = static_cast<ClientDisconnectType>(message->disconnect_type());
+  DisconnectClient(client, disconnect_type);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
