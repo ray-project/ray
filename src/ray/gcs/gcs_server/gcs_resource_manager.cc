@@ -189,7 +189,7 @@ bool GcsResourceManager::AcquireResources(const NodeID &node_id,
     if (!required_resources.IsSubset(iter->second.GetAvailableResources())) {
       return false;
     }
-    iter->second.SubtractResourcesStrict(required_resources);
+    iter->second.Acquire(required_resources);
   }
   // If node dead, we will not find the node. This is a normal scenario, so it returns
   // true.
