@@ -377,7 +377,6 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
          << ", ReportResourceUsage request count: "
          << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
-         << ", GetHeartbeat request count: " << counts_[CountType::GET_HEARTBEAT_REQUEST]
          << ", GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST]
          << ", SetInternalConfig request count: "
