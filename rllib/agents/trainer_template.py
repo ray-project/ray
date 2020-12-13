@@ -65,7 +65,7 @@ def build_trainer(
             Optional callable that takes the config to check for correctness.
             It may mutate the config as needed.
         default_policy (Optional[Type[Policy]]): The default Policy class to
-            use.
+            use if `get_policy_class` returns None.
         get_policy_class (Optional[Callable[
             TrainerConfigDict, Optional[Type[Policy]]]]): Optional callable
             that takes a config and returns the policy class or None. If None

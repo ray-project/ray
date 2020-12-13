@@ -8,6 +8,7 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
+import tempfile
 import datetime
 
 import ray
@@ -865,6 +866,62 @@ def test_actor_creation_latency(ray_start_regular_shared):
     end = datetime.datetime.now()
     print("actor_create_time_consume = {}, total_time_consume = {}".format(
         actor_create_time - start, end - start))
+
+
+@pytest.mark.parametrize(
+    "exit_condition",
+    [
+        # "out_of_scope", TODO(edoakes): enable this once fixed.
+        "__ray_terminate__",
+        "ray.actor.exit_actor",
+        "ray.kill"
+    ])
+def test_atexit_handler(ray_start_regular_shared, exit_condition):
+    @ray.remote
+    class A():
+        def __init__(self, tmpfile, data):
+            import atexit
+
+            def f(*args, **kwargs):
+                with open(tmpfile, "w") as f:
+                    f.write(data)
+                    f.flush()
+
+            atexit.register(f)
+
+        def ready(self):
+            pass
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    data = "hello"
+    tmpfile = tempfile.NamedTemporaryFile()
+    a = A.remote(tmpfile.name, data)
+    ray.get(a.ready.remote())
+
+    if exit_condition == "out_of_scope":
+        del a
+    elif exit_condition == "__ray_terminate__":
+        ray.wait([a.__ray_terminate__.remote()])
+    elif exit_condition == "ray.actor.exit_actor":
+        ray.wait([a.exit.remote()])
+    elif exit_condition == "ray.kill":
+        ray.kill(a)
+    else:
+        assert False, "Unrecognized condition"
+
+    def check_file_written():
+        with open(tmpfile.name) as f:
+            if f.read() == data:
+                return True
+            return False
+
+    # ray.kill() should not trigger atexit handlers, all other methods should.
+    if exit_condition == "ray.kill":
+        assert not check_file_written()
+    else:
+        ray.test_utils.wait_for_condition(check_file_written)
 
 
 if __name__ == "__main__":

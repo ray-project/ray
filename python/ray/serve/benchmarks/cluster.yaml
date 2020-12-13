@@ -1,7 +1,7 @@
 cluster_name: default
-min_workers: 22
-max_workers: 22
-initial_workers: 22
+min_workers: 5
+max_workers: 5
+initial_workers: 5
 autoscaling_mode: default
 docker:
     image: 'anyscale/ray-ml:latest'
@@ -28,6 +28,7 @@ initialization_commands: []
 setup_commands:
     - apt-get install build-essential libssl-dev git -y
     - 'rm -r wrk || true && git clone https://github.com/wg/wrk.git wrk && cd wrk && make -j && cp wrk /usr/local/bin'
+    - ray install-nightly
 head_setup_commands: []
 worker_setup_commands: []
 head_start_ray_commands:

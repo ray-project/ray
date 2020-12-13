@@ -24,12 +24,12 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     boost::asio::io_context &io_context,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
-    ReserveResourceClientFactoryFn lease_client_factory)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
     : return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
-      lease_client_factory_(std::move(lease_client_factory)) {
+      raylet_client_pool_(raylet_client_pool) {
   scheduler_strategies_.push_back(std::make_shared<GcsPackStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsSpreadStrategy>());
   scheduler_strategies_.push_back(std::make_shared<GcsStrictPackStrategy>());
@@ -273,7 +273,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(bundle, gcs_node_manager_.GetNode(node_id),
+    PrepareResources(bundle, gcs_node_manager_.GetAliveNode(node_id),
                      [this, bundle, node_id, lease_status_tracker, failure_callback,
                       success_callback](const Status &status) {
                        lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
@@ -387,13 +387,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
-  auto node_id = NodeID::FromBinary(raylet_address.raylet_id());
-  auto iter = remote_lease_clients_.find(node_id);
-  if (iter == remote_lease_clients_.end()) {
-    auto lease_client = lease_client_factory_(raylet_address);
-    iter = remote_lease_clients_.emplace(node_id, std::move(lease_client)).first;
-  }
-  return iter->second;
+  return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
 }
 
 std::shared_ptr<ResourceReserveInterface>
@@ -417,7 +411,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   lease_status_tracker->MarkCommitPhaseStarted();
   for (const auto &bundle_to_commit : *prepared_bundle_locations) {
     const auto &node_id = bundle_to_commit.second.first;
-    const auto &node = gcs_node_manager_.GetNode(node_id);
+    const auto &node = gcs_node_manager_.GetAliveNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
 
     auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
@@ -629,7 +623,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     for (const auto &iter : *(leasing_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
   }
 }
@@ -648,7 +642,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
     for (const auto &iter : *(committed_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
     committed_bundle_location_index_.Erase(placement_group_id);
   }

@@ -422,7 +422,7 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
       resource_sub_executor_(client_impl_->resource_table()),
-      heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
+      resource_usage_batch_sub_executor_(client_impl->resource_usage_batch_table()) {}
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
                                            const StatusCallback &callback) {
@@ -530,18 +530,23 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }
 
-void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
+Status RedisNodeInfoAccessor::AsyncReportResourceUsage(
+    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
 
-Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
-    const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {
+void RedisNodeInfoAccessor::AsyncReReportResourceUsage() {}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeBatchedResourceUsage(
+    const ItemCallback<ResourceUsageBatchData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const NodeID &node_id,
-                                  const HeartbeatBatchTableData &data) {
+                                  const ResourceUsageBatchData &data) {
     subscribe(data);
   };
 
-  return heartbeat_batch_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), on_subscribe,
-                                                         done);
+  return resource_usage_batch_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), on_subscribe,
+                                                              done);
 }
 
 Status RedisNodeInfoAccessor::AsyncGetResources(
