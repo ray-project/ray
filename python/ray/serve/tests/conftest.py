@@ -7,6 +7,7 @@ import pytest
 import ray
 from ray import serve
 from ray.serve.config import BackendConfig
+from ray.serve.constants import LongPollKey
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -42,22 +43,22 @@ def mock_controller_with_name():
     @ray.remote(num_cpus=0)
     class MockControllerActor:
         def __init__(self):
-            from ray.serve.long_poll import LongPollerHost
-            self.host = LongPollerHost()
+            from ray.serve.long_poll import LongPollHost
+            self.host = LongPollHost()
             self.backend_replicas = defaultdict(list)
             self.backend_configs = dict()
             self.clear()
 
         def clear(self):
-            self.host.notify_changed("worker_handles", {})
-            self.host.notify_changed("traffic_policies", {})
-            self.host.notify_changed("backend_configs", {})
+            self.host.notify_changed(LongPollKey.REPLICA_HANDLES, {})
+            self.host.notify_changed(LongPollKey.TRAFFIC_POLICIES, {})
+            self.host.notify_changed(LongPollKey.BACKEND_CONFIGS, {})
 
         async def listen_for_change(self, snapshot_ids):
             return await self.host.listen_for_change(snapshot_ids)
 
         def set_traffic(self, endpoint, traffic_policy):
-            self.host.notify_changed("traffic_policies",
+            self.host.notify_changed(LongPollKey.TRAFFIC_POLICIES,
                                      {endpoint: traffic_policy})
 
         def add_new_replica(self,
@@ -68,15 +69,17 @@ def mock_controller_with_name():
             self.backend_configs[backend_tag] = backend_config
 
             self.host.notify_changed(
-                "worker_handles",
+                LongPollKey.REPLICA_HANDLES,
                 self.backend_replicas,
             )
-            self.host.notify_changed("backend_configs", self.backend_configs)
+            self.host.notify_changed(LongPollKey.BACKEND_CONFIGS,
+                                     self.backend_configs)
 
         def update_backend(self, backend_tag: str,
                            backend_config: BackendConfig):
             self.backend_configs[backend_tag] = backend_config
-            self.host.notify_changed("backend_configs", self.backend_configs)
+            self.host.notify_changed(LongPollKey.BACKEND_CONFIGS,
+                                     self.backend_configs)
 
     name = f"MockController{random.randint(0,10e4)}"
     yield name, MockControllerActor.options(name=name).remote()

@@ -1055,11 +1055,11 @@ def test_actor_resource_demand(shutdown_only):
     ray.get(a.foo.remote())
     time.sleep(1)
 
-    message = global_state_accessor.get_all_heartbeat()
-    heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
 
     # The actor is scheduled so there should be no more demands left.
-    assert len(heartbeat.resource_load_by_shape.resource_demands) == 0
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 0
 
     @ray.remote(num_cpus=80)
     class Actor2:
@@ -1070,23 +1070,24 @@ def test_actor_resource_demand(shutdown_only):
     time.sleep(1)
 
     # This actor cannot be scheduled.
-    message = global_state_accessor.get_all_heartbeat()
-    heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
-    assert len(heartbeat.resource_load_by_shape.resource_demands) == 1
-    assert (heartbeat.resource_load_by_shape.resource_demands[0].shape == {
-        "CPU": 80.0
-    })
-    assert (heartbeat.resource_load_by_shape.resource_demands[0]
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
+    assert (
+        resource_usages.resource_load_by_shape.resource_demands[0].shape == {
+            "CPU": 80.0
+        })
+    assert (resource_usages.resource_load_by_shape.resource_demands[0]
             .num_infeasible_requests_queued == 1)
 
     actors.append(Actor2.remote())
     time.sleep(1)
 
     # Two actors cannot be scheduled.
-    message = global_state_accessor.get_all_heartbeat()
-    heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(message)
-    assert len(heartbeat.resource_load_by_shape.resource_demands) == 1
-    assert (heartbeat.resource_load_by_shape.resource_demands[0]
+    message = global_state_accessor.get_all_resource_usage()
+    resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+    assert len(resource_usages.resource_load_by_shape.resource_demands) == 1
+    assert (resource_usages.resource_load_by_shape.resource_demands[0]
             .num_infeasible_requests_queued == 2)
 
     global_state_accessor.disconnect()

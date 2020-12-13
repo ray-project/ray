@@ -15,10 +15,13 @@ from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollerAsyncClient
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Query
-from ray.serve.constants import (DEFAULT_LATENCY_BUCKET_MS,
-                                 BACKEND_RECONFIGURE_METHOD)
+from ray.serve.constants import (
+    BACKEND_RECONFIGURE_METHOD,
+    DEFAULT_LATENCY_BUCKET_MS,
+    LongPollKey,
+)
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -168,8 +171,8 @@ class RayServeReplica:
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollerAsyncClient(controller_handle, {
-            "backend_configs": self._update_backend_configs,
+        self.long_poll_client = LongPollAsyncClient(controller_handle, {
+            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
         self.error_counter = metrics.Count(

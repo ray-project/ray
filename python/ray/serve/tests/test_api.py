@@ -25,22 +25,6 @@ def test_e2e(serve_instance):
     client.create_endpoint(
         "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
 
-    retry_count = 5
-    timeout_sleep = 0.5
-    while True:
-        try:
-            resp = requests.get(
-                "http://127.0.0.1:8000/-/routes", timeout=0.5).json()
-            assert resp == {"/api": ["endpoint", ["GET", "POST"]]}
-            break
-        except Exception as e:
-            time.sleep(timeout_sleep)
-            timeout_sleep *= 2
-            retry_count -= 1
-            if retry_count == 0:
-                assert False, ("Route table hasn't been updated after 3 tries."
-                               "The latest error was {}").format(e)
-
     resp = requests.get("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "GET"
 
@@ -63,7 +47,7 @@ def test_backend_user_config(serve_instance):
 
     config = BackendConfig(num_replicas=2, user_config={"count": 123, "b": 2})
     client.create_backend("counter", Counter, config=config)
-    client.create_endpoint("counter", backend="counter", route="/counter")
+    client.create_endpoint("counter", backend="counter")
     handle = client.get_handle("counter")
 
     def check(val, num_replicas):
@@ -183,7 +167,7 @@ def test_reject_duplicate_endpoint_and_route(serve_instance):
 def test_no_http(serve_instance):
     client = serve.start(http_host=None)
 
-    assert len(ray.get(client._controller.get_routers.remote())) == 0
+    assert len(ray.get(client._controller.get_http_proxies.remote())) == 0
 
     def hello(*args):
         return "hello"
@@ -222,11 +206,6 @@ def test_scaling_replicas(serve_instance):
     client.create_backend("counter:v1", Counter, config=config)
 
     client.create_endpoint("counter", backend="counter:v1", route="/increment")
-
-    # Keep checking the routing table until /increment is populated
-    while "/increment" not in requests.get(
-            "http://127.0.0.1:8000/-/routes").json():
-        time.sleep(0.2)
 
     counter_result = []
     for _ in range(10):
@@ -267,11 +246,6 @@ def test_batching(serve_instance):
     client.create_endpoint(
         "counter1", backend="counter:v11", route="/increment2")
 
-    # Keep checking the routing table until /increment is populated
-    while "/increment2" not in requests.get(
-            "http://127.0.0.1:8000/-/routes").json():
-        time.sleep(0.2)
-
     future_list = []
     handle = client.get_handle("counter1")
     for _ in range(20):
@@ -299,8 +273,7 @@ def test_batching_exception(serve_instance):
     # Set the max batch size.
     config = BackendConfig(max_batch_size=5)
     client.create_backend("exception:v1", NoListReturned, config=config)
-    client.create_endpoint(
-        "exception-test", backend="exception:v1", route="/noListReturned")
+    client.create_endpoint("exception-test", backend="exception:v1")
 
     handle = client.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
@@ -323,16 +296,16 @@ def test_updating_config(serve_instance):
     client.create_endpoint("bsimple", backend="bsimple:v1", route="/bsimple")
 
     controller = client._controller
-    old_replica_tag_list = ray.get(
-        controller._list_replicas.remote("bsimple:v1"))
+    old_replica_tag_list = list(
+        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
 
     update_config = BackendConfig(max_batch_size=5)
     client.update_backend_config("bsimple:v1", update_config)
-    new_replica_tag_list = ray.get(
-        controller._list_replicas.remote("bsimple:v1"))
+    new_replica_tag_list = list(
+        ray.get(controller._all_replica_handles.remote())["bsimple:v1"].keys())
     new_all_tag_list = []
     for worker_dict in ray.get(
-            controller.get_all_replica_handles.remote()).values():
+            controller._all_replica_handles.remote()).values():
         new_all_tag_list.extend(list(worker_dict.keys()))
 
     # the old and new replica tag list should be identical
@@ -648,7 +621,7 @@ def test_create_infeasible_error(serve_instance):
                 "MagicMLResource": 100
             }})
 
-    # Even each replica might be feasible, the total might not be.
+    # Even though each replica might be feasible, the total might not be.
     current_cpus = int(ray.nodes()[0]["Resources"]["CPU"])
     num_replicas = current_cpus + 20
     config = BackendConfig(num_replicas=num_replicas)
@@ -660,10 +633,6 @@ def test_create_infeasible_error(serve_instance):
                 "CPU": 1,
             }},
             config=config)
-
-    # No replica should be created!
-    replicas = ray.get(client._controller._list_replicas.remote("f1"))
-    assert len(replicas) == 0
 
 
 def test_shutdown():
@@ -797,6 +766,7 @@ def test_serve_metrics(serve_instance):
 
     client.create_backend("metrics", batcher)
     client.create_endpoint("metrics", backend="metrics", route="/metrics")
+
     # send 10 concurrent requests
     url = "http://127.0.0.1:8000/metrics"
     ray.get([block_until_http_ready.remote(url) for _ in range(10)])

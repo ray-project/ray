@@ -15,7 +15,7 @@ You can install the latest official version of Ray as follows. Official releases
 
 .. code-block:: bash
 
-  pip install -U ray  # also recommended: ray[debug]
+  pip install -U ray
 
 **Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
 
@@ -233,13 +233,45 @@ However, should you need to build from source, follow :ref:`these instructions f
 Docker Source Images
 --------------------
 
-Most users should pull a Docker image from the Ray Docker Hub.
+Most users should pull a Docker image from the `Ray Docker Hub. <https://hub.docker.com/r/rayproject/>`_
 
-- The ``rayproject/ray`` image has ray and all required dependencies. It comes with anaconda and Python 3.7.
-- The ``rayproject/autoscaler`` image has the above features as well as many additional libraries.
+- The ``rayproject/ray`` `image has ray and all required dependencies. It comes with anaconda and Python 3.7. <https://hub.docker.com/r/rayproject/ray>`_
+- The ``rayproject/ray-ml`` `image has the above features as well as many additional libraries. <https://hub.docker.com/r/rayproject/ray-ml>`_
 - The ``rayproject/base-deps`` and ``rayproject/ray-deps`` are for the linux and python dependencies respectively.
 
-These images are tagged by their release number (or commit hash for nightlies) as well as a ``"-gpu"`` if they are GPU compatible.
+Image releases are `tagged` using the following format:
+
+
+.. list-table:: 
+   :widths: 25 50
+   :header-rows: 1
+
+   * - Tag
+     - Description
+   * - latest
+     - The most recent Ray release.
+   * - 1.x.x
+     - A specific Ray release.
+   * - nightly
+     - The most recent Ray build (the most recent commit on Github ``master``)
+   * - Git SHA 
+     - A specific nightly build (uses a SHA from the Github ``master``).
+
+
+Each tag has `variants` that add or change functionality:
+
+.. list-table:: 
+   :widths: 16 40
+   :header-rows: 1
+
+   * - Variant
+     - Description
+   * - -gpu
+     - These are based off of an NVIDIA CUDA image. They require the Nvidia Docker Runtime.
+   * - -cpu
+     - These are based off of an Ubuntu image.
+   * - <no tag>
+     - Aliases to ``-cpu`` tagged images
 
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:
@@ -304,3 +336,32 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
+
+Troubleshooting
+---------------
+
+If importing Ray (``python3 -c "import ray"``) in your development clone results
+in this error:
+
+.. code-block:: python
+
+  Traceback (most recent call last):
+    File "<string>", line 1, in <module>
+    File ".../ray/python/ray/__init__.py", line 63, in <module>
+      import ray._raylet  # noqa: E402
+    File "python/ray/_raylet.pyx", line 98, in init ray._raylet
+      import ray.memory_monitor as memory_monitor
+    File ".../ray/python/ray/memory_monitor.py", line 9, in <module>
+      import psutil  # noqa E402
+    File ".../ray/python/ray/thirdparty_files/psutil/__init__.py", line 159, in <module>
+      from . import _psosx as _psplatform
+    File ".../ray/python/ray/thirdparty_files/psutil/_psosx.py", line 15, in <module>
+      from . import _psutil_osx as cext
+  ImportError: cannot import name '_psutil_osx' from partially initialized module 'psutil' (most likely due to a circular import) (.../ray/python/ray/thirdparty_files/psutil/__init__.py)
+
+Then you should run the following commands:
+
+.. code-block:: bash
+
+  rm -rf python/ray/thirdparty_files/
+  python3 -m pip install setproctitle
