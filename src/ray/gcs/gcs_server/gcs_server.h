@@ -84,7 +84,7 @@ class GcsServer {
   void InitGcsHeartbeatManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs resource manager.
-  void InitGcsResourceManager();
+  void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs job manager.
   void InitGcsJobManager();
@@ -156,6 +156,8 @@ class GcsServer {
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
+  /// Node resource info handler and service
+  std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
   /// Object info handler and service
