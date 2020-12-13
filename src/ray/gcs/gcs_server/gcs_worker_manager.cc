@@ -28,7 +28,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   log_stream << "Reporting worker failure, worker id = " << worker_id
              << ", node id = " << node_id
              << ", address = " << worker_address.ip_address();
-  if (request.worker_failure().intentional_disconnect()) {
+  if (request.worker_failure().disconnect_type() == rpc::ClientDisconnectType::FINISHED) {
     RAY_LOG(INFO) << log_stream.str();
   } else {
     RAY_LOG(WARNING) << log_stream.str()

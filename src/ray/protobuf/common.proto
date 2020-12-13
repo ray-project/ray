@@ -439,3 +439,15 @@ message MetricPoint {
   // [Optional] Unit of the metric.
   string units = 6;
 }
+
+// Type of a worker.
+enum ClientDisconnectType {
+  // Intended worker exit.
+  FINISHED = 0;
+  // Unintended worker exit.
+  UNEXPECTED_EXITED = 1;
+  // Worker exit due to resource bundle release.
+  RELEASE_UNUSED_RESOURCE = 2;
+  // Worker exit due to placement group removal.
+  PLACEGROUP_REMOVED = 3;
+}

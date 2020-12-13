@@ -249,8 +249,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param worker_id ID of the dead worker.
   /// \param intentional_exit Whether the death was intentional. If yes and the
   /// worker was an actor, we should not attempt to restart the actor.
-  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
-                    bool intentional_exit = false);
+  void OnWorkerDead(
+      const NodeID &node_id, const WorkerID &worker_id,
+      rpc::ClientDisconnectType disconnect_type = rpc::ClientDisconnectType::FINISHED);
 
   /// Handle actor creation task failure. This should be called when scheduling
   /// an actor creation task is infeasible.

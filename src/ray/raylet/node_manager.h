@@ -119,17 +119,6 @@ enum CommitState {
   COMMITTED
 };
 
-enum ClientDisconnectType {
-  /// Intended worker exit.
-  FINISHED = 0,
-  /// Unintended worker exit.
-  UNEXPECTED_EXITED = 1,
-  /// Worker exit due to resource bundle release.
-  RELEASE_UNUSED_RESOURCE = 2,
-  /// Worker exit due to placement group removal.
-  PLACEGROUP_REMOVED = 3,
-};
-
 struct BundleState {
   /// Leasing state for 2PC protocol.
   CommitState state;
@@ -446,10 +435,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker to stop.
   /// \return Void.
   void DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
-                               ClientDisconnectType disconnect_type);
+                               rpc::ClientDisconnectType disconnect_type);
 
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
-                        ClientDisconnectType disconnect_type);
+                        rpc::ClientDisconnectType disconnect_type);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.

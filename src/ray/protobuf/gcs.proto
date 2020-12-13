@@ -400,7 +400,7 @@ message WorkerTableData {
   // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
   // Whether it's an intentional disconnect, only applies then `is_alive` is false.
-  bool intentional_disconnect = 4;
+  ClientDisconnectType disconnect_type = 4;
   // Type of this worker.
   WorkerType worker_type = 5;
   // This is for AddWorker.
