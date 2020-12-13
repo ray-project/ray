@@ -331,13 +331,14 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
-void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker) {
+void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
+                                ClientDisconnectType disconnect_type) {
   // Used to destroy workers when its the bundle resource is released (unused or
   // placementgroup is deleted.)
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+  DisconnectClient(worker->Connection(), disconnect_type);
   worker->MarkDead();
   KillWorker(worker);
 }
@@ -591,7 +592,7 @@ void NodeManager::HandleReleaseUnusedBundles(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker);
+    DestroyWorker(worker, RELEASE_UNUSED_RESOURCE);
   }
 
   // Return unused bundle resources.
@@ -1087,8 +1088,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the job has died already),
     // all the messages are ignored except DisconnectClient.
-    if ((message_type_value != protocol::MessageType::DisconnectClient) &&
-        (message_type_value != protocol::MessageType::IntentionalDisconnectClient)) {
+    if (message_type_value != protocol::MessageType::DisconnectClient) {
       // Listen for more messages.
       client->ProcessMessages();
       return;
@@ -1106,13 +1106,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
-    ProcessDisconnectClientMessage(client);
-    // We don't need to receive future messages from this client,
-    // because it's already disconnected.
-    return;
-  } break;
-  case protocol::MessageType::IntentionalDisconnectClient: {
-    ProcessDisconnectClientMessage(client, /* intentional_disconnect = */ true);
+    ProcessDisconnectClientMessage(client, message_data);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
@@ -1225,7 +1219,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
         fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
           if (!status.ok()) {
-            ProcessDisconnectClientMessage(client);
+            DisconnectClient(client, UNEXPECTED_EXITED);
           }
         });
   };
@@ -1324,10 +1318,8 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   }
 }
 
-void NodeManager::ProcessDisconnectClientMessage(
-    const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
-  // intentional_disconnect is true when it is disconnected due to resource bundle
-  // release, NOTE(khu, sangcho): change this to a more explicit message.
+void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                                   ClientDisconnectType disconnect_type) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1344,6 +1336,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       return;
     }
   }
+  bool intentional_disconnect = false;
   RAY_CHECK(!(is_worker && is_driver));
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
@@ -1381,7 +1374,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     const TaskID &task_id = worker->GetAssignedTaskId();
     // If the worker was running a task or actor, clean up the task and push an
     // error to the driver, unless the worker is already dead.
-    auto error_type = ErrorType::WORKER_DIED;
+    ErrorType error_type = ErrorType::WORKER_DIED;
     // TODO(rkn): Define this constant somewhere else.
     std::string type_str;
     std::ostringstream error_message;
@@ -1393,7 +1386,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       error_type = ErrorType::PLACEMENT_GROUP_ERROR;
       type_str = "placement_group_error";
       error_message << "A worker was killed while executing task " << task_id
-                    << " due to placement group error."
+                    << " due to placement group error"
                     << ".";
     }
 
@@ -1461,6 +1454,11 @@ void NodeManager::ProcessDisconnectClientMessage(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
+}
+
+void NodeManager::ProcessDisconnectClientMessage(
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  DisconnectClient(client, FINISHED);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1543,7 +1541,7 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
-          ProcessDisconnectClientMessage(client);
+          DisconnectClient(client, UNEXPECTED_EXITED);
         }
       });
   RAY_CHECK_OK(status);
@@ -1775,7 +1773,7 @@ void NodeManager::HandleCancelResourceReserve(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker);
+    DestroyWorker(worker, PLACEGROUP_REMOVED);
   }
 
   // Return bundle resources.
@@ -1798,7 +1796,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   if (worker) {
     if (request.disconnect_worker()) {
-      ProcessDisconnectClientMessage(worker->Connection());
+      DisconnectClient(worker->Connection(), UNEXPECTED_EXITED);
     } else {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
@@ -2807,7 +2805,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
-    ProcessDisconnectClientMessage(worker->Connection());
+    DisconnectClient(worker->Connection(), UNEXPECTED_EXITED);
     // Queue this task for future assignment. We need to do this since
     // DispatchTasks() removed it from the ready queue. The task will be
     // assigned to a worker once one becomes available.

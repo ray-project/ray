@@ -139,7 +139,7 @@ Status raylet::RayletClient::Disconnect() {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateDisconnectClient(fbb);
   fbb.Finish(message);
-  auto status = conn_->WriteMessage(MessageType::IntentionalDisconnectClient, &fbb);
+  auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   if (!status.ok()) {
