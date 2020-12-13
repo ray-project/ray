@@ -9,6 +9,7 @@ import ray
 import ray.experimental.tf_utils
 from ray.util.debug import log_once
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -798,8 +799,20 @@ class TFPolicy(Policy):
             feed dict of data
         """
 
-        # Get batch ready for RNNs/Attention Nets, etc.
-        train_batch = self.model.preprocess_train_batch(train_batch)
+        ## Get batch ready for RNNs/Attention Nets, etc.
+        #train_batch = self.model.preprocess_train_batch(train_batch)
+
+        # Get batch ready for RNNs, if applicable.
+        pad_batch_to_sequences_of_same_size(
+            train_batch,
+            shuffle=shuffle,
+            max_seq_len=self._max_seq_len,
+            batch_divisibility_req=self._batch_divisibility_req,
+            feature_keys=[
+                k for k in self._loss_input_dict.keys() if k != "seq_lens"
+            ],
+            view_requirements=self.view_requirements,
+        )
 
         # Mark the batch as "is_training" so the Model can use this
         # information.

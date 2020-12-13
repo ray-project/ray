@@ -313,16 +313,18 @@ def build_eager_tf_policy(name,
             # Callback handling.
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=postprocessed_batch)
-            # Get batch ready for multi-agent, if applicable.
-            if self.batch_divisibility_req > 1:
-                pad_batch_to_sequences_of_same_size(
-                    postprocessed_batch,
-                    shuffle=False,
-                    max_seq_len=self._max_seq_len,
-                    batch_divisibility_req=self.batch_divisibility_req)
-            # Get batch ready for RNNs, if applicable.
-            if getattr(self, "model", None):
-                postprocessed_batch = self.model.preprocess_train_batch(postprocessed_batch)
+            ## Get batch ready for multi-agent, if applicable.
+            #if self.batch_divisibility_req > 1:
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+            ## Get batch ready for RNNs, if applicable.
+            #if getattr(self, "model", None):
+            #    postprocessed_batch = self.model.preprocess_train_batch(postprocessed_batch)
             self._is_training = True
             postprocessed_batch["is_training"] = True
             return self._learn_on_batch_eager(postprocessed_batch)
@@ -337,16 +339,16 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def compute_gradients(self, samples):
-            # Get batch ready for multi-agent, if applicable.
-            if self.batch_divisibility_req > 1:
-                pad_batch_to_sequences_of_same_size(
-                    samples,
-                    shuffle=False,
-                    max_seq_len=self._max_seq_len,
-                    batch_divisibility_req=self.batch_divisibility_req)
-            # Get batch ready for RNNs, if applicable.
-            if getattr(self, "model", None):
-                samples = self.model.preprocess_train_batch(samples)
+            ## Get batch ready for multi-agent, if applicable.
+            #if self.batch_divisibility_req > 1:
+            pad_batch_to_sequences_of_same_size(
+                samples,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req)
+            ## Get batch ready for RNNs, if applicable.
+            #if getattr(self, "model", None):
+            #    samples = self.model.preprocess_train_batch(samples)
             self._is_training = True
             samples["is_training"] = True
             return self._compute_gradients_eager(samples)

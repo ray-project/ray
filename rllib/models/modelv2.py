@@ -248,10 +248,6 @@ class ModelV2:
         ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
         return ret
 
-    # TODO: (sven) Experimental method.
-    def preprocess_train_batch(self, train_batch):
-        return train_batch
-
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
 

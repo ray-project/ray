@@ -19,7 +19,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
 from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -35,6 +35,7 @@ def pad_batch_to_sequences_of_same_size(
         shuffle: bool = False,
         batch_divisibility_req: int = 1,
         feature_keys: Optional[List[str]] = None,
+        view_requirements: Optional[ViewRequirementsDict] = None,
 ):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
@@ -55,6 +56,9 @@ def pad_batch_to_sequences_of_same_size(
         feature_keys (Optional[List[str]]): An optional list of keys to apply
             sequence-chopping to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
+        view_requirements (Optional[ViewRequirementsDict]): An optional
+            Policy ViewRequirements dict to be able to infer whether
+            e.g. dynamic max'ing should be applied over the seq_lens.
     """
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
@@ -64,47 +68,76 @@ def pad_batch_to_sequences_of_same_size(
     else:
         meets_divisibility_reqs = True
 
-    # RNN-case.
+    states_already_reduced_to_init = False
+
+    # RNN/attention net case. Figure out whether we should apply dynamic
+    # max'ing over the list of sequence lengths.
     if "state_in_0" in batch or "state_out_0" in batch:
-        dynamic_max = True
+        # Check, whether the state inputs have already been reduced to their
+        # init values at the beginning of each max_seq_len chunk.
+        if batch.seq_lens is not None and \
+                len(batch["state_in_0"]) == len(batch.seq_lens):
+            states_already_reduced_to_init = True
+
+        # RNN (or single timestep state-in): Set the max dynamically.
+        if view_requirements["state_in_0"].shift_from is None:
+            dynamic_max = True
+        # Attention Nets (state inputs are over some range): No dynamic maxing
+        # possible.
+        else:
+            dynamic_max = False
     # Multi-agent case.
     elif not meets_divisibility_reqs:
         max_seq_len = batch_divisibility_req
         dynamic_max = False
-    # Simple case: not RNN nor do we need to pad.
+    # Simple case: No RNN/attention net, nor do we need to pad.
     else:
         if shuffle:
             batch.shuffle()
         return
 
-    # RNN or multi-agent case.
+    # RNN, attention net, or multi-agent case.
     state_keys = []
     feature_keys_ = feature_keys or []
-    for k in batch.keys():
+    for k, v in batch.items():
         if "state_in_" in k:
             state_keys.append(k)
-        elif not feature_keys and "state_out_" not in k and k != "infos":
+        elif not feature_keys and "state_out_" not in k and k != "infos" and k != "seq_lens" and isinstance(
+                    v, np.ndarray):
             feature_keys_.append(k)
+
+        #state_keys = []
+        #feature_keys_ = []
+        #for k, v in train_batch.items():
+        #    if k.startswith("state_in_"):
+        #        state_keys.append(k)
+        #    elif not k.startswith(
+        #            "state_out_"
+        #    ) and k != "infos" and k != "seq_lens" and isinstance(
+        #            v, np.ndarray):
+        #        feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
             feature_columns=[batch[k] for k in feature_keys_],
             state_columns=[batch[k] for k in state_keys],
-            episode_ids=batch[SampleBatch.EPS_ID],
-            unroll_ids=batch[SampleBatch.UNROLL_ID],
-            agent_indices=batch[SampleBatch.AGENT_INDEX],
-            seq_lens=batch.seq_lens,
+            episode_ids=batch.get(SampleBatch.EPS_ID),
+            unroll_ids=batch.get(SampleBatch.UNROLL_ID),
+            agent_indices=batch.get(SampleBatch.AGENT_INDEX),
+            seq_lens=getattr(batch, "seq_lens", batch.get("seq_lens")),
             max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
+            states_already_reduced_to_init=states_already_reduced_to_init,
             shuffle=shuffle)
+
     for i, k in enumerate(feature_keys_):
         batch[k] = feature_sequences[i]
     for i, k in enumerate(state_keys):
         batch[k] = initial_states[i]
-    batch["seq_lens"] = seq_lens
+    batch["seq_lens"] = np.array(seq_lens)
 
     if log_once("rnn_ma_feed_dict"):
-        logger.info("Padded input for RNN:\n\n{}\n".format(
+        logger.info("Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(
             summarize({
                 "features": feature_sequences,
                 "initial_states": initial_states,

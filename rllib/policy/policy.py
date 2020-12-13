@@ -644,8 +644,8 @@ class Policy(metaclass=ABCMeta):
                 np.array([seq_len for _ in range(B)], dtype=np.int32)
         # Remove the UsageTrackingDict wrap to prep for wrapping the
         # train batch with a to-tensor UsageTrackingDict.
-        train_batch = self.model.preprocess_train_batch(postprocessed_batch)
-        train_batch = self._lazy_tensor_dict(train_batch)
+        #train_batch = self.model.preprocess_train_batch(postprocessed_batch)
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
