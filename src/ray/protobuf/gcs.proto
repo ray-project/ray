@@ -32,7 +32,7 @@ enum TablePrefix {
   FUNCTION = 7;
   TASK_RECONSTRUCTION = 8;
   HEARTBEAT = 9;
-  HEARTBEAT_BATCH = 10;
+  RESOURCE_USAGE_BATCH = 10;
   JOB = 11;
   PROFILE = 12;
   TASK_LEASE = 13;
@@ -56,7 +56,7 @@ enum TablePubsub {
   OBJECT_PUBSUB = 5;
   ACTOR_PUBSUB = 6;
   HEARTBEAT_PUBSUB = 7;
-  HEARTBEAT_BATCH_PUBSUB = 8;
+  RESOURCE_USAGE_BATCH_PUBSUB = 8;
   TASK_LEASE_PUBSUB = 9;
   JOB_PUBSUB = 10;
   NODE_RESOURCE_PUBSUB = 11;
@@ -302,22 +302,6 @@ message PlacementGroupLoad {
 message HeartbeatTableData {
   // Node id.
   bytes node_id = 1;
-  // Resource capacity currently available on this node manager.
-  map<string, double> resources_available = 2;
-  // Indicates whether avaialbe resources is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_available_changed = 3;
-  // Total resource capacity configured for this node manager.
-  map<string, double> resources_total = 4;
-  // Aggregate outstanding resource load on this node manager.
-  map<string, double> resource_load = 5;
-  // Indicates whether resource load is changed. Only used when
-  // light heartbeat enabled.
-  bool resource_load_changed = 6;
-  // The resource load on this node, sorted by resource shape.
-  ResourceLoad resource_load_by_shape = 7;
-  // Whether this node manager is requesting global GC.
-  bool should_global_gc = 8;
 }
 
 message ResourcesData {
@@ -325,8 +309,8 @@ message ResourcesData {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
-  // Indicates whether avaialbe resources is changed. Only used when
-  // light heartbeat enabled.
+  // Indicates whether available resources is changed. Only used when light
+  // heartbeat enabled.
   bool resources_available_changed = 3;
   // Total resource capacity configured for this node manager.
   map<string, double> resources_total = 4;
@@ -341,8 +325,8 @@ message ResourcesData {
   bool should_global_gc = 8;
 }
 
-message HeartbeatBatchTableData {
-  repeated HeartbeatTableData batch = 1;
+message ResourceUsageBatchData {
+  repeated ResourcesData batch = 1;
   // The total resource demand on all nodes included in the batch, sorted by
   // resource shape.
   ResourceLoad resource_load_by_shape = 2;

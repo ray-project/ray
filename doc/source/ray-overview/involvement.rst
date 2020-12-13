@@ -1,7 +1,7 @@
 Ray is more than a framework for distributed applications but also an active community of developers,
 researchers, and folks that love machine learning. Here's a list of tips for getting involved with the Ray community:
 
-- Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+- Join our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 - Star and follow us on `on GitHub`_.
 - To post questions or feature requests, check out the `Discussion Board`_!
 - Follow us and spread the word on `Twitter`_!

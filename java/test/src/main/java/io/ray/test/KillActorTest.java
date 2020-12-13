@@ -18,13 +18,13 @@ public class KillActorTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
-    oldNumWorkersPerProcess = System.getProperty("ray.raylet.config.num_workers_per_process_java");
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+    oldNumWorkersPerProcess = System.getProperty("ray.job.num-java-workers-per-process");
+    System.setProperty("ray.job.num-java-workers-per-process", "1");
   }
 
   @AfterClass
   public void tearDown() {
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", oldNumWorkersPerProcess);
+    System.setProperty("ray.job.num-java-workers-per-process", oldNumWorkersPerProcess);
   }
 
   public static class HangActor {
