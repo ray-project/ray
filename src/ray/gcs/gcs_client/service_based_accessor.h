@@ -217,8 +217,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   GcsNodeInfo local_node_info_;
   NodeID local_node_id_;
 
-  Sequencer<NodeID> sequencer_;
-
   /// The callback to call when a new node is added or a node is removed.
   NodeChangeCallback node_change_callback_{nullptr};
 
