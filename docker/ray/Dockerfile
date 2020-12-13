@@ -8,7 +8,8 @@ ARG RAY_GID=100
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
 COPY --chown=$RAY_UID:$RAY_GID $WHEEL_PATH .
-RUN id --user ray || useradd --no-create-home --no-user-group ray --uid $RAY_UID --gid $RAY_GID
+# Create a user with $RAY_UID if that user does not already exist.
+RUN getent passwd $RAY_UID || useradd --no-create-home --no-user-group ray --uid $RAY_UID --gid $RAY_GID
 USER $RAY_UID
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install `basename $WHEEL_PATH`[all] \
 && rm `basename $WHEEL_PATH`
