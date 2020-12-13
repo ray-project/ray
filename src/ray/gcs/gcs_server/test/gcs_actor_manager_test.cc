@@ -725,7 +725,7 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   actor->UpdateAddress(address);
   const auto actor_id = actor->GetActorID();
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id));
-  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
 }
 
 TEST_F(GcsActorManagerTest, TestRegisterActor) {
@@ -848,7 +848,7 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
   const auto child_worker_id = actor->GetWorkerID();
   const auto actor_id = actor->GetActorID();
   // Make worker & owner fail at the same time, but owner's failure comes first.
-  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id, false);
+  gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
   EXPECT_CALL(*mock_actor_scheduler_, CancelOnWorker(child_node_id, child_worker_id))
       .WillOnce(Return(actor_id));
   gcs_actor_manager_->OnWorkerDead(child_node_id, child_worker_id, false);

@@ -1336,14 +1336,12 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       return;
     }
   }
-  bool intentional_disconnect = false;
   RAY_CHECK(!(is_worker && is_driver));
   // If the client has any blocked tasks, mark them as unblocked. In
   // particular, we are no longer waiting for their dependencies.
   if (is_worker && worker->IsDead()) {
     // If the worker was killed by us because the driver exited,
     // treat it as intentionally disconnected.
-    intentional_disconnect = true;
     // Don't need to unblock the client if it's a worker and is already dead.
     // Because in this case, its task is already cleaned up.
     RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
@@ -1378,16 +1376,18 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     // TODO(rkn): Define this constant somewhere else.
     std::string type_str;
     std::ostringstream error_message;
-    if (!intentional_disconnect) {
+    if (disconnect_type == rpc::ClientDisconnectType::UNEXPECTED_EXITED) {
       type_str = "worker_died";
       error_message << "A worker died or was killed while executing task " << task_id
                     << ".";
-    } else {
+    }
+    if (disconnect_type == rpc::ClientDisconnectType::PLACEGROUP_REMOVED) {
       error_type = ErrorType::PLACEMENT_GROUP_ERROR;
       type_str = "placement_group_error";
       error_message << "A worker was killed while executing task " << task_id
                     << " due to placement group error"
                     << ".";
+
     }
 
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
