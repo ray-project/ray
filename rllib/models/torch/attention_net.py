@@ -165,7 +165,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # current one (0))
         # 1 to `num_transformer_units`: Memory data (one per transformer unit).
         for i in range(self.num_transformer_units):
-            space = Box(-1.0, 1.0, shape=(self.attn_dim,))
+            space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
