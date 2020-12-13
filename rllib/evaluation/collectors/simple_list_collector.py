@@ -445,7 +445,7 @@ class SimpleListCollector(SampleCollector):
         return sum(self.episode_steps.values()) + sum(
             pg.env_steps for pg in self.policy_collector_groups.values())
 
-    @override(_SampleCollector)
+    @override(SampleCollector)
     def total_agent_steps(self) -> int:
         # Add the non-built ongoing-episode agent steps (still in the agent
         # collectors) + the already built agent steps.

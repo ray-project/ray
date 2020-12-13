@@ -498,20 +498,27 @@ def _env_runner(
 
     # Trainer has a given `horizon` setting.
     if horizon:
-        # `horizon` is larger than env's limit -> Error and explain how
-        # to increase Env's own episode limit.
+        # `horizon` is larger than env's limit.
         if max_episode_steps and horizon > max_episode_steps:
-            raise ValueError(
-                "Your `horizon` setting ({}) is larger than the Env's own "
-                "timestep limit ({})! Try to increase the Env's limit via "
-                "setting its `spec.max_episode_steps` property.".format(
-                    horizon, max_episode_steps))
+            # Try to override the env's own max-step setting with our horizon.
+            # If this won't work, throw an error.
+            try:
+                base_env.get_unwrapped()[0].spec.max_episode_steps = horizon
+                base_env.get_unwrapped()[0]._max_episode_steps = horizon
+            except Exception:
+                raise ValueError(
+                    "Your `horizon` setting ({}) is larger than the Env's own "
+                    "timestep limit ({}), which seems to be unsettable! Try "
+                    "to increase the Env's built-in limit to be at least as "
+                    "large as your wanted `horizon`.".format(
+                        horizon, max_episode_steps))
     # Otherwise, set Trainer's horizon to env's max-steps.
     elif max_episode_steps:
         horizon = max_episode_steps
         logger.debug(
             "No episode horizon specified, setting it to Env's limit ({}).".
             format(max_episode_steps))
+    # No horizon/max_episode_steps -> Episodes may be infinitely long.
     else:
         horizon = float("inf")
         logger.debug("No episode horizon specified, assuming inf.")

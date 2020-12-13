@@ -5,69 +5,83 @@ The SampleCollector Class is Used to Store and Retrieve Temporary Data
 ----------------------------------------------------------------------
 
 RLlib's RolloutWorkers, when running against a live environment,
-use the `SamplerInput` class to interact with that environment to
+use the `SamplerInput` class to interact with that environment and thereby
 produce batches of experiences.
 The two implemented sub-classes of `SamplerInput` are `SyncSampler` and `AsyncSampler`
 (residing under the `RolloutWorker.sampler` property).
-In case the "_use_trajectory_view_api" top-level config key is set to True, which is the case
-by default since version >=1.2.0, every such sampler object will itself use the
+
+In case the "_use_trajectory_view_api" top-level config key is set to True
+(by default since version >=1.2.0), every such sampler object will use the
 `SampleCollector` API to store and retrieve temporary environment-, model-, and other data
-during episode rollouts.
-The exact number of environment transitions and behavior for a single such rollout is determined
-by several important config keys:
-**batch_mode []**: The two possible values are "truncate_episodes" (default) and
-  "complete_episodes".
-  In the `batch_mode=truncated_episodes` setting, rollouts are performed over exactly
-  `rollout_fragment_length` (see below) number of steps. Thereby, steps are counted
-  as environment steps by default (see below) or as individual agent steps. It
-  does not matter, whether one or more episodes end within this rollout or whether
-  the rollout starts within an already ongoing episode.
-  In the `batch_mode=complete_episodes` setting, each rollout is exactly one
-  episode long, no matter how long this episode lasts. The `rollout_fragment_length`
-  setting will be ignored. Note that you have to be careful when chosing this batch_mode
-  if your environment does not terminate easily (could lead to enormous batch sizes).
+during rollouts.
+The exact number of environment transitions and behavior for a single such rollout
+is determined by the following important Trainer config keys:
+
+**batch_mode [truncate_episodes|complete_episodes]**:
+  *truncated_episodes (default value)*: Rollouts are performed
+  over exactly `rollout_fragment_length` (see below) number of steps. Thereby, steps are
+  counted as either environment steps or as individual agent steps (see `count_steps_as` below).
+  It does not matter, whether one or more episodes end within this rollout or whether
+  the rollout starts in the middle of an already ongoing episode.
+  *complete_episodes*: Each rollout is exactly one episode long and always starts
+  at the beginning of an episode. It does not matter how long an episode lasts.
+  The `rollout_fragment_length` setting will be ignored. Note that you have to be
+  careful when chosing `complete_episodes` as batch_mode. If your environment does not
+  terminate easily, this setting could lead to enormous batch sizes.
+
 **rollout_fragment_length [int]**: The exact number of environment- or agent steps to
-  be performed per rollout, if the `batch_mode` setting is "truncate_episodes".
-  `rollout_fragment_length` is ignored, if `batch_mode=complete_episodes`.
-  The unit to count fragments in (environment- or agent steps) is set via `count_steps_by`
-  within the `multiagent` config dict.
-**horizon [int]**:
-**soft_horizon**:
-**no_done_at_end**:
+  be performed per rollout, if the `batch_mode` setting (see above) is "truncate_episodes".
+  If `batch_mode=complete_episodes`, `rollout_fragment_length` is ignored,
+  The unit to count fragments in is set via `count_steps_by=env_steps|agent_steps` within
+  the `multiagent` config dict.
 
+**multiagent->count_steps_by [env_steps|agent_steps]**: Within the multiagent
+  config dict, you can set the unit, by which we will count rollout fragment lengths
+  as well as the final train_batch_size (see below). Possible values are:
+  *env_steps (default)*:
 
-Determines, how to build per-RolloutWorker batches, which are then
-  usually concat'd to form the train batch. Note that "steps" below can mean different things (either env- or agent-steps) and depends on the
-  `count_steps_by` (multiagent) setting below.
-    # truncate_episodes: Each produced batch (when calling
-    #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
-    #   steps. This mode guarantees evenly sized batches, but increases
-    #   variance as the future return must now be estimated at truncation
-    #   boundaries.
-    # complete_episodes: Each unroll happens exactly over one episode, from
-    #   beginning to end. Data collection will not stop unless the episode
-    #   terminates or a configured horizon (hard or soft) is hit.
+**horizon [int]**: Some environments are limited by default in the number of maximum timesteps
+  an episode can last. This limit is called the "horizon" of an episode.
+  For example, for CartPole-v0, the maximum number of steps per episode is 200 by default.
+  You can overwrite this setting, however, by using the `horizon` config.
+  If provided, RLlib will first try to increase the environment's built-in horizon
+  setting (e.g. openAI gym Envs have a `spec.max_episode_steps` property), if the user
+  provided horizon is larger than this env-specific setting.
 
-**rollout_fragment_length**:
+**soft_horizon [bool]**: False by default. If set to True, the episode will
+  a) not be reset when reaching the horizon and b) no `done=True` will be set
+  in the trajectory data sent to the postprocessors and training (`done` will remain
+  False at the horizon).
 
-During these rollouts, a Sampler uses its SampleCollector to store trajectory (episode)
-data and to retrieve this data for a) model compute-action calls, b) calling a Policy's
-postprocessing function (postproces_trajectory), and c) building a final batch to be used for training.
-This latter train-batch may be concatenated with other RolloutWorkers' batches to form the actual train batch
-(of size "train_batch_size").
+**no_done_at_end [bool]**: Never set `done=True`, at the end of an episode or when any
+  artificial horizon is reached.
 
+To trigger a single rollout, RLlib calls `RolloutWorker.sample()`, which returns
+a SampleBatch or MultiAgentBatch object representing all the data collected during one
+rollout. These batches are then usually further concatenated (from the `num_workers`
+parallelized RolloutWorkers) to form a final train batch. The size of that train batch is determined
+by the `train_batch_size` config parameter. Train batches are usually sent to the Policy's
+`learn_on_batch` method, which handles loss calculation, backprop, and optimizer stepping.
+
+Let's now look at how Policy and Model let the RolloutWorker and its SampleCollector
+know, what data in the ongoing episode/trajectory to use for the different required method calls
+during rollouts. These method calls in particular are:
+Policy.compute_actions_from_input_dict to compute actions to be taken in an episode.
+Policy.postprocess_trajectory, which is called after an episode ends or a rollout hit its
+`rollout_fragment_length` limit (in `batch_mode=truncated_episodes`).
 
 Trajectory View API
 -------------------
-**#TODO maybe we shouldn't even call this an "API", since 99% of all this happens automatically under the hood.**
 
 The trajectory view API is a common format by which Models and Policies communicate
 to each other as well as to the SampleCollector, which data to store, how to store
-and retrieve it, and how to present this data as inputs to the Policy's different methods.
+and retrieve the data, and how to present this data as inputs to the Policy's different methods.
 
-In particular, the methods that will receive inputs based on trajectory view rules are
-a) Policy.compute_actions_from_input_dict, b) Policy.postprocess_trajectory, and c)
-Policy.learn_on_batch (and consecutively: the Policy's loss function).
+In particular, the methods that will receive inputs dependent on trajectory view rules are
+
+a) Policy.compute_actions_from_input_dict
+b) Policy.postprocess_trajectory and
+c) Policy.learn_on_batch (and consecutively: the Policy's loss function).
 
 The input data to these methods can stem from either the environment (observations, rewards, and infos),
 the model itself (previously computed actions, internal state outputs, action-probs, etc..)
