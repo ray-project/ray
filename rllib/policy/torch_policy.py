@@ -355,19 +355,15 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
-        # Get batch ready for multi-agent, if applicable.
-        if self.batch_divisibility_req > 1:
-            pad_batch_to_sequences_of_same_size(
-                postprocessed_batch,
-                max_seq_len=self.max_seq_len,
-                shuffle=False,
-                batch_divisibility_req=self.batch_divisibility_req,
-            )
-        # Allow model to preprocess the batch before passing it through the
-        # loss function.
-        if self.model:
-            postprocessed_batch = self.model.preprocess_train_batch(
-                postprocessed_batch)
+
+        pad_batch_to_sequences_of_same_size(
+            postprocessed_batch,
+            max_seq_len=self.max_seq_len,
+            shuffle=False,
+            batch_divisibility_req=self.batch_divisibility_req,
+            view_requirements=self.view_requirements,
+        )
+
         # Mark the batch as "is_training" so the Model can use this
         # information.
         postprocessed_batch["is_training"] = True

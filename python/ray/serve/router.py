@@ -6,9 +6,10 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve.constants import LongPollKey
 from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
-from ray.serve.long_poll import LongPollerAsyncClient
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.utils import logger
 from ray.util import metrics
 
@@ -106,7 +107,8 @@ class ReplicaSet:
                    ) >= self.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
-            logger.debug(f"Replica set assigned {query} to {replica}")
+            logger.debug(f"Assigned query {query.metadata.request_id} "
+                         f"to replica {replica}.")
             ref = replica.handle_request.remote(query)
             self.in_flight_queries[replica].add(ref)
             return ref
@@ -133,7 +135,8 @@ class ReplicaSet:
         """
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
-            logger.debug(f"Failed to assign a replica for query {query}")
+            logger.debug("Failed to assign a replica for "
+                         f"query {query.metadata.request_id}")
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.
             num_finished = self._drain_completed_object_refs()
@@ -141,7 +144,7 @@ class ReplicaSet:
             # config to be updated.
             if num_finished == 0:
                 logger.debug(
-                    f"All replicas are busy, waiting for a free replica.")
+                    "All replicas are busy, waiting for a free replica.")
                 await asyncio.wait(
                     self._all_query_refs + [self.config_updated_event.wait()],
                     return_when=asyncio.FIRST_COMPLETED)
@@ -176,14 +179,14 @@ class Router:
 
     async def setup_in_async_loop(self):
         # NOTE(simon): Instead of performing initialization in __init__,
-        # We separated the init of LongPollerAsyncClient to this method because
-        # __init__ might be called in sync context. LongPollerAsyncClient
+        # We separated the init of LongPollAsyncClient to this method because
+        # __init__ might be called in sync context. LongPollAsyncClient
         # requires async context.
-        self.long_pull_client = LongPollerAsyncClient(
+        self.long_poll_client = LongPollAsyncClient(
             self.controller, {
-                "traffic_policies": self._update_traffic_policies,
-                "worker_handles": self._update_worker_handles,
-                "backend_configs": self._update_backend_configs,
+                LongPollKey.TRAFFIC_POLICIES: self._update_traffic_policies,
+                LongPollKey.REPLICA_HANDLES: self._update_replica_handles,
+                LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
             })
 
     async def _update_traffic_policies(self, traffic_policies):
@@ -194,8 +197,8 @@ class Router:
                 event = self._pending_endpoints.pop(endpoint)
                 event.set()
 
-    async def _update_worker_handles(self, worker_handles):
-        for backend_tag, replica_handles in worker_handles.items():
+    async def _update_replica_handles(self, replica_handles):
+        for backend_tag, replica_handles in replica_handles.items():
             self.backend_replicas[backend_tag].update_worker_replicas(
                 replica_handles)
 

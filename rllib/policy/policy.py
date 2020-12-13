@@ -629,6 +629,7 @@ class Policy(metaclass=ABCMeta):
         batch_for_postproc.count = self._dummy_batch.count
         self.exploration.postprocess_trajectory(self, batch_for_postproc)
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
             i = 0
@@ -640,12 +641,11 @@ class Policy(metaclass=ABCMeta):
                         postprocessed_batch["state_out_{}".format(i)][:B]
                 i += 1
             seq_len = sample_batch_size // B
-            postprocessed_batch.seq_lens = \
-                np.array([seq_len for _ in range(B)], dtype=np.int32)
-        # Remove the UsageTrackingDict wrap to prep for wrapping the
-        # train batch with a to-tensor UsageTrackingDict.
-        train_batch = self.model.preprocess_train_batch(postprocessed_batch)
-        train_batch = self._lazy_tensor_dict(train_batch)
+            seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+        # Wrap `train_batch` with a to-tensor UsageTrackingDict.
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        if seq_lens is not None:
+            train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -760,8 +760,8 @@ class Policy(metaclass=ABCMeta):
                 batch_repeat_value=self.config.get("model", {}).get(
                     "max_seq_len", 1),
                 space=space)
-            #TODO: check, whether we can set: used_for_training=False here.
-            view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space, used_for_training=False)
+            view_reqs["state_out_{}".format(i)] = ViewRequirement(
+                space=space, used_for_training=False)
 
 
 def clip_action(action, action_space):

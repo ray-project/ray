@@ -11,13 +11,12 @@
 from gym.spaces import Box
 import numpy as np
 import gym
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
-from ray.rllib.models.utils import attention_preprocess_train_batch
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -333,8 +332,3 @@ class GTrXLNet(RecurrentNetwork):
     @override(ModelV2)
     def value_function(self) -> TensorType:
         return tf.reshape(self._value_out, [-1])
-
-    @override(RecurrentNetwork)
-    def preprocess_train_batch(self, train_batch):
-        return attention_preprocess_train_batch(
-            train_batch, max_seq_len=self.model_config["max_seq_len"])

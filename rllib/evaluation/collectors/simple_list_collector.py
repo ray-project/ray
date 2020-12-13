@@ -204,9 +204,11 @@ class _AgentCollector:
                     count = int(
                         math.ceil((len(np_data[data_col]) - self.shift_before)
                                   / view_req.batch_repeat_value))
-                    data = np.asarray([np_data[data_col][self.shift_before + (
-                                i * view_req.batch_repeat_value) + shift] for i
-                                       in range(count)])
+                    data = np.asarray([
+                        np_data[data_col][self.shift_before + (
+                            i * view_req.batch_repeat_value) + shift]
+                        for i in range(count)
+                    ])
                 # Shift is exactly 0: Use trajectory as is.
                 elif shift == 0:
                     data = np_data[data_col][self.shift_before:]

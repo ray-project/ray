@@ -204,9 +204,8 @@ def postprocess_ppo_gae(
                 view_req = policy.model.inference_view_requirements.get(
                     "state_in_{}".format(i))
                 next_state.append(sample_batch["state_out_{}".format(i)][
-                                  view_req.shift_from:view_req.shift_to + 1])
+                    view_req.shift_from:view_req.shift_to + 1])
                 i += 1
-
         # Everything else.
         else:
             next_state = []
