@@ -410,19 +410,21 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
                  << placement_group_id;
 
-  // If the placement group does not exist or it has been successfully created, return
-  // directly.
+  // If the placement group has been successfully created, return directly.
   const auto &iter = registered_placement_groups_.find(placement_group_id);
-  if (iter == registered_placement_groups_.end()) {
-    RAY_LOG(DEBUG) << "Placement group is not exist, placement group id = "
-                   << placement_group_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                       Status::NotFound("Placement group is not exist."));
-  } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
+  if (iter != registered_placement_groups_.end() &&
+      iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
     RAY_LOG(DEBUG) << "Placement group is created, placement group id = "
                    << placement_group_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   } else {
+    // NOTE: We don't check if the placement group exist. There are two reasons:
+    // 1.`wait` is a method of placement group object. Placement group object is
+    // obtained by create placement group api, so it can guarantee the existence of
+    // placement group. Currently, we will not call the wait api after deleting placement
+    // group.
+    // 2.GCS client does not guarantee the order of placement group creation and
+    // wait, so GCS may call wait placement group first and then create placement group.
     auto callback = [placement_group_id, reply,
                      send_reply_callback](const Status &status) {
       RAY_LOG(DEBUG)
