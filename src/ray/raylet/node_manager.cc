@@ -1370,26 +1370,26 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const TaskID &task_id = worker->GetAssignedTaskId();
-    // If the worker was running a task or actor, clean up the task and push an
-    // error to the driver, unless the worker is already dead.
-    ErrorType error_type = ErrorType::WORKER_DIED;
-    // TODO(rkn): Define this constant somewhere else.
-    std::string type_str;
-    std::ostringstream error_message;
-    if (disconnect_type == rpc::ClientDisconnectType::UNEXPECTED_EXIT) {
-      type_str = "worker_died";
-      error_message << "A worker died or was killed while executing task " << task_id
-                    << ".";
-    }
-    if (disconnect_type == rpc::ClientDisconnectType::PLACEGROUP_REMOVED) {
-      error_type = ErrorType::PLACEMENT_GROUP_ERROR;
-      type_str = "placement_group_error";
-      error_message << "A worker was killed while executing task " << task_id
-                    << " due to placement group removal"
-                    << ".";
-    }
 
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
+      // If the worker was running a task or actor, clean up the task and push an
+      // error to the driver, unless the worker is already dead.
+      ErrorType error_type = ErrorType::WORKER_DIED;
+      // TODO(rkn): Define this constant somewhere else.
+      std::string type_str;
+      std::ostringstream error_message;
+      if (disconnect_type == rpc::ClientDisconnectType::UNEXPECTED_EXIT) {
+        type_str = "worker_died";
+        error_message << "A worker died or was killed while executing task " << task_id
+                      << ".";
+      }
+      if (disconnect_type == rpc::ClientDisconnectType::PLACEGROUP_REMOVED) {
+        error_type = ErrorType::PLACEMENT_GROUP_ERROR;
+        type_str = "placement_group_error";
+        error_message << "A worker was killed while executing task " << task_id
+                      << " due to placement group removal"
+                      << ".";
+      }
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         Task task;
