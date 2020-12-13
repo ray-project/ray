@@ -100,22 +100,11 @@ def pad_batch_to_sequences_of_same_size(
     state_keys = []
     feature_keys_ = feature_keys or []
     for k, v in batch.items():
-        if "state_in_" in k:
+        if k.startswith("state_in_"):
             state_keys.append(k)
-        elif not feature_keys and "state_out_" not in k and k != "infos" and k != "seq_lens" and isinstance(
-                    v, np.ndarray):
+        elif not feature_keys and not k.startswith("state_out_") and \
+                k not in ["infos", "seq_lens"] and isinstance(v, np.ndarray):
             feature_keys_.append(k)
-
-        #state_keys = []
-        #feature_keys_ = []
-        #for k, v in train_batch.items():
-        #    if k.startswith("state_in_"):
-        #        state_keys.append(k)
-        #    elif not k.startswith(
-        #            "state_out_"
-        #    ) and k != "infos" and k != "seq_lens" and isinstance(
-        #            v, np.ndarray):
-        #        feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
@@ -192,19 +181,18 @@ def add_time_dimension(padded_inputs: TensorType,
 
 
 @DeveloperAPI
-def chop_into_sequences(
-        *,
-        feature_columns,
-        state_columns,
-        max_seq_len,
-        episode_ids=None,
-        unroll_ids=None,
-        agent_indices=None,
-        dynamic_max=True,
-        shuffle=False,
-        seq_lens=None,
-        states_already_reduced_to_init=False,
-        _extra_padding=0):
+def chop_into_sequences(*,
+                        feature_columns,
+                        state_columns,
+                        max_seq_len,
+                        episode_ids=None,
+                        unroll_ids=None,
+                        agent_indices=None,
+                        dynamic_max=True,
+                        shuffle=False,
+                        seq_lens=None,
+                        states_already_reduced_to_init=False,
+                        _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:

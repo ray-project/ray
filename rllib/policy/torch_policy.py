@@ -345,8 +345,7 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
-        ## Get batch ready for multi-agent, if applicable.
-        #if self.batch_divisibility_req > 1:
+
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             max_seq_len=self.max_seq_len,
@@ -354,10 +353,7 @@ class TorchPolicy(Policy):
             batch_divisibility_req=self.batch_divisibility_req,
             view_requirements=self.view_requirements,
         )
-        ## Allow model to preprocess the batch before passing it through the
-        ## loss function.
-        #postprocessed_batch = self.model.preprocess_train_batch(
-        #    postprocessed_batch)
+
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         # Calculate the actual policy loss.

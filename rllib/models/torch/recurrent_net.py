@@ -6,7 +6,6 @@ from typing import Dict, List, Union
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-#from ray.rllib.models.utils import rnn_preprocess_train_batch
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -106,11 +105,6 @@ class RecurrentNetwork(TorchModelV2):
                 return model_out, [h, c]
         """
         raise NotImplementedError("You must implement this for an RNN model")
-
-    #@override(ModelV2)
-    #def preprocess_train_batch(self, train_batch):
-    #    return rnn_preprocess_train_batch(
-    #        train_batch, self.model_config["max_seq_len"])
 
 
 class LSTMWrapper(RecurrentNetwork, nn.Module):

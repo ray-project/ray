@@ -799,18 +799,13 @@ class TFPolicy(Policy):
             feed dict of data
         """
 
-        ## Get batch ready for RNNs/Attention Nets, etc.
-        #train_batch = self.model.preprocess_train_batch(train_batch)
-
         # Get batch ready for RNNs, if applicable.
         pad_batch_to_sequences_of_same_size(
             train_batch,
             shuffle=shuffle,
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=[
-                k for k in self._loss_input_dict.keys() if k != "seq_lens"
-            ],
+            feature_keys=[k for k in self._loss_input_dict_no_rnn.keys()],
             view_requirements=self.view_requirements,
         )
 
