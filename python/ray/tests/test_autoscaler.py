@@ -849,7 +849,6 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
-
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
