@@ -61,7 +61,7 @@ struct CoreWorkerOptions {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
+      const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerOptions()
@@ -198,7 +198,7 @@ struct CoreWorkerOptions {
 /// thread with a worker. You can obtain the worker ID via
 /// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
 /// starts multiple workers by default, but can be configured to start only 1 worker by
-/// overwriting the internal config `num_workers_per_process_java`.
+/// speicifying `num_java_workers_per_process` in the job config.
 ///
 /// If only 1 worker is started (either because the worker type is driver, or the
 /// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
@@ -632,12 +632,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] max_retires max number of retry when the task fails.
   /// \param[in] placement_options placement group options.
   /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
+  /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries, BundleID placement_options,
-                  bool placement_group_capture_child_tasks);
+                  bool placement_group_capture_child_tasks,
+                  const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
@@ -674,6 +677,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status OK if succeed. TimedOut if request to GCS server times out.
   /// NotFound if placement group is already removed or doesn't exist.
   Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
+
+  /// Wait for a placement group until ready asynchronously.
+  /// Returns once the placement group is created or the timeout expires.
+  ///
+  /// \param placement_group The id of a placement group to wait for.
+  /// \param timeout_ms Timeout in milliseconds.
+  /// \return Status OK if the placement group is created. TimedOut if request to GCS
+  /// server times out. NotFound if placement group is already removed or doesn't exist.
+  Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                 int timeout_ms);
 
   /// Submit an actor task.
   ///

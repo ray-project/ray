@@ -102,6 +102,14 @@ class Worker:
         # Index of the current session. This number will
         # increment every time when `ray.shutdown` is called.
         self._session_index = 0
+        # If this is set, the next .remote call should drop into the
+        # debugger, at the specified breakpoint ID.
+        self.debugger_breakpoint = b""
+        # If this is set, ray.get calls invoked on the object ID returned
+        # by the worker should drop into the debugger at the specified
+        # breakpoint ID.
+        self.debugger_get_breakpoint = b""
+        self._load_code_from_local = False
 
     @property
     def connected(self):
@@ -115,7 +123,7 @@ class Worker:
     @property
     def load_code_from_local(self):
         self.check_connected()
-        return self.node.load_code_from_local
+        return self._load_code_from_local
 
     @property
     def current_job_id(self):
@@ -215,6 +223,9 @@ class Worker:
         """
         self.mode = mode
 
+    def set_load_code_from_local(self, load_code_from_local):
+        self._load_code_from_local = load_code_from_local
+
     def put_object(self, value, object_ref=None, pin_object=True):
         """Put value in the local object store with object reference `object_ref`.
 
@@ -280,6 +291,10 @@ class Worker:
                 whose values should be retrieved.
             timeout (float): timeout (float): The maximum amount of time in
                 seconds to wait before returning.
+        Returns:
+            list: List of deserialized objects
+            bytes: UUID of the debugger breakpoint we should drop
+                into or b"" if there is no breakpoint.
         """
         # Make sure that the values are object refs.
         for object_ref in object_refs:
@@ -291,7 +306,16 @@ class Worker:
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms)
-        return self.deserialize_objects(data_metadata_pairs, object_refs)
+        debugger_breakpoint = b""
+        for (data, metadata) in data_metadata_pairs:
+            if metadata:
+                metadata_fields = metadata.split(b",")
+                if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):
+                    debugger_breakpoint = metadata_fields[1][len(
+                        ray_constants.OBJECT_METADATA_DEBUG_PREFIX):]
+        return self.deserialize_objects(data_metadata_pairs,
+                                        object_refs), debugger_breakpoint
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -469,9 +493,7 @@ def init(
         _memory=None,
         _redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
         _java_worker_options=None,
-        _code_search_path=None,
         _temp_dir=None,
-        _load_code_from_local=False,
         _lru_evict=False,
         _metrics_export_port=None,
         _system_config=None):
@@ -559,10 +581,7 @@ def init(
         _temp_dir (str): If provided, specifies the root temporary
             directory for the Ray process. Defaults to an OS-specific
             conventional location, e.g., "/tmp/ray".
-        _load_code_from_local: Whether code should be loaded from a local
-            module or from the GCS.
         _java_worker_options: Overwrite the options to start Java workers.
-        _code_search_path (list): Java classpath or python import path.
         _lru_evict (bool): If True, when an object store is full, it will evict
             objects in LRU order to make more space and when under memory
             pressure, ray.ObjectLostError may be thrown. If False, then
@@ -681,9 +700,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
-            load_code_from_local=_load_code_from_local,
             java_worker_options=_java_worker_options,
-            code_search_path=_code_search_path,
             start_initial_python_workers_for_first_job=True,
             _system_config=_system_config,
             lru_evict=_lru_evict,
@@ -729,7 +746,6 @@ def init(
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
-            load_code_from_local=_load_code_from_local,
             _system_config=_system_config,
             lru_evict=_lru_evict,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -833,6 +849,7 @@ def custom_excepthook(type, value, tb):
         worker_type = ray.gcs_utils.DRIVER
         worker_info = {"exception": error_message}
 
+        ray.state.state._check_connected()
         ray.state.state.add_worker(worker_id, worker_type, worker_info)
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
@@ -1345,7 +1362,8 @@ def get(object_refs, *, timeout=None):
 
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
-        values = worker.get_objects(object_refs, timeout=timeout)
+        values, debugger_breakpoint = worker.get_objects(
+            object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1358,6 +1376,14 @@ def get(object_refs, *, timeout=None):
 
         if is_individual_id:
             values = values[0]
+
+        if debugger_breakpoint != b"":
+            frame = sys._getframe().f_back
+            rdb = ray.util.pdb.connect_ray_pdb(
+                None, None, False, None,
+                debugger_breakpoint.decode() if debugger_breakpoint else None)
+            rdb.set_trace(frame=frame)
+
         return values
 
 
@@ -1507,11 +1533,12 @@ def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
-    immediately. Any atexit handlers installed in the actor will still be run.
+    immediately. ``atexit`` handlers installed in the actor will not be run.
 
     If you want to kill the actor but let pending tasks finish,
     you can call ``actor.__ray_terminate__.remote()`` instead to queue a
-    termination task.
+    termination task. Any ``atexit`` handlers installed in the actor *will*
+    be run in this case.
 
     If the actor is a detached actor, subsequent calls to get its handle via
     ray.get_actor will fail.

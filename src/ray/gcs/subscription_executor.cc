@@ -206,7 +206,8 @@ template class SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>,
                                     TaskLeaseTable>;
 template class SubscriptionExecutor<NodeID, ResourceChangeNotification,
                                     DynamicResourceTable>;
-template class SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>;
+template class SubscriptionExecutor<NodeID, ResourceUsageBatchData,
+                                    ResourceUsageBatchTable>;
 template class SubscriptionExecutor<WorkerID, WorkerTableData, WorkerTable>;
 
 }  // namespace gcs

@@ -161,6 +161,7 @@ class NodeResources {
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   /// Returns if this equals another node resources.
   bool operator==(const NodeResources &other);
+  bool operator!=(const NodeResources &other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
 };

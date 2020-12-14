@@ -178,10 +178,10 @@ class LSTMWrapper(RecurrentNetwork):
         if model_config["lstm_use_prev_action"]:
             self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
-                                data_rel_pos=-1)
+                                shift=-1)
         if model_config["lstm_use_prev_reward"]:
             self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
-                ViewRequirement(SampleBatch.REWARDS, data_rel_pos=-1)
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],

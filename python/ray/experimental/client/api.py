@@ -11,40 +11,145 @@
 
 from abc import ABC
 from abc import abstractmethod
+from typing import TYPE_CHECKING, Any, Union, Optional
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
+if TYPE_CHECKING:
+    from ray.experimental.client.common import ClientActorHandle
+    from ray.experimental.client.common import ClientStub
+    from ray.experimental.client.common import ClientObjectRef
+    from ray._raylet import ObjectRef
+
+    # Use the imports for type checking.  This is a python 3.6 limitation.
+    # See https://www.python.org/dev/peps/pep-0563/
+    PutType = Union[ClientObjectRef, ObjectRef]
 
 
 class APIImpl(ABC):
+    """
+    APIImpl is the interface to implement for whichever version of the core
+    Ray API that needs abstracting when run in client mode.
+    """
+
     @abstractmethod
-    def get(self, *args, **kwargs):
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
+        """
+        get is the hook stub passed on to replace `ray.get`
+
+        Args:
+            vals: [Client]ObjectRef or list of these refs to retrieve.
+            timeout: Optional timeout in milliseconds
+        """
         pass
 
     @abstractmethod
-    def put(self, *args, **kwargs):
+    def put(self, vals: Any, *args,
+            **kwargs) -> Union["ClientObjectRef", "ObjectRef"]:
+        """
+        put is the hook stub passed on to replace `ray.put`
+
+        Args:
+            vals: The value or list of values to `put`.
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def wait(self, *args, **kwargs):
+        """
+        wait is the hook stub passed on to replace `ray.wait`
+
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
     def remote(self, *args, **kwargs):
+        """
+        remote is the hook stub passed on to replace `ray.remote`.
+
+        This sets up remote functions or actors, as the decorator,
+        but does not execute them.
+
+        Args:
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def call_remote(self, f, kind, *args, **kwargs):
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+        """
+        call_remote is called by stub objects to execute them remotely.
+
+        This is used by stub objects in situations where they're called
+        with .remote, eg, `f.remote()` or `actor_cls.remote()`.
+        This allows the client stub objects to delegate execution to be
+        implemented in the most effective way whether it's in the client,
+        clientserver, or raylet worker.
+
+        Args:
+            instance: The Client-side stub reference to a remote object
+            args: opaque arguments
+            kwargs: opaque keyword arguments
+        """
         pass
 
     @abstractmethod
-    def close(self, *args, **kwargs):
+    def close(self) -> None:
+        """
+        close cleans up an API connection by closing any channels or
+        shutting down any servers gracefully.
+        """
+        pass
+
+    @abstractmethod
+    def kill(self, actor, *, no_restart=True):
+        """
+        kill forcibly stops an actor running in the cluster
+
+        Args:
+            no_restart: Whether this actor should be restarted if it's a
+              restartable actor.
+        """
+        pass
+
+    @abstractmethod
+    def cancel(self, obj, *, force=False, recursive=True):
+        """
+        Cancels a task on the cluster.
+
+        If the specified task is pending execution, it will not be executed. If
+        the task is currently executing, the behavior depends on the ``force``
+        flag, as per `ray.cancel()`
+
+        Only non-actor tasks can be canceled. Canceled tasks will not be
+        retried (max_retries will not be respected).
+
+        Args:
+            object_ref (ObjectRef): ObjectRef returned by the task
+                that should be canceled.
+            force (boolean): Whether to force-kill a running task by killing
+                the worker that is running the task.
+            recursive (boolean): Whether to try to cancel tasks submitted by
+                the task specified.
+        """
         pass
 
 
 class ClientAPI(APIImpl):
+    """
+    The Client-side methods corresponding to the ray API. Delegates
+    to the Client Worker that contains the connection to the ClientServer.
+    """
+
     def __init__(self, worker):
         self.worker = worker
 
-    def get(self, *args, **kwargs):
-        return self.worker.get(*args, **kwargs)
+    def get(self, vals, *, timeout=None):
+        return self.worker.get(vals, timeout=timeout)
 
     def put(self, *args, **kwargs):
         return self.worker.put(*args, **kwargs)
@@ -55,11 +160,64 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, f, kind, *args, **kwargs):
-        return self.worker.call_remote(f, kind, *args, **kwargs)
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+        return self.worker.call_remote(instance, *args, **kwargs)
 
-    def close(self, *args, **kwargs):
+    def close(self) -> None:
         return self.worker.close()
+
+    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
+        return self.worker.terminate_actor(actor, no_restart)
+
+    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
+        return self.worker.terminate_task(obj, force, recursive)
+
+    # Various metadata methods for the client that are defined in the protocol.
+    def is_initialized(self) -> bool:
+        """ True if our client is connected, and if the server is initialized.
+
+        Returns:
+            A boolean determining if the client is connected and
+            server initialized.
+        """
+        return self.worker.is_initialized()
+
+    def nodes(self):
+        """Get a list of the nodes in the cluster (for debugging only).
+
+        Returns:
+            Information about the Ray clients in the cluster.
+        """
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.NODES)
+
+    def cluster_resources(self):
+        """Get the current total cluster resources.
+
+        Note that this information can grow stale as nodes are added to or
+        removed from the cluster.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):

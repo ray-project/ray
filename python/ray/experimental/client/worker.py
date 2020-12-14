@@ -3,21 +3,28 @@ It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
 import inspect
+import json
+import logging
+from typing import Any
 from typing import List
 from typing import Tuple
+from typing import Optional
 
 import ray.cloudpickle as cloudpickle
 from ray.util.inspect import is_cython
 import grpc
 
+from ray.exceptions import TaskCancelledError
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.common import convert_to_arg
+from ray.experimental.client.common import decode_exception
 from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientActorClass
-from ray.experimental.client.common import ClientRemoteMethod
+from ray.experimental.client.common import ClientActorHandle
 from ray.experimental.client.common import ClientRemoteFunc
+
+logger = logging.getLogger(__name__)
 
 
 class Worker:
@@ -34,6 +41,7 @@ class Worker:
             metadata: additional metadata passed in the grpc request headers.
         """
         self.metadata = metadata
+        self.channel = None
         if stub is None:
             if secure:
                 credentials = grpc.ssl_channel_credentials()
@@ -44,28 +52,32 @@ class Worker:
         else:
             self.server = stub
 
-    def get(self, ids):
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
         single = False
-        if isinstance(ids, list):
-            to_get = [x.id for x in ids]
-        elif isinstance(ids, ClientObjectRef):
-            to_get = [ids.id]
+        if isinstance(vals, list):
+            to_get = [x.handle for x in vals]
+        elif isinstance(vals, ClientObjectRef):
+            to_get = [vals.handle]
             single = True
         else:
             raise Exception("Can't get something that's not a "
-                            "list of IDs or just an ID: %s" % type(ids))
-        out = [self._get(x) for x in to_get]
+                            "list of IDs or just an ID: %s" % type(vals))
+        if timeout is None:
+            timeout = 0
+        out = [self._get(x, timeout) for x in to_get]
         if single:
             out = out[0]
         return out
 
-    def _get(self, id: bytes):
-        req = ray_client_pb2.GetRequest(id=id)
-        data = self.server.GetObject(req, metadata=self.metadata)
+    def _get(self, handle: bytes, timeout: float):
+        req = ray_client_pb2.GetRequest(handle=handle, timeout=timeout)
+        try:
+            data = self.server.GetObject(req, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
         if not data.valid:
-            raise Exception(
-                "Client GetObject returned invalid data: id invalid?")
+            raise TaskCancelledError(handle)
         return cloudpickle.loads(data.data)
 
     def put(self, vals):
@@ -86,7 +98,7 @@ class Worker:
         data = cloudpickle.dumps(val)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.server.PutObject(req, metadata=self.metadata)
-        return ClientObjectRef(resp.id)
+        return ClientObjectRef.from_remote_ref(resp.ref)
 
     def wait(self,
              object_refs: List[ClientObjectRef],
@@ -98,8 +110,8 @@ class Worker:
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
         data = {
-            "object_refs": [
-                cloudpickle.dumps(object_ref) for object_ref in object_refs
+            "object_handles": [
+                object_ref.handle for object_ref in object_refs
             ],
             "num_returns": num_returns,
             "timeout": timeout if timeout else -1
@@ -110,10 +122,12 @@ class Worker:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
         client_ready_object_ids = [
-            ClientObjectRef(id) for id in resp.ready_object_ids
+            ClientObjectRef.from_remote_ref(ref)
+            for ref in resp.ready_object_ids
         ]
         client_remaining_object_ids = [
-            ClientObjectRef(id) for id in resp.remaining_object_ids
+            ClientObjectRef.from_remote_ref(ref)
+            for ref in resp.remaining_object_ids
         ]
 
         return (client_ready_object_ids, client_remaining_object_ids)
@@ -130,50 +144,60 @@ class Worker:
             raise TypeError("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
-    def call_remote(self, instance, kind, *args, **kwargs):
-        ticket = None
-        if kind == ray_client_pb2.ClientTask.FUNCTION:
-            ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
-        elif kind == ray_client_pb2.ClientTask.ACTOR:
-            ticket = self._put_and_schedule(instance, kind, *args, **kwargs)
-            return ClientActorRef(ticket.return_id)
-        elif kind == ray_client_pb2.ClientTask.METHOD:
-            ticket = self._call_method(instance, *args, **kwargs)
-
-        if ticket is None:
-            raise Exception(
-                "Couldn't call_remote on %s for type %s" % (instance, kind))
-        return ClientObjectRef(ticket.return_id)
-
-    def _call_method(self, instance: ClientRemoteMethod, *args, **kwargs):
-        if not isinstance(instance, ClientRemoteMethod):
-            raise TypeError("Client not passing a ClientRemoteMethod stub")
-        task = ray_client_pb2.ClientTask()
-        task.type = ray_client_pb2.ClientTask.METHOD
-        task.name = instance.method_name
-        task.payload_id = instance.actor_handle.actor_id.id
+    def call_remote(self, instance, *args, **kwargs):
+        task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
+        logging.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ticket
-
-    def _put_and_schedule(self, item, task_type, *args, **kwargs):
-        if isinstance(item, ClientRemoteFunc):
-            ref = self._put(item)
-        elif isinstance(item, ClientActorClass):
-            ref = self._put(item.actor_cls)
-        else:
-            raise TypeError("Client not passing a ClientRemoteFunc stub")
-        task = ray_client_pb2.ClientTask()
-        task.type = task_type
-        task.name = item._name
-        task.payload_id = ref.id
-        for arg in args:
-            pb_arg = convert_to_arg(arg)
-            task.args.append(pb_arg)
-        ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ticket
+        return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def close(self):
-        self.channel.close()
+        self.server = None
+        if self.channel:
+            self.channel.close()
+
+    def terminate_actor(self, actor: ClientActorHandle,
+                        no_restart: bool) -> None:
+        if not isinstance(actor, ClientActorHandle):
+            raise ValueError("ray.kill() only supported for actors. "
+                             "Got: {}.".format(type(actor)))
+        term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
+        term_actor.handle = actor.actor_ref.handle
+        term_actor.no_restart = no_restart
+        try:
+            term = ray_client_pb2.TerminateRequest(actor=term_actor)
+            self.server.Terminate(term)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
+
+    def terminate_task(self, obj: ClientObjectRef, force: bool,
+                       recursive: bool) -> None:
+        if not isinstance(obj, ClientObjectRef):
+            raise TypeError(
+                "ray.cancel() only supported for non-actor object refs. "
+                f"Got: {type(obj)}.")
+        term_object = ray_client_pb2.TerminateRequest.TaskObjectTerminate()
+        term_object.handle = obj.handle
+        term_object.force = force
+        term_object.recursive = recursive
+        try:
+            term = ray_client_pb2.TerminateRequest(task_object=term_object)
+            self.server.Terminate(term)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details())
+
+    def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
+        req = ray_client_pb2.ClusterInfoRequest()
+        req.type = type
+        resp = self.server.ClusterInfo(req)
+        if resp.WhichOneof("response_type") == "resource_table":
+            return resp.resource_table.table
+        return json.loads(resp.json)
+
+    def is_initialized(self) -> bool:
+        if self.server is not None:
+            return self.get_cluster_info(
+                ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
+        return False

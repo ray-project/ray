@@ -39,12 +39,12 @@ using rpc::ErrorTableData;
 using rpc::GcsChangeMode;
 using rpc::GcsEntry;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ProfileTableData;
 using rpc::ResourceTableData;
+using rpc::ResourceUsageBatchData;
 using rpc::TablePrefix;
 using rpc::TablePubsub;
 using rpc::TaskLeaseData;
@@ -688,15 +688,15 @@ class HeartbeatTable : public Table<NodeID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
-class HeartbeatBatchTable : public Table<NodeID, HeartbeatBatchTableData> {
+class ResourceUsageBatchTable : public Table<NodeID, ResourceUsageBatchData> {
  public:
-  HeartbeatBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                      RedisGcsClient *client)
+  ResourceUsageBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                          RedisGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::HEARTBEAT_BATCH_PUBSUB;
-    prefix_ = TablePrefix::HEARTBEAT_BATCH;
+    pubsub_channel_ = TablePubsub::RESOURCE_USAGE_BATCH_PUBSUB;
+    prefix_ = TablePrefix::RESOURCE_USAGE_BATCH;
   }
-  virtual ~HeartbeatBatchTable() {}
+  virtual ~ResourceUsageBatchTable() {}
 };
 
 class JobTable : public Log<JobID, JobTableData> {

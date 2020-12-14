@@ -307,4 +307,5 @@ if __name__ == "__main__":
                    "error:\n{}".format(platform.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, message)
+        logger.exception(message)
         raise e

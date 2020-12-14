@@ -1,8 +1,8 @@
 import gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.tests.test_rollout_worker import MockEnv, MockEnv2
 
 
 def make_multiagent(env_name_or_creator):

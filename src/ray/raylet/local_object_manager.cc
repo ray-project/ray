@@ -52,7 +52,7 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
         wait_request,
         [this, object_id](Status status, const rpc::WaitForObjectEvictionReply &reply) {
           if (!status.ok()) {
-            RAY_LOG(WARNING) << "Worker failed. Unpinning object " << object_id;
+            RAY_LOG(DEBUG) << "Worker failed. Unpinning object " << object_id;
           }
           ReleaseFreedObject(object_id);
         });
@@ -210,7 +210,6 @@ void LocalObjectManager::SpillObjectsInternal(
                                << status.ToString();
                 if (callback) {
                   callback(status);
-                  on_objects_spilled_();
                 }
               } else {
                 AddSpilledUrls(objects_to_spill, r, callback);
@@ -262,7 +261,6 @@ void LocalObjectManager::AddSpilledUrls(
           (*num_remaining)--;
           if (*num_remaining == 0 && callback) {
             callback(status);
-            on_objects_spilled_();
           }
         }));
   }
