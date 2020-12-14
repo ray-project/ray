@@ -76,11 +76,11 @@ You can install the Ray wheels of any particular commit on ``master`` with the f
 
     pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
 
-For example, here are the Ray 1.1.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
+For example, here are the Ray 1.2.0.dev0 wheels for Python 3.5, MacOS for commit ``a0ba4499ac645c9d3e82e68f3a281e48ad57f873``:
 
 .. code-block:: bash
 
-    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-1.1.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
+    pip install https://ray-wheels.s3-us-west-2.amazonaws.com/master/a0ba4499ac645c9d3e82e68f3a281e48ad57f873/ray-1.2.0.dev0-cp35-cp35m-macosx_10_13_intel.whl
 
 .. _ray-install-java:
 
