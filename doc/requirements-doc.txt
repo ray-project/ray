@@ -25,6 +25,7 @@ sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
 sphinx-book-theme
+starlette
 tabulate
 uvicorn
 werkzeug
