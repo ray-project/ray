@@ -143,7 +143,7 @@ def check_components_alive(cluster, component_type, check_component_alive):
         "num_cpus": 8,
         "num_nodes": 4,
         "_system_config": {
-            "num_heartbeats_timeout": 10
+            "num_heartbeats_timeout": 100
         },
     }],
     indirect=True)
