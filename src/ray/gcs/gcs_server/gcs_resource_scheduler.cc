@@ -53,26 +53,39 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
 
   // Filter candidate nodes.
-  absl::flat_hash_set<NodeID> candidate_nodes = Filter(cluster_resources, node_filter_func);
+  absl::flat_hash_set<NodeID> candidate_nodes =
+      FilterCandidateNodes(cluster_resources, node_filter_func);
   if (candidate_nodes.size() < required_resources.size()) {
     return {};
   }
 
-  // TODO(ffbin): Filter required resources.
+  // First schedule scarce resources (such as GPU) and large capacity resources to improve
+  // the scheduling success rate.
+  const auto &to_schedule_resources = SortRequiredResources(required_resources);
 
-  // Scorer.
-//  std::vector<NodeScore> node_score_list;
-//  for (const auto &iter : cluster_resources) {
-//    double node_score = node_scorer_->MakeGrade(required_resources, iter->second);
-//    node_score_list.emplace_back(NodeScore(iter->first, node_score));
-//  }
+  // Score and rank nodes.
+  switch (policy.type_) {
+    case SPREAD:
+      break;
+    case STRICT_SPREAD:
+      break;
+    case PACK:
+      break;
+    case STRICT_PACK:
+      break;
+    default:
+      break;
+  }
 
-  // TODO(ffbin): Rank.
+  for (const auto &resource : to_schedule_resources) {
+
+  }
+
   std::vector<NodeID> result;
   return result;
 }
 
-absl::flat_hash_set<NodeID> GcsResourceScheduler::Filter(
+absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
     const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources,
     std::function<bool(const NodeID &)> node_filter_func) {
   absl::flat_hash_set<NodeID> result;
@@ -84,7 +97,11 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::Filter(
   }
   return result;
 }
-//////////////////////////////////// End of GcsResourceScheduler ////////////////////////////////
+
+std::vector<ResourceSet> GcsResourceScheduler::SortRequiredResources(
+    const std::vector<ResourceSet> &required_resources) {}
+
+/////////////////////////////// End of GcsResourceScheduler ///////////////////////////
 
 }  // namespace gcs
 }  // namespace ray

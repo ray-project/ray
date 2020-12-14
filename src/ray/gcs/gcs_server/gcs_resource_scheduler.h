@@ -80,18 +80,23 @@ class LeastResourceScorer : public NodeScorer {
 class GcsResourceScheduler {
  public:
   GcsResourceScheduler(GcsResourceManager &gcs_resource_manager)
-      : gcs_resource_manager_(gcs_resource_manager), node_scorer_(new LeastResourceScorer()) {}
+      : gcs_resource_manager_(gcs_resource_manager),
+        node_scorer_(new LeastResourceScorer()) {}
 
   virtual ~GcsResourceScheduler() = default;
 
   std::vector<NodeID> Schedule(
-      std::vector<ResourceSet> required_resources, SchedulingPolicy policy,
-      const std::function<bool(const NodeID &)> &node_filter_func);
+      const std::vector<ResourceSet> &required_resources, SchedulingPolicy policy,
+      const std::function<bool(const NodeID &)> &node_filter_func,
+      const std::function<std::vector<NodeID>(const std::vector<NodeScore> &)> &node_rank_func);
 
  private:
-  absl::flat_hash_set<NodeID> Filter(
+  absl::flat_hash_set<NodeID> FilterCandidateNodes(
       const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources,
-      std::function<bool(const NodeID &)> node_filter_func);
+      const std::function<bool(const NodeID &)> &node_filter_func);
+
+  std::vector<ResourceSet> SortRequiredResources(
+      const std::vector<ResourceSet> &required_resources);
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
