@@ -52,7 +52,6 @@ class HTTPProxy:
             more_body = message["more_body"]
             body_buffer.append(message["body"])
 
-
         return b"".join(body_buffer)
 
     def _make_error_sender(self, scope, receive, send):
