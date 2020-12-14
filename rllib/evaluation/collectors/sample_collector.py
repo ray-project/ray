@@ -31,7 +31,8 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
-                     policy_id: PolicyID, init_obs: TensorType) -> None:
+                     policy_id: PolicyID, t: int,
+                     init_obs: TensorType) -> None:
         """Adds an initial obs (after reset) to this collector.
 
         Since the very first observation in an environment is collected w/o
@@ -48,6 +49,8 @@ class _SampleCollector(metaclass=ABCMeta):
                 values for.
             env_id (EnvID): The environment index (in a vectorized setup).
             policy_id (PolicyID): Unique id for policy controlling the agent.
+            t (int): The time step (episode length - 1). The initial obs has
+                ts=-1(!), then an action/reward/next-obs at t=0, etc..
             init_obs (TensorType): Initial observation (after env.reset()).
 
         Examples:
@@ -107,11 +110,37 @@ class _SampleCollector(metaclass=ABCMeta):
 
     @abstractmethod
     def total_env_steps(self) -> int:
-        """Returns total number of steps taken in the env (sum of all agents).
+        """Returns total number of env-steps taken so far.
+
+        Thereby, a step in an N-agent multi-agent environment counts as only 1
+        for this metric. The returned count contains everything that has not
+        been built yet (and returned as MultiAgentBatches by the
+        `try_build_truncated_episode_multi_agent_batch` or
+        `postprocess_episode(build=True)` methods). After such build, this
+        counter is reset to 0.
 
         Returns:
-            int: The number of steps taken in total in the environment over all
-                agents.
+            int: The number of env-steps taken in total in the environment(s)
+                so far.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def total_agent_steps(self) -> int:
+        """Returns total number of (individual) agent-steps taken so far.
+
+        Thereby, a step in an N-agent multi-agent environment counts as N.
+        If less than N agents have stepped (because some agents were not
+        required to send actions), the count will be increased by less than N.
+        The returned count contains everything that has not been built yet
+        (and returned as MultiAgentBatches by the
+        `try_build_truncated_episode_multi_agent_batch` or
+        `postprocess_episode(build=True)` methods). After such build, this
+        counter is reset to 0.
+
+        Returns:
+            int: The number of (individual) agent-steps taken in total in the
+                environment(s) so far.
         """
         raise NotImplementedError
 
@@ -172,9 +201,10 @@ class _SampleCollector(metaclass=ABCMeta):
                 MultiAgentBatch. Used for batch_mode=`complete_episodes`.
 
         Returns:
-            Any: An ID that can be used in `build_multi_agent_batch` to
-                retrieve the samples that have been postprocessed as a
-                ready-built MultiAgentBatch.
+            Optional[MultiAgentBatch]: If `build` is True, the
+                SampleBatch or MultiAgentBatch built from `episode` (either
+                just from that episde or from the `_PolicyCollectorGroup`
+                in the `episode.batch_builder` property).
         """
         raise NotImplementedError
 
@@ -187,7 +217,7 @@ class _SampleCollector(metaclass=ABCMeta):
         postprocessor.
         This is usually called to collect samples for policy training.
         If not enough data has been collected yet (`rollout_fragment_length`),
-        returns None.
+        returns an empty list.
 
         Returns:
             List[Union[MultiAgentBatch, SampleBatch]]: Returns a (possibly

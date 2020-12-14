@@ -54,10 +54,9 @@ class GcsObjectManagerTest : public ::testing::Test {
  public:
   void SetUp() override {
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(io_service_, io_service_, gcs_pub_sub_,
-                                              gcs_table_storage_, gcs_resource_manager_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        io_service_, gcs_pub_sub_, gcs_table_storage_, gcs_resource_manager_);
     gcs_object_manager_ = std::make_shared<MockedGcsObjectManager>(
         gcs_table_storage_, gcs_pub_sub_, *gcs_node_manager_);
     GenTestData();

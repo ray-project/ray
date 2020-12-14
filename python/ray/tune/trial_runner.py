@@ -19,6 +19,7 @@ from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
+from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -78,8 +79,6 @@ class TrialRunner:
             If fail_fast='raise' provided, Tune will automatically
             raise the exception received by the Trainable. fail_fast='raise'
             can easily leak resources and should be used with caution.
-        verbose (bool): Flag for verbosity. If False, trial results
-            will not be output.
         checkpoint_period (int): Trial runner checkpoint periodicity in
             seconds. Defaults to 10.
         trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
@@ -102,7 +101,6 @@ class TrialRunner:
                  resume=False,
                  server_port=None,
                  fail_fast=False,
-                 verbose=True,
                  checkpoint_period=None,
                  trial_executor=None,
                  callbacks=None,
@@ -135,7 +133,6 @@ class TrialRunner:
             else:
                 raise ValueError("fail_fast must be one of {bool, RAISE}. "
                                  f"Got {self._fail_fast}.")
-        self._verbose = verbose
 
         self._server = None
         self._server_port = server_port
@@ -165,7 +162,7 @@ class TrialRunner:
                 self.resume(run_errored_only=errored_only)
                 self._resumed = True
             except Exception as e:
-                if self._verbose:
+                if has_verbosity(Verbosity.V3_TRIAL_DETAILS):
                     logger.error(str(e))
                 logger.exception("Runner restore failed.")
                 if self._fail_fast:
@@ -404,7 +401,6 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
-        trial.set_verbose(self._verbose)
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -453,11 +449,13 @@ class TrialRunner:
             self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
-            logger.debug("Running trial {}".format(trial))
+            if trial:
+                logger.debug("Running trial {}".format(trial))
         return trial
 
     def _process_events(self):
-        failed_trial = self.trial_executor.get_next_failed_trial()
+        with warn_if_slow("get_next_failed_trial"):
+            failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
             error_msg = (
                 "{} (IP: {}) detected as stale. This is likely because the "
@@ -478,14 +476,14 @@ class TrialRunner:
                         trials=self._trials,
                         trial=trial)
             elif trial.is_saving:
-                with warn_if_slow("process_trial_save") as profile:
+                with warn_if_slow("process_trial_save") as _profile:
                     self._process_trial_save(trial)
                 with warn_if_slow("callbacks.on_trial_save"):
                     self._callbacks.on_trial_save(
                         iteration=self._iteration,
                         trials=self._trials,
                         trial=trial)
-                if profile.too_slow and trial.sync_on_checkpoint:
+                if _profile.too_slow and trial.sync_on_checkpoint:
                     # TODO(ujvl): Suggest using DurableTrainable once
                     #  API has converged.
 
@@ -562,6 +560,8 @@ class TrialRunner:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
                         self, trial, flat_result)
+                if decision == TrialScheduler.STOP:
+                    result.update(done=True)
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
@@ -580,7 +580,6 @@ class TrialRunner:
                             iteration=self._iteration,
                             trials=self._trials,
                             trial=trial)
-                    result.update(done=True)
 
             if not is_duplicate:
                 trial.update_last_result(

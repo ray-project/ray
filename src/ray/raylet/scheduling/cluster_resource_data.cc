@@ -196,6 +196,8 @@ bool NodeResources::operator==(const NodeResources &other) {
   return true;
 }
 
+bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
+
 std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   buffer << " {\n";

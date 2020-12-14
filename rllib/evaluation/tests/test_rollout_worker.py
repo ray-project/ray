@@ -1,5 +1,6 @@
 from collections import Counter
 import gym
+from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
@@ -13,9 +14,12 @@ from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
+from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
+    SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
@@ -69,39 +73,6 @@ class FailOnStepEnv(gym.Env):
 
     def step(self, action):
         raise ValueError("kaboom")
-
-
-class MockEnv(gym.Env):
-    def __init__(self, episode_length, config=None):
-        self.episode_length = episode_length
-        self.config = config
-        self.i = 0
-        self.observation_space = gym.spaces.Discrete(1)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self):
-        self.i = 0
-        return self.i
-
-    def step(self, action):
-        self.i += 1
-        return 0, 1, self.i >= self.episode_length, {}
-
-
-class MockEnv2(gym.Env):
-    def __init__(self, episode_length):
-        self.episode_length = episode_length
-        self.i = 0
-        self.observation_space = gym.spaces.Discrete(100)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self):
-        self.i = 0
-        return self.i
-
-    def step(self, action):
-        self.i += 1
-        return self.i, 100, self.i >= self.episode_length, {}
 
 
 class MockVectorEnv(VectorEnv):
@@ -523,14 +494,57 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_truncate_episodes(self):
-        ev = RolloutWorker(
+        ev_env_steps = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             policy_spec=MockPolicy,
+            policy_config={"_use_trajectory_view_api": True},
             rollout_fragment_length=15,
             batch_mode="truncate_episodes")
-        batch = ev.sample()
+        batch = ev_env_steps.sample()
         self.assertEqual(batch.count, 15)
-        ev.stop()
+        self.assertTrue(isinstance(batch, SampleBatch))
+        ev_env_steps.stop()
+
+        action_space = Discrete(2)
+        obs_space = Box(float("-inf"), float("inf"), (4, ), dtype=np.float32)
+        ev_agent_steps = RolloutWorker(
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": 4}),
+            policy_spec={
+                "pol0": (MockPolicy, obs_space, action_space, {}),
+                "pol1": (MockPolicy, obs_space, action_space, {}),
+            },
+            policy_config={"_use_trajectory_view_api": True},
+            policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
+            rollout_fragment_length=301,
+            count_steps_by="env_steps",
+            batch_mode="truncate_episodes",
+        )
+        batch = ev_agent_steps.sample()
+        self.assertTrue(isinstance(batch, MultiAgentBatch))
+        self.assertGreater(batch.agent_steps(), 301)
+        self.assertEqual(batch.env_steps(), 301)
+        ev_agent_steps.stop()
+
+        ev_agent_steps = RolloutWorker(
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": 4}),
+            policy_spec={
+                "pol0": (MockPolicy, obs_space, action_space, {}),
+                "pol1": (MockPolicy, obs_space, action_space, {}),
+            },
+            policy_config={"_use_trajectory_view_api": True},
+            policy_mapping_fn=lambda ag: "pol0" if ag == 0 else "pol1",
+            rollout_fragment_length=301,
+            count_steps_by="agent_steps",
+            batch_mode="truncate_episodes")
+        batch = ev_agent_steps.sample()
+        self.assertTrue(isinstance(batch, MultiAgentBatch))
+        self.assertLess(batch.env_steps(), 301)
+        # When counting agent steps, the count may be slightly larger than
+        # rollout_fragment_length, b/c we have up to N agents stepping in each
+        # env step and we only check, whether we should build after each env
+        # step.
+        self.assertGreaterEqual(batch.agent_steps(), 301)
+        ev_agent_steps.stop()
 
     def test_complete_episodes(self):
         ev = RolloutWorker(

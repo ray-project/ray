@@ -143,6 +143,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
+            count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
             preprocessor_pref: str = "deepmind",
@@ -177,6 +178,7 @@ class RolloutWorker(ParallelIteratorWorker):
             fake_sampler: bool = False,
             spaces: Optional[Dict[PolicyID, Tuple[gym.spaces.Space,
                                                   gym.spaces.Space]]] = None,
+            _use_trajectory_view_api: bool = True,
             policy: Union[type, Dict[
                 str, Tuple[Optional[type], gym.Space, gym.Space,
                            PartialTrainerConfigDict]]] = None,
@@ -207,8 +209,11 @@ class RolloutWorker(ParallelIteratorWorker):
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
                 function that returns a TF session. This is optional and only
                 useful with TFPolicy.
-            rollout_fragment_length (int): The target number of env transitions
-                to include in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of steps
+                (maesured in `count_steps_by`) to include in each sample
+                batch returned from this worker.
+            count_steps_by (str): The unit in which to count fragment
+                lengths. One of env_steps or agent_steps.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
                     of at most `rollout_fragment_length * num_envs` in size.
@@ -257,7 +262,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
             log_level (str): Set the root log level on creation.
-            callbacks (DefaultCallbacks): Custom training callbacks.
+            callbacks (Type[DefaultCallbacks]): Custom sub-class of
+                DefaultCallbacks for training/policy/rollout-worker callbacks.
             input_creator (Callable[[IOContext], InputReader]): Function that
                 returns an InputReader object for loading previous generated
                 experiences.
@@ -271,9 +277,11 @@ class RolloutWorker(ParallelIteratorWorker):
             output_creator (Callable[[IOContext], OutputWriter]): Function that
                 returns an OutputWriter object for saving generated
                 experiences.
-            remote_worker_envs (bool): If using num_envs > 1, whether to create
-                those new envs in remote processes instead of in the current
-                process. This adds overheads, but can make sense if your envs
+            remote_worker_envs (bool): If using num_envs_per_worker > 1,
+                whether to create those new envs in remote processes instead of
+                in the current process. This adds overheads, but can make sense
+                if your envs are expensive to step/reset (e.g., for StarCraft).
+                Use this cautiously, overheads are significant!
             remote_env_batch_wait_ms (float): Timeout that remote workers
                 are waiting when polling environments. 0 (continue when at
                 least one env is ready) is a reasonable default, but optimal
@@ -292,6 +300,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 gym.spaces.Space]]]): An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
+            _use_trajectory_view_api (bool): Whether to collect samples through
+                the experimental Trajectory View API.
             policy: Obsoleted arg. Use `policy_spec` instead.
         """
         # Deprecated arg.
@@ -340,7 +350,7 @@ class RolloutWorker(ParallelIteratorWorker):
             self.callbacks: "DefaultCallbacks" = callbacks()
         else:
             from ray.rllib.agents.callbacks import DefaultCallbacks
-            self.callbacks: "DefaultCallbacks" = DefaultCallbacks()
+            self.callbacks: DefaultCallbacks = DefaultCallbacks()
         self.worker_index: int = worker_index
         self.num_workers: int = num_workers
         model_config: ModelConfigDict = model_config or {}
@@ -350,6 +360,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
+        self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = True
@@ -456,6 +467,14 @@ class RolloutWorker(ParallelIteratorWorker):
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
 
+        # Update Policy's view requirements from Model, only if Policy directly
+        # inherited from base `Policy` class. At this point here, the Policy
+        # must have it's Model (if any) defined and ready to output an initial
+        # state.
+        for pol in self.policy_map.values():
+            if not pol._model_init_state_automatically_added:
+                pol._update_model_inference_view_requirements_from_init_state()
+
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
             # Check available number of GPUs
@@ -556,6 +575,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -565,8 +585,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=policy_config.get(
-                    "_use_trajectory_view_api", False))
+                _use_trajectory_view_api=_use_trajectory_view_api,
+            )
             # Start the Sampler thread.
             self.sampler.start()
         else:
@@ -579,6 +599,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -587,8 +608,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 soft_horizon=soft_horizon,
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
-                _use_trajectory_view_api=policy_config.get(
-                    "_use_trajectory_view_api", False))
+                _use_trajectory_view_api=_use_trajectory_view_api,
+            )
 
         self.input_reader: InputReader = input_creator(self.io_context)
         self.output_writer: OutputWriter = output_creator(self.io_context)
@@ -622,7 +643,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.rollout_fragment_length))
 
         batches = [self.input_reader.next()]
-        steps_so_far = batches[0].count
+        steps_so_far = batches[0].count if \
+            self.count_steps_by == "env_steps" else \
+            batches[0].agent_steps()
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
         # This avoids over-running the target batch size.
@@ -634,7 +657,9 @@ class RolloutWorker(ParallelIteratorWorker):
         while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):
             batch = self.input_reader.next()
-            steps_so_far += batch.count
+            steps_so_far += batch.count if \
+                self.count_steps_by == "env_steps" else \
+                batch.agent_steps()
             batches.append(batch)
         batch = batches[0].concat_samples(batches) if len(batches) > 1 else \
             batches[0]

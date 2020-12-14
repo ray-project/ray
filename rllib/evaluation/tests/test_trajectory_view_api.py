@@ -1,16 +1,19 @@
 import copy
 import gym
 from gym.spaces import Box, Discrete
+import numpy as np
 import time
 import unittest
 
 import ray
+from ray import tune
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
-    EpisodeEnvAwarePolicy
+    EpisodeEnvAwareLSTMPolicy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -121,7 +124,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         obs_space = Box(-1.0, 1.0, shape=(700, ))
 
         from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-
         from ray.tune import register_env
         register_env("ma_env", lambda c: RandomMultiAgentEnv({
             "num_agents": 2,
@@ -147,7 +149,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "policy_mapping_fn": policy_fn,
         }
         num_iterations = 2
-        # Only works in torch so far.
         for _ in framework_iterator(config, frameworks="torch"):
             print("w/ traj. view API")
             config["_use_trajectory_view_api"] = True
@@ -253,7 +254,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
         }
 
         def policy_fn(agent_id):
@@ -297,6 +298,38 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             pol_batch_wo = result.policy_batches["pol0"]
             check(pol_batch_w.data, pol_batch_wo.data)
 
+    def test_counting_by_agent_steps(self):
+        """Test whether a PPOTrainer can be built with all frameworks."""
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+        action_space = Discrete(2)
+        obs_space = Box(float("-inf"), float("inf"), (4, ), dtype=np.float32)
+
+        config["num_workers"] = 2
+        config["num_sgd_iter"] = 2
+        config["framework"] = "torch"
+        config["rollout_fragment_length"] = 21
+        config["train_batch_size"] = 147
+        config["multiagent"] = {
+            "policies": {
+                "p0": (None, obs_space, action_space, {}),
+                "p1": (None, obs_space, action_space, {}),
+            },
+            "policy_mapping_fn": lambda aid: "p{}".format(aid),
+            "count_steps_by": "agent_steps",
+        }
+        tune.register_env(
+            "ma_cartpole", lambda _: MultiAgentCartPole({"num_agents": 2}))
+        num_iterations = 2
+        trainer = ppo.PPOTrainer(config=config, env="ma_cartpole")
+        results = None
+        for i in range(num_iterations):
+            results = trainer.train()
+        self.assertGreater(results["timesteps_total"],
+                           num_iterations * config["train_batch_size"])
+        self.assertLess(results["timesteps_total"],
+                        (num_iterations + 1) * config["train_batch_size"])
+        trainer.stop()
+
 
 def analyze_rnn_batch(batch, max_seq_len):
     count = batch.count
@@ -316,8 +349,8 @@ def analyze_rnn_batch(batch, max_seq_len):
         state_in_1 = batch["state_in_1"][idx]
 
         # Check postprocessing outputs.
-        if "postprocessed_column" in batch:
-            postprocessed_col_t = batch["postprocessed_column"][idx]
+        if "2xobs" in batch:
+            postprocessed_col_t = batch["2xobs"][idx]
             assert (obs_t == postprocessed_col_t / 2.0).all()
 
         # Check state-in/out and next-obs values.
@@ -386,8 +419,8 @@ def analyze_rnn_batch(batch, max_seq_len):
             r_t = batch["rewards"][k]
 
             # Check postprocessing outputs.
-            if "postprocessed_column" in batch:
-                postprocessed_col_t = batch["postprocessed_column"][k]
+            if "2xobs" in batch:
+                postprocessed_col_t = batch["2xobs"][k]
                 assert (obs_t == postprocessed_col_t / 2.0).all()
 
             # Check state-in/out and next-obs values.

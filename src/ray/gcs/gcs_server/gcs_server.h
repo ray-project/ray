@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
@@ -23,6 +24,7 @@
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 namespace gcs {
@@ -78,8 +80,11 @@ class GcsServer {
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
 
+  /// Initialize gcs heartbeat manager.
+  void InitGcsHeartbeatManager(const GcsInitData &gcs_init_data);
+
   /// Initialize gcs resource manager.
-  void InitGcsResourceManager();
+  void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs job manager.
   void InitGcsJobManager();
@@ -123,18 +128,21 @@ class GcsServer {
   GcsServerConfig config_;
   /// The main io service to drive event posted from grpc threads.
   boost::asio::io_context &main_service_;
-  /// The io service used by node manager in case of node failure detector being blocked
-  /// by main thread.
-  boost::asio::io_service node_manager_io_service_;
-  std::unique_ptr<std::thread> node_manager_io_service_thread_;
+  /// The io service used by heartbeat manager in case of node failure detector being
+  /// blocked by main thread.
+  boost::asio::io_service heartbeat_manager_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
+  /// Node manager client pool
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  /// The heartbeat manager.
+  std::shared_ptr<GcsHeartbeatManager> gcs_heartbeat_manager_;
   /// The gcs redis failure detector.
   std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager
@@ -148,6 +156,10 @@ class GcsServer {
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
+  /// Node resource info handler and service
+  std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
+  /// Heartbeat info handler and service
+  std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
   /// Object info handler and service
   std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
   std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;

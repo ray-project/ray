@@ -56,8 +56,9 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   };
 
-  class MockRayletClient : public WorkerLeaseInterface {
+  class MockRayletClient : public RayletClientInterface {
    public:
+    /// WorkerLeaseInterface
     ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                              bool disconnect_worker) override {
       if (disconnect_worker) {
@@ -68,6 +69,7 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    /// WorkerLeaseInterface
     void RequestWorkerLease(
         const ray::TaskSpecification &resource_spec,
         const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
@@ -76,6 +78,7 @@ struct GcsServerMocker {
       callbacks.push_back(callback);
     }
 
+    /// WorkerLeaseInterface
     void ReleaseUnusedWorkers(
         const std::vector<WorkerID> &workers_in_use,
         const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
@@ -83,6 +86,7 @@ struct GcsServerMocker {
       release_callbacks.push_back(callback);
     }
 
+    /// WorkerLeaseInterface
     void CancelWorkerLease(
         const TaskID &task_id,
         const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
@@ -145,21 +149,7 @@ struct GcsServerMocker {
       }
     }
 
-    ~MockRayletClient() {}
-
-    int num_workers_requested = 0;
-    int num_workers_returned = 0;
-    int num_workers_disconnected = 0;
-    int num_leases_canceled = 0;
-    int num_release_unused_workers = 0;
-    NodeID node_id = NodeID::FromRandom();
-    std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
-    std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
-    std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
-  };
-
-  class MockRayletResourceClient : public ResourceReserveInterface {
-   public:
+    /// ResourceReserveInterface
     void PrepareBundleResources(
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback)
@@ -168,6 +158,7 @@ struct GcsServerMocker {
       lease_callbacks.push_back(callback);
     }
 
+    /// ResourceReserveInterface
     void CommitBundleResources(
         const BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback)
@@ -176,6 +167,7 @@ struct GcsServerMocker {
       commit_callbacks.push_back(callback);
     }
 
+    /// ResourceReserveInterface
     void CancelResourceReserve(
         BundleSpecification &bundle_spec,
         const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
@@ -233,24 +225,41 @@ struct GcsServerMocker {
       }
     }
 
-    ~MockRayletResourceClient() {}
+    /// PinObjectsInterface
+    void PinObjectIDs(
+        const rpc::Address &caller_address, const std::vector<ObjectID> &object_ids,
+        const ray::rpc::ClientCallback<ray::rpc::PinObjectIDsReply> &callback) override {}
 
+    /// DependencyWaiterInterface
+    ray::Status WaitForDirectActorCallArgs(
+        const std::vector<rpc::ObjectReference> &references, int64_t tag) override {
+      return ray::Status::OK();
+    }
+
+    ~MockRayletClient() {}
+
+    int num_workers_requested = 0;
+    int num_workers_returned = 0;
+    int num_workers_disconnected = 0;
+    int num_leases_canceled = 0;
+    int num_release_unused_workers = 0;
+    NodeID node_id = NodeID::FromRandom();
+    std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
+    std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
+
     int num_release_unused_bundles_requested = 0;
-    NodeID node_id = NodeID::FromRandom();
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
   };
+
   class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
    public:
     using gcs::GcsActorScheduler::GcsActorScheduler;
-
-    void ResetLeaseClientFactory(gcs::LeaseClientFactoryFn lease_client_factory) {
-      lease_client_factory_ = std::move(lease_client_factory);
-    }
 
     void TryLeaseWorkerFromNodeAgain(std::shared_ptr<gcs::GcsActor> actor,
                                      std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -280,11 +289,6 @@ struct GcsServerMocker {
   class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
-
-    void ResetLeaseClientFactory(
-        gcs::ReserveResourceClientFactoryFn lease_client_factory) {
-      lease_client_factory_ = std::move(lease_client_factory);
-    }
   };
   class MockedGcsActorTable : public gcs::GcsActorTable {
    public:
@@ -362,36 +366,13 @@ struct GcsServerMocker {
 
     bool IsRemoved(const NodeID &node_id) const override { return false; }
 
-    Status AsyncGetResources(
-        const NodeID &node_id,
-        const gcs::OptionalItemCallback<ResourceMap> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncDeleteResources(const NodeID &node_id,
-                                const std::vector<std::string> &resource_names,
-                                const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncSubscribeToResources(
-        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
     Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                                 const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
 
-    Status AsyncSubscribeBatchHeartbeat(
-        const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+    Status AsyncSubscribeBatchedResourceUsage(
+        const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
         const gcs::StatusCallback &done) override {
       return Status::NotImplemented("");
     }
