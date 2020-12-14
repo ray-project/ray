@@ -714,11 +714,11 @@ void WorkerPool::TryKillingIdleWorkers() {
     }
 
     for (const auto &worker : workers_in_the_same_process) {
-      RAY_LOG(INFO) << "The worker pool has " << running_size
-                    << " registered workers which exceeds the soft limit of "
-                    << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
-                    << " with pid " << process.GetId()
-                    << " has been idle for a a while. Kill it.";
+      RAY_LOG(DEBUG) << "The worker pool has " << running_size
+                     << " registered workers which exceeds the soft limit of "
+                     << num_workers_soft_limit_ << ", and worker " << worker->WorkerId()
+                     << " with pid " << process.GetId()
+                     << " has been idle for a a while. Kill it.";
       // To avoid object lost issue caused by forcibly killing, send an RPC request to the
       // worker to allow it to do cleanup before exiting.
       auto rpc_client = worker->rpc_client();

@@ -401,7 +401,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.2.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.6
+        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -421,7 +421,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
+        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
@@ -432,7 +432,7 @@ matrix:
         # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 python/ray/util/sgd/...
         - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
         - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 python/ray/util/sgd/...
-        - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
+        # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
 
     # Docs: Tests and examples.
     - os: linux
@@ -441,7 +441,7 @@ matrix:
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
+        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
@@ -459,7 +459,7 @@ matrix:
         - INSTALL_HOROVOD=1
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
+        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED

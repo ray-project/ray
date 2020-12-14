@@ -880,11 +880,13 @@ cc_test(
 )
 
 cc_test(
-    name = "scheduling_resources_test",
-    srcs = ["src/ray/common/task/scheduling_resources_test.cc"],
+    name = "local_placement_group_manager_test",
+    srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     copts = COPTS,
     deps = [
+        "gcs_test_util_lib",
         "ray_common",
+        "raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

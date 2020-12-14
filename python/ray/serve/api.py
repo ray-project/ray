@@ -255,7 +255,8 @@ class Client:
         Args:
             backend_tag (str): a unique tag assign to identify this backend.
             func_or_class (callable, class): a function or a class implementing
-                __call__.
+                __call__, returning a JSON-serializable object or a
+                Starlette Response object.
             actor_init_args (optional): the arguments to pass to the class.
                 initialization method.
             ray_actor_options (optional): options to be passed into the

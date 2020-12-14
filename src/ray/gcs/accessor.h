@@ -488,51 +488,6 @@ class NodeInfoAccessor {
   /// \return Whether the node is removed.
   virtual bool IsRemoved(const NodeID &node_id) const = 0;
 
-  // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
-      ResourceMap;
-
-  /// Get node's resources from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to lookup dynamic resources.
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetResources(const NodeID &node_id,
-                                   const OptionalItemCallback<ResourceMap> &callback) = 0;
-
-  /// Get available resources of all nodes from GCS asynchronously.
-  ///
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetAllAvailableResources(
-      const MultiItemCallback<rpc::AvailableResources> &callback) = 0;
-
-  /// Update resources of node in GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to update dynamic resources.
-  /// \param resources The dynamic resources of node to be updated.
-  /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                      const StatusCallback &callback) = 0;
-
-  /// Delete resources of a node from GCS asynchronously.
-  ///
-  /// \param node_id The ID of node to delete resources from GCS.
-  /// \param resource_names The names of resource to be deleted.
-  /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResources(const NodeID &node_id,
-                                      const std::vector<std::string> &resource_names,
-                                      const StatusCallback &callback) = 0;
-
-  /// Subscribe to node resource changes.
-  ///
-  /// \param subscribe Callback that will be called when any resource is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToResources(
-      const ItemCallback<rpc::NodeResourceChange> &subscribe,
-      const StatusCallback &done) = 0;
-
   /// Report heartbeat of a node to GCS asynchronously.
   ///
   /// \param data_ptr The heartbeat that will be reported to GCS.
@@ -610,6 +565,72 @@ class NodeInfoAccessor {
   /// Used by light resource usage report.
   std::shared_ptr<SchedulingResources> last_resource_usage_ =
       std::make_shared<SchedulingResources>();
+};
+
+/// \class NodeResourceInfoAccessor
+/// `NodeResourceInfoAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// node resource information in the GCS.
+class NodeResourceInfoAccessor {
+ public:
+  virtual ~NodeResourceInfoAccessor() = default;
+
+  // TODO(micafan) Define ResourceMap in GCS proto.
+  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+      ResourceMap;
+
+  /// Get node's resources from GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to lookup dynamic resources.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetResources(const NodeID &node_id,
+                                   const OptionalItemCallback<ResourceMap> &callback) = 0;
+
+  /// Get available resources of all nodes from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) = 0;
+
+  /// Update resources of node in GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to update dynamic resources.
+  /// \param resources The dynamic resources of node to be updated.
+  /// \param callback Callback that will be called after update finishes.
+  virtual Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
+                                      const StatusCallback &callback) = 0;
+
+  /// Delete resources of a node from GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to delete resources from GCS.
+  /// \param resource_names The names of resource to be deleted.
+  /// \param callback Callback that will be called after delete finishes.
+  virtual Status AsyncDeleteResources(const NodeID &node_id,
+                                      const std::vector<std::string> &resource_names,
+                                      const StatusCallback &callback) = 0;
+
+  /// Subscribe to node resource changes.
+  ///
+  /// \param subscribe Callback that will be called when any resource is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeToResources(
+      const ItemCallback<rpc::NodeResourceChange> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Reestablish subscription.
+  /// This should be called when GCS server restarts from a failure.
+  /// PubSub server restart will cause GCS server restart. In this case, we need to
+  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
+  /// server.
+  ///
+  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
+  virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
+
+ protected:
+  NodeResourceInfoAccessor() = default;
 };
 
 /// \class ErrorInfoAccessor

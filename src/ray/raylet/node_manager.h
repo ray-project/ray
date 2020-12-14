@@ -40,6 +40,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/raylet/placement_group_resource_manager.h"
 // clang-format on
 
 namespace ray {
@@ -103,27 +104,6 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
-
-enum CommitState {
-  /// Resources are prepared.
-  PREPARED,
-  /// Resources are COMMITTED.
-  COMMITTED
-};
-
-struct BundleState {
-  /// Leasing state for 2PC protocol.
-  CommitState state;
-  /// Resources that are acquired at preparation stage.
-  ResourceIdSet acquired_resources;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -695,8 +675,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled_;
-  /// Whether we have printed out a resource deadlock warning.
-  bool resource_deadlock_warned_ = false;
+  /// Incremented each time we encounter a potential resource deadlock condition.
+  /// This is reset to zero when the condition is cleared.
+  int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
@@ -717,6 +698,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
+  /// These two resource container is shared with `PlacementGroupResourceManager`.
   ResourceIdSet local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
@@ -779,6 +761,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
+  /// The last time local GC was triggered.
+  int64_t last_local_gc_ns_ = 0;
+
+  /// The interval in nanoseconds between local GC automatic triggers.
+  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
+
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
@@ -801,15 +789,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
-  /// This map represents the commit state of 2PC protocol for atomic placement group
-  /// creation.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
-      bundle_state_map_;
-
-  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
-      bundle_spec_map_;
-
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
   int64_t record_metrics_period_;
@@ -825,6 +804,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
+
+  /// Managers all bundle-related operations.
+  std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 };
 
 }  // namespace raylet

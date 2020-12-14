@@ -61,9 +61,9 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
-    // Ignore this heartbeat as the node is not registered.
-    // TODO(Shanly): Maybe we should reply the raylet with an error. So the raylet can
-    // crash itself as soon as possible.
+    // Reply the raylet with an error so the raylet can crash itself.
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                       Status::Disconnected("Node has been dead"));
     return;
   }
 

@@ -48,11 +48,11 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
 
-  // If an actor is non-detached and has resource requirements, We will try to schedule it
-  // on the same node as the owner if possible.
+  // If an actor has resource requirements, we will try to schedule it on the same node as
+  // the owner if possible.
   const auto &task_spec = actor->GetCreationTaskSpecification();
-  if (!actor->IsDetached() && !task_spec.GetRequiredResources().IsEmpty()) {
-    auto maybe_node = gcs_node_manager_.GetNode(actor->GetOwnerNodeID());
+  if (!task_spec.GetRequiredResources().IsEmpty()) {
+    auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
   } else {
     node = SelectNodeRandomly();
@@ -295,7 +295,7 @@ void GcsActorScheduler::HandleWorkerLeasedReply(
     // node, and then try again on the new node.
     RAY_CHECK(!retry_at_raylet_address.raylet_id().empty());
     auto spill_back_node_id = NodeID::FromBinary(retry_at_raylet_address.raylet_id());
-    auto maybe_spill_back_node = gcs_node_manager_.GetNode(spill_back_node_id);
+    auto maybe_spill_back_node = gcs_node_manager_.GetAliveNode(spill_back_node_id);
     if (maybe_spill_back_node.has_value()) {
       auto spill_back_node = maybe_spill_back_node.value();
       actor->UpdateAddress(retry_at_raylet_address);
