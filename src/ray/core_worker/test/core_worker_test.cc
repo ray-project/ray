@@ -183,7 +183,7 @@ class CoreWorkerTest : public ::testing::Test {
   void TestActorRestart(std::unordered_map<std::string, double> &resources);
 
  protected:
-  bool WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+  bool WaitForActorState(const ActorID &actor_id, bool wait_alive,
                                    int timeout_ms);
 
   // Get the pid for the worker process that runs the actor.
@@ -197,7 +197,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::string gcs_server_socket_name_;
 };
 
-bool CoreWorkerTest::WaitForDirectCallActorState(const ActorID &actor_id, bool wait_alive,
+bool CoreWorkerTest::WaitForActorState(const ActorID &actor_id, bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [actor_id, wait_alive]() -> bool {
     bool actor_alive =
@@ -365,7 +365,7 @@ void CoreWorkerTest::TestActorRestart(
   auto actor_id = CreateActorHelper(resources, 1000);
 
   // Wait for actor alive event.
-  ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, 30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForActorState(actor_id, true, 30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
   auto pid = GetActorPid(actor_id, resources);
@@ -560,7 +560,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   auto actor_id = CreateActorHelper(resources,
                                     /*max_restarts=*/0);
   // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, 30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForActorState(actor_id, true, 30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
   const int num_tasks = 100000;

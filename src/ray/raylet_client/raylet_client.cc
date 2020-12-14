@@ -156,63 +156,43 @@ Status raylet::RayletClient::AnnounceWorkerPort(int port) {
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
 }
 
-Status raylet::RayletClient::SubmitTask(const TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateSubmitTaskRequest(fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
-}
-
-Status raylet::RayletClient::TaskDone() {
-  return conn_->WriteMessage(MessageType::TaskDone);
-}
-
 Status raylet::RayletClient::FetchOrReconstruct(
     const std::vector<ObjectID> &object_ids,
-    const std::vector<rpc::Address> &owner_addresses, bool fetch_only,
-    bool mark_worker_blocked, const TaskID &current_task_id) {
+    const std::vector<rpc::Address> &owner_addresses, bool fetch_only, const TaskID &current_task_id) {
   RAY_CHECK(object_ids.size() == owner_addresses.size());
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = protocol::CreateFetchOrReconstruct(
       fbb, object_ids_message, AddressesToFlatbuffer(fbb, owner_addresses), fetch_only,
-      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
 }
 
-Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+Status raylet::RayletClient::NotifyTaskBlocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
+  auto message = protocol::CreateNotifyTaskBlocked(fbb);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
+  return conn_->WriteMessage(MessageType::NotifyTaskBlocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskBlocked() {
+Status raylet::RayletClient::NotifyTaskUnblocked() {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  auto message = protocol::CreateNotifyTaskUnblocked(fbb);
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
-}
-
-Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
+  return conn_->WriteMessage(MessageType::NotifyTaskUnblocked, &fbb);
 }
 
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
-                                  bool wait_local, bool mark_worker_blocked,
+                                  bool wait_local,
                                   const TaskID &current_task_id, WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds, wait_local, mark_worker_blocked,
+      num_returns, timeout_milliseconds, wait_local,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;

@@ -556,16 +556,12 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
                            ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
-  using OnTaskDone = std::function<ray::Status()>;
-
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
-                               const TaskHandler &task_handler,
-                               const OnTaskDone &task_done)
+                               const TaskHandler &task_handler)
       : worker_context_(worker_context),
         task_handler_(task_handler),
-        task_main_io_service_(main_io_service),
-        task_done_(task_done) {}
+        task_main_io_service_(main_io_service) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
@@ -591,8 +587,6 @@ class CoreWorkerDirectTaskReceiver {
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
-  /// The callback function to be invoked when finishing a task.
-  OnTaskDone task_done_;
   /// Shared pool for producing new core worker clients.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.

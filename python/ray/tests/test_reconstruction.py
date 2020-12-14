@@ -491,7 +491,7 @@ def test_reconstruction_stress(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_timeout_milliseconds": 100,
-        "max_direct_call_object_size": 100,
+        "max_arg_object_size": 100,
         "task_retry_delay_ms": 100,
         "object_timeout_milliseconds": 200,
     }

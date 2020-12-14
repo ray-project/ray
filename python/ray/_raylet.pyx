@@ -279,7 +279,7 @@ cdef prepare_args(
         c_vector[CObjectID] inlined_ids
 
     worker = ray.worker.global_worker
-    put_threshold = RayConfig.instance().max_direct_call_object_size()
+    put_threshold = RayConfig.instance().max_arg_object_size()
     for arg in args:
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
@@ -346,7 +346,6 @@ cdef execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
-        CFiberEvent task_done_event
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -973,7 +972,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_id_vector
 
         metadata = string_to_buffer(serialized_object.metadata)
-        put_threshold = RayConfig.instance().max_direct_call_object_size()
+        put_threshold = RayConfig.instance().max_arg_object_size()
         put_small_object_in_memory_store = (
             RayConfig.instance().put_small_object_in_memory_store())
         total_bytes = serialized_object.total_bytes

@@ -19,12 +19,6 @@
 namespace ray.protocol;
 
 enum MessageType:int {
-  // Task is submitted to the raylet. This is sent from a worker to a
-  // raylet.
-  SubmitTask = 1,
-  // Notify the raylet that a task has finished. This is sent from a
-  // worker to a raylet.
-  TaskDone,
   // Log a message to the event table. This is sent from a worker to a raylet.
   EventLogMessage,
   // Send an initial connection message to the raylet. This is sent
@@ -41,20 +35,14 @@ enum MessageType:int {
   // Notify the raylet that this client is disconnecting gracefully.
   // This is sent from a worker to a raylet.
   IntentionalDisconnectClient,
-  // Tell a worker to execute a task. This is sent from a raylet to a
-  // worker.
-  ExecuteTask,
   // Reconstruct or fetch possibly lost objects. This is sent from a worker to
   // a raylet.
   FetchOrReconstruct,
-  // For a worker that was blocked on some object(s), tell the raylet
-  // that the worker is now unblocked. This is sent from a worker to a raylet.
-  NotifyUnblocked,
   // Notify the current worker is blocked. This is only used by direct task calls;
   // otherwise the block command is piggybacked on other messages.
-  NotifyDirectCallTaskBlocked,
+  NotifyTaskBlocked,
   // Notify the current worker is unblocked. This is only used by direct task calls.
-  NotifyDirectCallTaskUnblocked,
+  NotifyTaskUnblocked,
   // Wait for objects to be ready either from local or remote Plasma stores.
   WaitRequest,
   // The response message to WaitRequest; replies with the objects found and objects
@@ -91,10 +79,6 @@ table TaskExecutionSpecification {
 table Task {
   task_specification: string;
   task_execution_spec: TaskExecutionSpecification;
-}
-
-table SubmitTaskRequest {
-  task_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.
@@ -181,22 +165,14 @@ table FetchOrReconstruct {
   owner_addresses: [Address];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
-  // False for direct call tasks. Blocking for those tasks is handled via the
-  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
-  mark_worker_blocked: bool;
   // The current task ID.
   task_id: string;
 }
 
-table NotifyUnblocked {
-  // The current task ID. This task is no longer blocked.
-  task_id: string;
+table NotifyTaskBlocked {
 }
 
-table NotifyDirectCallTaskBlocked {
-}
-
-table NotifyDirectCallTaskUnblocked {
+table NotifyTaskUnblocked {
 }
 
 table WaitRequest {
@@ -210,9 +186,6 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
-  // False for direct call tasks. Blocking for those tasks is handled via the
-  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
-  mark_worker_blocked: bool;
   // The current task ID.
   task_id: string;
 }

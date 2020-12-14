@@ -1129,9 +1129,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
-  case protocol::MessageType::TaskDone: {
-    HandleWorkerAvailable(client);
-  } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
@@ -1144,30 +1141,19 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::SubmitTask: {
-    // For tasks submitted via the raylet path, we must make sure to order the
-    // task submission so that tasks are always submitted after the tasks that
-    // they depend on.
-    ProcessSubmitTaskMessage(message_data);
-  } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
+  case protocol::MessageType::NotifyTaskBlocked: {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskBlocked(worker);
+    HandleTaskBlocked(worker);
   } break;
-  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
+  case protocol::MessageType::NotifyTaskUnblocked: {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskUnblocked(worker);
-  } break;
-  case protocol::MessageType::NotifyUnblocked: {
-    auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()),
-                              /*was_blocked*/ true);
+    HandleTaskUnblocked(worker);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1500,8 +1486,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     // pulled from remote node managers. If an object's owner dies, an error
     // will be stored as the object's value.
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
-    AsyncResolveObjects(client, refs, task_id, /*ray_get=*/true,
-                        /*mark_worker_blocked*/ message->mark_worker_blocked());
+    AsyncResolveObjects(client, refs, task_id, /*ray_get=*/true);
   }
 }
 
@@ -1529,14 +1514,12 @@ void NodeManager::ProcessWaitRequestMessage(
   }
 
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
-  bool was_blocked = message->mark_worker_blocked();
   if (resolve_objects) {
     // Resolve any missing objects. This is a no-op for any objects that are
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
-                        /*mark_worker_blocked*/ was_blocked);
+    AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false);
   }
 
   ray::Status status = object_manager_.Wait(
@@ -1580,8 +1563,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   for (const auto &ref : refs) {
     owner_addresses.emplace(ObjectID::FromBinary(ref.object_id()), ref.owner_address());
   }
-  AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false,
-                      /*mark_worker_blocked*/ false);
+  AsyncResolveObjects(client, refs, TaskID::Nil(), /*ray_get=*/false);
   // Reply to the client once a location has been found for all arguments.
   // NOTE(swang): ObjectManager::Wait currently returns as soon as any location
   // has been found, so the object may still be on a remote node when the
@@ -1610,18 +1592,6 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
-}
-
-void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
-  // Read the task submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
-
-  // Submit the task to the raylet. Since the task was submitted
-  // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message));
 }
 
 void NodeManager::ScheduleAndDispatch() {
@@ -1817,7 +1787,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
       if (worker->IsBlocked()) {
-        HandleDirectCallTaskUnblocked(worker);
+        HandleTaskUnblocked(worker);
       }
       if (new_scheduler_enabled_) {
         cluster_task_manager_->HandleTaskFinished(worker);
@@ -2140,7 +2110,7 @@ void NodeManager::SubmitTask(const Task &task) {
   // resources locally.
 }
 
-void NodeManager::HandleDirectCallTaskBlocked(
+void NodeManager::HandleTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     if (!worker || worker->IsBlocked()) {
@@ -2170,7 +2140,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
-void NodeManager::HandleDirectCallTaskUnblocked(
+void NodeManager::HandleTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     // Important: avoid double unblocking if the unblock RPC finishes after task end.
@@ -2229,49 +2199,23 @@ void NodeManager::HandleDirectCallTaskUnblocked(
 void NodeManager::AsyncResolveObjects(
     const std::shared_ptr<ClientConnection> &client,
     const std::vector<rpc::ObjectReference> &required_object_refs,
-    const TaskID &current_task_id, bool ray_get, bool mark_worker_blocked) {
+    const TaskID &current_task_id, bool ray_get) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-  if (worker) {
-    // The client is a worker. If the worker is not already blocked and the
-    // blocked task matches the one assigned to the worker, then mark the
-    // worker as blocked. This temporarily releases any resources that the
-    // worker holds while it is blocked.
-    if (mark_worker_blocked && !worker->IsBlocked() &&
-        current_task_id == worker->GetAssignedTaskId()) {
-      Task task;
-      RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
-      local_queues_.QueueTasks({task}, TaskState::RUNNING);
-      // Get the CPU resources required by the running task.
-      // Release the CPU resources.
-      auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
-      local_available_resources_.Release(cpu_resource_ids);
-      cluster_resource_map_[self_node_id_].Release(cpu_resource_ids.ToResourceSet());
-      worker->MarkBlocked();
-      // Try dispatching tasks since we may have released some resources.
-      DispatchTasks(local_queues_.GetReadyTasksByClass());
-    }
-  } else {
+  if (!worker) {
     // The client is a driver. Drivers do not hold resources, so we simply mark
     // the task as blocked.
     worker = worker_pool_.GetRegisteredDriver(client);
   }
 
   RAY_CHECK(worker);
-  // Mark the task as blocked.
-  if (mark_worker_blocked) {
-    worker->AddBlockedTaskId(current_task_id);
-    if (local_queues_.GetBlockedTaskIds().count(current_task_id) == 0) {
-      local_queues_.AddBlockedTaskId(current_task_id);
-    }
-  }
 
   // Subscribe to the objects required by the task. These objects will be
   // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
     // TODO(ekl) using the assigned task id is a hack to handle unsubscription for
-    // HandleDirectCallUnblocked.
-    auto &task_id = mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId();
+    // HandleUnblocked.
+    auto &task_id = worker->GetAssignedTaskId();
     if (!task_id.IsNil()) {
       task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_refs);
     }
@@ -2598,16 +2542,6 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   }
 }
 
-bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
-  auto actor_id = task_id.ActorId();
-  if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
-    // This task ID corresponds to an actor creation task.
-    return true;
-  }
-
-  return false;
-}
-
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
   const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
@@ -2628,27 +2562,6 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   if (!waiting_task_ids.empty()) {
     std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
                                                    waiting_task_ids.end());
-
-    // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
-    // creation task ID, which will not be reset after the task finishes. And later tasks
-    // of this actor will reuse this task ID to require objects from plasma with
-    // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
-    // To support actor reconstruction for direct actor, raylet marks actor creation task
-    // as completed and removes it from `local_queues_` when it receives `TaskDone`
-    // message from worker. This is necessary because the actor creation task will be
-    // re-submitted during reconstruction, if the task is not removed previously, the new
-    // submitted task will be marked as duplicate and thus ignored.
-    // So here we check for direct actor creation task explicitly to allow this case.
-    auto iter = waiting_task_id_set.begin();
-    while (iter != waiting_task_id_set.end()) {
-      if (IsActorCreationTask(*iter)) {
-        RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
-                       << " when handling object missing for " << object_id;
-        iter = waiting_task_id_set.erase(iter);
-      } else {
-        ++iter;
-      }
-    }
 
     // First filter out any tasks that can't be transitioned to READY. These
     // are running workers or drivers, now blocked in a get.

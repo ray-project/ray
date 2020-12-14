@@ -25,7 +25,7 @@ public class ArgumentsBuilder {
    * If the the size of an argument's serialized data is smaller than this number, the argument will
    * be passed by value. Otherwise it'll be passed by reference.
    */
-  // TODO(kfstorm): Read from internal config `max_direct_call_object_size`.
+  // TODO(kfstorm): Read from internal config `max_arg_object_size`.
   public static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
 
   /**

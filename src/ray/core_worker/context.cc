@@ -114,8 +114,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
       current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
-      placement_group_capture_child_tasks_(true),
-      main_thread_id_(boost::this_thread::get_id()) {
+      placement_group_capture_child_tasks_(true) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -169,12 +168,10 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
-    current_task_is_direct_call_ = true;
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
-    current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
     is_detached_actor_ = task_spec.IsDetachedActor();
@@ -206,17 +203,8 @@ bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
   //  - We only support lifetime resources for direct actors, which can be
   //    acquired when the actor is created, per call resources are not supported,
   //    thus we don't need to release resources for direct actor call.
-  return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
+  return worker_type_ != WorkerType::DRIVER && GetCurrentActorID().IsNil() &&
          CurrentThreadIsMain();
-}
-
-// TODO(edoakes): simplify these checks now that we only support direct call mode.
-bool WorkerContext::CurrentActorIsDirectCall() const {
-  return current_actor_is_direct_call_;
-}
-
-bool WorkerContext::CurrentTaskIsDirectCall() const {
-  return current_task_is_direct_call_ || current_actor_is_direct_call_;
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {

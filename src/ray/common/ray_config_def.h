@@ -118,7 +118,7 @@ RAY_CONFIG(bool, new_scheduler_enabled,
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
-RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
+RAY_CONFIG(int64_t, max_arg_object_size, 100 * 1024)
 
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.

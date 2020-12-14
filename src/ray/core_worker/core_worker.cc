@@ -307,8 +307,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     direct_task_receiver_ =
         std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task,
-            [this] { return local_raylet_client_->TaskDone(); }));
+            worker_context_, task_execution_service_, execute_task));
   }
 
   // Initialize raylet client.
@@ -575,7 +574,7 @@ void CoreWorker::Exit(bool intentional) {
       << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
+  RAY_CHECK_OK(local_raylet_client_->NotifyTaskBlocked());
 
   // Callback to shutdown.
   auto shutdown = [this, intentional]() {
@@ -859,7 +858,7 @@ Status CoreWorker::Put(const RayObject &object,
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(object.GetSize()) <
-           RayConfig::instance().max_direct_call_object_size())) {
+           RayConfig::instance().max_arg_object_size())) {
     RAY_LOG(DEBUG) << "Put " << object_id << " in memory store";
     RAY_CHECK(memory_store_->Put(object, object_id));
     return Status::OK();
@@ -896,7 +895,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(data_size) <
-           RayConfig::instance().max_direct_call_object_size())) {
+           RayConfig::instance().max_arg_object_size())) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Create(
@@ -1727,7 +1726,7 @@ Status CoreWorker::AllocateReturnObjects(
       // Allocate a buffer for the return object.
       if (options_.is_local_mode ||
           static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size()) {
+              RayConfig::instance().max_arg_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], object_ids[i],

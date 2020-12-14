@@ -175,8 +175,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID PreviousActorTaskDummyObjectId() const;
 
-  bool IsDirectCall() const;
-
   int MaxActorConcurrency() const;
 
   bool IsAsyncioActor() const;

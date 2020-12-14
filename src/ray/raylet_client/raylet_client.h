@@ -223,47 +223,29 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   Status AnnounceWorkerPort(int port);
 
-  /// Submit a task using the raylet code path.
-  ///
-  /// \param The task specification.
-  /// \return ray::Status.
-  ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
-
-  /// Tell the raylet that the client has finished executing a task.
-  ///
-  /// \return ray::Status.
-  ray::Status TaskDone();
-
   /// Tell the raylet to reconstruct or fetch objects.
   ///
   /// \param object_ids The IDs of the objects to fetch.
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
-  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
-                                 bool fetch_only, bool mark_worker_blocked,
+                                 bool fetch_only,
                                  const TaskID &current_task_id);
-
-  /// Notify the raylet that this client (worker) is no longer blocked.
-  ///
-  /// \param current_task_id The task that is no longer blocked.
-  /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked();
+  ray::Status NotifyTaskBlocked();
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
   ///
   /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskUnblocked();
+  ray::Status NotifyTaskUnblocked();
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -273,15 +255,13 @@ class RayletClient : public RayletClientInterface {
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
   /// \param wait_local Whether to wait for objects to appear on this node.
-  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::vector<rpc::Address> &owner_addresses, int num_returns,
-                   int64_t timeout_milliseconds, bool wait_local,
-                   bool mark_worker_blocked, const TaskID &current_task_id,
+                   int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id,
                    WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
