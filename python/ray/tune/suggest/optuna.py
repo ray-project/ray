@@ -226,7 +226,8 @@ class OptunaSearch(Searcher):
 
     def save(self, checkpoint_path: str):
         save_object = (self._storage, self._pruner, self._sampler,
-                       self._ot_trials, self._ot_study)
+                       self._ot_trials, self._ot_study,
+                       self._points_to_evaluate)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
@@ -234,7 +235,8 @@ class OptunaSearch(Searcher):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
         self._storage, self._pruner, self._sampler, \
-            self._ot_trials, self._ot_study = save_object
+            self._ot_trials, self._ot_study, \
+            self._points_to_evaluate = save_object
 
     @staticmethod
     def convert_search_space(spec: Dict) -> List[Tuple]:
