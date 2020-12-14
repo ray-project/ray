@@ -7,7 +7,6 @@ import random
 import string
 import time
 from typing import List, Dict
-import io
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
@@ -21,7 +20,7 @@ import starlette
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import TaskContext
-from ray.serve.http_util import build_flask_request, build_starlette_request
+from ray.serve.http_util import build_starlette_request
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -98,7 +97,7 @@ def parse_request_item(request_item):
             return arg
         elif isinstance(arg, starlette.requests.Request):
             return arg
-               
+
         return ServeRequest(
             arg,
             request_item.kwargs,

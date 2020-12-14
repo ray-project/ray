@@ -811,6 +811,7 @@ def test_serve_metrics(serve_instance):
     except RuntimeError:
         verify_metrics()
 
+
 def test_starlette_request(serve_instance):
     client = serve_instance
 
@@ -819,7 +820,7 @@ def test_starlette_request(serve_instance):
         return data
 
     # Long enough to require more than one message, to test serialization.
-    long_string = "long string"*65536
+    long_string = "long string" * 65536
 
     client.create_backend("echo:v1", echo_body)
     client.create_endpoint(
@@ -827,6 +828,7 @@ def test_starlette_request(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
     assert resp == long_string
+
 
 if __name__ == "__main__":
     import sys
