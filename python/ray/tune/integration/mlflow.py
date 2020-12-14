@@ -83,17 +83,20 @@ class MLFlowLoggerCallback(LoggerCallback):
                     experiment_id = None
 
         if experiment_id is None:
-            experiment_id = self.client.get_experiment_by_name(experiment_name)
-            if experiment_id is None:
-                if experiment_name is None:
-                    raise ValueError("No experiment_name passed, "
-                                     "MLFLOW_EXPERIMENT_NAME env var is not "
-                                     "set, and MLFLOW_EXPERIMENT_ID either "
-                                     "is not set or does not exist. Please "
-                                     "set one of these to use the "
-                                     "MlFlowLoggerCallback.")
+            experiment = self.client.get_experiment_by_name(experiment_name)
+            if experiment is not None:
+                experiment_id = experiment.experiment_id
+            elif experiment_name is not None:
                 experiment_id = self.client.create_experiment(
                     name=experiment_name)
+            else:
+                raise ValueError("No experiment_name passed, "
+                                 "MLFLOW_EXPERIMENT_NAME env var is not "
+                                 "set, and MLFLOW_EXPERIMENT_ID either "
+                                 "is not set or does not exist. Please "
+                                 "set one of these to use the "
+                                 "MlFlowLoggerCallback.")
+
 
         self.experiment_id = experiment_id
         self.save_artifact = save_artifact
