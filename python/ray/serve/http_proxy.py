@@ -3,7 +3,7 @@ import socket
 from typing import List
 
 import uvicorn
-import starlette
+import starlette.responses
 
 import ray
 from ray.exceptions import RayTaskError
