@@ -14,6 +14,7 @@ from ray.util.collective.types import AllReduceOptions, \
 from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
+
 # TODO(Hao):
 # (1) stream management, instead of using the default stream,
 #     using a dedicate stream
@@ -240,7 +241,10 @@ class NCCLGroup(BaseGroup):
         comm.broadcast(ptr, ptr, n_elems, dtype, broadcast_options.root_rank,
                        stream.ptr)
 
-    def allgather(self, tensor_list, tensor, allgather_options = AllGatherOptions()):
+    def allgather(self,
+                  tensor_list,
+                  tensor,
+                  allgather_options=AllGatherOptions()):
         """
         Allgather tensor across the collective group into a list following options.
 
@@ -266,8 +270,10 @@ class NCCLGroup(BaseGroup):
         for i, t in enumerate(tensor_list):
             nccl_util.copy_tensor(t, flattened[i])
 
-    def reducescatter(self, tensor, tensor_list,
-                      reducescatter_options = ReduceScatterOptions()):
+    def reducescatter(self,
+                      tensor,
+                      tensor_list,
+                      reducescatter_options=ReduceScatterOptions()):
         """
         Reduce a list of tensors across the group and then scatter a tensor to a process.
 
@@ -285,7 +291,8 @@ class NCCLGroup(BaseGroup):
         stream = self._get_cuda_stream()
         dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
         n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
-        reduce_op = nccl_util.get_nccl_reduce_op(reducescatter_options.reduceOp)
+        reduce_op = nccl_util.get_nccl_reduce_op(
+            reducescatter_options.reduceOp)
 
         # get the send_ptr
         flattened = _flatten_for_scatter_gather(tensor_list, copy=True)

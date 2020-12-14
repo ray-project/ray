@@ -150,7 +150,9 @@ def get_tensor_shape(tensor):
 def get_tensor_strides(tensor):
     """Return the strides of the tensor as a list."""
     if isinstance(tensor, cupy.ndarray):
-        return [int(stride / tensor.dtype.itemsize) for stride in tensor.strides]
+        return [
+            int(stride / tensor.dtype.itemsize) for stride in tensor.strides
+        ]
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return list(tensor.stride())
@@ -174,18 +176,20 @@ def copy_tensor(dst_tensor, src_tensor):
         cupy.copyto(dst_tensor, src_tensor)
         return
     if torch_available():
-        if isinstance(dst_tensor, torch.Tensor) and isinstance(src_tensor, torch.Tensor):
+        if isinstance(dst_tensor, torch.Tensor) and isinstance(
+                src_tensor, torch.Tensor):
             dst_tensor.copy_(src_tensor)
             return
-        if isinstance(dst_tensor, torch.Tensor) and isinstance(src_tensor, cupy.ndarray):
+        if isinstance(dst_tensor, torch.Tensor) and isinstance(
+                src_tensor, cupy.ndarray):
             t = torch.utils.dlpack.from_dlpack(src_tensor.toDlpack())
             dst_tensor.copy_(t)
             return
-        if isinstance(dst_tensor, cupy.ndarray) and isinstance(src_tensor, torch.Tensor):
+        if isinstance(dst_tensor, cupy.ndarray) and isinstance(
+                src_tensor, torch.Tensor):
             t = cupy.fromDlpack(torch.utils.dlpack.to_dlpack(src_tensor))
             cupy.copyto(dst_tensor, t)
             return
     raise ValueError("Unsupported tensor type. "
-                     "Got: {} and {}.".format(type(dst_tensor), type(src_tensor)))
-
-
+                     "Got: {} and {}.".format(
+                         type(dst_tensor), type(src_tensor)))

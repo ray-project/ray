@@ -176,7 +176,7 @@ def get_rank(group_name: str = "default") -> int:
     return g.rank
 
 
-def get_world_size(group_name : str = "default") -> int:
+def get_world_size(group_name: str = "default") -> int:
     """
     Return the size of the collective gropu with the given name.
 
@@ -214,7 +214,7 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g.allreduce(tensor, opts)
 
 
-def barrier(group_name : str = "default"):
+def barrier(group_name: str = "default"):
     """
     Barrier all processes in the collective group.
 
@@ -255,9 +255,7 @@ def reduce(tensor,
     g.reduce(tensor, opts)
 
 
-def broadcast(tensor,
-              src_rank: int = 0,
-              group_name: str = "default"):
+def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     """
     Broadcast the tensor from a source process to all others.
 
@@ -279,9 +277,7 @@ def broadcast(tensor,
     g.broadcast(tensor, opts)
 
 
-def allgather(tensor_list: list,
-              tensor,
-              group_name: str = "default"):
+def allgather(tensor_list: list, tensor, group_name: str = "default"):
     """
     Allgather tensors from each process of the collective group into a list.
 
@@ -298,8 +294,9 @@ def allgather(tensor_list: list,
     g = _check_and_get_group(group_name)
     if len(tensor_list) != g.world_size:
         # here we want to make it more strict than other allgather implementations.
-        raise RuntimeError("The length of the tensor list operands to allgather "
-                           "must not be equal to world_size.")
+        raise RuntimeError(
+            "The length of the tensor list operands to allgather "
+            "must not be equal to world_size.")
     opts = types.AllGatherOptions()
     g.allgather(tensor_list, tensor, opts)
 
@@ -342,8 +339,9 @@ def reducescatter(tensor,
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
     if len(tensor_list) != g.world_size:
-        raise RuntimeError("The length of the tensor list operands to reducescatter "
-                           "must not be equal to world_size.")
+        raise RuntimeError(
+            "The length of the tensor list operands to reducescatter "
+            "must not be equal to world_size.")
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
     g.reducescatter(tensor, tensor_list, opts)

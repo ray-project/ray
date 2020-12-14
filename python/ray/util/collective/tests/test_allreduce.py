@@ -12,7 +12,8 @@ from .util import create_collective_workers
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 def test_allreduce_different_name(ray_start_single_node_2_gpus, group_name):
     world_size = 2
-    actors, _ = create_collective_workers(num_workers=world_size, group_name=group_name)
+    actors, _ = create_collective_workers(
+        num_workers=world_size, group_name=group_name)
     results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
     assert (results[0] == cp.ones((10, ), dtype=cp.float32) * world_size).all()
     assert (results[1] == cp.ones((10, ), dtype=cp.float32) * world_size).all()
@@ -87,7 +88,8 @@ def test_allreduce_different_op(ray_start_single_node_2_gpus):
         a.set_buffer.remote(cp.ones(10, dtype=cp.float32) * (i + 2))
         for i, a in enumerate(actors)
     ])
-    results = ray.get([a.do_allreduce.remote(op=ReduceOp.PRODUCT) for a in actors])
+    results = ray.get(
+        [a.do_allreduce.remote(op=ReduceOp.PRODUCT) for a in actors])
     assert (results[0] == cp.ones((10, ), dtype=cp.float32) * 6).all()
     assert (results[1] == cp.ones((10, ), dtype=cp.float32) * 6).all()
 
