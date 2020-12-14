@@ -82,7 +82,7 @@ class LoadMetrics:
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
-        logger.info("Node {} is newly setup, treating as active".format(ip))
+        logger.debug("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
 
     def is_active(self, ip):
@@ -227,9 +227,8 @@ class LoadMetrics:
 
     def set_resource_requests(self, requested_resources):
         if requested_resources:
-            logger.info("resource_requests={requested_resources}")
-        assert isinstance(requested_resources, list), requested_resources
-        self.resource_requests = requested_resources
+            assert isinstance(requested_resources, list), requested_resources
+            self.resource_requests = requested_resources
 
     def info_string(self):
         return " - " + "\n - ".join(

@@ -145,8 +145,8 @@ class ResourceDemandScheduler:
         node_resources, node_type_counts = self.calculate_node_resources(
             nodes, launching_nodes, unused_resources_by_ip)
 
-        logger.info("Cluster resources: {}".format(node_resources))
-        logger.info("Node counts: {}".format(node_type_counts))
+        logger.debug("Cluster resources: {}".format(node_resources))
+        logger.debug("Node counts: {}".format(node_type_counts))
         # Step 2: add nodes to add to satisfy min_workers for each type
         (node_resources,
          node_type_counts,
@@ -156,7 +156,7 @@ class ResourceDemandScheduler:
                 self.max_workers, ensure_min_cluster_size)
 
         # Step 3: add nodes for strict spread groups
-        logger.info(f"Placement group demands: {pending_placement_groups}")
+        logger.debug(f"Placement group demands: {pending_placement_groups}")
         placement_group_demand_vector, strict_spreads = \
             placement_groups_to_resource_demands(pending_placement_groups)
         resource_demands.extend(placement_group_demand_vector)
@@ -183,8 +183,8 @@ class ResourceDemandScheduler:
         # groups
         unfulfilled, _ = get_bin_pack_residual(node_resources,
                                                resource_demands)
-        logger.info("Resource demands: {}".format(resource_demands))
-        logger.info("Unfulfilled demands: {}".format(unfulfilled))
+        logger.debug("Resource demands: {}".format(resource_demands))
+        logger.debug("Unfulfilled demands: {}".format(unfulfilled))
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
         nodes_to_add_based_on_demand = get_nodes_for(
@@ -206,7 +206,7 @@ class ResourceDemandScheduler:
             total_nodes_to_add, unused_resources_by_ip.keys(), nodes,
             launching_nodes, adjusted_min_workers)
 
-        logger.info("Node requests: {}".format(total_nodes_to_add))
+        logger.debug("Node requests: {}".format(total_nodes_to_add))
         return total_nodes_to_add
 
     def _legacy_worker_node_to_launch(
@@ -601,8 +601,8 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             # starts up because placement groups are scheduled via custom
             # resources. This will behave properly with the current utilization
             # score heuristic, but it's a little dangerous and misleading.
-            logger.info(
-                "No feasible node type to add for {}".format(resources))
+            logger.warning(
+                f"The autoscaler could not find a node type to satisfy the request: {resources}. If this request is related to placement groups the resource request will resolve itself, otherwise please specify a node type with the necessary resource https://docs.ray.io/en/master/cluster/autoscaling.html#multiple-node-type-autoscaling.")
             break
 
         utilization_scores = sorted(utilization_scores, reverse=True)

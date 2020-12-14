@@ -52,13 +52,15 @@ class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
 
     There are two ways to start an autoscaling cluster: manually by running
-    `ray start --head --autoscaling-config=/path/to/config.yaml` on a
-    instance that has permission to launch other instances, or you can also use
-    `ray up /path/to/config.yaml` from your laptop, which will
-    configure the right AWS/Cloud roles automatically.
+    `ray start --head --autoscaling-config=/path/to/config.yaml` on a instance
+    that has permission to launch other instances, or you can also use `ray up
+    /path/to/config.yaml` from your laptop, which will configure the right
+    AWS/Cloud roles automatically. See the documentation for a full definition
+    of autoscaling behavior:
+    https://docs.ray.io/en/master/cluster/autoscaling.html
 
-    StandardAutoscaler's `update` method is periodically called by `monitor.py`
-    to add and remove nodes as necessary.
+    StandardAutoscaler's `update` method is periodically called in
+    `monitor.py`'s monitoring loop..
     """
 
     def __init__(self,
@@ -695,7 +697,6 @@ class StandardAutoscaler:
         failed_nodes = []
 
         for node_id in all_node_ids:
-            # TODO (Alex): Verify the head node case before merging this.
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
             if node_tags[TAG_RAY_NODE_KIND] == NODE_KIND_UNMANAGED:
@@ -736,7 +737,7 @@ class StandardAutoscaler:
     def info_string(self):
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
-        return format_info_string(lm_summary, autoscaler_summary)
+        return "\n" + format_info_string(lm_summary, autoscaler_summary)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
