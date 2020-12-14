@@ -275,7 +275,7 @@ class NCCLGroup(BaseGroup):
                       tensor_list,
                       reducescatter_options=ReduceScatterOptions()):
         """
-        Reduce a list of tensors across the group, then scatter to each process.
+        Reducescatter a list of tensors across the group.
 
         Args:
             tensor: the output after reducescatter (could be unspecified).

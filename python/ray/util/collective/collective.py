@@ -307,7 +307,10 @@ def reducescatter(tensor,
                   group_name: str = "default",
                   op=types.ReduceOp.SUM):
     """
-    Reduce a list of tensors across the group, then scatter the result to each process.
+    Reducescatter a list of tensors across the group.
+
+    Reduce the list of the tensors across each process in the group, then
+    scatter the reduced list of tensors -- one tensor for each process.
 
     Args:
         tensor: the resulted tensor on this process.
