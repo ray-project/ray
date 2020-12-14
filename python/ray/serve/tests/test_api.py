@@ -818,7 +818,8 @@ def test_starlette_request(serve_instance):
         data = await starlette_request.body()
         return data
 
-    long_string = "This is a long string."
+    # Long enough to require more than one message, to test serialization.
+    long_string = "long string"*65536
 
     client.create_backend("echo:v1", echo_body)
     client.create_endpoint(
