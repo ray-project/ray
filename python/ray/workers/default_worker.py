@@ -11,8 +11,7 @@ import ray.node
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.parameter import RayParams
-from ray.ray_logging import (StandardStreamInterceptor,
-                             setup_and_get_worker_interceptor_logger)
+from ray.ray_logging import get_worker_log_file_name, configure_log_file
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
@@ -173,20 +172,10 @@ if __name__ == "__main__":
     ray.worker._global_node = node
     ray.worker.connect(node, mode=mode)
 
-    # Redirect stdout and stderr to the default worker interceptor logger.
-    # NOTE: We deprecated redirect_worker_output arg,
-    # so we don't need to handle here.
-    stdout_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(args, is_for_stdout=True),
-        intercept_stdout=True)
-    stderr_interceptor = StandardStreamInterceptor(
-        setup_and_get_worker_interceptor_logger(args, is_for_stdout=False),
-        intercept_stdout=False)
-    # Although the os level fd is duplicated already, we should overwrite
-    # the python level stdout/stderr object.
-    # Otherwise, buffers won't be flushed.
-    sys.stdout = stdout_interceptor
-    sys.stderr = stderr_interceptor
+    # Setup log file.
+    out_file, err_file = node.get_log_file_handles(
+        get_worker_log_file_name(args.worker_type))
+    configure_log_file(out_file, err_file)
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
