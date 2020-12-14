@@ -17,6 +17,7 @@ from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
+from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -556,6 +557,44 @@ class TrainableFunctionApiTest(unittest.TestCase):
         with self.assertRaises(TuneError):
             tune.run(train, stop=stop)
 
+    def testMaximumIterationStopper(self):
+        def train(config):
+            for i in range(10):
+                tune.report(it=i)
+
+        stopper = MaximumIterationStopper(max_iter=6)
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 6)
+
+    def testTrialPlateauStopper(self):
+        def train(config):
+            tune.report(10.0)
+            tune.report(11.0)
+            tune.report(12.0)
+            for i in range(10):
+                tune.report(20.0)
+
+        # num_results = 4, no other constraints --> early stop after 7
+        stopper = TrialPlateauStopper(metric="_metric", num_results=4)
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 7)
+
+        # num_results = 4, grace period 9 --> early stop after 9
+        stopper = TrialPlateauStopper(
+            metric="_metric", num_results=4, grace_period=9)
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 9)
+
+        # num_results = 4, min_metric = 22 --> full 13 iterations
+        stopper = TrialPlateauStopper(
+            metric="_metric", num_results=4, metric_threshold=22.0, mode="max")
+
+        out = tune.run(train, stop=stopper)
+        self.assertEqual(out.trials[0].last_result[TRAINING_ITERATION], 13)
+
     def testCustomTrialDir(self):
         def train(config):
             for i in range(10):
@@ -1038,8 +1077,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertLessEqual(status.get("PENDING", 0), 1)
 
     def testMetricCheckingEndToEnd(self):
-        from ray import tune
-
         def train(config):
             tune.report(val=4, second=8)
 
@@ -1130,6 +1167,50 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.assertFalse(found)
 
 
+class SerializabilityTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def tearDown(self):
+        if "RAY_PICKLE_VERBOSE_DEBUG" in os.environ:
+            del os.environ["RAY_PICKLE_VERBOSE_DEBUG"]
+
+    def testNotRaisesNonserializable(self):
+        import threading
+        lock = threading.Lock()
+
+        def train(config):
+            print(lock)
+            tune.report(val=4, second=8)
+
+        with self.assertRaisesRegex(TypeError, "RAY_PICKLE_VERBOSE_DEBUG"):
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+
+    def testRaisesNonserializable(self):
+        os.environ["RAY_PICKLE_VERBOSE_DEBUG"] = "1"
+        import threading
+        lock = threading.Lock()
+
+        def train(config):
+            print(lock)
+            tune.report(val=4, second=8)
+
+        with self.assertRaises(TypeError) as cm:
+            # The trial runner raises a ValueError, but the experiment fails
+            # with a TuneError
+            tune.run(train, metric="acc")
+        msg = cm.exception.args[0]
+        assert "RAY_PICKLE_VERBOSE_DEBUG" not in msg
+        assert "thread.lock" in msg
+
+
 class ShimCreationTest(unittest.TestCase):
     def testCreateScheduler(self):
         kwargs = {"metric": "metric_foo", "mode": "min"}
@@ -1152,6 +1233,15 @@ class ShimCreationTest(unittest.TestCase):
                                                       **kwargs)
         real_searcher_hyperopt = HyperOptSearch({}, **kwargs)
         assert type(shim_searcher_hyperopt) is type(real_searcher_hyperopt)
+
+    def testExtraParams(self):
+        kwargs = {"metric": "metric_foo", "mode": "min", "extra_param": "test"}
+
+        scheduler = "async_hyperband"
+        tune.create_scheduler(scheduler, **kwargs)
+
+        searcher_ax = "ax"
+        tune.create_searcher(searcher_ax, **kwargs)
 
 
 class ApiTestFast(unittest.TestCase):

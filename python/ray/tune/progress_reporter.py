@@ -1,21 +1,26 @@
 from __future__ import print_function
 
-import collections
-import sys
+from typing import Dict, List, Optional, Union
 
+import collections
+import os
+import sys
 import numpy as np
 import time
 
+from ray.tune.callback import Callback
+from ray.tune.logger import pretty_print
 from ray.tune.result import (DEFAULT_METRIC, EPISODE_REWARD_MEAN,
                              MEAN_ACCURACY, MEAN_LOSS, TRAINING_ITERATION,
                              TIME_TOTAL_S, TIMESTEPS_TOTAL, AUTO_RESULT_KEYS)
-from ray.tune.trial import Trial
+from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial
 from ray.tune.utils import unflattened_lookup
+from ray.tune.utils.log import Verbosity, has_verbosity
 
 try:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, MutableMapping
 except ImportError:
-    from collections import Mapping
+    from collections import Mapping, MutableMapping
 
 try:
     from tabulate import tabulate
@@ -33,7 +38,7 @@ class ProgressReporter:
     receiving training results, and so on.
     """
 
-    def should_report(self, trials, done=False):
+    def should_report(self, trials: List[Trial], done: bool = False):
         """Returns whether or not progress should be reported.
 
         Args:
@@ -42,7 +47,7 @@ class ProgressReporter:
         """
         raise NotImplementedError
 
-    def report(self, trials, done, *sys_info):
+    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         """Reports progress across trials.
 
         Args:
@@ -80,6 +85,12 @@ class TuneReporterBase(ProgressReporter):
             Defaults to 5s.
         infer_limit (int): Maximum number of metrics to automatically infer
             from tune results.
+        print_intermediate_tables (bool|None): Print intermediate result
+            tables. If None (default), will be set to True for verbosity
+            levels above 3, otherwise False. If True, intermediate tables
+            will be printed with experiment progress. If False, tables
+            will only be printed at then end of the tuning run for verbosity
+            levels greater than 2.
         metric (str): Metric used to determine best current trial.
         mode (str): One of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute.
@@ -99,16 +110,18 @@ class TuneReporterBase(ProgressReporter):
         type(None)
     }
 
-    def __init__(self,
-                 metric_columns=None,
-                 parameter_columns=None,
-                 total_samples=None,
-                 max_progress_rows=20,
-                 max_error_rows=20,
-                 max_report_frequency=5,
-                 infer_limit=3,
-                 metric=None,
-                 mode=None):
+    def __init__(
+            self,
+            metric_columns: Union[None, List[str], Dict[str, str]] = None,
+            parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+            total_samples: Optional[int] = None,
+            max_progress_rows: int = 20,
+            max_error_rows: int = 20,
+            max_report_frequency: int = 5,
+            infer_limit: int = 3,
+            print_intermediate_tables: Optional[bool] = None,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None):
         self._total_samples = total_samples
         self._metrics_override = metric_columns is not None
         self._inferred_metrics = {}
@@ -118,13 +131,20 @@ class TuneReporterBase(ProgressReporter):
         self._max_error_rows = max_error_rows
         self._infer_limit = infer_limit
 
+        if print_intermediate_tables is None:
+            self._print_intermediate_tables = has_verbosity(
+                Verbosity.V3_TRIAL_DETAILS)
+        else:
+            self._print_intermediate_tables = print_intermediate_tables
+
         self._max_report_freqency = max_report_frequency
         self._last_report_time = 0
 
         self._metric = metric
         self._mode = mode
 
-    def set_search_properties(self, metric, mode):
+    def set_search_properties(self, metric: Optional[str],
+                              mode: Optional[str]):
         if self._metric and metric:
             return False
         if self._mode and mode:
@@ -141,16 +161,18 @@ class TuneReporterBase(ProgressReporter):
 
         return True
 
-    def set_total_samples(self, total_samples):
+    def set_total_samples(self, total_samples: int):
         self._total_samples = total_samples
 
-    def should_report(self, trials, done=False):
+    def should_report(self, trials: List[Trial], done: bool = False):
         if time.time() - self._last_report_time > self._max_report_freqency:
             self._last_report_time = time.time()
             return True
         return done
 
-    def add_metric_column(self, metric, representation=None):
+    def add_metric_column(self,
+                          metric: str,
+                          representation: Optional[str] = None):
         """Adds a metric to the existing columns.
 
         Args:
@@ -163,7 +185,7 @@ class TuneReporterBase(ProgressReporter):
         if metric in self._metric_columns:
             raise ValueError("Column {} already exists.".format(metric))
 
-        if isinstance(self._metric_columns, Mapping):
+        if isinstance(self._metric_columns, MutableMapping):
             representation = representation or metric
             self._metric_columns[metric] = representation
         else:
@@ -174,7 +196,9 @@ class TuneReporterBase(ProgressReporter):
                     "of metric columns.")
             self._metric_columns.append(metric)
 
-    def add_parameter_column(self, parameter, representation=None):
+    def add_parameter_column(self,
+                             parameter: str,
+                             representation: Optional[str] = None):
         """Adds a parameter to the existing columns.
 
         Args:
@@ -186,7 +210,7 @@ class TuneReporterBase(ProgressReporter):
         if parameter in self._parameter_columns:
             raise ValueError("Column {} already exists.".format(parameter))
 
-        if isinstance(self._parameter_columns, Mapping):
+        if isinstance(self._parameter_columns, MutableMapping):
             representation = representation or parameter
             self._parameter_columns[parameter] = representation
         else:
@@ -197,7 +221,12 @@ class TuneReporterBase(ProgressReporter):
                     "of metric columns.")
             self._parameter_columns.append(parameter)
 
-    def _progress_str(self, trials, done, *sys_info, fmt="psql", delim="\n"):
+    def _progress_str(self,
+                      trials: List[Trial],
+                      done: bool,
+                      *sys_info: Dict,
+                      fmt: str = "psql",
+                      delim: str = "\n"):
         """Returns full progress string.
 
         This string contains a progress table and error table. The progress
@@ -228,19 +257,24 @@ class TuneReporterBase(ProgressReporter):
                 best_trial_str(current_best_trial, metric,
                                self._parameter_columns))
 
-        messages.append(
-            trial_progress_str(
-                trials,
-                metric_columns=self._metric_columns,
-                parameter_columns=self._parameter_columns,
-                total_samples=self._total_samples,
-                fmt=fmt,
-                max_rows=max_progress))
-        messages.append(trial_errors_str(trials, fmt=fmt, max_rows=max_error))
+        if has_verbosity(Verbosity.V1_EXPERIMENT):
+            # Will filter the table in `trial_progress_str`
+            messages.append(
+                trial_progress_str(
+                    trials,
+                    metric_columns=self._metric_columns,
+                    parameter_columns=self._parameter_columns,
+                    total_samples=self._total_samples,
+                    force_table=self._print_intermediate_tables,
+                    fmt=fmt,
+                    max_rows=max_progress,
+                    done=done))
+            messages.append(
+                trial_errors_str(trials, fmt=fmt, max_rows=max_error))
 
         return delim.join(messages) + delim
 
-    def _infer_user_metrics(self, trials, limit=4):
+    def _infer_user_metrics(self, trials: List[Trial], limit: int = 4):
         """Try to infer the metrics to print out."""
         if len(self._inferred_metrics) >= limit:
             return self._inferred_metrics
@@ -258,7 +292,7 @@ class TuneReporterBase(ProgressReporter):
                     return self._inferred_metrics
         return self._inferred_metrics
 
-    def _current_best_trial(self, trials):
+    def _current_best_trial(self, trials: List[Trial]):
         if not trials:
             return None, None
 
@@ -309,26 +343,39 @@ class JupyterNotebookReporter(TuneReporterBase):
             corresponding to each trial. Defaults to 20.
         max_report_frequency (int): Maximum report frequency in seconds.
             Defaults to 5s.
+        infer_limit (int): Maximum number of metrics to automatically infer
+            from tune results.
+        print_intermediate_tables (bool|None): Print intermediate result
+            tables. If None (default), will be set to True for verbosity
+            levels above 3, otherwise False. If True, intermediate tables
+            will be printed with experiment progress. If False, tables
+            will only be printed at then end of the tuning run for verbosity
+            levels greater than 2.
+        metric (str): Metric used to determine best current trial.
+        mode (str): One of [min, max]. Determines whether objective is
+            minimizing or maximizing the metric attribute.
     """
 
-    def __init__(self,
-                 overwrite,
-                 metric_columns=None,
-                 parameter_columns=None,
-                 total_samples=None,
-                 max_progress_rows=20,
-                 max_error_rows=20,
-                 max_report_frequency=5,
-                 infer_limit=3,
-                 metric=None,
-                 mode=None):
-        super(JupyterNotebookReporter,
-              self).__init__(metric_columns, parameter_columns, total_samples,
-                             max_progress_rows, max_error_rows,
-                             max_report_frequency, infer_limit, metric, mode)
+    def __init__(
+            self,
+            overwrite: bool,
+            metric_columns: Union[None, List[str], Dict[str, str]] = None,
+            parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+            total_samples: Optional[int] = None,
+            max_progress_rows: int = 20,
+            max_error_rows: int = 20,
+            max_report_frequency: int = 5,
+            infer_limit: int = 3,
+            print_intermediate_tables: Optional[bool] = None,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None):
+        super(JupyterNotebookReporter, self).__init__(
+            metric_columns, parameter_columns, total_samples,
+            max_progress_rows, max_error_rows, max_report_frequency,
+            infer_limit, print_intermediate_tables, metric, mode)
         self._overwrite = overwrite
 
-    def report(self, trials, done, *sys_info):
+    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
         if self._overwrite:
@@ -359,25 +406,38 @@ class CLIReporter(TuneReporterBase):
             corresponding to each trial. Defaults to 20.
         max_report_frequency (int): Maximum report frequency in seconds.
             Defaults to 5s.
+        infer_limit (int): Maximum number of metrics to automatically infer
+            from tune results.
+        print_intermediate_tables (bool|None): Print intermediate result
+            tables. If None (default), will be set to True for verbosity
+            levels above 3, otherwise False. If True, intermediate tables
+            will be printed with experiment progress. If False, tables
+            will only be printed at then end of the tuning run for verbosity
+            levels greater than 2.
+        metric (str): Metric used to determine best current trial.
+        mode (str): One of [min, max]. Determines whether objective is
+            minimizing or maximizing the metric attribute.
     """
 
-    def __init__(self,
-                 metric_columns=None,
-                 parameter_columns=None,
-                 total_samples=None,
-                 max_progress_rows=20,
-                 max_error_rows=20,
-                 max_report_frequency=5,
-                 infer_limit=3,
-                 metric=None,
-                 mode=None):
+    def __init__(
+            self,
+            metric_columns: Union[None, List[str], Dict[str, str]] = None,
+            parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+            total_samples: Optional[int] = None,
+            max_progress_rows: int = 20,
+            max_error_rows: int = 20,
+            max_report_frequency: int = 5,
+            infer_limit: int = 3,
+            print_intermediate_tables: Optional[bool] = None,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None):
 
-        super(CLIReporter,
-              self).__init__(metric_columns, parameter_columns, total_samples,
-                             max_progress_rows, max_error_rows,
-                             max_report_frequency, infer_limit, metric, mode)
+        super(CLIReporter, self).__init__(
+            metric_columns, parameter_columns, total_samples,
+            max_progress_rows, max_error_rows, max_report_frequency,
+            infer_limit, print_intermediate_tables, metric, mode)
 
-    def report(self, trials, done, *sys_info):
+    def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
         print(self._progress_str(trials, done, *sys_info))
 
 
@@ -400,15 +460,25 @@ def memory_debug_str():
             round(used_gb, 1), round(total_gb, 1), warn)
     except ImportError:
         return ("Unknown memory usage. Please run `pip install psutil` "
-                "(or ray[debug]) to resolve)")
+                "to resolve)")
 
 
-def trial_progress_str(trials,
-                       metric_columns,
-                       parameter_columns=None,
-                       total_samples=0,
-                       fmt="psql",
-                       max_rows=None):
+def _get_trials_by_state(trials: List[Trial]):
+    trials_by_state = collections.defaultdict(list)
+    for t in trials:
+        trials_by_state[t.status].append(t)
+    return trials_by_state
+
+
+def trial_progress_str(
+        trials: List[Trial],
+        metric_columns: Union[List[str], Dict[str, str]],
+        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        total_samples: int = 0,
+        force_table: bool = False,
+        fmt: str = "psql",
+        max_rows: Optional[int] = None,
+        done: bool = False):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -426,9 +496,13 @@ def trial_progress_str(trials,
             the parameter name is used in the message directly. If this is
             empty, all parameters are used in the message.
         total_samples (int): Total number of trials that will be generated.
+        force_table (bool): Force printing a table. If False, a table will
+            be printed only at the end of the training for verbosity levels
+            above `Verbosity.V2_TRIAL_NORM`.
         fmt (str): Output format (see tablefmt in tabulate API).
         max_rows (int): Maximum number of rows in the trial table. Defaults to
             unlimited.
+        done (bool): True indicates that the tuning run finished.
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
@@ -436,9 +510,7 @@ def trial_progress_str(trials,
         return delim.join(messages)
 
     num_trials = len(trials)
-    trials_by_state = collections.defaultdict(list)
-    for t in trials:
-        trials_by_state[t.status].append(t)
+    trials_by_state = _get_trials_by_state(trials)
 
     for local_dir in sorted({t.local_dir for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
@@ -447,6 +519,30 @@ def trial_progress_str(trials,
         "{} {}".format(len(trials_by_state[state]), state)
         for state in sorted(trials_by_state)
     ]
+
+    if total_samples and total_samples >= sys.maxsize:
+        total_samples = "infinite"
+
+    messages.append("Number of trials: {}{} ({})".format(
+        num_trials, f"/{total_samples}"
+        if total_samples else "", ", ".join(num_trials_strs)))
+
+    if force_table or (has_verbosity(Verbosity.V2_TRIAL_NORM) and done):
+        messages += trial_progress_table(trials, metric_columns,
+                                         parameter_columns, fmt, max_rows)
+
+    return delim.join(messages)
+
+
+def trial_progress_table(
+        trials: List[Trial],
+        metric_columns: Union[List[str], Dict[str, str]],
+        parameter_columns: Union[None, List[str], Dict[str, str]] = None,
+        fmt: str = "psql",
+        max_rows: Optional[int] = None):
+    messages = []
+    num_trials = len(trials)
+    trials_by_state = _get_trials_by_state(trials)
 
     state_tbl_order = [
         Trial.RUNNING, Trial.PAUSED, Trial.PENDING, Trial.TERMINATED,
@@ -472,18 +568,12 @@ def trial_progress_str(trials,
         overflow_str = ", ".join(overflow_strs)
     else:
         overflow = False
+        overflow_str = ""
         trials = []
         for state in state_tbl_order:
             if state not in trials_by_state:
                 continue
             trials += trials_by_state[state]
-
-    if total_samples and total_samples >= sys.maxsize:
-        total_samples = "infinite"
-
-    messages.append("Number of trials: {}{} ({})".format(
-        num_trials, f"/{total_samples}"
-        if total_samples else "", ", ".join(num_trials_strs)))
 
     # Pre-process trials to figure out what columns to show.
     if isinstance(metric_columns, Mapping):
@@ -526,10 +616,12 @@ def trial_progress_str(trials,
     if overflow:
         messages.append("... {} more trials not shown ({})".format(
             overflow, overflow_str))
-    return delim.join(messages)
+    return messages
 
 
-def trial_errors_str(trials, fmt="psql", max_rows=None):
+def trial_errors_str(trials: List[Trial],
+                     fmt: str = "psql",
+                     max_rows: Optional[int] = None):
     """Returns a readable message regarding trial errors.
 
     Args:
@@ -558,7 +650,10 @@ def trial_errors_str(trials, fmt="psql", max_rows=None):
     return delim.join(messages)
 
 
-def best_trial_str(trial, metric, parameter_columns=None):
+def best_trial_str(
+        trial: Trial,
+        metric: str,
+        parameter_columns: Union[None, List[str], Dict[str, str]] = None):
     """Returns a readable message stating the current best trial."""
     val = trial.last_result[metric]
     config = trial.last_result.get("config", {})
@@ -570,7 +665,8 @@ def best_trial_str(trial, metric, parameter_columns=None):
            f"parameters={params}"
 
 
-def _fair_filter_trials(trials_by_state, max_trials):
+def _fair_filter_trials(trials_by_state: Dict[str, List[Trial]],
+                        max_trials: int):
     """Filters trials such that each state is represented fairly.
 
     The oldest trials are truncated if necessary.
@@ -605,7 +701,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
     return filtered_trials
 
 
-def _get_trial_info(trial, parameters, metrics):
+def _get_trial_info(trial: Trial, parameters: List[str], metrics: List[str]):
     """Returns the following information about a trial:
 
     name | status | loc | params... | metrics...
@@ -625,3 +721,109 @@ def _get_trial_info(trial, parameters, metrics):
         unflattened_lookup(metric, result, default=None) for metric in metrics
     ]
     return trial_info
+
+
+class TrialProgressCallback(Callback):
+    """Reports (prints) intermediate trial progress.
+
+    This callback is automatically added to the callback stack. When a
+    result is obtained, this callback will print the results according to
+    the specified verbosity level.
+
+    For ``Verbosity.V3_TRIAL_DETAILS``, a full result list is printed.
+
+    For ``Verbosity.V2_TRIAL_NORM``, only one line is printed per received
+    result.
+
+    All other verbosity levels do not print intermediate trial progress.
+
+    Result printing is throttled on a per-trial basis. Per default, results are
+    printed only once every 30 seconds. Results are always printed when a trial
+    finished or errored.
+
+    """
+
+    def __init__(self, metric: Optional[str] = None):
+        self._last_print = collections.defaultdict(float)
+        self._completed_trials = set()
+        self._last_result_str = {}
+        self._metric = metric
+
+    def on_trial_result(self, iteration: int, trials: List["Trial"],
+                        trial: "Trial", result: Dict, **info):
+        self.log_result(trial, result, error=False)
+
+    def on_trial_error(self, iteration: int, trials: List["Trial"],
+                       trial: "Trial", **info):
+        self.log_result(trial, trial.last_result, error=True)
+
+    def on_trial_complete(self, iteration: int, trials: List["Trial"],
+                          trial: "Trial", **info):
+        # Only log when we never logged that a trial was completed
+        if trial not in self._completed_trials:
+            self._completed_trials.add(trial)
+
+            print_result_str = self._print_result(trial.last_result)
+            last_result_str = self._last_result_str.get(trial, "")
+            # If this is a new result, print full result string
+            if print_result_str != last_result_str:
+                self.log_result(trial, trial.last_result, error=False)
+            else:
+                print(f"Trial {trial} completed. "
+                      f"Last result: {print_result_str}")
+
+    def log_result(self, trial: "Trial", result: Dict, error: bool = False):
+        done = result.get("done", False) is True
+        last_print = self._last_print[trial]
+        if done and trial not in self._completed_trials:
+            self._completed_trials.add(trial)
+        if has_verbosity(Verbosity.V3_TRIAL_DETAILS) and \
+           (done or error or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+            print("Result for {}:".format(trial))
+            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+            self._last_print[trial] = time.time()
+        elif has_verbosity(Verbosity.V2_TRIAL_NORM) and (
+                done or error
+                or time.time() - last_print > DEBUG_PRINT_INTERVAL):
+            info = ""
+            if done:
+                info = " This trial completed."
+
+            metric_name = self._metric or "_metric"
+            metric_value = result.get(metric_name, -99.)
+
+            print_result_str = self._print_result(result)
+
+            self._last_result_str[trial] = print_result_str
+
+            error_file = os.path.join(trial.logdir, "error.txt")
+
+            if error:
+                message = f"The trial {trial} errored with " \
+                          f"parameters={trial.config}. " \
+                          f"Error file: {error_file}"
+            elif self._metric:
+                message = f"Trial {trial} reported " \
+                          f"{metric_name}={metric_value:.2f} " \
+                          f"with parameters={trial.config}.{info}"
+            else:
+                message = f"Trial {trial} reported " \
+                          f"{print_result_str} " \
+                          f"with parameters={trial.config}.{info}"
+
+            print(message)
+            self._last_print[trial] = time.time()
+
+    def _print_result(self, result: Dict):
+        print_result = result.copy()
+        print_result.pop("config", None)
+        print_result.pop("hist_stats", None)
+        print_result.pop("trial_id", None)
+        print_result.pop("experiment_tag", None)
+        print_result.pop("done", None)
+        for auto_result in AUTO_RESULT_KEYS:
+            print_result.pop(auto_result, None)
+
+        print_result_str = ",".join(
+            [f"{k}={v}" for k, v in print_result.items()])
+        return print_result_str

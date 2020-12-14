@@ -35,21 +35,20 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }));
 
     for (int index = 0; index < 3; ++index) {
-      raylet_clients_.push_back(
-          std::make_shared<GcsServerMocker::MockRayletResourceClient>());
+      raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(io_service_, io_service_, gcs_pub_sub_,
-                                              gcs_table_storage_, gcs_resource_manager_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        io_service_, gcs_pub_sub_, gcs_table_storage_, gcs_resource_manager_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
-        /*lease_client_fplacement_groupy=*/
-        [this](const rpc::Address &address) { return raylet_clients_[address.port()]; });
+        raylet_client_pool_);
   }
 
   void TearDown() override {
@@ -99,11 +98,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
     gcs_node_manager_->AddNode(node);
-    rpc::HeartbeatTableData heartbeat;
-    heartbeat.set_node_id(node->node_id());
-    (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
+    rpc::ResourcesData resource;
+    resource.set_node_id(node->node_id());
+    (*resource.mutable_resources_available())["CPU"] = cpu_num;
     gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
-                                                   heartbeat);
+                                                   resource);
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
@@ -204,7 +203,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
 
-  std::vector<std::shared_ptr<GcsServerMocker::MockRayletResourceClient>> raylet_clients_;
+  std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
@@ -215,6 +214,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {
@@ -572,14 +572,16 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 }
 
-TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
-  auto node0 = Mocker::GenNodeInfo(0);
-  auto node1 = Mocker::GenNodeInfo(1);
-  AddNode(node0);
-  AddNode(node1);
-  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+TEST_F(GcsPlacementGroupSchedulerTest, TestStrictSpreadRescheduleWhenNodeDead) {
+  int node_count = 3;
+  for (int index = 0; index < node_count; ++index) {
+    auto node = Mocker::GenNodeInfo(index);
+    AddNode(node);
+  }
+  ASSERT_EQ(3, gcs_node_manager_->GetAllAliveNodes().size());
 
-  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest(
+      "pg1", rpc::PlacementStrategy::STRICT_SPREAD);
   auto placement_group =
       std::make_shared<gcs::GcsPlacementGroup>(create_placement_group_request);
 
@@ -594,38 +596,56 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestRescheduleWhenNodeDead) {
   };
 
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
-  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
-  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
-  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
-  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+
+  // Prepare bundle resources.
+  for (int index = 0; index < node_count; ++index) {
+    raylet_clients_[index]->GrantPrepareBundleResources();
+  }
+  auto condition = [this]() {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    return (int)(raylet_clients_[0]->commit_callbacks.size() +
+                 raylet_clients_[1]->commit_callbacks.size() +
+                 raylet_clients_[2]->commit_callbacks.size()) == 2;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  // Filter out the nodes not scheduled by this placement group.
+  int node_index_not_scheduled = -1;
+  for (int index = 0; index < node_count; ++index) {
+    if (raylet_clients_[index]->commit_callbacks.empty()) {
+      node_index_not_scheduled = index;
+      break;
+    }
+  }
+  RAY_CHECK(node_index_not_scheduled != -1);
+
+  // Commit bundle resources.
+  for (int index = 0; index < node_count; ++index) {
+    raylet_clients_[index]->GrantCommitBundleResources();
+  }
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
-  auto bundles_on_node0 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
-  ASSERT_EQ(1, bundles_on_node0.size());
-  auto bundles_on_node1 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
-  ASSERT_EQ(1, bundles_on_node1.size());
   // One node is dead, reschedule the placement group.
   auto bundle_on_dead_node = placement_group->GetMutableBundle(0);
   bundle_on_dead_node->clear_node_id();
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
-  // TODO(ffbin): We need to see which node the other bundles that have been placed are
-  // deployed on, and spread them as far as possible. It will be implemented in the next
-  // pr.
 
-  auto commit_ready = [this]() {
+  // Prepare bundle resources.
+  for (int index = 0; index < node_count; ++index) {
+    raylet_clients_[index]->GrantPrepareBundleResources();
+  }
+
+  // Check the placement group scheduling results.
+  auto commit_ready = [this, node_index_not_scheduled]() {
     absl::MutexLock lock(&placement_group_requests_mutex_);
-    return raylet_clients_[0]->commit_callbacks.size() == 1 ||
-           raylet_clients_[1]->commit_callbacks.size() == 1;
+    return raylet_clients_[node_index_not_scheduled]->commit_callbacks.size() == 1;
   };
-  raylet_clients_[0]->GrantPrepareBundleResources();
-  raylet_clients_[1]->GrantPrepareBundleResources();
   EXPECT_TRUE(WaitForCondition(commit_ready, timeout_ms_.count()));
-  raylet_clients_[0]->GrantCommitBundleResources();
-  raylet_clients_[1]->GrantCommitBundleResources();
+
+  // Commit bundle resources.
+  for (int index = 0; index < node_count; ++index) {
+    raylet_clients_[index]->GrantCommitBundleResources();
+  }
   WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
 }
 
@@ -890,7 +910,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
   auto bundles_on_node1 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
-  // all nodes are dead, reschedule the placement group.
+  // All nodes are dead, reschedule the placement group.
   placement_group->GetMutableBundle(0)->clear_node_id();
   placement_group->GetMutableBundle(1)->clear_node_id();
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
@@ -944,7 +964,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
   auto bundles_on_node1 =
       scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
-  // all nodes are dead, reschedule the placement group.
+  // All nodes are dead, reschedule the placement group.
   placement_group->GetMutableBundle(0)->clear_node_id();
   placement_group->GetMutableBundle(1)->clear_node_id();
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);

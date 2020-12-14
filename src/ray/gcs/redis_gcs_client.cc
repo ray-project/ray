@@ -55,7 +55,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   node_table_.reset(new NodeTable({primary_context}, this));
 
   job_table_.reset(new JobTable({primary_context}, this));
-  heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context}, this));
+  resource_usage_batch_table_.reset(new ResourceUsageBatchTable({primary_context}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts, this));
   raylet_task_table_.reset(new raylet::TaskTable(shard_contexts, this, command_type_));
@@ -63,8 +63,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts, this));
   profile_table_.reset(new ProfileTable(shard_contexts, this));
-  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts, this));
-  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts, this));
   resource_table_.reset(new DynamicResourceTable({primary_context}, this));
   worker_table_.reset(new WorkerTable(shard_contexts, this));
 
@@ -73,6 +71,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));
+  node_resource_accessor_.reset(new RedisNodeResourceInfoAccessor(this));
   task_accessor_.reset(new RedisTaskInfoAccessor(this));
   error_accessor_.reset(new RedisErrorInfoAccessor(this));
   stats_accessor_.reset(new RedisStatsInfoAccessor(this));
@@ -130,21 +129,13 @@ NodeTable &RedisGcsClient::node_table() { return *node_table_; }
 
 HeartbeatTable &RedisGcsClient::heartbeat_table() { return *heartbeat_table_; }
 
-HeartbeatBatchTable &RedisGcsClient::heartbeat_batch_table() {
-  return *heartbeat_batch_table_;
+ResourceUsageBatchTable &RedisGcsClient::resource_usage_batch_table() {
+  return *resource_usage_batch_table_;
 }
 
 JobTable &RedisGcsClient::job_table() { return *job_table_; }
 
 ProfileTable &RedisGcsClient::profile_table() { return *profile_table_; }
-
-ActorCheckpointTable &RedisGcsClient::actor_checkpoint_table() {
-  return *actor_checkpoint_table_;
-}
-
-ActorCheckpointIdTable &RedisGcsClient::actor_checkpoint_id_table() {
-  return *actor_checkpoint_id_table_;
-}
 
 DynamicResourceTable &RedisGcsClient::resource_table() { return *resource_table_; }
 

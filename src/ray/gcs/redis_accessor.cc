@@ -101,79 +101,6 @@ Status RedisLogBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id)
   return log_based_actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, nullptr);
 }
 
-Status RedisLogBasedActorInfoAccessor::AsyncAddCheckpoint(
-    const std::shared_ptr<ActorCheckpointData> &data_ptr,
-    const StatusCallback &callback) {
-  ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  auto on_add_data_done = [actor_id, callback, data_ptr, this](
-                              RedisGcsClient *client,
-                              const ActorCheckpointID &checkpoint_id,
-                              const ActorCheckpointData &data) {
-    Status status = AsyncAddCheckpointID(actor_id, checkpoint_id, callback);
-    if (!status.ok()) {
-      callback(status);
-    }
-  };
-
-  ActorCheckpointID checkpoint_id =
-      ActorCheckpointID::FromBinary(data_ptr->checkpoint_id());
-  ActorCheckpointTable &actor_cp_table = client_impl_->actor_checkpoint_table();
-  return actor_cp_table.Add(actor_id.JobId(), checkpoint_id, data_ptr, on_add_data_done);
-}
-
-Status RedisLogBasedActorInfoAccessor::AsyncGetCheckpoint(
-    const ActorCheckpointID &checkpoint_id, const ActorID &actor_id,
-    const OptionalItemCallback<ActorCheckpointData> &callback) {
-  RAY_CHECK(callback != nullptr);
-  auto on_success = [callback](RedisGcsClient *client,
-                               const ActorCheckpointID &checkpoint_id,
-                               const ActorCheckpointData &checkpoint_data) {
-    boost::optional<ActorCheckpointData> optional(checkpoint_data);
-    callback(Status::OK(), std::move(optional));
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client,
-                               const ActorCheckpointID &checkpoint_id) {
-    boost::optional<ActorCheckpointData> optional;
-    callback(Status::Invalid("Invalid checkpoint id."), std::move(optional));
-  };
-
-  ActorCheckpointTable &actor_cp_table = client_impl_->actor_checkpoint_table();
-  return actor_cp_table.Lookup(actor_id.JobId(), checkpoint_id, on_success, on_failure);
-}
-
-Status RedisLogBasedActorInfoAccessor::AsyncGetCheckpointID(
-    const ActorID &actor_id,
-    const OptionalItemCallback<ActorCheckpointIdData> &callback) {
-  RAY_CHECK(callback != nullptr);
-  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                               const ActorCheckpointIdData &data) {
-    boost::optional<ActorCheckpointIdData> optional(data);
-    callback(Status::OK(), std::move(optional));
-  };
-
-  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id) {
-    boost::optional<ActorCheckpointIdData> optional;
-    callback(Status::Invalid("Checkpoint not found."), std::move(optional));
-  };
-
-  ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
-  return cp_id_table.Lookup(actor_id.JobId(), actor_id, on_success, on_failure);
-}
-
-Status RedisLogBasedActorInfoAccessor::AsyncAddCheckpointID(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id,
-    const StatusCallback &callback) {
-  ActorCheckpointIdTable::WriteCallback on_done = nullptr;
-  if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
-                         const ActorCheckpointIdData &data) { callback(Status::OK()); };
-  }
-
-  ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
-  return cp_id_table.AddCheckpointId(actor_id.JobId(), actor_id, checkpoint_id, on_done);
-}
-
 RedisActorInfoAccessor::RedisActorInfoAccessor(RedisGcsClient *client_impl)
     : RedisLogBasedActorInfoAccessor(client_impl),
       actor_sub_executor_(client_impl_->actor_table()) {}
@@ -494,8 +421,7 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
-      resource_sub_executor_(client_impl_->resource_table()),
-      heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
+      resource_usage_batch_sub_executor_(client_impl->resource_usage_batch_table()) {}
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
                                            const StatusCallback &callback) {
@@ -603,21 +529,29 @@ Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }
 
-void RedisNodeInfoAccessor::AsyncReReportHeartbeat() {}
+Status RedisNodeInfoAccessor::AsyncReportResourceUsage(
+    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
+  return Status::Invalid("Not implemented");
+}
 
-Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
-    const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {
+void RedisNodeInfoAccessor::AsyncReReportResourceUsage() {}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeBatchedResourceUsage(
+    const ItemCallback<ResourceUsageBatchData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const NodeID &node_id,
-                                  const HeartbeatBatchTableData &data) {
+                                  const ResourceUsageBatchData &data) {
     subscribe(data);
   };
 
-  return heartbeat_batch_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), on_subscribe,
-                                                         done);
+  return resource_usage_batch_sub_executor_.AsyncSubscribeAll(NodeID::Nil(), on_subscribe,
+                                                              done);
 }
 
-Status RedisNodeInfoAccessor::AsyncGetResources(
+RedisNodeResourceInfoAccessor::RedisNodeResourceInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), resource_sub_executor_(client_impl_->resource_table()) {}
+
+Status RedisNodeResourceInfoAccessor::AsyncGetResources(
     const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const NodeID &id,
@@ -633,9 +567,8 @@ Status RedisNodeInfoAccessor::AsyncGetResources(
   return resource_table.Lookup(JobID::Nil(), node_id, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncUpdateResources(const NodeID &node_id,
-                                                   const ResourceMap &resources,
-                                                   const StatusCallback &callback) {
+Status RedisNodeResourceInfoAccessor::AsyncUpdateResources(
+    const NodeID &node_id, const ResourceMap &resources, const StatusCallback &callback) {
   Hash<NodeID, ResourceTableData>::HashCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const NodeID &node_id,
@@ -646,7 +579,7 @@ Status RedisNodeInfoAccessor::AsyncUpdateResources(const NodeID &node_id,
   return resource_table.Update(JobID::Nil(), node_id, resources, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncDeleteResources(
+Status RedisNodeResourceInfoAccessor::AsyncDeleteResources(
     const NodeID &node_id, const std::vector<std::string> &resource_names,
     const StatusCallback &callback) {
   Hash<NodeID, ResourceTableData>::HashRemoveCallback on_done = nullptr;
@@ -661,7 +594,7 @@ Status RedisNodeInfoAccessor::AsyncDeleteResources(
   return resource_table.RemoveEntries(JobID::Nil(), node_id, resource_names, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
+Status RedisNodeResourceInfoAccessor::AsyncSubscribeToResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const NodeID &id,
@@ -764,6 +697,11 @@ Status RedisPlacementGroupInfoAccessor::AsyncGet(
 
 Status RedisPlacementGroupInfoAccessor::AsyncGetAll(
     const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+  return Status::Invalid("Not implemented");
+}
+
+Status RedisPlacementGroupInfoAccessor::AsyncWaitUntilReady(
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
   return Status::Invalid("Not implemented");
 }
 

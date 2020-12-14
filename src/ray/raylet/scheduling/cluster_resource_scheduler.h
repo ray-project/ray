@@ -39,46 +39,6 @@ static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
 class ClusterResourceScheduler {
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, NodeResources> nodes_;
-  /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Resources of local node.
-  NodeResourceInstances local_resources_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap string_to_int_map_;
-  /// Cached resources, used to compare with newest one in light heartbeat mode.
-  std::unique_ptr<NodeResources> last_report_resources_;
-
-  /// Set predefined resources.
-  ///
-  /// \param[in] new_resources: New predefined resources.
-  /// \param[out] old_resources: Predefined resources to be updated.
-  void SetPredefinedResources(const NodeResources &new_resources,
-                              NodeResources *old_resources);
-  /// Set custom resources.
-  ///
-  /// \param[in] new_resources: New custom resources.
-  /// \param[out] old_resources: Custom resources to be updated.
-  void SetCustomResources(
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
-      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
-
-  /// Subtract the resources required by a given task request (task_req) from
-  /// a given node (node_id).
-  ///
-  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
-  /// \param task_req Task for which we allocate resources.
-  /// \param task_allocation Resources allocated to the task at instance granularity.
-  /// This is a return parameter.
-  ///
-  /// \return True if the node has enough resources to satisfy the task request.
-  /// False otherwise.
-  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
-                             std::shared_ptr<TaskResourceInstances> task_allocation);
-
  public:
   ClusterResourceScheduler(void){};
 
@@ -113,6 +73,21 @@ class ClusterResourceScheduler {
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string);
 
+  /// Check whether a task request is feasible on a given node. A node is
+  /// feasible if it has the total resources needed to eventually execute the
+  /// task, even if those resources are currently allocated.
+  ///
+  /// \param shape The resource demand's shape.
+  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
+
+  /// Check whether a task request is feasible on a given node. A node is
+  /// feasible if it has the total resources needed to eventually execute the
+  /// task, even if those resources are currently allocated.
+  ///
+  /// \param task_req Task request to be scheduled.
+  /// \param resources Node's resources.
+  bool IsFeasible(const TaskRequest &task_req, const NodeResources &resources) const;
+
   /// Check whether a task request can be scheduled given a node.
   ///
   ///  \param task_req: Task request to be scheduled.
@@ -128,23 +103,29 @@ class ClusterResourceScheduler {
   ///           >= 0, the number soft constraint violations. If 0, no
   ///           constraint is violated.
   int64_t IsSchedulable(const TaskRequest &task_req, int64_t node_id,
-                        const NodeResources &resources);
+                        const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given task request.
   ///
-  ///  First, this function checks whether the local node can schedule
-  ///  the request without violating any constraints. If yes, it returns the
-  ///  ID of the local node.
+  ///  Ignoring soft constraints, this policy prioritizes nodes in the
+  ///  following order:
   ///
-  ///  If not, this function checks whether there is another node in the cluster
-  ///  that satisfies all request's constraints (both soft and hard).
+  ///  1. Local node if resources available.
+  ///  2. Any remote node if resources available.
+  ///  3. If the local node is not feasible, any remote node if feasible.
   ///
-  ///  If no such node exists, the function checks whether there are nodes
-  ///  that satisfy all the request's hard constraints, but might violate some
-  ///  soft constraints. Among these nodes, it returns a node which violates
-  ///  the least number of soft constraints.
+  ///  If soft constraints are specified, then this policy will prioritize:
+  ///  1. Local node if resources available and does not violate soft
+  ///     constraints.
+  ///  2. Any remote node if resources available and does not violate soft
+  ///     constraints.
+  ///  3. Out of all the nodes, including the local node, pick the one that
+  ///     has resources available and violates the fewest soft constraints.
+  ///  4. If the local node is not feasible, any remote node if feasible.
   ///
-  ///  Finally, if no such node exists, return -1.
+  ///  If no node can meet any of these, returns -1, in which case the caller
+  ///  should queue the task and try again once resource availability has been
+  ///  updated.
   ///
   ///  \param task_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
@@ -168,38 +149,18 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &task_request, bool actor_creation,
       int64_t *violations);
 
-  /// Decrease the available resources of a node when a task request is
-  /// scheduled on the given node.
-  ///
-  /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_req: task request being scheduled.
-  ///
-  /// \return true, if task_req can be indeed scheduled on the node,
-  /// and false otherwise.
-  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
-  bool SubtractNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
-
-  /// Increase available resources of a node when a worker has finished
-  /// a task.
-  ///
-  /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_request: resource requests of the task finishing execution.
-  ///
-  /// \return true, if task_req can be indeed scheduled on the node,
-  /// and false otherwise.
-  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
-  bool AddNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
-
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
+
+  /// Add a local resource that is available.
+  ///
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void AddLocalResource(const std::string &resource_name, double resource_total);
 
   /// Update total capacity of a given resource of a given node.
   ///
@@ -208,6 +169,11 @@ class ClusterResourceScheduler {
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
                               const std::string &resource_name, double resource_total);
+
+  /// Delete a given resource from the local node.
+  ///
+  /// \param resource_name: Resource we want to delete
+  void DeleteLocalResource(const std::string &resource_name);
 
   /// Delete a given resource from a given node.
   ///
@@ -355,12 +321,17 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  bool AllocateLocalTaskResources(const TaskRequest &task_request,
+                                  std::shared_ptr<TaskResourceInstances> task_allocation);
+
   /// Subtract the resources required by a given task request (task_req) from a given
   /// remote node.
   ///
   /// \param node_id Remote node whose resources we allocate.
   /// \param task_req Task for which we allocate resources.
-  void AllocateRemoteTaskResources(
+  /// \return True if remote node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateRemoteTaskResources(
       const std::string &node_id,
       const std::unordered_map<std::string, double> &task_resources);
 
@@ -381,13 +352,65 @@ class ClusterResourceScheduler {
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void Heartbeat(bool light_heartbeat_enabled, std::shared_ptr<HeartbeatTableData> data);
+  void FillResourceUsage(bool light_report_resource_usage_enabled,
+                         std::shared_ptr<rpc::ResourcesData> resources_data);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
+
+ private:
+  struct Node {
+    Node(const NodeResources &resources)
+        : last_reported_(resources), local_view_(resources) {}
+
+    void ResetLocalView() { local_view_ = last_reported_; }
+
+    NodeResources *GetMutableLocalView() { return &local_view_; }
+
+    const NodeResources &GetLocalView() const { return local_view_; }
+
+   private:
+    /// The resource information according to the last heartbeat reported by
+    /// this node.
+    /// NOTE(swang): For the local node, this field should be ignored because
+    /// we do not receive heartbeats from ourselves and the local view is
+    /// therefore always the most up-to-date.
+    NodeResources last_reported_;
+    /// Our local view of the remote node's resources. This may be dirty
+    /// because it includes any resource requests that we allocated to this
+    /// node through spillback since our last heartbeat tick. This view will
+    /// get overwritten by the last reported view on each heartbeat tick, to
+    /// make sure that our local view does not skew too much from the actual
+    /// resources when light heartbeats are enabled.
+    NodeResources local_view_;
+  };
+
+  /// Decrease the available resources of a node when a task request is
+  /// scheduled on the given node.
+  ///
+  /// \param node_id: ID of node on which request is being scheduled.
+  /// \param task_req: task request being scheduled.
+  ///
+  /// \return true, if task_req can be indeed scheduled on the node,
+  /// and false otherwise.
+  bool SubtractRemoteNodeAvailableResources(int64_t node_id,
+                                            const TaskRequest &task_request);
+
+  /// List of nodes in the clusters and their resources organized as a map.
+  /// The key of the map is the node ID.
+  absl::flat_hash_map<int64_t, Node> nodes_;
+  /// Identifier of local node.
+  int64_t local_node_id_;
+  /// Resources of local node.
+  NodeResourceInstances local_resources_;
+  /// Keep the mapping between node and resource IDs in string representation
+  /// to integer representation. Used for improving map performance.
+  StringIdMap string_to_int_map_;
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  std::unique_ptr<NodeResources> last_report_resources_;
 };
 
 }  // end namespace ray

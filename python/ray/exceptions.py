@@ -3,9 +3,8 @@ from traceback import format_exception
 
 import colorama
 
-import ray
 import ray.cloudpickle as pickle
-from ray.core.generated.common_pb2 import RayException, Language
+from ray.core.generated.common_pb2 import RayException, Language, PYTHON
 import setproctitle
 
 
@@ -17,7 +16,7 @@ class RayError(Exception):
         exc_info = (type(self), self, self.__traceback__)
         formatted_exception_string = "\n".join(format_exception(*exc_info))
         return RayException(
-            language=ray.Language.PYTHON.value(),
+            language=PYTHON,
             serialized_exception=pickle.dumps(self),
             formatted_exception_string=formatted_exception_string
         ).SerializeToString()
@@ -26,7 +25,7 @@ class RayError(Exception):
     def from_bytes(b):
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
-        if ray_exception.language == ray.Language.PYTHON.value():
+        if ray_exception.language == PYTHON:
             return pickle.loads(ray_exception.serialized_exception)
         else:
             return CrossLanguageError(ray_exception)
@@ -81,6 +80,7 @@ class RayTaskError(RayError):
                  pid=None,
                  ip=None):
         """Initialize a RayTaskError."""
+        import ray
         if proctitle:
             self.proctitle = proctitle
         else:

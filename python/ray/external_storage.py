@@ -165,6 +165,14 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             url_with_offset_list: List of url_with_offset.
         """
 
+    @abc.abstractmethod
+    def delete_spilled_objects(self, urls: List[str]):
+        """Delete objects that are spilled to the external storage.
+
+        Args:
+            urls: URLs that store spilled object files.
+        """
+
 
 class NullStorage(ExternalStorage):
     """The class that represents an uninitialized external storage."""
@@ -173,6 +181,9 @@ class NullStorage(ExternalStorage):
         raise NotImplementedError("External storage is not initialized")
 
     def restore_spilled_objects(self, object_refs, url_with_offset_list):
+        raise NotImplementedError("External storage is not initialized")
+
+    def delete_spilled_objects(self, urls: List[str]):
         raise NotImplementedError("External storage is not initialized")
 
 
@@ -220,6 +231,11 @@ class FileSystemStorage(ExternalStorage):
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
+
+    def delete_spilled_objects(self, urls: List[str]):
+        for url in urls:
+            filename = parse_url_with_offset(url.decode()).base_url
+            os.remove(os.path.join(self.directory_path, filename))
 
 
 class ExternalStorageSmartOpenImpl(ExternalStorage):
@@ -303,6 +319,9 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
 
+    def delete_spilled_objects(self, urls: List[str]):
+        pass
+
 
 _external_storage = NullStorage()
 
@@ -350,3 +369,12 @@ def restore_spilled_objects(object_refs: List[ObjectRef],
     """
     _external_storage.restore_spilled_objects(object_refs,
                                               url_with_offset_list)
+
+
+def delete_spilled_objects(urls: List[str]):
+    """Delete objects that are spilled to the external storage.
+
+    Args:
+        urls: URLs that store spilled object files.
+    """
+    _external_storage.delete_spilled_objects(urls)

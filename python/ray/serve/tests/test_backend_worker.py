@@ -48,7 +48,7 @@ def setup_worker(name,
 async def add_servable_to_router(servable, router, controller_name, **kwargs):
     worker = setup_worker(
         "backend", servable, controller_name=controller_name, **kwargs)
-    await router._update_worker_handles.remote({"backend": [worker]})
+    await router._update_replica_handles.remote({"backend": [worker]})
     await router._update_traffic_policies.remote({
         "endpoint": TrafficPolicy({
             "backend": 1.0

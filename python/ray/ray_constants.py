@@ -150,19 +150,31 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
+# Default param for RotatingFileHandler
+# maxBytes. 10G by default. We intentionally set the default value high
+# so that users who won't care don't know about the existence of this.
+LOGGING_ROTATE_BYTES = 10 * 1000 * 1000 * 1000
+# The default will grow logs up until 500GB without log loss.
+LOGGING_ROTATE_BACKUP_COUNT = 50  # backupCount
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
+# TODO(sang): Delete it.
 PROCESS_TYPE_REPORTER = "reporter"
 PROCESS_TYPE_DASHBOARD = "dashboard"
+PROCESS_TYPE_DASHBOARD_AGENT = "dashboard_agent"
 PROCESS_TYPE_WORKER = "worker"
 PROCESS_TYPE_RAYLET = "raylet"
 PROCESS_TYPE_PLASMA_STORE = "plasma_store"
 PROCESS_TYPE_REDIS_SERVER = "redis_server"
 PROCESS_TYPE_WEB_UI = "web_ui"
 PROCESS_TYPE_GCS_SERVER = "gcs_server"
+
+# Log file names
+MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
+LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
@@ -175,13 +187,18 @@ WORKER_PROCESS_TYPE_SPILL_WORKER = (
     f"ray::SPILL_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
 WORKER_PROCESS_TYPE_RESTORE_WORKER = (
     f"ray::RESTORE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
+WORKER_PROCESS_TYPE_SPILL_WORKER_DELETE = (
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_SPILL_WORKER_NAME}")
+WORKER_PROCESS_TYPE_RESTORE_WORKER_DELETE = (
+    f"ray::DELETE_{WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME}")
 
 LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
 # type of the object (see types below) or an integer, which is interpreted
-# as an error value.
+# as an error value. The second part is optional and if present has the
+# form DEBUG:<breakpoint_id>, it is used for implementing the debugger.
 
 # A constant used as object metadata to indicate the object is cross language.
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
@@ -196,6 +213,9 @@ OBJECT_METADATA_TYPE_RAW = b"RAW"
 # TODO(fyrestone): Serialize the ActorHandle via the custom type feature
 # of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
+
+# A constant indicating the debugging part of the metadata (see above).
+OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 

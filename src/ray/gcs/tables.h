@@ -34,19 +34,17 @@ namespace ray {
 
 namespace gcs {
 
-using rpc::ActorCheckpointData;
-using rpc::ActorCheckpointIdData;
 using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsChangeMode;
 using rpc::GcsEntry;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::ProfileTableData;
 using rpc::ResourceTableData;
+using rpc::ResourceUsageBatchData;
 using rpc::TablePrefix;
 using rpc::TablePubsub;
 using rpc::TaskLeaseData;
@@ -690,15 +688,15 @@ class HeartbeatTable : public Table<NodeID, HeartbeatTableData> {
   virtual ~HeartbeatTable() {}
 };
 
-class HeartbeatBatchTable : public Table<NodeID, HeartbeatBatchTableData> {
+class ResourceUsageBatchTable : public Table<NodeID, ResourceUsageBatchData> {
  public:
-  HeartbeatBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                      RedisGcsClient *client)
+  ResourceUsageBatchTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                          RedisGcsClient *client)
       : Table(contexts, client) {
-    pubsub_channel_ = TablePubsub::HEARTBEAT_BATCH_PUBSUB;
-    prefix_ = TablePrefix::HEARTBEAT_BATCH;
+    pubsub_channel_ = TablePubsub::RESOURCE_USAGE_BATCH_PUBSUB;
+    prefix_ = TablePrefix::RESOURCE_USAGE_BATCH;
   }
-  virtual ~HeartbeatBatchTable() {}
+  virtual ~ResourceUsageBatchTable() {}
 };
 
 class JobTable : public Log<JobID, JobTableData> {
@@ -808,35 +806,6 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
   /// In this way TaskLeaseTable() can also reuse class SubscriptionExecutor.
   Status Subscribe(const JobID &job_id, const NodeID &node_id, const Callback &subscribe,
                    const SubscriptionCallback &done);
-};
-
-class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {
- public:
-  ActorCheckpointTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                       RedisGcsClient *client)
-      : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT;
-  };
-};
-
-class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
- public:
-  ActorCheckpointIdTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                         RedisGcsClient *client)
-      : Table(contexts, client) {
-    prefix_ = TablePrefix::ACTOR_CHECKPOINT_ID;
-  };
-
-  /// Add a checkpoint id to an actor, and remove a previous checkpoint if the
-  /// total number of checkpoints in GCS exceeds the max allowed value.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint.
-  /// \return Status.
-  Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
-                         const ActorCheckpointID &checkpoint_id,
-                         const WriteCallback &done);
 };
 
 namespace raylet {

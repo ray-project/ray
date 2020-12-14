@@ -80,7 +80,7 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
                                  required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true);
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "");
 
   for (int i = 0; i < num_args; i++) {
     ObjectID put_id = ObjectID::FromIndex(TaskID::Nil(), /*index=*/i + 1);
@@ -437,8 +437,8 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   }
 
   {
-    auto data = std::make_shared<rpc::HeartbeatTableData>();
-    task_manager_.Heartbeat(false, data);
+    auto data = std::make_shared<rpc::ResourcesData>();
+    task_manager_.FillResourceUsage(false, data);
 
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -478,6 +478,63 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
       ASSERT_TRUE(found);
     }
   }
+}
+
+TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  std::vector<TaskID> to_cancel;
+
+  for (int i = 0; i < 10; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 100}});
+    task.SetBacklogSize(i);
+    task_manager_.QueueTask(task, &reply, callback);
+    to_cancel.push_back(task.GetTaskSpecification().TaskId());
+  }
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  auto data = std::make_shared<rpc::ResourcesData>();
+  task_manager_.FillResourceUsage(false, data);
+
+  auto resource_load_by_shape = data->resource_load_by_shape();
+  auto shape1 = resource_load_by_shape.resource_demands()[0];
+
+  ASSERT_EQ(shape1.backlog_size(), 45);
+  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 10);
+  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+
+  for (auto &task_id : to_cancel) {
+    ASSERT_TRUE(task_manager_.CancelTask(task_id));
+  }
+
+  data = std::make_shared<rpc::ResourcesData>();
+  task_manager_.FillResourceUsage(false, data);
+
+  resource_load_by_shape = data->resource_load_by_shape();
+  shape1 = resource_load_by_shape.resource_demands()[0];
+
+  ASSERT_EQ(shape1.backlog_size(), 0);
+  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
+  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
