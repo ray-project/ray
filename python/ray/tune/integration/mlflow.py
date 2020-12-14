@@ -124,7 +124,7 @@ class MLFlowLoggerCallback(LoggerCallback):
         for key, value in result.items():
             try:
                 value = float(value)
-            except ValueError:
+            except (ValueError, TypeError):
                 continue
             self.client.log_metric(
                 run_id=run_id, key=key, value=value, step=iteration)
