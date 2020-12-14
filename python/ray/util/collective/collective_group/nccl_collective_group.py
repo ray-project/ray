@@ -139,7 +139,7 @@ class NCCLGroup(BaseGroup):
             stream.synchronize()
             # destroy the communicator
             for _, comms in self._dev_comm_map.items():
-                [comm.destroy() for c in comms)
+                [comm.destroy() for c in comms]
 
             self._barrier_tensor = None
             self._dev_comm_map = None
@@ -159,8 +159,8 @@ class NCCLGroup(BaseGroup):
 
         Returns:
         """
-        nccl_util.check_collective_inputs(tensor) 
-        devices = nccl_util.get_device(tensor)
+        nccl_util.check_collective_input(tensor) 
+        devices = nccl_util.get_devices(tensor)
         # obtain the communicator
         # obtain the stream: using default stream by now
         # TODO(Hao): implement a simple stream manager here
@@ -208,7 +208,7 @@ class NCCLGroup(BaseGroup):
                 from ray.util.collective.util import NCCLUniqueIDStore
                 store = NCCLUniqueIDStore.options(
                     name=_store_name, lifetime="detached").remote(_store_name)
-                ray.wait([store.set_id.remote(_uid)])
+                ray.wait([store.set_id.remote(uid)])
 
             rendezvous = Rendezvous(_group_name)
             rendezvous.meet()
@@ -228,6 +228,7 @@ class NCCLGroup(BaseGroup):
 
         # cache the result
         self._dev_comm_map[key] = comms
+        return comms
 
     @staticmethod
     def _get_cuda_stream():

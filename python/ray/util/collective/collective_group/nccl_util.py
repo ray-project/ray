@@ -118,7 +118,7 @@ def get_tensor_n_elements(tensor):
 
 def get_devices(inputs):
     """Returns a list of devices (ints) from the inputs"""
-    devices = []
+    devices = [0] * len(inputs)
     for i in range(len(inputs)):
         if isinstance(inputs[i], cupy.ndarray):
             try:
@@ -129,8 +129,9 @@ def get_devices(inputs):
             index = inputs[i].device.index
             if index is None:
                 raise RuntimeError("not all inputs on a GPU device.")
-        raise ValueError("Unsupported tensor type. "
-                         "Got: {}.".format(type(tensor)))
+        else:
+            ValueError("Unsupported tensor type. "
+                         "Got: {}.".format(type(inputs)))
     return devices
 
 def get_key_from_devices(devices):

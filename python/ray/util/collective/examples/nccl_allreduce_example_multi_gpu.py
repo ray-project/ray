@@ -11,8 +11,8 @@ class Worker:
         self.recv = cp.zeros((4, ), dtype=cp.float32)
 
     def setup(self, world_size, rank):
-        collective.init_collective_group("nccl", world_size, rank, "default")
-        return True
+        collective.init_collective_group(world_size, rank, "nccl", "default")
+        return self.send.device, self.send
 
     def compute(self):
         collective.allreduce(self.send, "default")
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     send = cp.ones((4, ), dtype=cp.float32)
 
-    ray.init(num_gpus=2)
+    ray.init(num_gpus=4)
 
     num_workers = 2
     workers = []
@@ -36,7 +36,8 @@ if __name__ == "__main__":
         w = Worker.remote()
         workers.append(w)
         init_rets.append(w.setup.remote(num_workers, i))
-    _ = ray.get(init_rets)
+    a = ray.get(init_rets)
+    print(a)
     results = ray.get([w.compute.remote() for w in workers])
-    # print(results)
+    print(results)
     ray.shutdown()
