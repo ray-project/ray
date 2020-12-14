@@ -66,8 +66,8 @@ class MLFlowLoggerCallback(LoggerCallback):
             raise RuntimeError("mlflow has not been installed. Please `pip "
                                "install mlflow` to use the MLFlowLogger.")
 
-        self.client = MlflowClient(tracking_uri=tracking_uri,
-                                   registry_uri=registry_uri)
+        self.client = MlflowClient(
+            tracking_uri=tracking_uri, registry_uri=registry_uri)
 
         # Setup MLFlow experiment.
         experiment_id = None
@@ -103,8 +103,9 @@ class MLFlowLoggerCallback(LoggerCallback):
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
-            run = self.client.create_run(experiment_id=self.experiment_id,
-                                         tags={"trial_name": str(trial)})
+            run = self.client.create_run(
+                experiment_id=self.experiment_id,
+                tags={"trial_name": str(trial)})
             self._trial_runs[trial] = run.info.run_id
 
         run_id = self._trial_runs[trial]
@@ -122,10 +123,8 @@ class MLFlowLoggerCallback(LoggerCallback):
                 value = float(value)
             except ValueError:
                 continue
-            self.client.log_metric(run_id=run_id,
-                                   key=key,
-                                   value=value,
-                                   step=iteration)
+            self.client.log_metric(
+                run_id=run_id, key=key, value=value, step=iteration)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
@@ -176,8 +175,8 @@ class MLFlowLogger(Logger):
             result=result)
 
     def close(self):
-        self._trial_experiment_logger.log_trial_end(trial=self.trial,
-                                                    failed=False)
+        self._trial_experiment_logger.log_trial_end(
+            trial=self.trial, failed=False)
         del self._trial_experiment_logger
 
 
@@ -328,8 +327,8 @@ class MLFlowTrainableMixin:
 
         run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")
-        self._mlflow.start_run(experiment_id=self.experiment_id,
-                               run_name=run_name)
+        self._mlflow.start_run(
+            experiment_id=self.experiment_id, run_name=run_name)
 
     def stop(self):
         self._mlflow.end_run()

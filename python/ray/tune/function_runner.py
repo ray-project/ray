@@ -68,9 +68,8 @@ class FuncCheckpointUtil:
     @staticmethod
     def mk_null_checkpoint_dir(logdir):
         """Indicate that the given checkpoint doesn't have state."""
-        checkpoint_dir = TrainableUtil.make_checkpoint_dir(logdir,
-                                                           index=-1,
-                                                           override=True)
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=-1, override=True)
         open(os.path.join(checkpoint_dir, NULL_MARKER), "a").close()
         return checkpoint_dir
 
@@ -100,9 +99,8 @@ class FuncCheckpointUtil:
         assert os.path.exists(temporary_marker), (
             "Should not be calling this method on a permanent checkpoint.")
         os.remove(temporary_marker)
-        perm_checkpoint_dir = TrainableUtil.make_checkpoint_dir(logdir,
-                                                                index=step,
-                                                                override=True)
+        perm_checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            logdir, index=step, override=True)
         shutil.rmtree(perm_checkpoint_dir)
 
         shutil.copytree(checkpoint_dir, perm_checkpoint_dir)
@@ -189,8 +187,8 @@ class StatusReporter:
             sys.exit(0)
 
     def make_checkpoint_dir(self, step):
-        checkpoint_dir = TrainableUtil.make_checkpoint_dir(self.logdir,
-                                                           index=step)
+        checkpoint_dir = TrainableUtil.make_checkpoint_dir(
+            self.logdir, index=step)
         logger.debug("Making checkpoint dir at %s", checkpoint_dir)
         return checkpoint_dir
 
@@ -259,9 +257,8 @@ class _RunnerThread(threading.Thread):
                 # prevent the exception from being propagated in the unlikely
                 # case that something went terribly wrong
                 err_tb_str = traceback.format_exc()
-                self._error_queue.put(err_tb_str,
-                                      block=True,
-                                      timeout=ERROR_REPORT_TIMEOUT)
+                self._error_queue.put(
+                    err_tb_str, block=True, timeout=ERROR_REPORT_TIMEOUT)
             except queue.Full:
                 logger.critical(
                     ("Runner Thread was unable to report error to main "
@@ -294,12 +291,13 @@ class FunctionRunner(Trainable):
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
 
-        self._status_reporter = StatusReporter(self._results_queue,
-                                               self._continue_semaphore,
-                                               self._end_event,
-                                               trial_name=self.trial_name,
-                                               trial_id=self.trial_id,
-                                               logdir=self.logdir)
+        self._status_reporter = StatusReporter(
+            self._results_queue,
+            self._continue_semaphore,
+            self._end_event,
+            trial_name=self.trial_name,
+            trial_id=self.trial_id,
+            logdir=self.logdir)
         self._last_result = {}
 
         session.init(self._status_reporter)
@@ -347,8 +345,8 @@ class FunctionRunner(Trainable):
         while result is None and self._runner.is_alive():
             # fetch the next produced result
             try:
-                result = self._results_queue.get(block=True,
-                                                 timeout=RESULT_FETCH_TIMEOUT)
+                result = self._results_queue.get(
+                    block=True, timeout=RESULT_FETCH_TIMEOUT)
             except queue.Empty:
                 pass
 
@@ -500,16 +498,17 @@ class FunctionRunner(Trainable):
         self._runner = None
         self._last_result = {}
 
-        self._status_reporter.reset(trial_name=self.trial_name,
-                                    trial_id=self.trial_id,
-                                    logdir=self.logdir)
+        self._status_reporter.reset(
+            trial_name=self.trial_name,
+            trial_id=self.trial_id,
+            logdir=self.logdir)
 
         return True
 
     def _report_thread_runner_error(self, block=False):
         try:
-            err_tb_str = self._error_queue.get(block=block,
-                                               timeout=ERROR_FETCH_TIMEOUT)
+            err_tb_str = self._error_queue.get(
+                block=block, timeout=ERROR_FETCH_TIMEOUT)
             raise TuneError(
                 ("Trial raised an exception. Traceback:\n{}".format(err_tb_str)
                  ))

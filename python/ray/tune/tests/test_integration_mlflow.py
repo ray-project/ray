@@ -132,9 +132,10 @@ class MLFlowTest(unittest.TestCase):
     @patch("ray.tune.integration.mlflow.MlflowClient", MockMlflowClient)
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
-        logger = MLFlowLoggerCallback(tracking_uri="test1",
-                                      registry_uri="test2",
-                                      experiment_name="test_exp")
+        logger = MLFlowLoggerCallback(
+            tracking_uri="test1",
+            registry_uri="test2",
+            experiment_name="test_exp")
         self.assertEqual(logger.client.tracking_uri, "test1")
         self.assertEqual(logger.client.registry_uri, "test2")
         self.assertListEqual(logger.client.experiment_names,
@@ -192,8 +193,8 @@ class MLFlowTest(unittest.TestCase):
         trial_config = {"par1": 4, "par2": 9.}
         trial = MockTrial(trial_config, "trial1", 0, "artifact")
 
-        logger = MLFlowLoggerCallback(experiment_name="test1",
-                                      save_artifact=True)
+        logger = MLFlowLoggerCallback(
+            experiment_name="test1", save_artifact=True)
 
         # Check if run is created.
         logger.on_trial_start(iteration=0, trials=[], trial=trial)

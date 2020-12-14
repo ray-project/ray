@@ -28,18 +28,20 @@ def easy_objective(config):
 
 
 def tune_function(mlflow_tracking_uri):
-    tune.run(easy_objective,
-             name="mlflow",
-             num_samples=5,
-             callbacks=[
-                 MLFlowLoggerCallback(tracking_uri=mlflow_tracking_uri,
-                                      experiment_name="test",
-                                      save_artifact=True)
-             ],
-             config={
-                 "width": tune.randint(10, 100),
-                 "height": tune.randint(0, 100),
-             })
+    tune.run(
+        easy_objective,
+        name="mlflow",
+        num_samples=5,
+        callbacks=[
+            MLFlowLoggerCallback(
+                tracking_uri=mlflow_tracking_uri,
+                experiment_name="test",
+                save_artifact=True)
+        ],
+        config={
+            "width": tune.randint(10, 100),
+            "height": tune.randint(0, 100),
+        })
 
 
 @mlflow_mixin
@@ -60,26 +62,26 @@ def tune_decorated(mlflow_tracking_uri):
     # Set the experiment, or create a new one if does not exist yet.
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     mlflow.set_experiment(experiment_name="mixin_test")
-    tune.run(decorated_easy_objective,
-             name="mlflow",
-             num_samples=5,
-             config={
-                 "width": tune.randint(10, 100),
-                 "height": tune.randint(0, 100),
-                 "mlflow": {
-                     "experiment_name": "mixin_test",
-                     "tracking_uri": mlflow.get_tracking_uri()
-                 }
-             })
+    tune.run(
+        decorated_easy_objective,
+        name="mlflow",
+        num_samples=5,
+        config={
+            "width": tune.randint(10, 100),
+            "height": tune.randint(0, 100),
+            "mlflow": {
+                "experiment_name": "mixin_test",
+                "tracking_uri": mlflow.get_tracking_uri()
+            }
+        })
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--smoke-test",
-                        action="store_true",
-                        help="Finish quickly for testing")
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
