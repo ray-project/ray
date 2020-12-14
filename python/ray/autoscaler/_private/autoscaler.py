@@ -191,12 +191,12 @@ class StandardAutoscaler:
 
             node_ip = self.provider.internal_ip(node_id)
             if node_ip in last_used and last_used[node_ip] < horizon:
-                logger.info("StandardAutoscaler: "
-                            "{}: Terminating idle node.".format(node_id))
+                logger.debug("StandardAutoscaler: "
+                             "{}: Terminating idle node.".format(node_id))
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
-                logger.info("StandardAutoscaler: "
-                            "{}: Terminating outdated node.".format(node_id))
+                logger.debug("StandardAutoscaler: "
+                             "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
@@ -209,8 +209,8 @@ class StandardAutoscaler:
         while (len(nodes) -
                len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
             to_terminate = nodes.pop()
-            logger.info("StandardAutoscaler: "
-                        "{}: Terminating unneeded node.".format(to_terminate))
+            logger.debug("StandardAutoscaler: "
+                         "{}: Terminating unneeded node.".format(to_terminate))
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
@@ -282,7 +282,7 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
-        logger.info(self.info_string())
+        logger.info(add_prefix(self.info_string()))
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -712,7 +712,6 @@ class StandardAutoscaler:
             if is_active:
                 active_nodes[node_type] += 1
             else:
-                print(f"{ip}: {node_tags}")
                 status = node_tags[TAG_RAY_NODE_STATUS]
                 pending_states = [
                     STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
@@ -740,7 +739,7 @@ class StandardAutoscaler:
     def info_string(self):
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
-        return "\n" + format_info_string(lm_summary, autoscaler_summary)
+        return format_info_string(lm_summary, autoscaler_summary)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
@@ -749,6 +748,16 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes)
         logger.error("StandardAutoscaler: terminated {} node(s)".format(
             len(nodes)))
+
+
+def format_pg(pg):
+    strategy = pg["strategy"]
+    bundles = pg["bundles"]
+    shape_strs = []
+    for bundle, count in bundles:
+        shape_strs.append(f"{bundle} * {count}")
+    bundles_str = ", ".join(shape_strs)
+    return f"{bundles_str} ({strategy})"
 
 
 def format_info_string(lm_summary, autoscaler_summary, time=None):
@@ -785,11 +794,14 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for bundle, count in lm_summary.resource_demand:
         line = f"  {bundle}: {count} pending tasks/actors"
         demand_lines.append(line)
-    for pg, count in lm_summary.pg_demand:
-        line = f"  {bundle}: {count} pending placement groups"
+    for entry in lm_summary.pg_demand:
+        pg, count = entry
+        pg_str = format_pg(pg)
+        line = f"  {pg_str}: {count} pending placement groups"
         demand_lines.append(line)
     for bundle, count in lm_summary.request_demand:
         line = f"  {bundle}: {count} from request_resources()"
+        demand_lines.append(line)
     demand_report = "\n".join(demand_lines)
 
     formatted_output = f"""{header}
@@ -835,11 +847,14 @@ def format_info_string_no_node_types(lm_summary, time=None):
     for bundle, count in lm_summary.resource_demand:
         line = f"  {bundle}: {count} pending tasks/actors"
         demand_lines.append(line)
-    for pg, count in lm_summary.pg_demand:
-        line = f"  {bundle}: {count} pending placement groups"
+    for entry in lm_summary.pg_demand:
+        pg, count = entry
+        pg_str = format_pg(pg)
+        line = f"  {pg_str}: {count} pending placement groups"
         demand_lines.append(line)
     for bundle, count in lm_summary.request_demand:
         line = f"  {bundle}: {count} from request_resources()"
+        demand_lines.append(line)
     demand_report = "\n".join(demand_lines)
 
     formatted_output = f"""{header}

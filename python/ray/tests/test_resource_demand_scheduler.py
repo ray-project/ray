@@ -2097,14 +2097,14 @@ def test_info_string():
         resource_demand=[({
             "CPU": 1
         }, 150)],
-        pg_demand=[{
+        pg_demand=[({
             "bundles": [({
                 "CPU": 4
             }, 5)],
             "strategy": "PACK"
-        }],
+        }, 420)],
         request_demand=[({
-            "CPU": 1
+            "CPU": 16
         }, 100)],
         node_types=[])
     autoscaler_summary = AutoscalerSummary(
@@ -2143,13 +2143,15 @@ Usage:
 
 Demands:
   {'CPU': 1}: 150 pending tasks/actors
-  {'CPU': 1}: strategy pending placement groups
+  {'CPU': 4} * 5 (PACK): 420 pending placement groups
+  {'CPU': 16}: 100 from request_resources()
     """.strip()
 
     actual = format_info_string(
         lm_summary,
         autoscaler_summary,
         time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
+    print(actual)
     assert expected == actual
 
 
@@ -2166,28 +2168,24 @@ def test_info_string_no_node_type():
         resource_demand=[({
             "CPU": 1
         }, 150)],
-        pg_demand=[{
+        pg_demand=[({
             "bundles": [({
                 "CPU": 4
             }, 5)],
             "strategy": "PACK"
-        }],
+        }, 420)],
         request_demand=[({
-            "CPU": 1
+            "CPU": 16
         }, 100)],
         node_types=[({
-            "CPU": 1
-        }, 2), ({
-            "GPU": 4,
-            "CPU": 1
-        }, 4)])
+            "CPU": 16
+        }, 1)])
 
     expected = """
 ========Autoscaler status: 2020-12-28 01:02:03========
 Node Status
 --------------------------------------------------
-  2 node(s) with resources: {'CPU': 1}
-  4 node(s) with resources: {'GPU': 4, 'CPU': 1}
+  1 node(s) with resources: {'CPU': 16}
 
 Resources
 --------------------------------------------------
@@ -2200,12 +2198,14 @@ Usage:
 
 Demands:
   {'CPU': 1}: 150 pending tasks/actors
-  {'CPU': 1}: strategy pending placement groups
+  {'CPU': 4} * 5 (PACK): 420 pending placement groups
+  {'CPU': 16}: 100 from request_resources()
     """.strip()
 
     actual = format_info_string_no_node_types(
         lm_summary,
         time=datetime(year=2020, month=12, day=28, hour=1, minute=2, second=3))
+    print(actual)
     assert expected == actual
 
 

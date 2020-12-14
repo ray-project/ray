@@ -602,7 +602,13 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             # resources. This will behave properly with the current utilization
             # score heuristic, but it's a little dangerous and misleading.
             logger.warning(
-                f"The autoscaler could not find a node type to satisfy the request: {resources}. If this request is related to placement groups the resource request will resolve itself, otherwise please specify a node type with the necessary resource https://docs.ray.io/en/master/cluster/autoscaling.html#multiple-node-type-autoscaling.")
+                f"The autoscaler could not find a node type to satisfy the"
+                f"request: {resources}. If this request is related to "
+                f"placementt groups the resource request will resolve itself, "
+                f"otherwise please specify a node type with the necessary "
+                f"resource "
+                f"https://docs.ray.io/en/master/cluster/autoscaling.html#multiple-node-type-autoscaling."  # noqa: E501
+            )
             break
 
         utilization_scores = sorted(utilization_scores, reverse=True)
