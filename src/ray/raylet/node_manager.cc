@@ -1524,7 +1524,7 @@ void NodeManager::ProcessWaitRequestMessage(
 
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, wait_ms, num_required_objects, wait_local,
-      [this, resolve_objects, was_blocked, client, current_task_id](
+      [this, resolve_objects, client, current_task_id](
           std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
@@ -1538,7 +1538,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
-            AsyncResolveObjectsFinish(client, current_task_id, was_blocked);
+            AsyncResolveObjectsFinish(client, current_task_id, false);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
