@@ -80,11 +80,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
 
-  /// Update the available resources of the specified node.
+  /// Set the available resources of the specified node.
   ///
   /// \param node_id Id of a node.
-  /// \param resources Resources of a node.
-  void UpdateAvailableResources(const NodeID &node_id, const ResourceSet &resources);
+  /// \param resources Available resources of a node.
+  void SetAvailableResources(const NodeID &node_id, const ResourceSet &resources);
 
   /// Acquire resources from the specified node. It will deduct directly from the node
   /// resources.
@@ -110,11 +110,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   std::string DebugString() const;
 
-  /// Update the total resources of the specified node.
+  /// Update the total resources and available resources of the specified node.
   ///
   /// \param node_id Id of a node.
   /// \param changed_resources Changed resources of a node.
-  void UpdateTotalResources(
+  void UpdateResourceCapacity(
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
 
@@ -123,8 +123,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   ///
   /// \param node_id Id of a node.
   /// \param deleted_resources Deleted resources of a node.
-  void DeleteSchedulingResources(const NodeID &node_id,
-                                 const std::vector<std::string> &deleted_resources);
+  void DeleteResources(const NodeID &node_id,
+                       const std::vector<std::string> &deleted_resources);
 
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;

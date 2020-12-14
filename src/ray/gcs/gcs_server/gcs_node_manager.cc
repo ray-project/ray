@@ -317,7 +317,7 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
   if (!light_report_resource_usage_enabled_ ||
       gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
       resource_data.resources_available_changed()) {
-    gcs_resource_manager_->UpdateAvailableResources(
+    gcs_resource_manager_->SetAvailableResources(
         node_id, ResourceSet(MapFromProtobuf(resource_data.resources_available())));
   }
 }

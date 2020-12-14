@@ -51,7 +51,7 @@ void GcsResourceManager::HandleUpdateResources(
     for (auto &entry : request.resources()) {
       (*iter->second.mutable_items())[entry.first] = entry.second;
     }
-    UpdateTotalResources(node_id, to_be_updated_resources);
+    UpdateResourceCapacity(node_id, to_be_updated_resources);
     auto on_done = [this, node_id, to_be_updated_resources, reply,
                     send_reply_callback](const Status &status) {
       RAY_CHECK_OK(status);
@@ -86,7 +86,7 @@ void GcsResourceManager::HandleDeleteResources(
   auto resource_names = VectorFromProtobuf(request.resource_name_list());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
-    DeleteSchedulingResources(node_id, resource_names);
+    DeleteResources(node_id, resource_names);
 
     for (auto &resource_name : resource_names) {
       RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
@@ -145,12 +145,12 @@ const absl::flat_hash_map<NodeID, SchedulingResources>
   return cluster_scheduling_resources_;
 }
 
-void GcsResourceManager::UpdateAvailableResources(const NodeID &node_id,
-                                                  const ResourceSet &resources) {
+void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
+                                               const ResourceSet &resources) {
   cluster_scheduling_resources_[node_id].SetAvailableResources(ResourceSet(resources));
 }
 
-void GcsResourceManager::UpdateTotalResources(
+void GcsResourceManager::UpdateResourceCapacity(
     const NodeID &node_id,
     const std::unordered_map<std::string, double> &changed_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
@@ -165,7 +165,7 @@ void GcsResourceManager::UpdateTotalResources(
   }
 }
 
-void GcsResourceManager::DeleteSchedulingResources(
+void GcsResourceManager::DeleteResources(
     const NodeID &node_id, const std::vector<std::string> &deleted_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
