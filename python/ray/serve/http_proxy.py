@@ -51,6 +51,8 @@ class HTTPProxy:
 
             more_body = message["more_body"]
             body_buffer.append(message["body"])
+            print("******* JUST APPENDED ")
+            print(message["body"])
 
         return b"".join(body_buffer)
 

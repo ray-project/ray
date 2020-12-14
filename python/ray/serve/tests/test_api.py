@@ -18,8 +18,8 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name,
 def test_e2e(serve_instance):
     client = serve_instance
 
-    def function(flask_request):
-        return {"method": flask_request.method}
+    def function(starlette_request):
+        return {"method": starlette_request.method}
 
     client.create_backend("echo:v1", function)
     client.create_endpoint(
@@ -39,7 +39,7 @@ def test_backend_user_config(serve_instance):
         def __init__(self):
             self.count = 10
 
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return self.count, os.getpid()
 
         def reconfigure(self, config):
@@ -761,8 +761,8 @@ def test_serve_metrics(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
-    def batcher(flask_requests):
-        return ["hello"] * len(flask_requests)
+    def batcher(starlette_requests):
+        return ["hello"] * len(starlette_requests)
 
     client.create_backend("metrics", batcher)
     client.create_endpoint("metrics", backend="metrics", route="/metrics")
@@ -811,6 +811,21 @@ def test_serve_metrics(serve_instance):
     except RuntimeError:
         verify_metrics()
 
+def test_starlette_request(serve_instance):
+    client = serve_instance
+
+    async def echo_body(starlette_request):
+        data = await starlette_request.body()
+        return data
+
+    long_string = "This is a long string."
+
+    client.create_backend("echo:v1", echo_body)
+    client.create_endpoint(
+        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+
+    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
+    assert resp == long_string
 
 if __name__ == "__main__":
     import sys

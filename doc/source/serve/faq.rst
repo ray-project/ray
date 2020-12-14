@@ -117,7 +117,7 @@ policies <serve-split-traffic>`, finding the next available replica, and
 batching requests together.
 
 When the request arrives in the model, you can access the data similarly to how
-you would with HTTP request. Here are some examples how ServeRequest mirrors Flask.Request:
+you would with HTTP request. Here are some examples how ServeRequest mirrors Starlette.Request:
 
 .. list-table::
    :header-rows: 1
@@ -125,25 +125,25 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
    * - HTTP
      - ServeHandle
      - | Request
-       | (Flask.Request and ServeRequest)
+       | (Starlette.Request and ServeRequest)
    * - ``requests.get(..., headers={...})``
      - ``handle.options(http_headers={...})``
      - ``request.headers``
    * - ``requests.post(...)``
      - ``handle.options(http_method="POST")``
-     - ``requests.method``
-   * - ``request.get(..., json={...})``
+     - ``request.method``
+   * - ``requests.get(..., json={...})``
      - ``handle.remote({...})``
-     - ``request.json``
-   * - ``request.get(..., form={...})``
+     - ``await request.json()``
+   * - ``requests.get(..., form={...})``
      - ``handle.remote({...})``
-     - ``request.form``
-   * - ``request.get(..., params={"a":"b"})``
+     - ``await request.form()``
+   * - ``requests.get(..., params={"a":"b"})``
      - ``handle.remote(a="b")``
-     - ``request.args``
-   * - ``request.get(..., data="long string")``
+     - ``request.query_params``
+   * - ``requests.get(..., data="long string")``
      - ``handle.remote("long string")``
-     - ``request.data``
+     - ``await request.body()``
    * - ``N/A``
      - ``handle.remote(python_object)``
      - ``request.data``

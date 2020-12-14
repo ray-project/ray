@@ -2,19 +2,37 @@ import io
 import json
 
 import flask
-
+import starlette.requests
 
 def build_flask_request(asgi_scope_dict, request_body):
-    """Build and return a flask request from ASGI payload
+    """Build and return a flask request from ASGI payload.
 
-    This function is indented to be used immediately before task invocation
-    happen.
+    This function is intended to be used immediately before task invocation
+    happens.
     """
     wsgi_environ = build_wsgi_environ(asgi_scope_dict, request_body)
     # We set populate_request=False to prevent self reference, which can lead
     # to objects tracked by python garbage collector and memory growth. See
     # https://github.com/ray-project/ray/issues/12395.
     return flask.Request(wsgi_environ, populate_request=False)
+
+def build_starlette_request(scope, serialized_body: bytes):
+    """Build and return a Starlette Request from ASGI payload.
+
+    This function is intended to be used immediately before task invocation
+    happens.
+    """
+
+    # Simulates receiving HTTP body from TCP socket.  In reality, the body has
+    # already been streamed in chunks and stored in serialized_body.
+    async def mock_receive():
+        return {
+            "body": serialized_body,
+            "type": "http.request",
+            "more_body": False
+        }
+
+    return starlette.requests.Request(scope, mock_receive)
 
 
 def build_wsgi_environ(scope, body):
