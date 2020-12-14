@@ -97,6 +97,8 @@ class StandardStreamInterceptor:
 
     def close(self):
         """Close the handler, not the underlying stream."""
+        if self.closed:
+            return
         self.closed = True
         self.logger.handlers[0].close()
 
