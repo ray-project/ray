@@ -11,7 +11,7 @@ import ray.node
 import ray.ray_constants as ray_constants
 import ray.utils
 from ray.parameter import RayParams
-from ray.ray_logging import (configure_log_file, setup_and_get_worker_interceptor_logger)
+from ray.ray_logging import setup_and_get_worker_interceptor_logger
 
 parser = argparse.ArgumentParser(
     description=("Parse addresses for the worker "
