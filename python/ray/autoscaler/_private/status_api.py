@@ -6,11 +6,7 @@ import ray
 
 logger = logging.getLogger(__name__)
 
-_sess_path = Path(ray.worker._global_node.get_session_dir_path())
-_mutable_status_path = _sess_path / "mutable_status.json"
-_event_log_path = _sess_path / "event_log.json"
-
-print('AAAAAAAAA')
+# logger.info('AAAAAAAAA')
 
 class MutableStatusBaseProxy:
     def _set(self, k, v, flush=True):
@@ -94,19 +90,15 @@ class MutableStatusRoot:
     def __init__(self):
         object.__setattr__(self, "_intercept_setattr", False)
 
-        data = {}
-
-        self.f = _mutable_status_path.open("w")
-        self.proxy = MutableStatusDictProxy(self)
-
-        for sub_k in data:
-            self.proxy._set(sub_k, data[sub_k], flush=False)
+        self.f = None
+        self.proxy = None
 
         self._intercept_setattr = True
 
-    def load(self):
-        close(self.f)
+    def _setup(self, path):
+        object.__setattr__(self, "_intercept_setattr", False)
 
+        data = {}
         if _mutable_status_path.exists():
             with _mutable_status_path.open("r") as f:
                 try:
@@ -116,6 +108,12 @@ class MutableStatusRoot:
                     pass
 
         self.f = _mutable_status_path.open("w")
+        self.proxy = MutableStatusDictProxy(self)
+
+        for sub_k in data:
+            self.proxy._set(sub_k, data[sub_k], flush=False)
+
+        self._intercept_setattr = True
 
     def _flush(self):
         self.f.seek(0)
@@ -139,5 +137,12 @@ class MutableStatusRoot:
 
     def __repr__(self):
         return repr(self.proxy)
-
 mutable_status = MutableStatusRoot()
+
+def setup(session_path):
+    global _sess_path, _mutable_status_path, _event_log_path, mutable_status
+    _sess_path = Path(session_path)
+    _mutable_status_path = _sess_path / "mutable_status.json"
+    _event_log_path = _sess_path / "event_log.json"
+
+    mutable_status.setup(_mutable_status_path)

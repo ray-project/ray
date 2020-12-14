@@ -12,6 +12,7 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.load_metrics import LoadMetrics
+import ray.autoscaler._private.status_api as status_api
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 import ray.gcs_utils
@@ -106,6 +107,7 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
+            status_api.setup()
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)
             self.autoscaling_config = autoscaling_config

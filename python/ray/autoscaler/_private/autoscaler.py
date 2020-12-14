@@ -32,7 +32,7 @@ from ray.autoscaler._private.constants import \
     AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from six.moves import queue
 
-from ray.autoscaler.status_api import mutable_status
+from ray.autoscaler._private.status_api import mutable_status
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +391,7 @@ class StandardAutoscaler:
                     self.provider, self.available_node_types,
                     self.config["max_workers"], upscaling_speed)
 
-            # mutable_status.load()
+            mutable_status._setup()
         except Exception as e:
             if errors_fatal:
                 raise e
@@ -594,13 +594,13 @@ class StandardAutoscaler:
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
         logger.debug(tmp)
 
-        # mutable_status.autoscaler = {
-        #     "node_counts": {
-        #         "updating": len(self.updaters),
-        #         "update_failed": self.num_failed_updates,
-        #         "total": len(nodes)
-        #     }
-        # }
+        mutable_status.autoscaler = {
+            "node_counts": {
+                "updating": len(self.updaters),
+                "update_failed": self.num_failed_updates,
+                "total": len(nodes)
+            }
+        }
 
     def info_string(self, nodes):
         suffix = ""
