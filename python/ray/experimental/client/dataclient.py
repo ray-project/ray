@@ -27,6 +27,7 @@ class DataClient:
         self._req_id = 0
         self._max_id = 100000
         self._client_id = client_id
+        self.data_thread.start()
 
     def _next_id(self) -> int:
         self._req_id += 1
@@ -41,9 +42,9 @@ class DataClient:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
-            metadata={
-                "client_id": self._client_id,
-            }
+            metadata=(
+                ("client_id", self._client_id),
+            )
         )
         for response in resp_stream:
             with self.cv:
@@ -64,7 +65,7 @@ class DataClient:
         self.request_queue.put(req)
         data = None
         with self.cv:
-            self.cv.wait_for(req_id in self.ready_data)
+            self.cv.wait_for(lambda: req_id in self.ready_data)
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         if data is None:

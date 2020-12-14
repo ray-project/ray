@@ -55,9 +55,9 @@ class Worker:
         to_get = []
         single = False
         if isinstance(vals, list):
-            to_get = [x.handle for x in vals]
+            to_get = vals
         elif isinstance(vals, ClientObjectRef):
-            to_get = [vals.handle]
+            to_get = [vals]
             single = True
         else:
             raise Exception("Can't get something that's not a "
@@ -69,14 +69,14 @@ class Worker:
             out = out[0]
         return out
 
-    def _get(self, handle: bytes, timeout: float):
-        req = ray_client_pb2.GetRequest(handle=handle, timeout=timeout)
+    def _get(self, ref: ClientObjectRef, timeout: float):
+        req = ray_client_pb2.GetRequest(handle=ref.handle, timeout=timeout)
         try:
-            data = self.server.GetObject(req, metadata=self.metadata)
+            data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
         if not data.valid:
-            raise TaskCancelledError(handle)
+            raise TaskCancelledError(ref.handle)
         return cloudpickle.loads(data.data)
 
     def put(self, vals):
@@ -96,7 +96,7 @@ class Worker:
     def _put(self, val):
         data = cloudpickle.dumps(val)
         req = ray_client_pb2.PutRequest(data=data)
-        resp = self.server.PutObject(req, metadata=self.metadata)
+        resp = self.data_client.PutObject(req)
         return ClientObjectRef.from_remote_ref(resp.ref)
 
     def wait(self,
@@ -148,11 +148,13 @@ class Worker:
         for arg in args:
             pb_arg = convert_to_arg(arg)
             task.args.append(pb_arg)
+        task.client_id = self._client_id
         logging.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
         return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def close(self):
+        self.data_client.close(False)
         self.server = None
         if self.channel:
             self.channel.close()
@@ -204,4 +206,4 @@ class Worker:
 
 def make_client_id() -> str:
     id = uuid.uuid4()
-    return id.hex()
+    return id.hex

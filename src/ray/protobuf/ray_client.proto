@@ -40,7 +40,7 @@ message ClientTask {
   string name = 2;
   bytes payload_id = 3;
   repeated Arg args = 4;
-  bytes client_id = 5;
+  string client_id = 5;
 }
 
 message RemoteRef {
