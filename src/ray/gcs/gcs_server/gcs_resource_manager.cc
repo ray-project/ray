@@ -28,7 +28,7 @@ void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &requ
   NodeID node_id = NodeID::FromBinary(request.node_id());
   auto iter = cluster_resources_.find(node_id);
   if (iter != cluster_resources_.end()) {
-    for (auto &resource : iter->second.items()) {
+    for (const auto &resource : iter->second.items()) {
       (*reply->mutable_resources())[resource.first] = resource.second;
     }
   }
@@ -43,12 +43,12 @@ void GcsResourceManager::HandleUpdateResources(
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto iter = cluster_resources_.find(node_id);
   std::unordered_map<std::string, double> to_be_updated_resources;
-  for (auto &entry : request.resources()) {
+  for (const auto &entry : request.resources()) {
     to_be_updated_resources.emplace(entry.first, entry.second.resource_capacity());
   }
 
   if (iter != cluster_resources_.end()) {
-    for (auto &entry : request.resources()) {
+    for (const auto &entry : request.resources()) {
       (*iter->second.mutable_items())[entry.first] = entry.second;
     }
     UpdateResourceCapacity(node_id, to_be_updated_resources);
@@ -57,8 +57,12 @@ void GcsResourceManager::HandleUpdateResources(
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
-      for (auto &it : to_be_updated_resources) {
-        (*node_resource_change.mutable_updated_resources())[it.first] = it.second;
+      for (const auto &it : to_be_updated_resources) {
+        const auto &resource_name = it.first;
+        const auto &resource_capacity = it.second;
+        auto &node_updated_resources =
+            (*node_resource_change.mutable_updated_resources());
+        node_updated_resources[resource_name] = resource_capacity;
       }
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
@@ -88,7 +92,7 @@ void GcsResourceManager::HandleDeleteResources(
   if (iter != cluster_resources_.end()) {
     DeleteResources(node_id, resource_names);
 
-    for (auto &resource_name : resource_names) {
+    for (const auto &resource_name : resource_names) {
       RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
     }
     auto on_done = [this, node_id, resource_names, reply,
