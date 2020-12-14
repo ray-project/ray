@@ -143,7 +143,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           config.max_worker_port, config.worker_ports, gcs_client_,
           config.worker_commands, config.raylet_config,
           /*starting_worker_timeout_callback=*/
-          [this]() { this->DispatchTasks(this->local_queues_.GetReadyTasksByClass()); }),
+          [this]() {
+            if (RayConfig::instance().new_scheduler_enabled()) {
+              ScheduleAndDispatch();
+            } else {
+            this->DispatchTasks(this->local_queues_.GetReadyTasksByClass());
+            }
+          }),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,
