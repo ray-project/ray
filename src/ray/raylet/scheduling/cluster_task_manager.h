@@ -129,11 +129,15 @@ class ClusterTaskManager {
   NodeInfoGetter get_node_info_;
 
   /// Queue of lease requests that are waiting for resources to become available.
+  /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
+  /// Tasks move from scheduled | waiting -> dispatch.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+
   /// Tasks waiting for arguments to be transferred locally.
+  /// Tasks move from waiting -> dispatch.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Determine whether a task should be immediately dispatched,
