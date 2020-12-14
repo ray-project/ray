@@ -5,13 +5,17 @@ env:
 
 on:
   push:
-    branches:
-      - master
-      - releases/*
+    branches-ignore:
+        - '**'
+    # branches:
+    #   - master
+    #   - releases/*
   pull_request:
-    branches:
-      - master
-      - releases/*
+    branches-ignore:
+        - '**'
+    # branches:
+    #   - master
+    #   - releases/*
 
 jobs:
   jenkins:

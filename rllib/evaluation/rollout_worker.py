@@ -559,6 +559,11 @@ class RolloutWorker(ParallelIteratorWorker):
         else:
             max_batches = float("inf")
 
+        if log_once("batch_mode"):
+            logger.info(f"Sampling with batch_mode={self.batch_mode} - "
+                        f"max_batches={max_batches} - "
+                        f"rollout_fragment_length{self.rollout_fragment_length}")
+
         while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):
             batch = self.input_reader.next()
