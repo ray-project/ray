@@ -1047,10 +1047,10 @@ class LoadMetricsTest(unittest.TestCase):
         assert len(summary.resource_demand) == 3
 
         assert ({
-            "Bundles": [{
+            "bundles": [({
                 "GPU": 2
-            }] * 2,
-            "Strategy": "PACK"
+            }, 2)],
+            "strategy": "PACK"
         }, 2) in summary.pg_demand
         assert len(summary.pg_demand) == 1
 

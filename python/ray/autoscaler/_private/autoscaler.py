@@ -27,7 +27,7 @@ from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf, add_prefix, \
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf,\
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
@@ -282,7 +282,7 @@ class StandardAutoscaler:
         for node_id in nodes:
             self.recover_if_needed(node_id, now)
 
-        logger.info(add_prefix(self.info_string()))
+        logger.info(self.info_string())
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:
@@ -739,7 +739,7 @@ class StandardAutoscaler:
     def info_string(self):
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
-        return format_info_string(lm_summary, autoscaler_summary)
+        return "\n" + format_info_string(lm_summary, autoscaler_summary)
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")

@@ -207,8 +207,8 @@ class LoadMetrics:
             # marshalling this (into a protobuf)?
             bundles = list(map(dict, pg_tuple[0]))
             return {
-                "Bundles": bundles,
-                "Strategy": PlacementStrategy.Name(pg_tuple[1])
+                "bundles": freq_of_dicts(bundles),
+                "strategy": PlacementStrategy.Name(pg_tuple[1])
             }
 
         summarized_placement_groups = freq_of_dicts(
