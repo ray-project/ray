@@ -410,7 +410,9 @@ void NodeManager::Heartbeat() {
   heartbeat_data->set_node_id(self_node_id_.Binary());
   RAY_CHECK_OK(
       gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
-        RAY_CHECK(status.ok()) << "This node has beem marked as dead.";
+        if (status.IsDisconnected()) {
+          RAY_LOG(FATAL) << "This node has beem marked as dead.";
+        }
       }));
 
   if (debug_dump_period_ > 0 &&
