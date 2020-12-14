@@ -94,8 +94,13 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="flakes more often")
-def test_load_balancing_with_dependencies(ray_start_cluster):
+@pytest.mark.parametrize("fast", [True, False])
+def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+    if fast and new_scheduler_enabled:
+        # Load-balancing on new scheduler can be inefficient if (task
+        # duration:heartbeat interval) is small enough.
+        pytest.skip()
+
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -106,7 +111,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
+        if fast:
+            time.sleep(0.010)
+        else:
+            time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure

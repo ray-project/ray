@@ -1,5 +1,4 @@
 ax-platform
-gpytorch==1.2
 bayesian-optimization
 ConfigSpace==0.4.10
 dragonfly-opt

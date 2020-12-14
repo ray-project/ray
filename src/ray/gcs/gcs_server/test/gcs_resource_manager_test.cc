@@ -25,10 +25,10 @@ using ::testing::_;
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
   }
 
-  std::shared_ptr<gcs::GcsResourceManagerInterface> gcs_resource_manager_;
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
 TEST_F(GcsResourceManagerTest, TestBasic) {
