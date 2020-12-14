@@ -2,10 +2,13 @@ package io.ray.test;
 
 import static io.ray.runtime.util.SystemUtil.pid;
 
+
+import com.google.common.collect.ImmutableList;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.exception.RayActorException;
+import io.ray.api.exception.RayTaskException;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.SystemUtil;
 import java.io.IOException;
@@ -81,8 +84,10 @@ public class ExitActorTest extends BaseTest {
     Assert.assertEquals(
         2, (int) actor2.task(ExitingActor::getSizeOfActorContextMap).remote().get());
     ObjectRef<Boolean> obj1 = actor1.task(ExitingActor::exit).remote();
-    Assert.assertThrows(RayActorException.class, obj1::get);
+    // Not allowed
+    Assert.assertThrows(RayTaskException.class, obj1::get);
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
+    Assert.assertEquals((int) actor1.task(ExitingActor::getPid).remote().get(), pid);
     // Actor 2 shouldn't exit or be reconstructed.
     Assert.assertEquals(1, (int) actor2.task(ExitingActor::incr).remote().get());
     Assert.assertEquals(
@@ -96,7 +101,7 @@ public class ExitActorTest extends BaseTest {
         Ray.actor(ExitingActor::new)
             .setMaxRestarts(10000)
             // Set dummy JVM options to start a worker process with only one worker.
-            .setJvmOptions(" ")
+        .setJvmOptions(ImmutableList.of(" "))
             .remote();
     int pid = actor.task(ExitingActor::getPid).remote().get();
     Assert.assertTrue(SystemUtil.isProcessAlive(pid));
