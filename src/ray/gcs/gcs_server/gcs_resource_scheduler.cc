@@ -49,7 +49,8 @@ double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requeste
 /////////////////////////////// Begin of GcsResourceScheduler ///////////////////////////
 std::vector<NodeID> GcsResourceScheduler::Schedule(
     std::vector<ResourceSet> required_resources, SchedulingPolicy policy,
-    const std::function<bool(const NodeID &)> &node_filter_func) {
+    const std::function<bool(const NodeID &)> &node_filter_func,
+    const std::function<std::vector<NodeID>(const std::vector<NodeScore> &, selected_nodes)> &node_rank_func) {
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
 
   // Filter candidate nodes.
@@ -66,6 +67,12 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
   // Score and rank nodes.
   switch (policy.type_) {
     case SPREAD:
+      auto used_nodes;
+      for (const auto &resource : to_schedule_resources) {
+        sort;
+        // rerank
+        node_rank_func()
+      }
       break;
     case STRICT_SPREAD:
       break;
@@ -77,9 +84,7 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
       break;
   }
 
-  for (const auto &resource : to_schedule_resources) {
 
-  }
 
   std::vector<NodeID> result;
   return result;
