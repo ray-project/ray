@@ -245,7 +245,6 @@ def hash_runtime_conf(file_mounts,
 
     return (_hash_cache[conf_str], file_mounts_contents_hash)
 
-
 def add_resources(dict1: Dict[str, float],
                   dict2: Dict[str, float]) -> Dict[str, float]:
     """Given 2 dictionaries, combine them into a new dictionary. Handle collisions
@@ -269,3 +268,13 @@ def freq_of_dicts(dicts: List[Dict],
     for as_set, count in freqs.items():
         as_list.append((deserializer(as_set), count))
     return as_list
+
+def add_prefix(info_string, prefix):
+    """Prefixes each line of info_string, except the first, by prefix."""
+    lines = info_string.split("\n")
+    prefixed_lines = [lines[0]]
+    for line in lines[1:]:
+        prefixed_line = ":".join([prefix, line])
+        prefixed_lines.append(prefixed_line)
+    prefixed_info_string = "\n".join(prefixed_lines)
+    return prefixed_info_string

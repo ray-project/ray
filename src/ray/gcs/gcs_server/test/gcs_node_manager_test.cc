@@ -23,6 +23,7 @@ class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
   }
 
  protected:
@@ -41,10 +42,10 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   auto node_id = NodeID::FromBinary(node->node_id());
 
   node_manager.AddNode(node);
-  ASSERT_EQ(node, node_manager.GetNode(node_id).value());
+  ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
   node_manager.RemoveNode(node_id);
-  ASSERT_TRUE(!node_manager.GetNode(node_id).has_value());
+  ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {

@@ -139,12 +139,12 @@ TEST_F(GlobalStateAccessorTest, TestNodeResourceTable) {
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
         *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     WaitReady(promise.get_future(), timeout_ms_);
-    ray::gcs::NodeInfoAccessor::ResourceMap resources;
+    ray::gcs::NodeResourceInfoAccessor::ResourceMap resources;
     rpc::ResourceTableData resource_table_data;
     resource_table_data.set_resource_capacity(static_cast<double>(index + 1) + 0.1);
     resources[std::to_string(index)] =
         std::make_shared<rpc::ResourceTableData>(resource_table_data);
-    RAY_IGNORE_EXPR(gcs_client_->Nodes().AsyncUpdateResources(
+    RAY_IGNORE_EXPR(gcs_client_->NodeResources().AsyncUpdateResources(
         node_id, resources, [](Status status) { RAY_CHECK(status.ok()); }));
   }
   auto node_table = global_state_->GetAllNodeInfo();

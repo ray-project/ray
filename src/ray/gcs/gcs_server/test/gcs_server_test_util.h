@@ -366,29 +366,6 @@ struct GcsServerMocker {
 
     bool IsRemoved(const NodeID &node_id) const override { return false; }
 
-    Status AsyncGetResources(
-        const NodeID &node_id,
-        const gcs::OptionalItemCallback<ResourceMap> &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                                const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncDeleteResources(const NodeID &node_id,
-                                const std::vector<std::string> &resource_names,
-                                const gcs::StatusCallback &callback) override {
-      return Status::NotImplemented("");
-    }
-
-    Status AsyncSubscribeToResources(
-        const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
     Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                                 const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");

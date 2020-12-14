@@ -182,8 +182,8 @@ class GANOperator(TrainingOperator):
     @override(TrainingOperator)
     def train_batch(self, batch, batch_info):
         """Trains on one batch of data from the data creator."""
-        real_label = 1
-        fake_label = 0
+        real_label = 1.0
+        fake_label = 0.
         discriminator, generator = self.models
         optimD, optimG = self.optimizers
 
