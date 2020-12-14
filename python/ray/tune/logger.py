@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32, np.int64]
 
+
 class Logger:
     """Logging interface for ray.tune.
 
@@ -75,6 +76,7 @@ class NoopLogger(Logger):
     def on_result(self, result):
         pass
 
+
 class JsonLogger(Logger):
     """Logs trial results in json format.
 
@@ -107,12 +109,11 @@ class JsonLogger(Logger):
         self.config = config
         config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
-            json.dump(
-                self.config,
-                f,
-                indent=2,
-                sort_keys=True,
-                cls=SafeFallbackEncoder)
+            json.dump(self.config,
+                      f,
+                      indent=2,
+                      sort_keys=True,
+                      cls=SafeFallbackEncoder)
         config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
@@ -199,21 +200,25 @@ class TBXLogger(Logger):
             if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
                     and not np.isnan(value)):
                 valid_result[full_attr] = value
-                self._file_writer.add_scalar(
-                    full_attr, value, global_step=step)
+                self._file_writer.add_scalar(full_attr,
+                                             value,
+                                             global_step=step)
             elif ((isinstance(value, list) and len(value) > 0)
                   or (isinstance(value, np.ndarray) and value.size > 0)):
                 valid_result[full_attr] = value
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
-                    self._file_writer.add_video(
-                        full_attr, value, global_step=step, fps=20)
+                    self._file_writer.add_video(full_attr,
+                                                value,
+                                                global_step=step,
+                                                fps=20)
                     continue
 
                 try:
-                    self._file_writer.add_histogram(
-                        full_attr, value, global_step=step)
+                    self._file_writer.add_histogram(full_attr,
+                                                    value,
+                                                    global_step=step)
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
@@ -427,8 +432,8 @@ class LegacyLoggerCallback(LoggerCallback):
 
     def __init__(self, logger_classes: Iterable[Type[Logger]]):
         self.logger_classes = list(logger_classes)
-        self._class_trial_loggers: Dict[Type[Logger], Dict["Trial",
-                                                           Logger]] = {}
+        self._class_trial_loggers: Dict[Type[Logger],
+                                        Dict["Trial", Logger]] = {}
 
     def log_trial_start(self, trial: "Trial"):
         trial.init_logdir()
@@ -504,12 +509,11 @@ class JsonLoggerCallback(LoggerCallback):
 
         config_out = os.path.join(trial.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
-            json.dump(
-                self._trial_configs[trial],
-                f,
-                indent=2,
-                sort_keys=True,
-                cls=SafeFallbackEncoder)
+            json.dump(self._trial_configs[trial],
+                      f,
+                      indent=2,
+                      sort_keys=True,
+                      cls=SafeFallbackEncoder)
 
         config_pkl = os.path.join(trial.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
@@ -600,8 +604,8 @@ class TBXLoggerCallback(LoggerCallback):
         if trial in self._trial_writer:
             self._trial_writer[trial].close()
         trial.init_logdir()
-        self._trial_writer[trial] = self._summary_writer_cls(
-            trial.logdir, flush_secs=30)
+        self._trial_writer[trial] = self._summary_writer_cls(trial.logdir,
+                                                             flush_secs=30)
         self._trial_result[trial] = {}
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
@@ -626,21 +630,25 @@ class TBXLoggerCallback(LoggerCallback):
             if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
                     and not np.isnan(value)):
                 valid_result[full_attr] = value
-                self._trial_writer[trial].add_scalar(
-                    full_attr, value, global_step=step)
+                self._trial_writer[trial].add_scalar(full_attr,
+                                                     value,
+                                                     global_step=step)
             elif ((isinstance(value, list) and len(value) > 0)
                   or (isinstance(value, np.ndarray) and value.size > 0)):
                 valid_result[full_attr] = value
 
                 # Must be video
                 if isinstance(value, np.ndarray) and value.ndim == 5:
-                    self._trial_writer[trial].add_video(
-                        full_attr, value, global_step=step, fps=20)
+                    self._trial_writer[trial].add_video(full_attr,
+                                                        value,
+                                                        global_step=step,
+                                                        fps=20)
                     continue
 
                 try:
-                    self._trial_writer[trial].add_histogram(
-                        full_attr, value, global_step=step)
+                    self._trial_writer[trial].add_histogram(full_attr,
+                                                            value,
+                                                            global_step=step)
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
                 except (ValueError, TypeError):
@@ -656,8 +664,8 @@ class TBXLoggerCallback(LoggerCallback):
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         if trial in self._trial_writer:
             if trial and trial.evaluated_params and self._trial_result[trial]:
-                flat_result = flatten_dict(
-                    self._trial_result[trial], delimiter="/")
+                flat_result = flatten_dict(self._trial_result[trial],
+                                           delimiter="/")
                 scrubbed_result = {
                     k: value
                     for k, value in flat_result.items()
@@ -700,11 +708,13 @@ class TBXLoggerCallback(LoggerCallback):
                              "This may be due to an unsupported type "
                              "in the hyperparameter values.")
 
+
 # Maintain backwards compatibility.
-from ray.tune.integration.mlflow import MLFlowLogger as _MLFlowLogger
+from ray.tune.integration.mlflow import MLFlowLogger as _MLFlowLogger  # noqa: E402, E501
 MLFlowLogger = _MLFlowLogger
 # The capital L is a typo, but needs to remain for backwards compatibility.
 MLFLowLogger = _MLFlowLogger
+
 
 def pretty_print(result):
     result = result.copy()

@@ -1,22 +1,25 @@
 import os
 import unittest
 from collections import namedtuple
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from ray.tune.function_runner import wrap_function
 from ray.tune.integration.mlflow import MLFlowLoggerCallback, MLFlowLogger, \
     mlflow_mixin, MLFlowTrainableMixin
 
 
-class MockTrial(namedtuple("MockTrial", ["config", "trial_name",
-                                         "trial_id", "logdir"])):
+class MockTrial(
+        namedtuple("MockTrial",
+                   ["config", "trial_name", "trial_id", "logdir"])):
     def __hash__(self):
         return hash(self.trial_id)
 
     def __str__(self):
         return self.trial_name
 
+
 MockRunInfo = namedtuple("MockRunInfo", ["run_id"])
+
 
 class MockRun:
     def __init__(self, run_id, tags=None):
@@ -40,7 +43,9 @@ class MockRun:
         self.terminated = True
         self.status = status
 
+
 MockExperiment = namedtuple("MockExperiment", ["name", "experiment_id"])
+
 
 class MockMlflowClient:
     def __init__(self, tracking_uri=None, registry_uri=None):
@@ -111,14 +116,17 @@ class MockMlflowClient:
     def experiment_names(self):
         return [e.name for e in self.experiments]
 
+
 class _MockMlFlowTrainableMixin(MLFlowTrainableMixin):
     _mlflow = MockMlflowClient()
+
 
 def clear_env_vars():
     if "MLFLOW_EXPERIMENT_NAME" in os.environ:
         del os.environ["MLFLOW_EXPERIMENT_NAME"]
     if "MLFLOW_EXPERIMENT_ID" in os.environ:
         del os.environ["MLFLOW_EXPERIMENT_ID"]
+
 
 class MLFlowTest(unittest.TestCase):
     @patch("ray.tune.integration.mlflow.MlflowClient", MockMlflowClient)
@@ -130,8 +138,7 @@ class MLFlowTest(unittest.TestCase):
         self.assertEqual(logger.client.tracking_uri, "test1")
         self.assertEqual(logger.client.registry_uri, "test2")
         self.assertListEqual(logger.client.experiment_names,
-                             ["existing_experiment",
-                                                  "test_exp"])
+                             ["existing_experiment", "test_exp"])
         self.assertEqual(logger.experiment_id, 1)
 
         # Check if client recognizes already existing experiment.
@@ -203,14 +210,14 @@ class MLFlowTest(unittest.TestCase):
         self.assertEqual(len(logger.client.runs[1]), 1)
 
         # Check metrics are logged properly.
-        result = {
-            "metric1": 0.8,
-            "metric2": 1
-        }
+        result = {"metric1": 0.8, "metric2": 1}
         logger.on_trial_result(0, [], trial, result)
         mock_run = logger.client.runs[1][0]
-        self.assertListEqual(mock_run.metrics, [{"metric1": 0.8},
-                                                {"metric2": 1.0}])
+        self.assertListEqual(mock_run.metrics, [{
+            "metric1": 0.8
+        }, {
+            "metric2": 1.0
+        }])
 
         # Check that artifact is logged on termination.
         logger.on_trial_complete(0, [], trial)
@@ -231,10 +238,12 @@ class MLFlowTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 logger = MLFlowLogger(trial_config, "/tmp", trial)
 
-            trial_config.update({"logger_config": {
-                "mlflow_tracking_uri": "test_tracking_uri",
-                "mlflow_experiment_id": 0
-            }})
+            trial_config.update({
+                "logger_config": {
+                    "mlflow_tracking_uri": "test_tracking_uri",
+                    "mlflow_experiment_id": 0
+                }
+            })
             trial = MockTrial(trial_config, "trial2", 1, "artifact")
             logger = MLFlowLogger(trial_config, "/tmp", trial)
             experiment_logger = logger._trial_experiment_logger
@@ -265,28 +274,17 @@ class MLFlowTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             wrapped = wrap_function(train_fn)(trial_config)
 
-        trial_config["mlflow"].update({"tracking_uri":
-                                           "test_tracking_uri",
-                                       "experiment_name":
-                                           "existing_experiment"})
+        trial_config["mlflow"].update({
+            "tracking_uri": "test_tracking_uri",
+            "experiment_name": "existing_experiment"
+        })
         wrapped = wrap_function(train_fn)(trial_config)
         client = wrapped._mlflow
         self.assertEqual(client.tracking_uri, "test_tracking_uri")
         self.assertTupleEqual(client.active_run.run_id, (0, 0))
 
+
 if __name__ == "__main__":
     import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))
-
-
-
-
-
-
-
-
-
-
-
-

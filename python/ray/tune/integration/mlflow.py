@@ -15,10 +15,11 @@ except ImportError:
                  "MLFlowLoggerCallback/mlflow_mixin.")
     mlflow = MlflowClient = None
 
+
 class MLFlowLoggerCallback(LoggerCallback):
     """MLFlow Logger to automatically log Tune results and config to MLFlow.
 
-    MLFlow (https://mlflow.org) Tracking is an open source library for 
+    MLFlow (https://mlflow.org) Tracking is an open source library for
     recording and querying experiments. This Ray Tune ``LoggerCallback``
     sends information (config parameters, training results & metrics,
     and artifacts) to MLFlow for automatic experiment tracking.
@@ -55,9 +56,12 @@ class MLFlowLoggerCallback(LoggerCallback):
                 save_artifact=True)])
 
     """
-    def __init__(self, tracking_uri:Optional[str]=None,
-                 registry_uri:Optional[str]=None,
-                 experiment_name:Optional[str]=None, save_artifact:bool=False):
+
+    def __init__(self,
+                 tracking_uri: Optional[str] = None,
+                 registry_uri: Optional[str] = None,
+                 experiment_name: Optional[str] = None,
+                 save_artifact: bool = False):
         if mlflow is None:
             raise RuntimeError("mlflow has not been installed. Please `pip "
                                "install mlflow` to use the MLFlowLogger.")
@@ -75,7 +79,7 @@ class MLFlowLoggerCallback(LoggerCallback):
                 # Then check if experiment_id is set and exists.
                 experiment_id = int(os.environ.get("MLFLOW_EXPERIMENT_ID"))
                 if experiment_id is None or not self.client.get_experiment(
-                    experiment_id):
+                        experiment_id):
                     experiment_id = None
 
         if experiment_id is None:
@@ -96,7 +100,6 @@ class MLFlowLoggerCallback(LoggerCallback):
 
         self._trial_runs = {}
 
-
     def log_trial_start(self, trial: "Trial"):
         # Create run if not already exists.
         if trial not in self._trial_runs:
@@ -112,7 +115,6 @@ class MLFlowLoggerCallback(LoggerCallback):
         for key, value in config.items():
             self.client.log_param(run_id=run_id, key=key, value=value)
 
-
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         run_id = self._trial_runs[trial]
         for key, value in result.items():
@@ -120,8 +122,10 @@ class MLFlowLoggerCallback(LoggerCallback):
                 value = float(value)
             except ValueError:
                 continue
-            self.client.log_metric(run_id=run_id, key=key, value=value,
-                              step=iteration)
+            self.client.log_metric(run_id=run_id,
+                                   key=key,
+                                   value=value,
+                                   step=iteration)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
@@ -133,7 +137,6 @@ class MLFlowLoggerCallback(LoggerCallback):
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
         self.client.set_terminated(run_id=run_id, status=status)
-
 
 
 class MLFlowLogger(Logger):
@@ -152,11 +155,12 @@ class MLFlowLogger(Logger):
 
         experiment_id = logger_config.get("mlflow_experiment_id")
         if experiment_id is None or not mlflow.get_experiment(experiment_id):
-            raise ValueError("You must provide a valid `mlflow_experiment_id` "
-                             "in your `logger_config` dict in the `config` "
-                             "dict passed to `tune.run`. "
-                             "Are you sure you passed in a `experiment_id` and "
-                             "the experiment exists?")
+            raise ValueError(
+                "You must provide a valid `mlflow_experiment_id` "
+                "in your `logger_config` dict in the `config` "
+                "dict passed to `tune.run`. "
+                "Are you sure you passed in a `experiment_id` and "
+                "the experiment exists?")
         else:
             experiment_name = mlflow.get_experiment(experiment_id).name
 
@@ -166,8 +170,10 @@ class MLFlowLogger(Logger):
         self._trial_experiment_logger.log_trial_start(self.trial)
 
     def on_result(self, result: Dict):
-        self._trial_experiment_logger.log_trial_result(iteration=result.get(
-            TRAINING_ITERATION), trial=self.trial, result=result)
+        self._trial_experiment_logger.log_trial_result(
+            iteration=result.get(TRAINING_ITERATION),
+            trial=self.trial,
+            result=result)
 
     def close(self):
         self._trial_experiment_logger.log_trial_end(trial=self.trial,
@@ -266,8 +272,9 @@ def mlflow_mixin(func: Callable):
     if mlflow is None:
         raise RuntimeError("mlflow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
-    func.__mixins__ = (MLFlowTrainableMixin,)
+    func.__mixins__ = (MLFlowTrainableMixin, )
     return func
+
 
 class MLFlowTrainableMixin:
     _mlflow = mlflow
@@ -294,10 +301,10 @@ class MLFlowTrainableMixin:
         tracking_uri = mlflow_config.pop("tracking_uri", None)
         if tracking_uri is None:
             raise ValueError("MLFlow mixin specified but no "
-                                 "tracking_uri has been "
-                                 "passed in. Make sure to include a `mlflow` "
-                                 "key in your `config` dict containing at "
-                                 "least a `tracking_uri`")
+                             "tracking_uri has been "
+                             "passed in. Make sure to include a `mlflow` "
+                             "key in your `config` dict containing at "
+                             "least a `tracking_uri`")
         self._mlflow.set_tracking_uri(tracking_uri)
 
         # First see if experiment_id is passed in.
@@ -306,23 +313,23 @@ class MLFlowTrainableMixin:
             # Check for name.
             experiment_name = mlflow_config.pop("experiment_name", None)
             if experiment_name is None:
-                raise ValueError("MLFlow mixin specified but no "
-                                 "experiment_name or experiment_id has been "
-                                 "passed in. Make sure to include a `mlflow` "
-                                 "key in your `config` dict containing at "
-                                 "least a `experiment_name` or `experiment_id` "
-                                 "specification.")
+                raise ValueError(
+                    "MLFlow mixin specified but no "
+                    "experiment_name or experiment_id has been "
+                    "passed in. Make sure to include a `mlflow` "
+                    "key in your `config` dict containing at "
+                    "least a `experiment_name` or `experiment_id` "
+                    "specification.")
             # Name exists.
             experiment = self._mlflow.get_experiment_by_name(experiment_name)
             experiment_id = experiment.experiment_id
 
         self.experiment_id = experiment_id
 
-        run_name = self.trial_name+"_"+self.trial_id
+        run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")
         self._mlflow.start_run(experiment_id=self.experiment_id,
                                run_name=run_name)
 
     def stop(self):
         self._mlflow.end_run()
-
