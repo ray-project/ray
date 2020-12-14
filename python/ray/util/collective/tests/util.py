@@ -92,21 +92,21 @@ def create_collective_workers(num_workers=2,
 def init_tensors_for_gather_scatter(actors,
                                     array_size=10,
                                     dtype=cp.float32,
-                                    tensor_backend='cupy'):
+                                    tensor_backend="cupy"):
     world_size = len(actors)
     for i, a in enumerate(actors):
-        if tensor_backend == 'cupy':
+        if tensor_backend == "cupy":
             t = cp.ones(array_size, dtype=dtype) * (i + 1)
-        elif tensor_backend == 'torch':
+        elif tensor_backend == "torch":
             t = torch.ones(array_size, dtype=torch.float32).cuda() * (i + 1)
         else:
             raise RuntimeError("Unsupported tensor backend.")
         ray.wait([a.set_buffer.remote(t)])
-    if tensor_backend == 'cupy':
+    if tensor_backend == "cupy":
         list_buffer = [
             cp.ones(array_size, dtype=dtype) for _ in range(world_size)
         ]
-    elif tensor_backend == 'torch':
+    elif tensor_backend == "torch":
         list_buffer = [
             torch.ones(array_size, dtype=torch.float32).cuda()
             for _ in range(world_size)

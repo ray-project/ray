@@ -293,30 +293,13 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
     if len(tensor_list) != g.world_size:
-        # here we want to make it more strict than other allgather implementations.
+        # Typically CLL lib requires len(tensor_list) >= world_size;
+        # Here we make it more strict: len(tensor_list) == world_size.
         raise RuntimeError(
             "The length of the tensor list operands to allgather "
             "must not be equal to world_size.")
     opts = types.AllGatherOptions()
     g.allgather(tensor_list, tensor, opts)
-
-
-# def gather(tensor,
-#            gather_list: list = None,
-#            dst_rank : int = 0,
-#            group_name: str  = "default"):
-#     """
-#     Gather tensors from each process of the collective group to a destination process.
-#
-#     Args:
-#         tensor: the tensor to be gathered in the current process.
-#         gather_list (list): the resultant list of tensors, not None iff rank == dst_rank.
-#         dst_rank (int): the rank of the destination process.
-#         group_name (str): the name of the collective group.
-#
-#     Returns:
-#         None
-#     """
 
 
 def reducescatter(tensor,

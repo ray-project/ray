@@ -246,7 +246,7 @@ class NCCLGroup(BaseGroup):
                   tensor,
                   allgather_options=AllGatherOptions()):
         """
-        Allgather tensor across the collective group into a list following options.
+        Allgather tensors across the group into a list of  tensors.
 
         Args:
             tensor_list: the tensor list to store the results.
@@ -275,11 +275,11 @@ class NCCLGroup(BaseGroup):
                       tensor_list,
                       reducescatter_options=ReduceScatterOptions()):
         """
-        Reduce a list of tensors across the group and then scatter a tensor to a process.
+        Reduce a list of tensors across the group, then scatter to each process.
 
         Args:
-            tensor: the output tensor after reduce and scatter, could be unspecified.
-            tensor_list: the list of tensor on the current process to be reduced.
+            tensor: the output after reducescatter (could be unspecified).
+            tensor_list: the list of tensor to be reduce and scattered.
             reducescatter_options: reducescatter options.
 
         Returns:
@@ -351,17 +351,19 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 def _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list):
     """Check the compatibility between tensor input and tensor list inputs."""
     if not tensor_list:
-        raise RuntimeError('Got empty list of tensors.')
+        raise RuntimeError("Got empty list of tensors.")
     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-    n_elems = nccl_util.get_tensor_n_elements(tensor)
     shape = nccl_util.get_tensor_shape(tensor)
     for t in tensor_list:
         # check dtype
-        if nccl_util.get_nccl_tensor_dtype(t) != dtype:
+        dt = nccl_util.get_nccl_tensor_dtype(t)
+        if dt != dtype:
             raise RuntimeError("All tensor operands to scatter/gather must "
-                               "have the same dtype.")
-        # check the shape.
-        # Here we make it more strict -- we require shape match
+                               "have the same dtype. Got '{}' and '{}'"
+                               "".format(dt, dtype))
+        # Note: typically CCL libraries only requires they have the same
+        # number of elements;
+        # Here we make it more strict -- we require exact shape match.
         if nccl_util.get_tensor_shape(t) != shape:
             raise RuntimeError("All tensor operands to scatter/gather must "
-                               "have the same number of elements.")
+                               "have the same shape.")

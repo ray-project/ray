@@ -3,7 +3,8 @@ import pytest
 import ray
 from random import shuffle
 
-from python.ray.util.collective.tests.util import Worker, create_collective_workers
+from python.ray.util.collective.tests.util import Worker, \
+    create_collective_workers
 
 
 @pytest.mark.parametrize("world_size", [2, 3, 4])

@@ -56,16 +56,20 @@ class BaseGroup(metaclass=ABCMeta):
     def reduce(self, tensor, reduce_options=ReduceOptions()):
         raise NotImplementedError()
 
-    # @abstractmethod
-    # def allgather(self):
-    #     pass
-    #
-    #
+    @abstractmethod
+    def allgather(self,
+                  tensor_list,
+                  tensor,
+                  allgather_options=AllGatherOptions()):
+        raise NotImplementedError()
 
     @abstractmethod
     def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
         raise NotImplementedError()
 
-    # @abstractmethod
-    # def reduce_scatter(self):
-    #     pass
+    @abstractmethod
+    def reduce_scatter(self,
+                       tensor,
+                       tensor_list,
+                       reducescatter_options=ReduceScatterOptions()):
+        raise NotImplementedError()

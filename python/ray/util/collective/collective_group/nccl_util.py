@@ -172,7 +172,7 @@ def copy_tensor(dst_tensor, src_tensor):
         None
     """
     if isinstance(dst_tensor, cupy.ndarray) \
-        and isinstance(src_tensor, cupy.ndarray):
+            and isinstance(src_tensor, cupy.ndarray):
         cupy.copyto(dst_tensor, src_tensor)
         return
     if torch_available():
