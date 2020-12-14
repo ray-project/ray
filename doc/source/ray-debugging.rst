@@ -89,6 +89,44 @@ The Ray debugger supports the
 `same commands as PDB
 <https://docs.python.org/3/library/pdb.html#debugger-commands>`_.
 
+Stepping between Ray tasks
+--------------------------
+
+You can use the debugger to step between Ray tasks. Let's take the
+following recursive function as an example:
+
+.. code-block:: python
+
+    import ray
+
+    ray.init()
+
+    @ray.remote
+    def fact(n):
+        if n == 1:
+            return n
+        else:
+            n_id = fact.remote(n - 1)
+            return n * ray.get(n_id)
+
+    ray.util.pdb.set_trace()
+    result_ref = fact.remote(5)
+    result = ray.get(result_ref)
+
+
+After running the program by executing the Python file and calling
+``ray debug``, you can select the breakpoint by pressing ``0`` and
+enter. The cursor is on the line ``result = fact.remote(5)``. You
+can jump into the call with the ``remote`` command in Ray's debugger.
+Inside the function, print the value of `n` with ``p(n)``, it should
+give you the value 5. Now step into the next remote call again with
+``remote`` and print `n`. You an now either continue recursing into
+the function by calling ``remote`` a few more times, or you can jump
+to the location where ``ray.get`` is called on the result by using the
+``get`` debugger comand. Use ``get`` again to jump back to the original
+call site and use ``p(result)`` to print the result, which should be
+120.
+
 Post Mortem Debugging
 ---------------------
 
