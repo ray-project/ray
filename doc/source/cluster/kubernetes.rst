@@ -12,7 +12,7 @@ This document assumes that you have access to a Kubernetes cluster and have
 first walk you through how to deploy a Ray cluster on your existing Kubernetes
 cluster, then explore a few different ways to run programs on the Ray cluster.
 
-To learn about deploying an autoscaling Ray cluster using Ray's Kubernetes operator, read
+To learn about deploying an autoscaling Ray cluster using :ref:`Ray's Kubernetes operator<k8s-operator>`, read
 :ref:`here<k8s-operator>`.
 
 The configuration ``yaml`` files used here are provided in the `Ray repository`_
