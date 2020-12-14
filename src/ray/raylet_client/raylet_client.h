@@ -232,8 +232,7 @@ class RayletClient : public RayletClientInterface {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                  const std::vector<rpc::Address> &owner_addresses,
-                                 bool fetch_only,
-                                 const TaskID &current_task_id);
+                                 bool fetch_only, const TaskID &current_task_id);
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
@@ -261,8 +260,8 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::vector<rpc::Address> &owner_addresses, int num_returns,
-                   int64_t timeout_milliseconds, bool wait_local, const TaskID &current_task_id,
-                   WaitResultPair *result);
+                   int64_t timeout_milliseconds, bool wait_local,
+                   const TaskID &current_task_id, WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.

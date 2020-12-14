@@ -894,8 +894,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                                    worker_context_.GetNextPutIndex());
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
-       static_cast<int64_t>(data_size) <
-           RayConfig::instance().max_arg_object_size())) {
+       static_cast<int64_t>(data_size) < RayConfig::instance().max_arg_object_size())) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Create(
@@ -1724,9 +1723,8 @@ Status CoreWorker::AllocateReturnObjects(
       }
 
       // Allocate a buffer for the return object.
-      if (options_.is_local_mode ||
-          static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_arg_object_size()) {
+      if (options_.is_local_mode || static_cast<int64_t>(data_sizes[i]) <
+                                        RayConfig::instance().max_arg_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], object_ids[i],

@@ -183,8 +183,7 @@ class CoreWorkerTest : public ::testing::Test {
   void TestActorRestart(std::unordered_map<std::string, double> &resources);
 
  protected:
-  bool WaitForActorState(const ActorID &actor_id, bool wait_alive,
-                                   int timeout_ms);
+  bool WaitForActorState(const ActorID &actor_id, bool wait_alive, int timeout_ms);
 
   // Get the pid for the worker process that runs the actor.
   int GetActorPid(const ActorID &actor_id,
@@ -198,7 +197,7 @@ class CoreWorkerTest : public ::testing::Test {
 };
 
 bool CoreWorkerTest::WaitForActorState(const ActorID &actor_id, bool wait_alive,
-                                                 int timeout_ms) {
+                                       int timeout_ms) {
   auto condition_func = [actor_id, wait_alive]() -> bool {
     bool actor_alive =
         CoreWorkerProcess::GetCoreWorker().direct_actor_submitter_->IsActorAlive(

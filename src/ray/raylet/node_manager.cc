@@ -2110,8 +2110,7 @@ void NodeManager::SubmitTask(const Task &task) {
   // resources locally.
 }
 
-void NodeManager::HandleTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker) {
+void NodeManager::HandleTaskBlocked(const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     if (!worker || worker->IsBlocked()) {
       return;
@@ -2140,8 +2139,7 @@ void NodeManager::HandleTaskBlocked(
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
-void NodeManager::HandleTaskUnblocked(
-    const std::shared_ptr<WorkerInterface> &worker) {
+void NodeManager::HandleTaskUnblocked(const std::shared_ptr<WorkerInterface> &worker) {
   if (new_scheduler_enabled_) {
     // Important: avoid double unblocking if the unblock RPC finishes after task end.
     if (!worker || !worker->IsBlocked()) {
