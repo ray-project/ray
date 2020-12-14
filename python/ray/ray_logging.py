@@ -55,18 +55,14 @@ def setup_component_logger(*, logging_level, logging_format, log_dir, filename,
     logger.addHandler(handler)
 
 
-"""
-All components underneath here is used specifically for the default_worker.py.
-"""
-
-
 class StandardStreamInterceptor:
-    """Used to intercept stdout and stderr.
+    """Used to proxy stdout and stderr to a specified logger.
 
-    Intercepted messages are handled by the given logger.
+    write(), close(), and flush() are proxied to the logger or handler object,
+    every other attribute/method is proxied to the logger handler's stream
+    attribute which is a _io.TextIOWrapper (same type as sys.stdout).
 
-    NOTE: The logger passed to this method should always have
-          logging.INFO severity level.
+    All messages will be logged at logging.INFO severity level.
 
     Example:
         >>> from contextlib import redirect_stdout
@@ -77,44 +73,51 @@ class StandardStreamInterceptor:
 
     Args:
         logger: Python logger that will receive messages streamed to
-                the standard out/err and delegate writes.
-        intercept_stdout(bool): True if the class intercepts stdout. False
-                         if stderr is intercepted.
+                the standard out/err and delegate writes. Must have only
+                one handler and that handler must have an underlying
+                ".stream" attribute.
     """
 
-    def __init__(self, logger, intercept_stdout=True):
+    def __init__(self, logger):
+        self.closed = False
         self.logger = logger
         assert len(self.logger.handlers) == 1, (
             "Only one handler is allowed for the interceptor logger.")
-        self.intercept_stdout = intercept_stdout
+        assert hasattr(self.logger.handlers[0], "stream")
+
+    def _check_closed(self):
+        if self.closed:
+            raise ValueError("I/O operation on closed file.")
 
     def write(self, message):
         """Redirect the original message to the logger."""
+        self._check_closed()
         self.logger.info(message)
         return len(message)
 
-    def flush(self):
-        for handler in self.logger.handlers:
-            handler.flush()
-
-    def isatty(self):
-        # Return the standard out isatty. This is used by colorful.
-        fd = 1 if self.intercept_stdout else 2
-        return os.isatty(fd)
-
     def close(self):
-        handler = self.logger.handlers[0]
-        handler.close()
+        """Close the handler, not the underlying stream."""
+        self.closed = True
+        self.logger.handlers[0].close()
 
-    def fileno(self):
-        handler = self.logger.handlers[0]
-        return handler.stream.fileno()
+    def flush(self):
+        """Flush the handler, not the underlying stream."""
+        self._check_closed()
+        self.logger.handlers[0].flush()
+
+    def __getattr__(self, attr):
+        """Proxy all unspecified methods to the handler's ".stream"
+
+        This should support all attributes that an _io.TextIOWrapper supports.
+        """
+        self._check_closed()
+        return getattr(self.logger.handlers[0].stream, attr)
 
 
 class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
     """RotatingFileHandler that redirects stdout and stderr to the log file.
 
-    It is specifically used to default_worker.py.
+    It is specifically used to redirect output for default_worker.py.
 
     The only difference from this handler vs original RotatingFileHandler is
     that it actually duplicates the OS level fd using os.dup2.
@@ -217,4 +220,4 @@ def setup_and_get_worker_interceptor_logger(args,
     # Remove the terminator. It is important because we don't want this
     # logger to add a newline at the end of string.
     handler.terminator = ""
-    return logger
+    return StandardStreamInterceptor(logger)

@@ -1,5 +1,6 @@
 # coding: utf-8
 import glob
+import io
 import logging
 import os
 import sys
@@ -267,6 +268,56 @@ def test_not_logging_to_driver(shutdown_only):
 
     err_lines = captured["err"]
     assert len(err_lines) == 0
+
+
+@pytest.mark.parametrize("stdout_stderr", ["stdout", "stderr"])
+def test_stdout_stderr_redirection(ray_start_regular_shared, stdout_stderr):
+    @ray.remote
+    def f():
+        sys_out_err = getattr(sys, stdout_stderr)
+
+        # Check writing behavior.
+        print("hello", file=sys_out_err)
+        sys_out_err.writelines(["hello\n", "world\n"])
+        sys_out_err.write("hello")
+        sys_out_err.write("hello")
+        sys_out_err.flush()
+        sys_out_err.isatty()
+        sys_out_err.fileno()
+        sys_out_err.encoding
+        sys_out_err.errors
+        sys_out_err.newlines
+
+        # Check seeking behavior.
+        assert sys_out_err.seekable()
+        sys_out_err.seek(sys_out_err.tell())
+
+        # Check reading behavior.
+        assert not sys_out_err.readable()
+        with pytest.raises(io.UnsupportedOperation):
+            sys_out_err.read()
+        with pytest.raises(io.UnsupportedOperation):
+            sys_out_err.readlines()
+
+        # Check closing behavior.
+        assert not sys_out_err.closed
+        sys_out_err.close()
+        assert sys_out_err.closed
+        sys_out_err.close()
+        with pytest.raises(ValueError):
+            print("hello", file=sys_out_err)
+        with pytest.raises(ValueError):
+            sys_out_err.writelines(["hello\n", "world\n"])
+        with pytest.raises(ValueError):
+            sys_out_err.write("hello")
+        with pytest.raises(ValueError):
+            sys_out_err.readable()
+        with pytest.raises(ValueError):
+            sys_out_err.isatty()
+        with pytest.raises(ValueError):
+            sys_out_err.encoding
+
+    ray.get(f.remote())
 
 
 def test_workers(shutdown_only):
