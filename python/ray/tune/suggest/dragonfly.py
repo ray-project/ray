@@ -254,18 +254,17 @@ class DragonflySearch(Searcher):
 
     def init_dragonfly(self):
         if self._points_to_evaluate:
-            self._points_to_evaluate = [[
+            points_to_evaluate = [[
                 config[par] for par in self._point_parameter_names
             ] for config in self._points_to_evaluate]
         else:
-            self._points_to_evaluate = []
+            points_to_evaluate = None
 
         self._opt.initialise()
-        if self._points_to_evaluate and self._evaluated_rewards:
-            self._opt.tell([(self._points_to_evaluate,
-                             self._evaluated_rewards)])
-        elif self._points_to_evaluate:
-            self._initial_points = self._points_to_evaluate
+        if points_to_evaluate and self._evaluated_rewards:
+            self._opt.tell([(points_to_evaluate, self._evaluated_rewards)])
+        elif points_to_evaluate:
+            self._initial_points = points_to_evaluate
         # Dragonfly internally maximizes, so "min" => -1
         if self._mode == "min":
             self._metric_op = -1.
