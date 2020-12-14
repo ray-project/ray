@@ -204,6 +204,12 @@ class NevergradSearch(Searcher):
             raise ValueError("len(parameters_names) must match optimizer "
                              "dimension for non-instrumented optimizers")
 
+        if self._points_to_evaluate:
+            # Nevergrad is LIFO, so we add the points to evaluate in reverse
+            # order.
+            for i in range(len(self._points_to_evaluate) - 1, -1, -1):
+                self._nevergrad_opt.suggest(self._points_to_evaluate[i])
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self._nevergrad_opt or self._space:
@@ -235,10 +241,6 @@ class NevergradSearch(Searcher):
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
 
-        if self._points_to_evaluate is not None:
-            if len(self._points_to_evaluate) > 0:
-                point_to_evaluate = self._points_to_evaluate.pop(0)
-                self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
 
         self._live_trial_mapping[trial_id] = suggested_config
