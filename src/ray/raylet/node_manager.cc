@@ -413,7 +413,11 @@ void NodeManager::Heartbeat() {
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   heartbeat_data->set_node_id(self_node_id_.Binary());
   RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, /*done*/ nullptr));
+      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
+        if (status.IsDisconnected()) {
+          RAY_LOG(FATAL) << "This node has beem marked as dead.";
+        }
+      }));
 
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
