@@ -649,6 +649,10 @@ def with_parameters(fn, **kwargs):
         def _inner(config):
             inner(config, checkpoint_dir=None)
 
+        if hasattr(fn, "__mixins__"):
+            _inner.__mixins__ = fn.__mixins__
         return _inner
 
+    if hasattr(fn, "__mixins__"):
+        inner.__mixins__ = fn.__mixins__
     return inner

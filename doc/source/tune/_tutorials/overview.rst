@@ -70,6 +70,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/wandb_logo.png
    :description: :doc:`Track your experiment process with the Weights & Biases tools <tune-wandb>`
 
+.. customgalleryitem::
+    :tooltip: Use Mlflow with Ray Tune.
+    :figure: /images/mlflow.png
+    :description: :doc:`Log and track your hyperparemter sweep with Mlflow Tracking & AutoLogging <tune-mlflow>`
+
 
 .. raw:: html
 
@@ -89,6 +94,7 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-serve-integration-mnist.rst
    tune-xgboost.rst
    tune-wandb.rst
+   tune-mlflow.rst
 
 Colab Exercises
 ---------------

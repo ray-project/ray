@@ -88,6 +88,7 @@ Wandb, MLFlow
 - :ref:`Tutorial <tune-wandb>` for using `wandb <https://www.wandb.com/>`__ with Ray Tune
 - :doc:`/tune/examples/wandb_example`: Example for using `Weights and Biases <https://www.wandb.com/>`__ with Ray Tune.
 - :doc:`/tune/examples/mlflow_example`: Example for using `MLFlow <https://github.com/mlflow/mlflow/>`__ with Ray Tune.
+- :doc:`/tune/examples/mlflow_ptl_example`: Example for using `MLFlow <https://github.com/mlflow/mlflow/>`__ and `Pytorch Lightning <https://github.com/PyTorchLightning/pytorch-lightning>`_ with Ray Tune.
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
