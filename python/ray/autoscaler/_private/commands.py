@@ -34,6 +34,8 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_KIND_WORKER, NODE_KIND_HEAD, TAG_RAY_USER_NODE_TYPE
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.autoscaler._private.updater import NodeUpdaterThread
+from ray.autoscaler._private.status_api import mutable_status
+import ray.autoscaler._private.status_api as status_api
 from ray.autoscaler._private.command_runner import set_using_login_shells, \
                                           set_rsync_silent
 from ray.autoscaler._private.event_system import (CreateClusterEvent,
@@ -472,6 +474,40 @@ def monitor_cluster(cluster_config_file: str, num_lines: int,
         override_cluster_name=override_cluster_name,
         port_forward=None)
 
+
+def dump_mutable_status(cluster_config_file: str,
+                        override_cluster_name: Optional[str]) -> None:
+    """Tails the autoscaler logs of a Ray cluster."""
+    cmd = f"cat /tmp/ray/session_latest/logs/mutable_status.json"
+    data_str = exec_cluster(
+        cluster_config_file,
+        cmd=cmd,
+        run_env="auto",
+        screen=False,
+        tmux=False,
+        stop=False,
+        start=False,
+        override_cluster_name=override_cluster_name,
+        port_forward=None,
+        with_output=True)
+    mutable_status._setup_readonly(data_str)
+
+    def log_recursive(k, x):
+        if isinstance(x, status_api.MutableStatusDictProxy):
+            with cli_logger.group(k):
+                if len(x) == 0:
+                    cli_logger.print("empty")
+                for subk in x:
+                    log_recursive(subk, x[subk])
+        elif isinstance(x, status_api.MutableStatusListProxy):
+            with cli_logger.group(k):
+                for subx in x:
+                    log_recursive("", subx)
+        else:
+            cli_logger.labeled_value(k, str(x))
+
+    for k in mutable_status:
+        log_recursive(k, mutable_status[k])
 
 def warn_about_bad_start_command(start_commands: List[str]) -> None:
     ray_start_cmd = list(filter(lambda x: "ray start" in x, start_commands))

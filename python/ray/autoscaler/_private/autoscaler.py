@@ -490,7 +490,7 @@ class StandardAutoscaler:
                     self.provider, self.available_node_types,
                     self.config["max_workers"], upscaling_speed)
 
-            mutable_status._setup()
+            mutable_status._reload()
         except Exception as e:
             if errors_fatal:
                 raise e
@@ -696,11 +696,16 @@ class StandardAutoscaler:
         logger.debug(tmp)
 
         mutable_status.autoscaler = {
-            "node_counts": {
+            "node_summary": {
                 "updating": len(self.updaters),
-                "update_failed": self.num_failed_updates,
+                "update_failed":
+                    self.num_failed_updates if self.num_failed_updates else -1,
                 "total": len(nodes)
-            }
+            },
+            "load_metrics": self.load_metrics.info_dict(),
+            "node_counts": self.resource_demand_scheduler.debug_info(
+                nodes, self.pending_launches.breakdown(),
+                self.load_metrics.get_resource_utilization())
         }
 
     def info_string(self, nodes):

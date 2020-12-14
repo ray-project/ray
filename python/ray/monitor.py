@@ -112,7 +112,6 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
-            status_api.setup()
             self.autoscaler = StandardAutoscaler(
                 autoscaling_config,
                 self.load_metrics,
@@ -392,6 +391,7 @@ if __name__ == "__main__":
     else:
         autoscaling_config = None
 
+    status_api.setup(args.logs_dir)
     monitor = Monitor(
         args.redis_address,
         autoscaling_config,

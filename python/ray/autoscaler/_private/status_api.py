@@ -2,11 +2,22 @@ from pathlib import Path
 import json
 import logging
 
+"""
+Note on debugging:
+1) `ray up` a cluster
+2) attach to the cluster
+3) Kill the monitor process (find the pid with `ps -f | grep monitor.py`)
+4) Launch a new monitor process to see the stack trace in case it crashes:
+python anaconda3/lib/python3.7/site-packages/ray/monitor.py \
+--redis-address=localhost:6379 --autoscaling-config=ray_bootstrap_config.yaml \
+--redis-password 5241590000000000 --logs-dir /tmp/ray/session_latest/logs/
+5) `cat /tmp/ray/session_latest/logs/mutable_status.json` will output
+   the current status
+"""
+
 import ray
 
 logger = logging.getLogger(__name__)
-
-# logger.info('AAAAAAAAA')
 
 class MutableStatusBaseProxy:
     def _set(self, k, v, flush=True):
@@ -59,6 +70,9 @@ class MutableStatusListProxy(MutableStatusBaseProxy):
     def __getattr__(self, k):
         return getattr(self._data, k)
 
+    def __iter__(self):
+        return iter(self._data)
+
 class MutableStatusDictProxy(MutableStatusBaseProxy):
     def __init__(self, root):
         object.__setattr__(self, "_intercept_setattr", False)
@@ -80,6 +94,18 @@ class MutableStatusDictProxy(MutableStatusBaseProxy):
 
         self._set(k, v)
 
+    def __getitem__(self, k):
+        return getattr(self, k)
+
+    def __setitem(self, k, v):
+        return setattr(self, k, v)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __iter__(self):
+        return iter(self._data)
+
 class MutableStatusEncoder(json.JSONEncoder):
     def default(self, x):
         if type(x) in [MutableStatusListProxy, MutableStatusDictProxy]:
@@ -87,62 +113,113 @@ class MutableStatusEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, x)
 
 class MutableStatusRoot:
+    # todo(maximsmol): use atomic writes
     def __init__(self):
         object.__setattr__(self, "_intercept_setattr", False)
 
-        self.f = None
-        self.proxy = None
+        self._f = None
+        self._proxy = None
+        self._readonly = False
 
         self._intercept_setattr = True
 
     def _setup(self, path):
         object.__setattr__(self, "_intercept_setattr", False)
 
+        if self._f is not None:
+            self._f.close()
+
         data = {}
-        if _mutable_status_path.exists():
-            with _mutable_status_path.open("r") as f:
+        if path.exists():
+            with path.open("r") as f:
                 try:
                     data = json.load(f)
                 except json.JSONDecodeError:
                     logger.exception("Error loading last saved mutable status")
                     pass
 
-        self.f = _mutable_status_path.open("w")
-        self.proxy = MutableStatusDictProxy(self)
+        self._f = path.open("w")
+        self._proxy = MutableStatusDictProxy(self)
 
         for sub_k in data:
-            self.proxy._set(sub_k, data[sub_k], flush=False)
+            self._proxy._set(sub_k, data[sub_k], flush=False)
 
         self._intercept_setattr = True
 
+    def _setup_readonly(self, data_str):
+        object.__setattr__(self, "_intercept_setattr", False)
+
+        if self._f is not None:
+            self._f.close()
+        self._f = None
+        self._readonly = True
+
+        data = {}
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError:
+            logger.exception("Error loading mutable status")
+            pass
+
+        self._proxy = MutableStatusDictProxy(self)
+
+        for sub_k in data:
+            self._proxy._set(sub_k, data[sub_k], flush=False)
+
+        self._intercept_setattr = True
+
+    def _reload(self):
+        print('Hello')
+        self._setup(Path(self._f.name))
+
     def _flush(self):
-        self.f.seek(0)
-        json.dump(self.proxy, self.f,
+        if self._readonly:
+            return
+
+        self._f.seek(0)
+        json.dump(self._proxy, self._f,
             cls=MutableStatusEncoder,
             separators=(",", ":"))
-        self.f.truncate()
-        self.f.flush()
+        self._f.truncate()
+        self._f.flush()
 
     def __getattr__(self, k):
-        return getattr(self.proxy, k)
+        if self._proxy is None:
+            raise ValueError("Status API not setup")
+
+        return getattr(self._proxy, k)
 
     def __setattr__(self, k, v):
         if not self._intercept_setattr:
             return object.__setattr__(self, k, v)
 
-        return setattr(self.proxy, k, v)
+        if self._proxy is None:
+            raise ValueError("Status API not setup")
+
+        return setattr(self._proxy, k, v)
+
+    def __getitem__(self, k):
+        return getattr(self, k)
+
+    def __setitem(self, k, v):
+        return setattr(self, k, v)
 
     def __str__(self):
-        return str(self.proxy)
+        return str(self._proxy)
 
     def __repr__(self):
-        return repr(self.proxy)
+        return repr(self._proxy)
+
+    def __len__(self):
+        return len(self._proxy)
+
+    def __iter__(self):
+        return iter(self._proxy)
 mutable_status = MutableStatusRoot()
 
 def setup(session_path):
-    global _sess_path, _mutable_status_path, _event_log_path, mutable_status
     _sess_path = Path(session_path)
     _mutable_status_path = _sess_path / "mutable_status.json"
     _event_log_path = _sess_path / "event_log.json"
 
-    mutable_status.setup(_mutable_status_path)
+    mutable_status._setup(_mutable_status_path)

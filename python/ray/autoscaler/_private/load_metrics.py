@@ -165,7 +165,7 @@ class LoadMetrics:
         return " - " + "\n - ".join(
             ["{}: {}".format(k, v) for k, v in sorted(self._info().items())])
 
-    def _info(self):
+    def info_dict(self):
         resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
@@ -189,20 +189,46 @@ class LoadMetrics:
                 return round(value, 2)
 
         return {
+            "ResourceUsage": {
+                rid: {
+                    "used": resources_used[rid],
+                    "total": resources_total[rid]
+                }
+                for rid in sorted(resources_used)
+            },
+            "NodeIdleSeconds": {
+                "min": int(np.min(idle_times)) if idle_times else -1,
+                "mean": int(np.mean(idle_times)) if idle_times else -1,
+                "max": int(np.max(idle_times)) if idle_times else -1
+            },
+            "TimeSinceLastHeartbeat": {
+                "min": int(np.min(heartbeat_times)) if heartbeat_times else -1,
+                "mean": int(np.mean(heartbeat_times)) if heartbeat_times else -1,
+                "max": int(np.max(heartbeat_times)) if heartbeat_times else -1
+            },
+            "MostDelayedHeartbeats": most_delayed_heartbeats,
+        }
+
+    def _info(self):
+        data = self.info_dict()
+
+        return {
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
-                    format_resource(rid, resources_used[rid]),
-                    format_resource(rid, resources_total[rid]), rid)
-                for rid in sorted(resources_used)
+                    format_resource(rid,
+                        data["ResourceUsage"][rid]["used"]),
+                    format_resource(rid,
+                        data["ResourceUsage"][rid]["total"]), rid)
+                for rid in sorted(data["ResourceUsage"])
                 if not rid.startswith("node:")
             ]),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
-                int(np.min(idle_times)) if idle_times else -1,
-                int(np.mean(idle_times)) if idle_times else -1,
-                int(np.max(idle_times)) if idle_times else -1),
+                data["NodeIdleSeconds"]["min"],
+                data["NodeIdleSeconds"]["mean"],
+                data["NodeIdleSeconds"]["max"]),
             "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
-                int(np.min(heartbeat_times)) if heartbeat_times else -1,
-                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
-                int(np.max(heartbeat_times)) if heartbeat_times else -1),
-            "MostDelayedHeartbeats": most_delayed_heartbeats,
+                data["TimeSinceLastHeartbeat"]["min"],
+                data["TimeSinceLastHeartbeat"]["mean"],
+                data["TimeSinceLastHeartbeat"]["max"]),
+            "MostDelayedHeartbeats": data["MostDelayedHeartbeats"],
         }

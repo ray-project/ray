@@ -18,8 +18,8 @@ import psutil
 import ray._private.services as services
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
-    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
-    debug_status, RUN_ENV_TYPES)
+    dump_mutable_status, rsync, teardown_cluster, get_head_node_ip, kill_node,
+    get_worker_node_ips, debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -958,6 +958,23 @@ def monitor(cluster_config_file, lines, cluster_name, log_style, log_color,
     cli_logger.configure(log_style, log_color, verbose)
 
     monitor_cluster(cluster_config_file, lines, cluster_name)
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+@add_click_options(logging_options)
+def autoscaler_status(cluster_config_file, cluster_name,
+                      log_style, log_color, verbose):
+    """Displays the current autoscaling status of a Ray cluster."""
+    cli_logger.configure(log_style, log_color, verbose)
+
+    dump_mutable_status(cluster_config_file, cluster_name)
 
 
 @cli.command()

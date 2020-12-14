@@ -472,6 +472,20 @@ class ResourceDemandScheduler:
 
         return out
 
+    def debug_info(self, nodes: List[NodeID],
+                   pending_nodes: Dict[NodeID, int],
+                   unused_resources_by_ip: Dict[str, ResourceDict]):
+        node_resources, node_type_counts = self.calculate_node_resources(
+            nodes, pending_nodes, unused_resources_by_ip)
+
+        res = {}
+        for node_type, count in node_type_counts.items():
+            res[node_type] = {"count": count}
+            if pending_nodes.get(node_type):
+                res[node_type]["pending"] = pending_nodes[node_type]
+
+        return res
+
 
 def _node_type_counts_to_node_resources(
         node_types: Dict[NodeType, NodeTypeConfigDict],
