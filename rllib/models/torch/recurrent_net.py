@@ -155,6 +155,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
+        # __sphinx_doc_begin__
         # Add prev-a/r to this model's view, if required.
         if model_config["lstm_use_prev_action"]:
             self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
@@ -163,6 +164,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         if model_config["lstm_use_prev_reward"]:
             self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
                 ViewRequirement(SampleBatch.REWARDS, shift=-1)
+        # __sphinx_doc_end__
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
