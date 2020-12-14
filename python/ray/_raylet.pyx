@@ -1215,6 +1215,9 @@ cdef class CoreWorker:
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker() \
                 .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
+            if status.IsNotFound():
+                raise Exception("Placement group {} does not exist.".format(
+                    placement_group_id))
         return status.ok()
 
     def submit_actor_task(self,
