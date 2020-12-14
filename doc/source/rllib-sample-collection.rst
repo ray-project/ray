@@ -241,16 +241,14 @@ even after policy (or RolloutWorker) creation:
         rollout_worker = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_config=ppo.DEFAULT_CONFIG,
-            rollout_fragment_length=100,
             policy_spec=ppo.PPOTorchPolicy,
-            policy_mapping_fn=None,
-            num_envs=1,
         )
         # Add the next action to the view reqs of the policy.
         # This should be visible then in postprocessing and train batches.
         rollout_worker.policy_map["default_policy"].view_requirements[
             "next_actions"] = ViewRequirement(
                 SampleBatch.ACTIONS, shift=1, space=action_space)
+        # Check, whether a sampled batch has the requested `next_actions` view.
         batch = rollout_worker.sample()
         self.assertTrue("next_actions" in batch.data)
 
@@ -258,5 +256,4 @@ The above adds a `next_action` view to those SampleBatches needed by the Policy
 (postprocess_trajectory and loss function batches). It will not feed the `next_action`
 to the Model's `compute_action` calls (it can't b/c the next action is of course not known
 at that point).
-
 
