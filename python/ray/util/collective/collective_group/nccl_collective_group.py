@@ -9,11 +9,11 @@ from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
 from ray.util.collective.types import AllReduceOptions, \
-    BarrierOptions, Backend
+    BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
+    AllGatherOptions, ReduceScatterOptions
 from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
-
 # TODO(Hao):
 # (1) stream management, instead of using the default stream,
 #     using a dedicate stream
@@ -163,7 +163,7 @@ class NCCLGroup(BaseGroup):
 
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
         """
-        AllReduce a list of tensors following options.
+        AllReduce the tensor across the collective group following options.
 
         Args:
             tensor: the tensor to be reduced, each tensor locates on a GPU
@@ -196,6 +196,104 @@ class NCCLGroup(BaseGroup):
         """
         self.allreduce(self._barrier_tensor)
 
+    def reduce(self, tensor, reduce_options=ReduceOptions()):
+        """
+        Reduce tensor to a destination process following options.
+
+        Args:
+            tensor: the tensor to be reduced.
+            reduce_options: reduce options
+
+        Returns:
+            None
+        """
+        comm = self._get_nccl_communicator()
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        reduce_op = nccl_util.get_nccl_reduce_op(reduce_options.reduceOp)
+
+        # in-place reduce
+        comm.reduce(ptr, ptr, n_elems, dtype, reduce_op,
+                    reduce_options.root_rank, stream.ptr)
+
+    def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
+        """
+        Broadcast tensor to all other processes following options.
+
+        Args:
+            tensor: the tensor to be broadcasted.
+            broadcast_options: broadcast options.
+
+        Returns:
+            None
+        """
+        comm = self._get_nccl_communicator()
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        # in-place broadcast
+        comm.broadcast(ptr, ptr, n_elems, dtype, broadcast_options.root_rank,
+                       stream.ptr)
+
+    def allgather(self, tensor_list, tensor, allgather_options = AllGatherOptions()):
+        """
+        Allgather tensor across the collective group into a list following options.
+
+        Args:
+            tensor_list: the tensor list to store the results.
+            tensor: the tensor to be allgather-ed across the group.
+            allgather_options: allgather options.
+
+        Returns:
+            None
+        """
+
+        _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
+        comm = self._get_nccl_communicator()
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        send_ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        flattened = _flatten_for_scatter_gather(tensor_list, copy=False)
+        recv_ptr = nccl_util.get_tensor_ptr(flattened)
+        comm.allGather(send_ptr, recv_ptr, n_elems, dtype, stream.ptr)
+        for i, t in enumerate(tensor_list):
+            nccl_util.copy_tensor(t, flattened[i])
+
+    def reducescatter(self, tensor, tensor_list,
+                      reducescatter_options = ReduceScatterOptions()):
+        """
+        Reduce a list of tensors across the group and then scatter a tensor to a process.
+
+        Args:
+            tensor: the output tensor after reduce and scatter, could be unspecified.
+            tensor_list: the list of tensor on the current process to be reduced.
+            reducescatter_options: reducescatter options.
+
+        Returns:
+            None
+        """
+        _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
+
+        comm = self._get_nccl_communicator()
+        stream = self._get_cuda_stream()
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
+        n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
+        reduce_op = nccl_util.get_nccl_reduce_op(reducescatter_options.reduceOp)
+
+        # get the send_ptr
+        flattened = _flatten_for_scatter_gather(tensor_list, copy=True)
+        send_ptr = nccl_util.get_tensor_ptr(flattened)
+        recv_ptr = nccl_util.get_tensor_ptr(tensor)
+        comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
+                           stream.ptr)
+
     def _get_nccl_communicator(self):
         """
         Create or use a cached NCCL communicator for the collective task.
@@ -217,3 +315,46 @@ class NCCLGroup(BaseGroup):
     # def _collective_call(self, *args):
     #     """Private method to encapsulate all collective calls"""
     #     pass
+
+
+def _flatten_for_scatter_gather(tensor_list, copy=False):
+    """
+    Flatten the tensor for gather/scatter operations.
+
+    Args:
+        tensor_list: the list of tensors to be scattered/gathered.
+        copy: whether the copy the tensors in tensor_list into the buffer.
+
+    Returns:
+        The flattened tensor buffer.
+    """
+    if not tensor_list:
+        raise RuntimeError("Receved an empty list.")
+    t = tensor_list[0]
+    # note we need a cupy dtype here.
+    dtype = nccl_util.get_cupy_tensor_dtype(t)
+    buffer_shape = [len(tensor_list)] + nccl_util.get_tensor_shape(t)
+    buffer = cupy.empty(buffer_shape, dtype=dtype)
+    if copy:
+        for i, tensor in enumerate(tensor_list):
+            nccl_util.copy_tensor(buffer[i], tensor)
+    return buffer
+
+
+def _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list):
+    """Check the compatibility between tensor input and tensor list inputs."""
+    if not tensor_list:
+        raise RuntimeError('Got empty list of tensors.')
+    dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    n_elems = nccl_util.get_tensor_n_elements(tensor)
+    shape = nccl_util.get_tensor_shape(tensor)
+    for t in tensor_list:
+        # check dtype
+        if nccl_util.get_nccl_tensor_dtype(t) != dtype:
+            raise RuntimeError("All tensor operands to scatter/gather must "
+                               "have the same dtype.")
+        # check the shape.
+        # Here we make it more strict -- we require shape match
+        if nccl_util.get_tensor_shape(t) != shape:
+            raise RuntimeError("All tensor operands to scatter/gather must "
+                               "have the same number of elements.")

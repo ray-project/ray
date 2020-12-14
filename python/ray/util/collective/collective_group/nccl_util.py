@@ -28,11 +28,19 @@ NUMPY_NCCL_DTYPE_MAP = {
 
 if torch_available():
     import torch
+    import torch.utils.dlpack
     TORCH_NCCL_DTYPE_MAP = {
         torch.uint8: nccl.NCCL_UINT8,
         torch.float16: nccl.NCCL_FLOAT16,
         torch.float32: nccl.NCCL_FLOAT32,
         torch.float64: nccl.NCCL_FLOAT64,
+    }
+
+    TORCH_NUMPY_DTYPE_MAP = {
+        torch.uint8: numpy.uint8,
+        torch.float16: numpy.float16,
+        torch.float32: numpy.float32,
+        torch.float64: numpy.float64,
     }
 
 
@@ -91,6 +99,17 @@ def get_nccl_tensor_dtype(tensor):
                      "Got: {}.".format(type(tensor)))
 
 
+def get_cupy_tensor_dtype(tensor):
+    """Return the corresponded Cupy dtype given a tensor."""
+    if isinstance(tensor, cupy.ndarray):
+        return tensor.dtype.type
+    if torch_available():
+        if isinstance(tensor, torch.Tensor):
+            return TORCH_NUMPY_DTYPE_MAP[tensor.dtype]
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {}.".format(type(tensor)))
+
+
 def get_tensor_ptr(tensor):
     """Return the pointer to the underlying memory storage of a tensor."""
     if isinstance(tensor, cupy.ndarray):
@@ -115,3 +134,58 @@ def get_tensor_n_elements(tensor):
             return torch.numel(tensor)
     raise ValueError("Unsupported tensor type. "
                      "Got: {}.".format(type(tensor)))
+
+
+def get_tensor_shape(tensor):
+    """Return the shape of the tensor as a list."""
+    if isinstance(tensor, cupy.ndarray):
+        return list(tensor.shape)
+    if torch_available():
+        if isinstance(tensor, torch.Tensor):
+            return list(tensor.size())
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {}.".format(type(tensor)))
+
+
+def get_tensor_strides(tensor):
+    """Return the strides of the tensor as a list."""
+    if isinstance(tensor, cupy.ndarray):
+        return [int(stride / tensor.dtype.itemsize) for stride in tensor.strides]
+    if torch_available():
+        if isinstance(tensor, torch.Tensor):
+            return list(tensor.stride())
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {}.".format(type(tensor)))
+
+
+def copy_tensor(dst_tensor, src_tensor):
+    """
+    Copy the content from src_tensor to dst_tensor.
+
+    Args:
+        dst_tensor:
+        src_tensor:
+
+    Returns:
+        None
+    """
+    if isinstance(dst_tensor, cupy.ndarray) \
+        and isinstance(src_tensor, cupy.ndarray):
+        cupy.copyto(dst_tensor, src_tensor)
+        return
+    if torch_available():
+        if isinstance(dst_tensor, torch.Tensor) and isinstance(src_tensor, torch.Tensor):
+            dst_tensor.copy_(src_tensor)
+            return
+        if isinstance(dst_tensor, torch.Tensor) and isinstance(src_tensor, cupy.ndarray):
+            t = torch.utils.dlpack.from_dlpack(src_tensor.toDlpack())
+            dst_tensor.copy_(t)
+            return
+        if isinstance(dst_tensor, cupy.ndarray) and isinstance(src_tensor, torch.Tensor):
+            t = cupy.fromDlpack(torch.utils.dlpack.to_dlpack(src_tensor))
+            cupy.copyto(dst_tensor, t)
+            return
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {} and {}.".format(type(dst_tensor), type(src_tensor)))
+
+

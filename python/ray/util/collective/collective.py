@@ -176,7 +176,7 @@ def get_rank(group_name: str = "default") -> int:
     return g.rank
 
 
-def get_world_size(group_name="default") -> int:
+def get_world_size(group_name : str = "default") -> int:
     """
     Return the size of the collective gropu with the given name.
 
@@ -195,7 +195,7 @@ def get_world_size(group_name="default") -> int:
     return g.world_size
 
 
-def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
+def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     """
     Collective allreduce the tensor across the group with name group_name.
 
@@ -214,7 +214,7 @@ def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
     g.allreduce(tensor, opts)
 
 
-def barrier(group_name):
+def barrier(group_name : str = "default"):
     """
     Barrier all processes in the collective group.
 
@@ -226,6 +226,127 @@ def barrier(group_name):
     """
     g = _check_and_get_group(group_name)
     g.barrier()
+
+
+def reduce(tensor,
+           dst_rank: int = 0,
+           group_name: str = "default",
+           op=types.ReduceOp.SUM):
+    """
+    Reduce the tensor across the group to the destination rank.
+
+    Args:
+        tensor: the tensor to be reduced on this process.
+        dst_rank: the rank of the destination process.
+        group_name: the collective group name to perform reduce.
+        op: The reduce operation.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+
+    # check dst rank
+    _check_rank_valid(g, dst_rank)
+    opts = types.ReduceOptions()
+    opts.reduceOp = op
+    opts.root_rank = dst_rank
+    g.reduce(tensor, opts)
+
+
+def broadcast(tensor,
+              src_rank: int = 0,
+              group_name: str = "default"):
+    """
+    Broadcast the tensor from a source process to all others.
+
+    Args:
+        tensor: the tensor to be broadcasted (src) or received (destination).
+        src_rank: the rank of the source process.
+        group_name: he collective group name to perform broadcast.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+
+    # check src rank
+    _check_rank_valid(g, src_rank)
+    opts = types.BroadcastOptions()
+    opts.root_rank = src_rank
+    g.broadcast(tensor, opts)
+
+
+def allgather(tensor_list: list,
+              tensor,
+              group_name: str = "default"):
+    """
+    Allgather tensors from each process of the collective group into a list.
+
+    Args:
+        tensor_list (list): the results, stored as a list of tensors.
+        tensor: the tensor (to be gathered) in the current process
+        group_name: the name of the collective group.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+    if len(tensor_list) != g.world_size:
+        # here we want to make it more strict than other allgather implementations.
+        raise RuntimeError("The length of the tensor list operands to allgather "
+                           "must not be equal to world_size.")
+    opts = types.AllGatherOptions()
+    g.allgather(tensor_list, tensor, opts)
+
+
+# def gather(tensor,
+#            gather_list: list = None,
+#            dst_rank : int = 0,
+#            group_name: str  = "default"):
+#     """
+#     Gather tensors from each process of the collective group to a destination process.
+#
+#     Args:
+#         tensor: the tensor to be gathered in the current process.
+#         gather_list (list): the resultant list of tensors, not None iff rank == dst_rank.
+#         dst_rank (int): the rank of the destination process.
+#         group_name (str): the name of the collective group.
+#
+#     Returns:
+#         None
+#     """
+
+
+def reducescatter(tensor,
+                  tensor_list: list,
+                  group_name: str = "default",
+                  op=types.ReduceOp.SUM):
+    """
+    Reduce a list of tensors across the group, then scatter the result to each process.
+
+    Args:
+        tensor: the resulted tensor on this process.
+        tensor_list (list): The list of tensors to be reduced and scattered.
+        group_name (str): the name of the collective group.
+        op: The reduce operation.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+    if len(tensor_list) != g.world_size:
+        raise RuntimeError("The length of the tensor list operands to reducescatter "
+                           "must not be equal to world_size.")
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
+    g.reducescatter(tensor, tensor_list, opts)
 
 
 def _check_and_get_group(group_name):
@@ -244,8 +365,6 @@ def _check_backend_availability(backend: types.Backend):
         if not mpi_available():
             raise RuntimeError("MPI is not available.")
     elif backend == types.Backend.NCCL:
-        # expect some slowdown at the first call
-        # as I defer the import to invocation.
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
 
@@ -273,3 +392,22 @@ def _check_inside_actor():
     else:
         raise RuntimeError("The collective APIs shall be only used inside "
                            "a Ray actor or task.")
+
+
+def _check_rank_valid(g, rank: int):
+    if rank < 0:
+        raise ValueError("rank '{}' is negative.".format(rank))
+    if rank > g.world_size:
+        raise ValueError("rank '{}' is greater than world size "
+                         "'{}'".format(rank, g.world_size))
+
+
+def _check_tensor_list_input(tensor_list):
+    """Check if the input is a list of supported tensor types."""
+    if not isinstance(tensor_list, list):
+        raise RuntimeError("The input must be a list of tensors. "
+                           "Got '{}'.".format(type(tensor_list)))
+    if not tensor_list:
+        raise RuntimeError("Got an empty list of tensors.")
+    for t in tensor_list:
+        _check_single_tensor_input(t)
