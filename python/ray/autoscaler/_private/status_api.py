@@ -169,7 +169,6 @@ class MutableStatusRoot:
         self._intercept_setattr = True
 
     def _reload(self):
-        print('Hello')
         self._setup(Path(self._f.name))
 
     def _flush(self):

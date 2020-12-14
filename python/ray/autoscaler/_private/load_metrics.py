@@ -212,7 +212,7 @@ class LoadMetrics:
     def _info(self):
         data = self.info_dict()
 
-        return {
+        return { # fixme: never returns
             "ResourceUsage": ", ".join([
                 "{}/{} {}".format(
                     format_resource(rid,

@@ -684,7 +684,7 @@ class StandardAutoscaler:
         tmp = "Cluster status: "
         tmp += self.info_string(nodes)
         tmp += "\n"
-        tmp += self.load_metrics.info_string()
+        # tmp += self.load_metrics.info_string() # fixme: enable
         tmp += "\n"
         tmp += self.resource_demand_scheduler.debug_string(
             nodes, self.pending_launches.breakdown(),
