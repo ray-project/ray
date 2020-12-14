@@ -40,6 +40,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/raylet/placement_group_resource_manager.h"
 // clang-format on
 
 namespace ray {
@@ -49,9 +50,9 @@ namespace raylet {
 using rpc::ActorTableData;
 using rpc::ErrorType;
 using rpc::GcsNodeInfo;
-using rpc::HeartbeatBatchTableData;
 using rpc::HeartbeatTableData;
 using rpc::JobTableData;
+using rpc::ResourceUsageBatchData;
 
 struct NodeManagerConfig {
   /// The node's resource configuration.
@@ -70,8 +71,6 @@ struct NodeManagerConfig {
   /// An explicit list of open ports that workers started will bind
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
-  /// The initial number of workers to create.
-  int num_initial_workers;
   /// The soft limit of the number of workers.
   int num_workers_soft_limit;
   /// Number of initial Python workers for the first job.
@@ -85,6 +84,8 @@ struct NodeManagerConfig {
   std::string agent_command;
   /// The time between heartbeats in milliseconds.
   uint64_t heartbeat_period_ms;
+  /// The time between reports resources in milliseconds.
+  uint64_t report_resources_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
   /// Whether to enable fair queueing between task classes in raylet.
@@ -103,27 +104,6 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
-
-enum CommitState {
-  /// Resources are prepared.
-  PREPARED,
-  /// Resources are COMMITTED.
-  COMMITTED
-};
-
-struct BundleState {
-  /// Leasing state for 2PC protocol.
-  CommitState state;
-  /// Resources that are acquired at preparation stage.
-  ResourceIdSet acquired_resources;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -220,6 +200,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Send heartbeats to the GCS.
   void Heartbeat();
 
+  /// Report resource usage to the GCS.
+  void ReportResourceUsage();
+
   /// Write out debug state to a file.
   void DumpDebugState() const;
 
@@ -232,16 +215,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void GetObjectManagerProfileInfo();
 
-  /// Handler for a heartbeat notification from the GCS.
+  /// Handler for a resource usage notification from the GCS.
   ///
-  /// \param id The ID of the node manager that sent the heartbeat.
-  /// \param data The heartbeat data including load information.
+  /// \param id The ID of the node manager that sent the resources data.
+  /// \param data The resources data including load information.
   /// \return Void.
-  void HeartbeatAdded(const NodeID &id, const HeartbeatTableData &data);
-  /// Handler for a heartbeat batch notification from the GCS
+  void ResourceUsageAdded(const NodeID &id, const rpc::ResourcesData &data);
+  /// Handler for a resource usage batch notification from the GCS
   ///
-  /// \param heartbeat_batch The batch of heartbeat data.
-  void HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch);
+  /// \param resource_usage_batch The batch of resource usage data.
+  void ResourceUsageBatchAdded(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
 
@@ -682,14 +665,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   boost::asio::steady_timer heartbeat_timer_;
   /// The period used for the heartbeat timer.
   std::chrono::milliseconds heartbeat_period_;
+  /// The timer used to report resources.
+  boost::asio::steady_timer report_resources_timer_;
+  /// The period used for the resources report timer.
+  std::chrono::milliseconds report_resources_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
   /// Whether to enable fair queueing between task classes in raylet.
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled_;
-  /// Whether we have printed out a resource deadlock warning.
-  bool resource_deadlock_warned_ = false;
+  /// Incremented each time we encounter a potential resource deadlock condition.
+  /// This is reset to zero when the condition is cleared.
+  int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
@@ -700,8 +688,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// Only the changed part will be included in heartbeat if this is true.
-  const bool light_heartbeat_enabled_;
+  /// Only the changed part will be included in resource usage if this is true.
+  const bool light_report_resource_usage_enabled_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -710,6 +698,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
+  /// These two resource container is shared with `PlacementGroupResourceManager`.
   ResourceIdSet local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
@@ -772,6 +761,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
+  /// The last time local GC was triggered.
+  int64_t last_local_gc_ns_ = 0;
+
+  /// The interval in nanoseconds between local GC automatic triggers.
+  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
+
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
@@ -794,15 +789,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
-  /// This map represents the commit state of 2PC protocol for atomic placement group
-  /// creation.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
-      bundle_state_map_;
-
-  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
-      bundle_spec_map_;
-
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
   int64_t record_metrics_period_;
@@ -818,6 +804,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
+
+  /// Managers all bundle-related operations.
+  std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 };
 
 }  // namespace raylet

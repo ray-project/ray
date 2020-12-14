@@ -273,7 +273,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(bundle, gcs_node_manager_.GetNode(node_id),
+    PrepareResources(bundle, gcs_node_manager_.GetAliveNode(node_id),
                      [this, bundle, node_id, lease_status_tracker, failure_callback,
                       success_callback](const Status &status) {
                        lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
@@ -411,7 +411,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   lease_status_tracker->MarkCommitPhaseStarted();
   for (const auto &bundle_to_commit : *prepared_bundle_locations) {
     const auto &node_id = bundle_to_commit.second.first;
-    const auto &node = gcs_node_manager_.GetNode(node_id);
+    const auto &node = gcs_node_manager_.GetAliveNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
 
     auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
@@ -623,7 +623,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     for (const auto &iter : *(leasing_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
   }
 }
@@ -642,7 +642,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
     for (const auto &iter : *(committed_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
     committed_bundle_location_index_.Erase(placement_group_id);
   }

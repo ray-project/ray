@@ -125,25 +125,34 @@ Use ``ray start`` from the CLI to start a 1 node ray runtime on a machine. This 
   ...
 
 
+You can connect to this Ray runtime by starting a driver process on the same node as where you ran ``ray start``:
+
 .. tabs::
-  .. group-tab:: python
+  .. code-tab:: python
 
-    You can connect to this Ray runtime by starting a Python process that calls the following on the same node as where you ran ``ray start``:
-
-    .. code-block:: python
-
-      # This must
-      import ray
-      ray.init(address='auto')
+    # This must
+    import ray
+    ray.init(address='auto')
 
   .. group-tab:: java
 
+    .. code-block:: java
 
-    If you want to run Java code, you need to specify the classpath via the ``--code-search-path`` option. See :ref:`code_search_path` for more details.
+      import io.ray.api.Ray;
+
+      public class MyRayApp {
+
+        public static void main(String[] args) {
+          Ray.init();
+          ...
+        }
+      }
 
     .. code-block:: bash
 
-      $ ray start ... --code-search-path=/path/to/jars
+      java -classpath <classpath> \
+        -Dray.address=<address> \
+        <classname> <args>
 
 
 You can connect other nodes to the head node, creating a Ray cluster by also calling ``ray start`` on those nodes. See :ref:`manual-cluster` for more details. Calling ``ray.init(address="auto")`` on any of the cluster machines will connect to the ray cluster.
