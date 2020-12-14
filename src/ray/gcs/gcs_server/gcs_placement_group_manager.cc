@@ -421,20 +421,24 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   // directly.
   const auto &iter = registered_placement_groups_.find(placement_group_id);
   if (iter == registered_placement_groups_.end()) {
-    // GCS client does not guarantee the order of placement group creation and
-    // wait, and GCS may call wait placement group first and then create placement group.
-    // So we need to detect whether the placement group does not exist or is removed.
+    // Check whether the placement group does not exist or is removed.
     auto on_done = [this, placement_group_id, reply, callback, send_reply_callback](
                        const Status &status,
                        const boost::optional<PlacementGroupTableData> &result) {
       if (result) {
-        placement_group_to_create_callbacks_[placement_group_id].emplace_back(
-            std::move(callback));
-      } else {
-        RAY_LOG(DEBUG) << "Placement group is not exist, placement group id = "
+        RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
                        << placement_group_id;
         GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                           Status::NotFound("Placement group is not exist."));
+                           Status::NotFound("Placement group is removed."));
+      } else {
+        // `wait` is a method of placement group object. Placement group object is
+        // obtained by create placement group api, so it can guarantee the existence of
+        // placement group.
+        // GCS client does not guarantee the order of placement group creation and
+        // wait, so GCS may call wait placement group first and then create placement
+        // group.
+        placement_group_to_create_callbacks_[placement_group_id].emplace_back(
+            std::move(callback));
       }
     };
 
