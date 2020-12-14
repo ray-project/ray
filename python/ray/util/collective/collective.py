@@ -196,7 +196,7 @@ def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
     Returns:
         None
     """
-    _check_single_tensor_input(tensor)
+    nccl_util.check_collective_input(tensor)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
@@ -237,22 +237,6 @@ def _check_backend_availability(backend: types.Backend):
         # as I defer the import to invocation.
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
-
-
-def _check_single_tensor_input(tensor):
-    """Check if the tensor is with a supported type."""
-    if isinstance(tensor, np.ndarray):
-        return
-    if types.cupy_available():
-        if isinstance(tensor, types.cp.ndarray):
-            return
-    if types.torch_available():
-        if isinstance(tensor, types.th.Tensor):
-            return
-    raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
-                       "np.ndarray, torch.Tensor, cupy.ndarray.".format(
-                           type(tensor)))
-
 
 def _check_inside_actor():
     """Check if currently it is inside a Ray actor/task."""

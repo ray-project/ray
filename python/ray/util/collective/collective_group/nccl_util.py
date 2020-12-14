@@ -9,6 +9,7 @@ try:
 except ImportError:
     raise ImportError("NCCL in Ray requires Cupy being available!")
 
+from ray.util.collective import types
 from ray.util.collective.types import ReduceOp, torch_available
 
 NCCL_REDUCE_OP_MAP = {
@@ -138,8 +139,25 @@ def get_key_from_devices(devices):
     """Return key from a list of devices"""
     return ", ".join([str(d) for d in devices])
 
+def check_single_tensor_input(tensor):
+    """Check if the tensor is with a supported type."""
+    if isinstance(tensor, numpy.ndarray):
+        return
+    if types.cupy_available():
+        if isinstance(tensor, types.cp.ndarray):
+            return
+    if types.torch_available():
+        if isinstance(tensor, types.th.Tensor):
+            return
+    raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
+            "np.ndarray, torch.Tensor, cupy.ndarray.".format(
+                type(tensor)))
+
 def check_collective_input(inputs):
     """Check the validity of inputs for collective operations"""
+    if not isinstance(inputs, list):
+        raise ValueError("Inputs must be a list of tensors.")
     if len(inputs) == 0:
         raise ValueError("Collective inputs have 0 elements.")
-
+    for i in range(len(inputs)):
+        check_single_tensor_input(inputs[i])

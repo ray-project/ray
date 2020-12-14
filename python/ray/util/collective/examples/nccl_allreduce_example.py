@@ -11,11 +11,11 @@ class Worker:
         self.recv = cp.zeros((4, ), dtype=cp.float32)
 
     def setup(self, world_size, rank):
-        collective.init_collective_group("nccl", world_size, rank, "default")
+        collective.init_collective_group(world_size, rank, "nccl", "default")
         return True
 
     def compute(self):
-        collective.allreduce(self.send, "default")
+        collective.allreduce([self.send], "default")
         print(self.send)
         return self.send
 
@@ -38,5 +38,5 @@ if __name__ == "__main__":
         init_rets.append(w.setup.remote(num_workers, i))
     _ = ray.get(init_rets)
     results = ray.get([w.compute.remote() for w in workers])
-    # print(results)
+    print(results)
     ray.shutdown()
