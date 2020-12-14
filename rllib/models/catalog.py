@@ -191,7 +191,7 @@ class ModelCatalog:
                 "Using custom action distribution {}".format(action_dist_name))
             dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
                                             action_dist_name)
-            dist_cls = ModelCatalog._get_multi_action_distribution(
+            return ModelCatalog._get_multi_action_distribution(
                 dist_cls, action_space, {}, framework)
 
         # Dist_type is given directly as a class.
