@@ -159,6 +159,9 @@ void GcsResourceManager::UpdateTotalResources(
     for (const auto &entry : changed_resources) {
       scheduling_resources.UpdateResourceCapacity(entry.first, entry.second);
     }
+  } else {
+    cluster_scheduling_resources_.emplace(
+        node_id, SchedulingResources(ResourceSet(changed_resources)));
   }
 }
 

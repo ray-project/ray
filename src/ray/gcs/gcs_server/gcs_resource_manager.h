@@ -110,7 +110,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   std::string DebugString() const;
 
- private:
   /// Update the total resources of the specified node.
   ///
   /// \param node_id Id of a node.
@@ -119,6 +118,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
       const NodeID &node_id,
       const std::unordered_map<std::string, double> &changed_resources);
 
+ private:
   /// Delete the scheduling resources of the specified node.
   ///
   /// \param node_id Id of a node.

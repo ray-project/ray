@@ -38,7 +38,8 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   std::unordered_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 10;
   ResourceSet resource_set(resource_map);
-  gcs_resource_manager_->UpdateResources(node_id, resource_set);
+  gcs_resource_manager_->UpdateTotalResources(node_id, resource_map);
+  gcs_resource_manager_->UpdateAvailableResources(node_id, resource_set);
 
   // Get and check cluster resources.
   const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();
