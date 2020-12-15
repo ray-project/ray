@@ -112,18 +112,19 @@ def test_backend_user_config(serve_instance):
         pids_seen = set()
         for i in range(100):
             result = ray.get(handle.remote())
-            assert (str(result[0]) == val), result[0]
+            if str(result[0]) != val:
+                return False
             pids_seen.add(result[1])
-        assert (len(pids_seen) == num_replicas)
+        return len(pids_seen) == num_replicas
 
-    check("123", 2)
+    wait_for_condition(lambda: check("123", 2))
 
     client.update_backend_config("counter", BackendConfig(num_replicas=3))
-    check("123", 3)
+    wait_for_condition(lambda: check("123", 3))
 
     config = BackendConfig(user_config={"count": 456})
     client.update_backend_config("counter", config)
-    check("456", 3)
+    wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
