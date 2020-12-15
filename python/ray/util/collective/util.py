@@ -45,7 +45,7 @@ class NCCLUniqueIDStore:
 @ray.remote
 class Info:
     """
-    Store the collective information for groups created through `declare_collective_group`.
+    Store the collective group information created via `declare_collective_group`.
 
     Note: Should be used as a NamedActor.
     """

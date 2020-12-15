@@ -159,16 +159,17 @@ def declare_collective_group(actors, group_options):
 
     Args:
         actors (list): a list of actors to be set in a collective group.
-        group_options (dict): a dictionary that contains group_name(str), world_size(int),
-                              rank(list of int, e.g. [0,1] means the first actor is rank 0, and
-                              the second actor is rank 1), backend(str)
+        group_options (dict): a dictionary that contains group_name(str),
+                              world_size(int), rank(list of int, e.g. [0,1]
+                              means the first actor is rank 0, and the second
+                              actor is rank 1), backend(str).
     """
     try:
         group_name = group_options["group_name"]
         world_size = group_options["world_size"]
         rank = group_options["rank"]
         backend = group_options["backend"]
-    except:
+    except KeyError:
         raise ValueError("group options incomplete.")
 
     backend = types.Backend(backend)
@@ -177,7 +178,7 @@ def declare_collective_group(actors, group_options):
     name = "info" + group_name
     try:
         ray.get_actor(name)
-        raise RuntimeError('Trying to initialize a group twice.')
+        raise RuntimeError("Trying to initialize a group twice.")
     except:
         pass
 
