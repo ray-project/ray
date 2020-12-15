@@ -25,7 +25,7 @@ from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf, add_prefix, \
     DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
@@ -67,8 +67,11 @@ class StandardAutoscaler:
                  max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
                  max_failures=AUTOSCALER_MAX_NUM_FAILURES,
                  process_runner=subprocess,
-                 update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
+                 update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
+                 prefix_cluster_info=False):
         self.config_path = config_path
+        # Prefix each line of info string with cluster name if True
+        self.prefix_cluster_info = prefix_cluster_info
         # Keep this before self.reset (self.provider needs to be created
         # exactly once).
         self.provider = None
@@ -685,6 +688,8 @@ class StandardAutoscaler:
             self.load_metrics.get_resource_utilization())
         if _internal_kv_initialized():
             _internal_kv_put(DEBUG_AUTOSCALING_STATUS, tmp, overwrite=True)
+        if self.prefix_cluster_info:
+            tmp = add_prefix(tmp, self.config["cluster_name"])
         logger.debug(tmp)
 
     def info_string(self, nodes):

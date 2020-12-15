@@ -268,7 +268,7 @@ ray::Status NodeManager::RegisterGcs() {
                 id, VectorFromProtobuf(resource_notification.deleted_resources()));
           }
         };
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeToResources(
         /*subscribe_callback=*/resources_changed,
         /*done_callback=*/nullptr));
   };
@@ -413,7 +413,11 @@ void NodeManager::Heartbeat() {
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   heartbeat_data->set_node_id(self_node_id_.Binary());
   RAY_CHECK_OK(
-      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, /*done*/ nullptr));
+      gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data, [](Status status) {
+        if (status.IsDisconnected()) {
+          RAY_LOG(FATAL) << "This node has beem marked as dead.";
+        }
+      }));
 
   if (debug_dump_period_ > 0 &&
       static_cast<int64_t>(now_ms - last_debug_dump_at_ms_) > debug_dump_period_) {
@@ -749,10 +753,11 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
   // Fetch resource info for the remote node and update cluster resource map.
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
       node_id,
-      [this, node_id](Status status,
-                      const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &data) {
+      [this, node_id](
+          Status status,
+          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
         if (data) {
           ResourceSet resource_set;
           for (auto &resource_entry : *data) {
@@ -1930,14 +1935,15 @@ void NodeManager::ProcessSetResourceRequest(
   // Submit to the resource table. This calls the ResourceCreateUpdated or ResourceDeleted
   // callback, which updates cluster_resource_map_.
   if (is_deletion) {
-    RAY_CHECK_OK(
-        gcs_client_->Nodes().AsyncDeleteResources(node_id, {resource_name}, nullptr));
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
+        node_id, {resource_name}, nullptr));
   } else {
     std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> data_map;
     auto resource_table_data = std::make_shared<gcs::ResourceTableData>();
     resource_table_data->set_resource_capacity(capacity);
     data_map.emplace(resource_name, resource_table_data);
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(node_id, data_map, nullptr));
+    RAY_CHECK_OK(
+        gcs_client_->NodeResources().AsyncUpdateResources(node_id, data_map, nullptr));
   }
 }
 
