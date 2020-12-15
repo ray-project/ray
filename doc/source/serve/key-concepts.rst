@@ -21,7 +21,6 @@ In order to support seamless scalability backends can have many replicas, which 
 To define a backend, first you must define the "handler" or the business logic you'd like to respond with.
 The handler should take as input a `Starlette Request object <https://www.starlette.io/requests/>`_ and return any JSON-serializable object as output.  For a more customizable response type, the handler may return a 
 `Starlette Response object <https://www.starlette.io/responses/>`_.  
-In the future, Ray Serve will support `Starlette Request objects <https://www.starlette.io/requests/>`_ as input as well.
 
 A backend is defined using :mod:`client.create_backend <ray.serve.api.Client.create_backend>`, and the implementation can be defined as either a function or a class.
 Use a function when your response is stateless and a class when you might need to maintain some state (like a model).
