@@ -151,6 +151,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   void ReturnBundle(const BundleSpecification &bundle_spec);
 
+  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const { return cluster_resource_scheduler_; }
+
  private:
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   

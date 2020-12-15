@@ -264,25 +264,26 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestIdempotencyWithRandomOrder) {
 
 class NewPlacementGroupResourceManagerTest : public ::testing::Test {
  public:
-  NewPlacementGroupResourceManagerTest() {
-    new_placement_group_resource_manager_.reset(
-        new raylet::NewPlacementGroupResourceManager(cluster_resource_scheduler_));
-  }
-
   std::unique_ptr<raylet::NewPlacementGroupResourceManager>
        new_placement_group_resource_manager_;
 
   void InitLocalAvailableResource(
       std::unordered_map<std::string, double> &unit_resource) {
-    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>("local", unit_resource);
+    auto cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>("local", unit_resource);
+    new_placement_group_resource_manager_.reset(
+        new raylet::NewPlacementGroupResourceManager(cluster_resource_scheduler_));
+  }
+
+  void CheckAvailableResoueceEmpty(const std::string &resource) {
+    const auto cluster_resource_scheduler_ = new_placement_group_resource_manager_->GetResourceScheduler();
+    ASSERT_TRUE(cluster_resource_scheduler_->IsAvailableResourceEmpty(resource));
   }
 
   void CheckRemainingResourceCorrect(NodeResourceInstances &node_resource_instances) {
+    node_resource_instances.predefined_resources.resize(PredefinedResources_MAX);
+    const auto cluster_resource_scheduler_ = new_placement_group_resource_manager_->GetResourceScheduler();
     ASSERT_TRUE(cluster_resource_scheduler_->GetLocalResources() == node_resource_instances);
   }
-
-  protected:
-   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 };
 
 TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
@@ -296,9 +297,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
   /// 3. prepare bundle resource.
   new_placement_group_resource_manager_->PrepareBundle(bundle_spec);
   /// 4. check remaining resources is correct.
-  NodeResourceInstances node_resource_instances;
-  //CheckRemainingResourceCorrect(node_resource_instances);
-  bool res = cluster_resource_scheduler_->GetLocalResources() == node_resource_instances;
+  CheckAvailableResoueceEmpty("CPU");
 }
 
 
