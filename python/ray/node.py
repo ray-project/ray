@@ -737,8 +737,6 @@ class Node:
         process_info = ray._private.services.start_monitor(
             self._redis_address,
             self._logs_dir,
-            stdout_file=subprocess.DEVNULL,
-            stderr_file=subprocess.DEVNULL,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)
