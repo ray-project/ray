@@ -287,7 +287,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       RayConfig::instance().locality_aware_leasing_enabled()) {
     // If no raylet address is given, try to find the best worker for our next lease
     // request.
-    if (auto addr = lessor_picker_->GetBestNodeForTask(resource_spec)) {
+    if (auto addr = lease_policy_->GetBestNodeForTask(resource_spec)) {
       best_node_address = addr.value();
       raylet_address = &best_node_address;
     }

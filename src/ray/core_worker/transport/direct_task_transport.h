@@ -22,7 +22,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/lessor_picker.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
@@ -55,7 +55,7 @@ class CoreWorkerDirectTaskSubmitter {
       rpc::Address rpc_address, std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       LeaseClientFactoryFn lease_client_factory,
-      std::shared_ptr<LessorPickerInterface> lessor_picker,
+      std::shared_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
@@ -65,7 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
-        lessor_picker_(lessor_picker),
+        lease_policy_(std::move(lease_policy)),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
@@ -163,7 +163,7 @@ class CoreWorkerDirectTaskSubmitter {
   LeaseClientFactoryFn lease_client_factory_;
 
   /// Provider of worker leasing decisions.
-  std::shared_ptr<LessorPickerInterface> lessor_picker_;
+  std::shared_ptr<LeasePolicyInterface> lease_policy_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;

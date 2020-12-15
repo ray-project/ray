@@ -28,7 +28,7 @@ struct LocalityData {
   absl::flat_hash_set<NodeID> nodes_containing_object;
 };
 
-/// Interface for providers of locality data to the lessor picker.
+/// Interface for providers of locality data to the lease policy.
 class LocalityDataProviderInterface {
  public:
   virtual absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) = 0;
@@ -36,29 +36,29 @@ class LocalityDataProviderInterface {
   virtual ~LocalityDataProviderInterface() {}
 };
 
-/// Interface for mocking the lessor picker.
-class LessorPickerInterface {
+/// Interface for mocking the lease policy.
+class LeasePolicyInterface {
  public:
   /// Get the address of the best lessor node for the provided task.
   virtual absl::optional<rpc::Address> GetBestNodeForTask(
       const TaskSpecification &spec) = 0;
 
-  virtual ~LessorPickerInterface() {}
+  virtual ~LeasePolicyInterface() {}
 };
 
 typedef std::function<absl::optional<rpc::Address>(const NodeID &node_id)>
     NodeAddrFactory;
 
-/// Class used by the core worker to pick the best lessor to request a lease from.
-/// This class is not thread-safe.
-class LessorPicker : public LessorPickerInterface {
+/// Class used by the core worker to implement a lease policy for picking the best
+/// lessor node. This class is not thread-safe.
+class LeasePolicy : public LeasePolicyInterface {
  public:
-  LessorPicker(std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
-               NodeAddrFactory node_addr_factory)
+  LeasePolicy(std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
+              NodeAddrFactory node_addr_factory)
       : locality_data_provider_(locality_data_provider),
         node_addr_factory_(node_addr_factory) {}
 
-  ~LessorPicker() {}
+  ~LeasePolicy() {}
 
   /// Get the address of the best lessor node for the provided task.
   absl::optional<rpc::Address> GetBestNodeForTask(const TaskSpecification &spec);

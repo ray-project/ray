@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/lessor_picker.h"
+#include "ray/core_worker/lease_policy.h"
 
 namespace ray {
 
-absl::optional<rpc::Address> LessorPicker::GetBestNodeForTask(
+absl::optional<rpc::Address> LeasePolicy::GetBestNodeForTask(
     const TaskSpecification &spec) {
   if (auto node_id = GetBestNodeIdForTask(spec)) {
     return node_addr_factory_(node_id.value());
@@ -24,12 +24,12 @@ absl::optional<rpc::Address> LessorPicker::GetBestNodeForTask(
   return absl::nullopt;
 }
 
-absl::optional<NodeID> LessorPicker::GetBestNodeIdForTask(const TaskSpecification &spec) {
+absl::optional<NodeID> LeasePolicy::GetBestNodeIdForTask(const TaskSpecification &spec) {
   return GetBestNodeIdForObjects(spec.GetDependencyIds());
 }
 
 /// Criteria for "best" node: The node with the most object bytes (from object_ids) local.
-absl::optional<NodeID> LessorPicker::GetBestNodeIdForObjects(
+absl::optional<NodeID> LeasePolicy::GetBestNodeIdForObjects(
     const std::vector<ObjectID> &object_ids) {
   // Number of object bytes (from object_ids) that a given node has local.
   absl::flat_hash_map<NodeID, uint64_t> bytes_local_table;
