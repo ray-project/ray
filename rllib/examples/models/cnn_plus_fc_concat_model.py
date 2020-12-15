@@ -142,6 +142,7 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
                                                 name="cnn_{}".format(i))
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
+                self.add_module("cnn_{}".format(i), cnn)
             # Discrete inputs -> One-hot encode.
             elif isinstance(component, Discrete):
                 concat_size += component.n
