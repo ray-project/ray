@@ -253,10 +253,14 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = BayesOptSearch()
+
         invalid_config = {"a/b": tune.uniform(4.0, 8.0)}
+
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
+
         invalid_config = {"a": {"b/c": tune.uniform(4.0, 8.0)}}
+
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
 

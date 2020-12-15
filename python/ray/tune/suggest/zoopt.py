@@ -198,7 +198,7 @@ class ZOOptSearch(Searcher):
             logger.warning(
                 "`points_to_evaluate` seems to be ignored by ZOOpt.")
             init_samples = [
-                Solution(x=tuple([point[dim] for dim in self._dim_keys]))
+                Solution(x=tuple(point[dim] for dim in self._dim_keys))
                 for point in self._points_to_evaluate
             ]
         dim = zoopt.Dimension2(_dim_list)
@@ -207,7 +207,8 @@ class ZOOptSearch(Searcher):
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
             self.optimizer = SRacosTune(
                 dimension=dim, parameter=par, **self.kwargs)
-            self.optimizer.init_attribute()
+            if init_samples:
+                self.optimizer.init_attribute()
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:

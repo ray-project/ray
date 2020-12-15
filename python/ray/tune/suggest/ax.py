@@ -1,3 +1,4 @@
+import copy
 from typing import Dict, List, Optional, Union
 
 from ax.service.ax_client import AxClient
@@ -147,7 +148,7 @@ class AxSearch(Searcher):
         self._parameter_constraints = parameter_constraints
         self._outcome_constraints = outcome_constraints
 
-        self._points_to_evaluate = points_to_evaluate.copy()
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
         self.max_concurrent = max_concurrent
 
