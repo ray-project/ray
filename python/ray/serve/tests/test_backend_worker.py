@@ -85,7 +85,7 @@ async def test_runner_wraps_error():
 async def test_servable_function(serve_instance, router,
                                  mock_controller_with_name):
     def echo(request):
-        return request.args["i"]
+        return request.query_params["i"]
 
     await add_servable_to_router(echo, router, mock_controller_with_name[0])
 
@@ -103,7 +103,7 @@ async def test_servable_class(serve_instance, router,
             self.increment = inc
 
         def __call__(self, request):
-            return request.args["i"] + self.increment
+            return request.query_params["i"] + self.increment
 
     await add_servable_to_router(
         MyAdder, router, mock_controller_with_name[0], init_args=(3, ))

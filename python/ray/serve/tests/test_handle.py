@@ -40,12 +40,12 @@ def test_handle_http_args(serve_instance):
     client = serve_instance
 
     class Endpoint:
-        def __call__(self, request):
+        async def __call__(self, request):
             return {
-                "args": dict(request.args),
+                "args": dict(request.query_params),
                 "headers": dict(request.headers),
                 "method": request.method,
-                "json": request.json
+                "json": await request.json()
             }
 
     client.create_backend("backend", Endpoint)
@@ -58,7 +58,7 @@ def test_handle_http_args(serve_instance):
             "arg2": "2"
         },
         "headers": {
-            "X-Custom-Header": "value"
+            "x-custom-header": "value"
         },
         "method": "POST",
         "json": {
@@ -81,10 +81,10 @@ def test_handle_http_args(serve_instance):
     for resp in [resp_web, resp_handle]:
         for field in ["args", "method", "json"]:
             assert resp[field] == ground_truth[field]
-        resp["headers"]["X-Custom-Header"] == "value"
+        resp["headers"]["x-custom-header"] == "value"
 
 
-def test_handle_inject_flask_request(serve_instance):
+def test_handle_inject_starlette_request(serve_instance):
     client = serve_instance
 
     def echo_request_type(request):
@@ -103,7 +103,7 @@ def test_handle_inject_flask_request(serve_instance):
     for route in ["/echo", "/wrapper"]:
         resp = requests.get(f"http://127.0.0.1:8000{route}")
         request_type = resp.text
-        assert request_type == "<class 'flask.wrappers.Request'>"
+        assert request_type == "<class 'starlette.requests.Request'>"
 
 
 if __name__ == "__main__":

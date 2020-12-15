@@ -48,8 +48,8 @@ class BoostingModel:
         with open("/tmp/iris_labels.json") as f:
             self.label_list = json.load(f)
 
-    def __call__(self, flask_request):
-        payload = flask_request.json
+    async def __call__(self, flask_request):
+        payload = await flask_request.json()
         print("Worker: received flask request with data", payload)
 
         input_vector = [
@@ -143,8 +143,8 @@ class BoostingModelv2:
         with open("/tmp/iris_labels_2.json") as f:
             self.label_list = json.load(f)
 
-    def __call__(self, flask_request):
-        payload = flask_request.json
+    async def __call__(self, flask_request):
+        payload = await flask_request.json()
         print("Worker: received flask request with data", payload)
 
         input_vector = [

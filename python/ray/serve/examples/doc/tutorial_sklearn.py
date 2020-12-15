@@ -54,8 +54,8 @@ class BoostingModel:
         with open(LABEL_PATH) as f:
             self.label_list = json.load(f)
 
-    def __call__(self, flask_request):
-        payload = flask_request.json
+    async def __call__(self, flask_request):
+        payload = await flask_request.json()
         print("Worker: received flask request with data", payload)
 
         input_vector = [

@@ -157,9 +157,9 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Sta
 
     .. code-block:: python
 
-        import flask
+        import starlette.requests
 
-        if isinstance(request, flask.Request):
+        if isinstance(request, starlette.requests.Request):
             print("Request coming from web!")
         elif isinstance(request, ServeRequest):
             print("Request coming from Python!")
@@ -170,10 +170,10 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Sta
 
     .. code-block:: python
 
-        handle.remote(flask_request)
+        handle.remote(starlette_request)
 
     In this case, Serve will `not` wrap it in ServeRequest. You can directly
-    process the request as a ``flask.Request``.
+    process the request as a ``starlette.requests.Request``.
 
 How fast is Ray Serve?
 ----------------------
@@ -186,13 +186,6 @@ We are continuously benchmarking Ray Serve. We can confidently say:
 You can checkout our `microbenchmark instruction <https://github.com/ray-project/ray/tree/master/python/ray/serve/benchmarks>`_
 to benchmark on your hardware.
 
-
-Does Ray Serve use Flask?
--------------------------
-Flask is only used as a web request object for servable to consume the data.
-We actually use the fastest Python web server: `Uvicorn <https://www.uvicorn.org/>`_ as our web server,
-alongside with the power of Python asyncio.
-**Flask is ONLY the request object that we are using, Uvicorn (not flask) provides the webserver.**
 
 Can I use asyncio along with Ray Serve?
 ---------------------------------------

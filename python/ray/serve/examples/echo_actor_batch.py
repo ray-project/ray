@@ -36,7 +36,7 @@ class MagicCounter:
         if serve.context.web:
             result = []
             for flask_request in flask_request_list:
-                base_number = int(flask_request.args.get("base_number", "0"))
+                base_number = int(flask_request.query_params.get("base_number", "0"))
                 result.append(base_number)
             return list(map(lambda x: x + self.increment, result))
         else:

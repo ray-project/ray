@@ -15,7 +15,7 @@ import requests
 # __doc_define_servable_v0_begin__
 @serve.accept_batch
 def batch_adder_v0(flask_requests: List):
-    numbers = [int(request.args["number"]) for request in flask_requests]
+    numbers = [int(request.query_params["number"]) for request in flask_requests]
 
     input_array = np.array(numbers)
     print("Our input array has shape:", input_array.shape)
@@ -58,7 +58,7 @@ print("Result returned:", results)
 # __doc_define_servable_v1_begin__
 @serve.accept_batch
 def batch_adder_v1(requests: List):
-    numbers = [int(request.args["number"]) for request in requests]
+    numbers = [int(request.query_params["number"]) for request in requests]
     input_array = np.array(numbers)
     print("Our input array has shape:", input_array.shape)
     # Sleep for 200ms, this could be performing CPU intensive computation

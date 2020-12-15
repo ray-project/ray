@@ -13,7 +13,7 @@ client = serve.start()
 # a backend can be a function or class.
 # it can be made to be invoked from web as well as python.
 def echo_v1(flask_request):
-    response = flask_request.args.get("response", "web")
+    response = flask_request.query_params.get("response", "web")
     return response
 
 

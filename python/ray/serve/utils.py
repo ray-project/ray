@@ -14,8 +14,7 @@ from collections import UserDict
 import requests
 import numpy as np
 import pydantic
-import flask
-import starlette
+import starlette.requests
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
@@ -26,7 +25,7 @@ ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
 class ServeMultiDict(UserDict):
-    """Compatible data structure to simulate Flask.Request.args API."""
+    """Compatible data structure to simulate Starlette Request query_args."""
 
     def getlist(self, key):
         """Return the list of items for a given key."""
@@ -34,11 +33,14 @@ class ServeMultiDict(UserDict):
 
 
 class ServeRequest:
-    """The request object used in Python context.
+    """The request object used when passing arguments via ServeHandle.
 
-    ServeRequest is built to have similar API as Flask.Request. You only need
-    to write your model serving code once; it can be queried by both HTTP and
-    Python.
+    ServeRequest partially implements the API of Starlette Request. You only
+    need to write your model serving code once; it can be queried by both HTTP
+    and Python.  
+    
+    To use the full Starlette Request interface with ServeHandle, you may
+    instead directly pass in a Starlette Request object to the ServeHandle.
     """
 
     def __init__(self, data, kwargs, headers, method):
@@ -58,28 +60,25 @@ class ServeRequest:
         return self._method
 
     @property
-    def args(self):
+    def query_params(self):
         """The keyword arguments from ``handle.remote(**kwargs)``."""
         return self._kwargs
 
-    @property
-    def json(self):
+    async def json(self):
         """The request dictionary, from ``handle.remote(dict)``."""
         if not isinstance(self._data, dict):
             raise RayServeException("Request data is not a dictionary. "
                                     f"It is {type(self._data)}.")
         return self._data
 
-    @property
-    def form(self):
+    async def form(self):
         """The request dictionary, from ``handle.remote(dict)``."""
         if not isinstance(self._data, dict):
             raise RayServeException("Request data is not a dictionary. "
                                     f"It is {type(self._data)}.")
         return self._data
 
-    @property
-    def data(self):
+    async def body(self):
         """The request data from ``handle.remote(obj)``."""
         return self._data
 
@@ -93,9 +92,7 @@ def parse_request_item(request_item):
 
         # If the input data from handle is web request, we don't need to wrap
         # it in ServeRequest.
-        if isinstance(arg, flask.Request):
-            return arg
-        elif isinstance(arg, starlette.requests.Request):
+        if isinstance(arg, starlette.requests.Request):
             return arg
 
         return ServeRequest(

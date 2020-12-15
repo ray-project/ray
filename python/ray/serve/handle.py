@@ -95,7 +95,7 @@ class RayServeHandle:
 
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
-        """Issue an asynchrounous request to the endpoint.
+        """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
@@ -105,9 +105,9 @@ class RayServeHandle:
         Args:
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.data``.
+                Otherwise, it will be available in ``request.body()``.
             ``**kwargs``: All keyword arguments will be available in
-                ``request.args``.
+                ``request.query_params``.
         """
         assert self.sync, "handle.remote() should be called from sync handle."
         coro = self._remote(request_data, kwargs)
@@ -117,7 +117,7 @@ class RayServeHandle:
         return future.result()
 
     async def _remote_async(self, request_data, **kwargs) -> ray.ObjectRef:
-        """Experimental API for enqueue a request in async context."""
+        """Experimental API for enqueueing a request in async context."""
         assert not self.sync, "_remote_async must be called inside async loop."
         return await self._remote(request_data, kwargs)
 
