@@ -13,7 +13,6 @@ from ray.util.collective.types import AllReduceOptions, \
 from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
 # TODO(Hao):
 # (1) stream management, instead of using the default stream,
 #     using a dedicate stream
@@ -169,16 +168,15 @@ class NCCLGroup(BaseGroup):
         reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
        
         # for non-blocking calls of all-reduce
-        #groupStart()
+        logger.debug(f"{tensor}, {comms}")
+        groupStart()
         for i in range(len(tensor)):
             dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
             ptr = nccl_util.get_tensor_ptr(tensor[i])
             n_elems = nccl_util.get_tensor_n_elements(tensor[i])
             # in-place allreduce
-            logger.debug(tensor[i])
-            logger.debug(f"{ptr}, {ptr}, {n_elems}, {dtype}, {reduce_op}, {stream.ptr}")
             comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
-       # groupEnd()
+        groupEnd()
 
     def barrier(self, barrier_options=BarrierOptions()):
         """
@@ -215,18 +213,19 @@ class NCCLGroup(BaseGroup):
             rendezvous = Rendezvous(_group_name)
             rendezvous.meet()
             nccl_uid = rendezvous.get_nccl_id()
-
             _world_size = len(devices) * self.world_size
             comms = []
             
             # for non-blocking communicator creation
-            #groupStart()
+            groupStart()
             for i in range(len(devices)):
                 _rank = self.rank * len(devices) + i
-                groupStart()
-                comms.append(nccl_util.create_nccl_communicator(
-                                _world_size, nccl_uid, _rank))
-            #groupEnd()
+                from cupy.cuda import Device
+                with Device(devices[i]):
+                    comm = nccl_util.create_nccl_communicator(
+                                _world_size, nccl_uid, _rank)
+                comms.append(comm)
+            groupEnd()
 
         # cache the result
         self._dev_comm_map[key] = comms
