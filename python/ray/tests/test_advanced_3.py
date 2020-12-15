@@ -271,7 +271,7 @@ def test_not_logging_to_driver(shutdown_only):
 
 
 @pytest.mark.parametrize("stdout_stderr", ["stdout", "stderr"])
-def test_stdout_stderr_redirection(ray_start_regular_shared, stdout_stderr):
+def test_stdout_stderr_redirection(ray_start_regular, stdout_stderr):
     @ray.remote
     def f():
         sys_out_err = getattr(sys, stdout_stderr)
