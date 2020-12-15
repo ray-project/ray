@@ -316,7 +316,6 @@ class NodeUpdater:
             # Only run setup commands if runtime_hash has changed because
             # we don't want to run setup_commands every time the head node
             # file_mounts folders have changed.
-            # TODO(ilr) Docker may need to override self.runtime_hash (or vice versa)
             if node_tags.get(TAG_RAY_RUNTIME_CONFIG) != self.runtime_hash:
                 # Run init commands
                 self.provider.set_node_tags(
