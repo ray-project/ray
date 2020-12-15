@@ -57,4 +57,4 @@ pip install -U "$wheel"
 
 unset RAY_ADDRESS
 ray stop --force
-OMP_NUM_THREADS=64 ray microbenchmark
+ray microbenchmark
