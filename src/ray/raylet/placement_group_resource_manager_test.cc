@@ -262,9 +262,50 @@ TEST_F(OldPlacementGroupResourceManagerTest, TestIdempotencyWithRandomOrder) {
   CheckRemainingResourceCorrect(result_resource);
 }
 
+class NewPlacementGroupResourceManagerTest : public ::testing::Test {
+ public:
+  NewPlacementGroupResourceManagerTest() {
+    new_placement_group_resource_manager_.reset(
+        new raylet::NewPlacementGroupResourceManager(cluster_resource_scheduler_));
+  }
+
+  std::unique_ptr<raylet::NewPlacementGroupResourceManager>
+       new_placement_group_resource_manager_;
+
+  void InitLocalAvailableResource(
+      std::unordered_map<std::string, double> &unit_resource) {
+    cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>("local", unit_resource);
+  }
+
+  void CheckRemainingResourceCorrect(NodeResourceInstances &node_resource_instances) {
+    ASSERT_TRUE(cluster_resource_scheduler_->GetLocalResources() == node_resource_instances);
+  }
+
+  protected:
+   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+};
+
+TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleResource) {
+  // 1. create bundle spec.
+  auto group_id = PlacementGroupID::FromRandom();
+  std::unordered_map<std::string, double> unit_resource;
+  unit_resource.insert({"CPU", 1.0});
+  auto bundle_spec = Mocker::GenBundleCreation(group_id, 1, unit_resource);
+  /// 2. init local available resource.
+  InitLocalAvailableResource(unit_resource);
+  /// 3. prepare bundle resource.
+  new_placement_group_resource_manager_->PrepareBundle(bundle_spec);
+  /// 4. check remaining resources is correct.
+  NodeResourceInstances node_resource_instances;
+  //CheckRemainingResourceCorrect(node_resource_instances);
+  bool res = cluster_resource_scheduler_->GetLocalResources() == node_resource_instances;
+}
+
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  ::testing::GTEST_FLAG(filter) = "*TestNewPrepareBundleResource*";
   return RUN_ALL_TESTS();
 }

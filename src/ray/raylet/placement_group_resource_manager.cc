@@ -154,9 +154,18 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
   const BundleSpecification &bundle_spec) {
-  if (pg_bundles_.count(bundle_spec.BundleId()) > 0) {
-    // Duplicate prepare request.
-    return true;
+  auto iter = pg_bundles_.find(bundle_spec.BundleId());
+  if (iter != pg_bundles_.end()) {
+    if (iter->second->state_ == CommitState::COMMITTED) {
+      // If the bundle state is already committed, it means that prepare request is just
+      // stale.
+      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly.";
+      return true;
+    } else {
+      // If there was a bundle in prepare state, it already locked resources, we will
+      // return bundle resources.
+      ReturnBundle(bundle_spec);
+    }
   }
 
   std::shared_ptr<TaskResourceInstances> resource_instances =
@@ -184,6 +193,12 @@ void NewPlacementGroupResourceManager::CommitBundle(
     // We should only ever receive a commit for a non-existent placement group when a placement group is created and removed in quick succession.
     RAY_LOG(DEBUG) << "Received a commit message for an unknown bundle. The bundle info is " << bundle_spec.DebugString();
     return;
+  } else {
+    // Ignore request If the bundle state is already committed.
+    if (it->second->state_ == CommitState::COMMITTED) {
+      RAY_LOG(INFO) << "Duplicate committ bundle request, skip it directly.";
+      return;
+    }
   }
 
   const auto &bundle_state = it->second;
