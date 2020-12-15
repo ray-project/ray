@@ -4,7 +4,8 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.torch.misc import SlimFC
+from ray.rllib.models.torch.misc import normc_initializer as \
+    torch_normc_initializer, SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.annotations import override
@@ -118,8 +119,8 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
         assert isinstance(obs_space.original_space, (Tuple)), \
             "`obs_space.original_space` must be Tuple!"
 
-        nn.Module.__init__()
-        TorchModelV2.__init__(obs_space, action_space, num_outputs, model_config,
+        nn.Module.__init__(self)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config,
                               name)
 
         # Build the CNN(s) given obs_space's image components.
@@ -154,6 +155,7 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
         self.logits_layer = None
         self.value_layer = None
         self._value_out = None
+
         if num_outputs:
             # Action-distribution head.
             self.logits_layer = SlimFC(
@@ -161,12 +163,12 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
                 out_size=num_outputs,
                 activation_fn=None,
             )
-
             # Create the value branch model.
-            self.value_layer = SlimFC(in_size=concat_size,
-                                      out_size=1,
-                                      activation_fn=None,
-                                      initializer=normc_initializer(0.01))
+            self.value_layer = SlimFC(
+                in_size=concat_size,
+                out_size=1,
+                activation_fn=None,
+                initializer=torch_normc_initializer(0.01))
         else:
             self.num_outputs = concat_size
 
@@ -187,7 +189,7 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
 
         # Value branch.
         logits, values = self.logits_layer(out), self.value_layer(out)
-        self._value_out = torch.reshape(values, -1)
+        self._value_out = torch.reshape(values, [-1])
         return logits, []
 
     @override(ModelV2)
