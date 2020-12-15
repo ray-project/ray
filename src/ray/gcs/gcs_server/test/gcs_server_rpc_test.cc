@@ -490,6 +490,46 @@ TEST_F(GcsServerTest, TestNodeInfo) {
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
+TEST_F(GcsServerTest, TestHeartbeatWithNoRegistering) {
+  // Create gcs node info
+  auto gcs_node_info = Mocker::GenNodeInfo();
+
+  // Report heartbeat wit no registering
+  rpc::ReportHeartbeatRequest report_heartbeat_request;
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+  std::promise<bool> disconnected;
+  client_->ReportHeartbeat(
+      report_heartbeat_request,
+      [&disconnected](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+        if (status.IsDisconnected()) {
+          disconnected.set_value(true);
+        }
+      });
+  WaitReady(disconnected.get_future(), timeout_ms_);
+
+  // Register node info
+  rpc::RegisterNodeRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(*gcs_node_info);
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+  std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+
+  // Report heartbeat
+  report_heartbeat_request.mutable_heartbeat()->set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+
+  // Unregister node info
+  rpc::UnregisterNodeRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(gcs_node_info->node_id());
+  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+}
+
 TEST_F(GcsServerTest, TestObjectInfo) {
   // Create object table data
   ObjectID object_id = ObjectID::FromRandom();

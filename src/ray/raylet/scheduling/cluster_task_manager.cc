@@ -17,7 +17,10 @@ ClusterTaskManager::ClusterTaskManager(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       fulfills_dependencies_func_(fulfills_dependencies_func),
       is_owner_alive_(is_owner_alive),
-      get_node_info_(get_node_info) {}
+      get_node_info_(get_node_info),
+      max_resource_shapes_per_load_report_(
+          RayConfig::instance().max_resource_shapes_per_load_report()),
+      report_worker_backlog_(RayConfig::instance().report_worker_backlog()) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   bool did_schedule = false;
@@ -45,6 +48,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       if (node_id_string.empty()) {
         // There is no node that has available resources to run the request.
         // Move on to the next shape.
+        RAY_LOG(DEBUG) << "No feasible node found for task "
+                       << task.GetTaskSpecification().TaskId();
         break;
       } else {
         if (node_id_string == self_node_id_.Binary()) {
@@ -81,6 +86,8 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
     } else {
+      RAY_LOG(DEBUG) << "Waiting for args for task: "
+                     << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
       TaskID task_id = task.GetTaskSpecification().TaskId();
       waiting_tasks_[task_id] = work;
@@ -130,7 +137,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         if (worker_leased) {
           auto reply = std::get<1>(*work_it);
           auto callback = std::get<2>(*work_it);
-          Dispatch(worker, leased_workers, spec, reply, callback);
+          Dispatch(worker, leased_workers, task, reply, callback);
         } else {
           worker_pool.PushWorker(worker);
         }
@@ -182,9 +189,6 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
       worker->SetAllocatedInstances(allocated_instances);
     }
     worker->AssignTaskId(spec.TaskId());
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      worker->AssignJobId(spec.JobId());
-    }
     worker->SetAssignedTask(task);
     *worker_leased = true;
     dispatched = true;
@@ -198,6 +202,7 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   tasks_to_schedule_[scheduling_class].push_back(work);
+  AddToBacklogTracker(task);
 }
 
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
@@ -235,7 +240,10 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
        shapes_it++) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
-      if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+      const auto &task = std::get<0>(*work_it);
+      if (task.GetTaskSpecification().TaskId() == task_id) {
+        RemoveFromBacklogTracker(task);
+        RAY_LOG(DEBUG) << "Canceling task " << task_id;
         ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -249,7 +257,9 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
        shapes_it++) {
     auto &work_queue = shapes_it->second;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
-      if (std::get<0>(*work_it).GetTaskSpecification().TaskId() == task_id) {
+      const auto &task = std::get<0>(*work_it);
+      if (task.GetTaskSpecification().TaskId() == task_id) {
+        RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -262,6 +272,8 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
 
   auto iter = waiting_tasks_.find(task_id);
   if (iter != waiting_tasks_.end()) {
+    const auto &task = std::get<0>(iter->second);
+    RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
     waiting_tasks_.erase(iter);
     return true;
@@ -270,8 +282,12 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   return false;
 }
 
-void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
-                                   std::shared_ptr<HeartbeatTableData> data) const {
+void ClusterTaskManager::FillResourceUsage(
+    bool light_report_resource_usage_enabled,
+    std::shared_ptr<rpc::ResourcesData> data) const {
+  if (max_resource_shapes_per_load_report_ == 0) {
+    return;
+  }
   // TODO (WangTao): Find a way to check if load changed and combine it with light
   // heartbeat. Now we just report it every time.
   data->set_resource_load_changed(true);
@@ -279,9 +295,59 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
   auto resource_load_by_shape =
       data->mutable_resource_load_by_shape()->mutable_resource_demands();
 
-  // TODO (Alex): Implement the 1-CPU task optimization.
+  int num_reported = 0;
+
+  // 1-CPU optimization
+  static const ResourceSet one_cpu_resource_set(
+      std::unordered_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
+  static const SchedulingClass one_cpu_scheduling_cls(
+      TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
+  {
+    num_reported++;
+    int count = 0;
+    auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
+    if (it != tasks_to_schedule_.end()) {
+      count += it->second.size();
+    }
+    it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
+    if (it != tasks_to_dispatch_.end()) {
+      count += it->second.size();
+    }
+
+    if (count > 0) {
+      auto by_shape_entry = resource_load_by_shape->Add();
+
+      for (const auto &resource : one_cpu_resource_set.GetResourceMap()) {
+        // Add to `resource_loads`.
+        const auto &label = resource.first;
+        const auto &quantity = resource.second;
+        (*resource_loads)[label] += quantity * count;
+
+        // Add to `resource_load_by_shape`.
+        (*by_shape_entry->mutable_shape())[label] = quantity;
+      }
+
+      int num_ready = by_shape_entry->num_ready_requests_queued();
+      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+
+      auto backlog_it = backlog_tracker_.find(one_cpu_scheduling_cls);
+      if (backlog_it != backlog_tracker_.end()) {
+        by_shape_entry->set_backlog_size(backlog_it->second);
+      }
+    }
+  }
+
   for (const auto &pair : tasks_to_schedule_) {
     const auto &scheduling_class = pair.first;
+    if (scheduling_class == one_cpu_scheduling_cls) {
+      continue;
+    }
+    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+        max_resource_shapes_per_load_report_ >= 0) {
+      // TODO (Alex): It's possible that we skip a different scheduling key which contains
+      // the same resources.
+      break;
+    }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
             .GetResourceMap();
@@ -298,14 +364,35 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
 
       // Add to `resource_load_by_shape`.
       (*by_shape_entry->mutable_shape())[label] = quantity;
-      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-      // that the entire cluster is utilized.
-      by_shape_entry->set_num_infeasible_requests_queued(count);
+    }
+
+    // If a task is not feasible on the local node it will not be feasible on any other
+    // node in the cluster. See the scheduling policy defined by
+    // ClusterResourceScheduler::GetBestSchedulableNode for more details.
+    if (cluster_resource_scheduler_->IsLocallyFeasible(resources)) {
+      int num_ready = by_shape_entry->num_ready_requests_queued();
+      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+    } else {
+      int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
+      by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
+    }
+    auto backlog_it = backlog_tracker_.find(scheduling_class);
+    if (backlog_it != backlog_tracker_.end()) {
+      by_shape_entry->set_backlog_size(backlog_it->second);
     }
   }
 
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
+    if (scheduling_class == one_cpu_scheduling_cls) {
+      continue;
+    }
+    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+        max_resource_shapes_per_load_report_ >= 0) {
+      // TODO (Alex): It's possible that we skip a different scheduling key which contains
+      // the same resources.
+      break;
+    }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
             .GetResourceMap();
@@ -322,9 +409,12 @@ void ClusterTaskManager::Heartbeat(bool light_heartbeat_enabled,
 
       // Add to `resource_load_by_shape`.
       (*by_shape_entry->mutable_shape())[label] = quantity;
-      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-      // that the entire cluster is utilized.
-      by_shape_entry->set_num_ready_requests_queued(count);
+    }
+    int num_ready = by_shape_entry->num_ready_requests_queued();
+    by_shape_entry->set_num_ready_requests_queued(num_ready + count);
+    auto backlog_it = backlog_tracker_.find(scheduling_class);
+    if (backlog_it != backlog_tracker_.end()) {
+      by_shape_entry->set_backlog_size(backlog_it->second);
     }
   }
 }
@@ -344,8 +434,9 @@ std::string ClusterTaskManager::DebugString() const {
 void ClusterTaskManager::Dispatch(
     std::shared_ptr<WorkerInterface> worker,
     std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers,
-    const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+    const Task &task, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Dispatching task " << task_spec.TaskId();
   // Pass the contact info of the worker to use.
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
@@ -409,8 +500,12 @@ void ClusterTaskManager::Dispatch(
 void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work) {
   const auto &task_spec = std::get<0>(work).GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
-  cluster_resource_scheduler_->AllocateRemoteTaskResources(
-      spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap());
+
+  if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
+          spillback_to.Binary(), task_spec.GetRequiredResources().GetResourceMap())) {
+    RAY_LOG(INFO) << "Tried to allocate resources for request " << task_spec.TaskId()
+                  << " on a remote node that are no longer available";
+  }
 
   auto node_info_opt = get_node_info_(spillback_to);
   RAY_CHECK(node_info_opt)
@@ -424,6 +519,23 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to, const Work &work)
 
   auto send_reply_callback = std::get<2>(work);
   send_reply_callback();
+}
+
+void ClusterTaskManager::AddToBacklogTracker(const Task &task) {
+  if (report_worker_backlog_) {
+    auto cls = task.GetTaskSpecification().GetSchedulingClass();
+    backlog_tracker_[cls] += task.BacklogSize();
+  }
+}
+
+void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
+  if (report_worker_backlog_) {
+    SchedulingClass cls = task.GetTaskSpecification().GetSchedulingClass();
+    backlog_tracker_[cls] -= task.BacklogSize();
+    if (backlog_tracker_[cls] == 0) {
+      backlog_tracker_.erase(backlog_tracker_.find(cls));
+    }
+  }
 }
 
 }  // namespace raylet

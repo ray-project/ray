@@ -1,4 +1,6 @@
+import copy
 import logging
+import math
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
@@ -45,15 +47,72 @@ def not_provided_msg(resource_type):
 
 def bootstrap_kubernetes(config):
     if not config["provider"]["use_internal_ips"]:
-        return ValueError("Exposing external IP addresses for ray pods isn't "
-                          "currently supported. Please set "
-                          "'use_internal_ips' to false.")
+        return ValueError(
+            "Exposing external IP addresses for ray containers isn't "
+            "currently supported. Please set "
+            "'use_internal_ips' to false.")
     namespace = _configure_namespace(config["provider"])
     _configure_autoscaler_service_account(namespace, config["provider"])
     _configure_autoscaler_role(namespace, config["provider"])
     _configure_autoscaler_role_binding(namespace, config["provider"])
     _configure_services(namespace, config["provider"])
     return config
+
+
+def fillout_resources_kubernetes(config):
+    if "available_node_types" not in config:
+        return config["available_node_types"]
+    node_types = copy.deepcopy(config["available_node_types"])
+    for node_type in node_types:
+        container_data = node_types[node_type]["node_config"]["spec"][
+            "containers"][0]
+        autodetected_resources = get_autodetected_resources(container_data)
+        if "resources" not in config["available_node_types"][node_type]:
+            config["available_node_types"][node_type]["resources"] = {}
+        config["available_node_types"][node_type]["resources"].update(
+            autodetected_resources)
+        logger.debug(
+            "Updating the resources of node type {} to include {}.".format(
+                node_type, autodetected_resources))
+    return config
+
+
+def get_autodetected_resources(container_data):
+    container_resources = container_data.get("resources", None)
+    if container_resources is None:
+        return {"CPU": 0, "GPU": 0}
+
+    node_type_resources = {
+        resource_name.upper(): get_resource(container_resources, resource_name)
+        for resource_name in ["cpu", "gpu"]
+    }
+
+    return node_type_resources
+
+
+def get_resource(container_resources, resource_name):
+    request = _get_resource(
+        container_resources, resource_name, field_name="requests")
+    limit = _get_resource(
+        container_resources, resource_name, field_name="limits")
+    resource = min(request, limit)
+    return 0 if resource == float("inf") else int(resource)
+
+
+def _get_resource(container_resources, resource_name, field_name):
+    if (field_name in container_resources
+            and resource_name in container_resources[field_name]):
+        return _parse_resource(container_resources[field_name][resource_name])
+    else:
+        return float("inf")
+
+
+def _parse_resource(resource):
+    resource_str = str(resource)
+    if resource_str[-1] == "m":
+        return math.ceil(int(resource_str[:-1]) / 1000)
+    else:
+        return int(resource_str)
 
 
 def _configure_namespace(provider_config):

@@ -2,22 +2,22 @@
 import logging
 import os
 
+import numpy as np
 import ray
 from ray.util.collective import types
 from ray.util.collective.const import get_nccl_store_name
 
-# Get the availability information first by importing information
 _MPI_AVAILABLE = False
 _NCCL_AVAILABLE = True
 
 # try:
-#     from ray.util.collective.collective_group.mpi_collective_group
+#     from ray.util.collective.collective_group.mpi_collective_group \
 #     import MPIGroup
 # except ImportError:
 #     _MPI_AVAILABLE = False
-
 try:
     from ray.util.collective.collective_group import NCCLGroup
+    from ray.util.collective.collective_group import nccl_util
 except ImportError:
     _NCCL_AVAILABLE = False
 
@@ -36,10 +36,12 @@ class GroupManager(object):
     """
     Use this class to manage the collective groups we created so far.
 
+    Each process will have an instance of `GroupManager`. Each process
+    could belong to multiple collective groups. The membership information
+    and other metadata are stored in the global `_group_mgr` object.
     """
 
     def __init__(self):
-        """Put some necessary meta information here."""
         self._name_group_map = {}
         self._group_name_map = {}
 
@@ -56,8 +58,8 @@ class GroupManager(object):
         elif backend == types.Backend.NCCL:
             # create the ncclUniqueID
             if rank == 0:
-                import cupy.cuda.nccl as nccl
-                group_uid = nccl.get_unique_id()
+                # availability has been checked before entering here.
+                group_uid = nccl_util.get_nccl_unique_id()
                 store_name = get_nccl_store_name(group_name)
                 # Avoid a potential circular dependency in ray/actor.py
                 from ray.util.collective.util import NCCLUniqueIDStore
@@ -72,9 +74,7 @@ class GroupManager(object):
         return self._name_group_map[group_name]
 
     def is_group_exist(self, group_name):
-        if group_name in self._name_group_map:
-            return True
-        return False
+        return group_name in self._name_group_map
 
     def get_group_by_name(self, group_name):
         """Get the collective group handle by its name."""
@@ -114,9 +114,7 @@ _group_mgr = GroupManager()
 
 def is_group_initialized(group_name):
     """Check if the group is initialized in this process by the group name."""
-    if not _group_mgr.is_group_exist(group_name):
-        return False
-    return True
+    return _group_mgr.is_group_exist(group_name)
 
 
 def init_collective_group(world_size: int,
@@ -126,16 +124,16 @@ def init_collective_group(world_size: int,
     """
     Initialize a collective group inside an actor process.
 
-    This is an
     Args:
-        world_size:
-        rank:
-        backend:
-        group_name:
+        world_size (int): the total number of processed in the group.
+        rank (int): the rank of the current process.
+        backend: the CCL backend to use, NCCL or MPI.
+        group_name (str): the name of the collective group.
 
     Returns:
         None
     """
+    _check_inside_actor()
     backend = types.Backend(backend)
     _check_backend_availability(backend)
     global _group_mgr
@@ -152,10 +150,13 @@ def init_collective_group(world_size: int,
     assert (rank < world_size)
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
+
 def declare_collective_group(actors, group_options):
     """
-    Declare a list of actors in a collective group with group options. This function
-    should be called in a driver process.
+    Declare a list of actors in a collective group with group options.
+
+    Note: This function should be called in a driver process.
+
     Args:
         actors (list): a list of actors to be set in a collective group.
         group_options (dict): a dictionary that contains group_name(str), world_size(int),
@@ -196,8 +197,10 @@ def declare_collective_group(actors, group_options):
     info = Info.options(name=name, lifetime="detached").remote()
     ray.wait([info.set_info.remote(actors_id, world_size, rank, backend)])
 
+
 def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
+    _check_inside_actor()
     global _group_mgr
     _group_mgr.destroy_collective_group(group_name)
 
@@ -214,6 +217,7 @@ def get_rank(group_name: str = "default") -> int:
         -1 if the group does not exist or the process does
         not belong to the group.
     """
+    _check_inside_actor()
     if not is_group_initialized(group_name):
         return -1
     g = _group_mgr.get_group_by_name(group_name)
@@ -232,6 +236,7 @@ def get_world_size(group_name="default") -> int:
         -1 if the group does not exist or the process does
         not belong to the group.
     """
+    _check_inside_actor()
     if not is_group_initialized(group_name):
         return -1
     g = _group_mgr.get_group_by_name(group_name)
@@ -243,9 +248,9 @@ def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
     Collective allreduce the tensor across the group with name group_name.
 
     Args:
-        tensor:
-        group_name (str):
-        op:
+        tensor: the tensor to be all-reduced on this process.
+        group_name (str): the collective group name to perform allreduce.
+        op: The reduce operation.
 
     Returns:
         None
@@ -259,10 +264,10 @@ def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
 
 def barrier(group_name):
     """
-    Barrier all collective process in the group with name group_name.
+    Barrier all processes in the collective group.
 
     Args:
-        group_name (string):
+        group_name (str): the name of the group to barrier.
 
     Returns:
         None
@@ -273,6 +278,7 @@ def barrier(group_name):
 
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
+    _check_inside_actor()
     global _group_mgr
     if not is_group_initialized(group_name):
         # try loading from remote info store
@@ -287,7 +293,7 @@ def _check_and_get_group(group_name):
             _group_mgr.create_collective_group(backend, world_size, r, group_name)
         except:
             # check if this group is initialized using options()
-            if "collective_group_name" in os.environ and\
+            if "collective_group_name" in os.environ and \
                     os.environ["collective_group_name"] == group_name:
                 rank = int(os.environ["collective_rank"])
                 world_size = int(os.environ["collective_world_size"])
@@ -306,20 +312,32 @@ def _check_backend_availability(backend: types.Backend):
         if not mpi_available():
             raise RuntimeError("MPI is not available.")
     elif backend == types.Backend.NCCL:
+        # expect some slowdown at the first call
+        # as I defer the import to invocation.
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
 
 
 def _check_single_tensor_input(tensor):
     """Check if the tensor is with a supported type."""
-    if types.numpy_available():
-        if isinstance(tensor, types.np.ndarray):
-            return
+    if isinstance(tensor, np.ndarray):
+        return
     if types.cupy_available():
         if isinstance(tensor, types.cp.ndarray):
             return
     if types.torch_available():
         if isinstance(tensor, types.th.Tensor):
             return
-    raise RuntimeError("Unrecognized tensor type. Supported types are: "
-                       "np.ndarray, torch.Tensor, cupy.ndarray.")
+    raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "
+                       "np.ndarray, torch.Tensor, cupy.ndarray.".format(
+                           type(tensor)))
+
+
+def _check_inside_actor():
+    """Check if currently it is inside a Ray actor/task."""
+    worker = ray.worker.global_worker
+    if worker.mode == ray.WORKER_MODE:
+        return
+    else:
+        raise RuntimeError("The collective APIs shall be only used inside "
+                           "a Ray actor or task.")

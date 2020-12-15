@@ -2,7 +2,7 @@ import pytest
 from contextlib import contextmanager
 
 import ray.experimental.client.server.server as ray_client_server
-from ray.experimental.client import ray
+from ray.experimental.client import ray, reset_api
 from ray.experimental.client.common import ClientObjectRef
 
 
@@ -10,9 +10,12 @@ from ray.experimental.client.common import ClientObjectRef
 def ray_start_client_server():
     server = ray_client_server.serve("localhost:50051", test_mode=True)
     ray.connect("localhost:50051")
-    yield ray
-    ray.disconnect()
-    server.stop(0)
+    try:
+        yield ray
+    finally:
+        ray.disconnect()
+        server.stop(0)
+        reset_api()
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
@@ -33,9 +36,6 @@ def test_real_ray_fallback(ray_start_regular_shared):
 
         nodes = ray.get(get_nodes.remote())
         assert len(nodes) == 1, nodes
-
-        with pytest.raises(NotImplementedError):
-            print(ray.nodes())
 
 
 def test_nested_function(ray_start_regular_shared):
@@ -168,6 +168,70 @@ def test_basic_actor(ray_start_regular_shared):
         s, count = ray.get(actor.say_hello.remote("world"))
         assert s == "Hello world"
         assert count == 2
+
+
+def test_pass_handles(ray_start_regular_shared):
+    """
+    Test that passing client handles to actors and functions to remote actors
+    in functions (on the server or raylet side) works transparently to the
+    caller.
+    """
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        class ExecActor:
+            def exec(self, f, x):
+                return ray.get(f.remote(x))
+
+            def exec_exec(self, actor, f, x):
+                return ray.get(actor.exec.remote(f, x))
+
+        @ray.remote
+        def fact(x):
+            out = 1
+            while x > 0:
+                out = out * x
+                x -= 1
+            return out
+
+        @ray.remote
+        def func_exec(f, x):
+            return ray.get(f.remote(x))
+
+        @ray.remote
+        def func_actor_exec(actor, f, x):
+            return ray.get(actor.exec.remote(f, x))
+
+        @ray.remote
+        def sneaky_func_exec(obj, x):
+            return ray.get(obj["f"].remote(x))
+
+        @ray.remote
+        def sneaky_actor_exec(obj, x):
+            return ray.get(obj["actor"].exec.remote(obj["f"], x))
+
+        def local_fact(x):
+            if x <= 0:
+                return 1
+            return x * local_fact(x - 1)
+
+        assert ray.get(fact.remote(7)) == local_fact(7)
+        assert ray.get(func_exec.remote(fact, 8)) == local_fact(8)
+        test_obj = {}
+        test_obj["f"] = fact
+        assert ray.get(sneaky_func_exec.remote(test_obj, 5)) == local_fact(5)
+        actor_handle = ExecActor.remote()
+        assert ray.get(actor_handle.exec.remote(fact, 7)) == local_fact(7)
+        assert ray.get(func_actor_exec.remote(actor_handle, fact,
+                                              10)) == local_fact(10)
+        second_actor = ExecActor.remote()
+        assert ray.get(actor_handle.exec_exec.remote(second_actor, fact,
+                                                     9)) == local_fact(9)
+        test_actor_obj = {}
+        test_actor_obj["actor"] = second_actor
+        test_actor_obj["f"] = fact
+        assert ray.get(sneaky_actor_exec.remote(test_actor_obj,
+                                                4)) == local_fact(4)
 
 
 if __name__ == "__main__":

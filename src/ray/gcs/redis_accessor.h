@@ -326,36 +326,21 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const NodeID &node_id) const override;
 
-  Status AsyncGetResources(const NodeID &node_id,
-                           const OptionalItemCallback<ResourceMap> &callback) override;
-
-  Status AsyncGetAllAvailableResources(
-      const MultiItemCallback<rpc::AvailableResources> &callback) override {
-    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
-  }
-
-  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
-                              const StatusCallback &callback) override;
-
-  Status AsyncDeleteResources(const NodeID &node_id,
-                              const std::vector<std::string> &resource_names,
-                              const StatusCallback &callback) override;
-
-  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
-                                   const StatusCallback &done) override;
-
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
-  void AsyncReReportHeartbeat() override;
+  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+                                  const StatusCallback &callback) override;
 
-  Status AsyncGetAllHeartbeat(
-      const ItemCallback<rpc::HeartbeatBatchTableData> &callback) override {
-    return Status::NotImplemented("AsyncGetAllHeartbeat not implemented");
+  void AsyncReReportResourceUsage() override;
+
+  Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override {
+    return Status::NotImplemented("AsyncGetAllResourceUsage not implemented");
   }
 
-  Status AsyncSubscribeBatchHeartbeat(
-      const ItemCallback<HeartbeatBatchTableData> &subscribe,
+  Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<ResourceUsageBatchData> &subscribe,
       const StatusCallback &done) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
@@ -374,13 +359,46 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
  private:
   RedisGcsClient *client_impl_{nullptr};
 
+  typedef SubscriptionExecutor<NodeID, ResourceUsageBatchData, ResourceUsageBatchTable>
+      HeartbeatBatchSubscriptionExecutor;
+  HeartbeatBatchSubscriptionExecutor resource_usage_batch_sub_executor_;
+};
+
+/// \class RedisNodeResourceInfoAccessor
+/// RedisNodeResourceInfoAccessor is an implementation of `NodeResourceInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
+ public:
+  explicit RedisNodeResourceInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisNodeResourceInfoAccessor() {}
+
+  Status AsyncGetResources(const NodeID &node_id,
+                           const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncGetAllAvailableResources(
+      const MultiItemCallback<rpc::AvailableResources> &callback) override {
+    return Status::NotImplemented("AsyncGetAllAvailableResources not implemented");
+  }
+
+  Status AsyncUpdateResources(const NodeID &node_id, const ResourceMap &resources,
+                              const StatusCallback &callback) override;
+
+  Status AsyncDeleteResources(const NodeID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const StatusCallback &callback) override;
+
+  Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
+                                   const StatusCallback &done) override;
+
+  void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+
   typedef SubscriptionExecutor<NodeID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
-
-  typedef SubscriptionExecutor<NodeID, HeartbeatBatchTableData, HeartbeatBatchTable>
-      HeartbeatBatchSubscriptionExecutor;
-  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 };
 
 /// \class RedisErrorInfoAccessor
@@ -466,6 +484,9 @@ class RedisPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
 
   Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback) override;
+
+  Status AsyncWaitUntilReady(const PlacementGroupID &placement_group_id,
+                             const StatusCallback &callback) override;
 };
 
 }  // namespace gcs

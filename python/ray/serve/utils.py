@@ -144,6 +144,7 @@ class ServeEncoder(json.JSONEncoder):
 @ray.remote(num_cpus=0)
 def block_until_http_ready(http_endpoint,
                            backoff_time_s=1,
+                           check_ready=None,
                            timeout=HTTP_PROXY_TIMEOUT):
     http_is_ready = False
     start_time = time.time()
@@ -152,7 +153,10 @@ def block_until_http_ready(http_endpoint,
         try:
             resp = requests.get(http_endpoint)
             assert resp.status_code == 200
-            http_is_ready = True
+            if check_ready is None:
+                http_is_ready = True
+            else:
+                http_is_ready = check_ready(resp)
         except Exception:
             pass
 

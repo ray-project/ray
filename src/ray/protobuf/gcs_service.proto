@@ -164,14 +164,6 @@ message ReportHeartbeatReply {
   GcsStatus status = 1;
 }
 
-message GetAllHeartbeatRequest {
-}
-
-message GetAllHeartbeatReply {
-  GcsStatus status = 1;
-  HeartbeatBatchTableData heartbeat_data = 2;
-}
-
 message ReportResourceUsageRequest {
   ResourcesData resources = 1;
 }
@@ -185,7 +177,41 @@ message GetAllResourceUsageRequest {
 
 message GetAllResourceUsageReply {
   GcsStatus status = 1;
-  repeated ResourcesData resources_list = 2;
+  ResourceUsageBatchData resource_usage_data = 2;
+}
+
+message SetInternalConfigRequest {
+  StoredConfig config = 1;
+}
+
+message SetInternalConfigReply {
+  GcsStatus status = 1;
+}
+
+message GetInternalConfigRequest {
+}
+
+message GetInternalConfigReply {
+  GcsStatus status = 1;
+  StoredConfig config = 2;
+}
+
+// Service for node info access.
+service NodeInfoGcsService {
+  // Register a node to GCS Service.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Unregister a node from GCS Service.
+  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Report resource usage of a node to GCS Service.
+  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
+  // Get resource usage of all nodes from GCS Service.
+  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+  // Set cluster internal config.
+  rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
+  // Get cluster internal config.
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message GetResourcesRequest {
@@ -215,22 +241,6 @@ message DeleteResourcesReply {
   GcsStatus status = 1;
 }
 
-message SetInternalConfigRequest {
-  StoredConfig config = 1;
-}
-
-message SetInternalConfigReply {
-  GcsStatus status = 1;
-}
-
-message GetInternalConfigRequest {
-}
-
-message GetInternalConfigReply {
-  GcsStatus status = 1;
-  StoredConfig config = 2;
-}
-
 message GetAllAvailableResourcesRequest {
 }
 
@@ -239,35 +249,23 @@ message GetAllAvailableResourcesReply {
   repeated AvailableResources resources_list = 2;
 }
 
-// Service for node info access.
-service NodeInfoGcsService {
-  // Register a node to GCS Service.
-  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
-  // Unregister a node from GCS Service.
-  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
-  // Get information of all nodes from GCS Service.
-  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Report heartbeat of a node to GCS Service.
-  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-  // Get newest heartbeat of all nodes from GCS Service.
-  rpc GetAllHeartbeat(GetAllHeartbeatRequest) returns (GetAllHeartbeatReply);
-  // Report resource usage of a node to GCS Service.
-  rpc ReportResourceUsage(ReportResourceUsageRequest) returns (ReportResourceUsageReply);
-  // Get resource usage of all nodes from GCS Service.
-  rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
+// Service for node resource info access.
+service NodeResourceInfoGcsService {
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
   // Update resources of a node in GCS Service.
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
   // Delete resources of a node in GCS Service.
   rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
-  // Set cluster internal config.
-  rpc SetInternalConfig(SetInternalConfigRequest) returns (SetInternalConfigReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
+}
+
+// Service for heartbeat info access.
+service HeartbeatInfoGcsService {
+  // Report heartbeat of a node to GCS Service.
+  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
 }
 
 message GetObjectLocationsRequest {
@@ -527,20 +525,28 @@ message GetAllPlacementGroupReply {
   repeated PlacementGroupTableData placement_group_table_data = 2;
 }
 
+message WaitPlacementGroupUntilReadyRequest {
+  bytes placement_group_id = 1;
+}
+
+message WaitPlacementGroupUntilReadyReply {
+  GcsStatus status = 1;
+}
+
 // Service for placement group info access.
 service PlacementGroupInfoGcsService {
   // Create placement group via gcs service.
   rpc CreatePlacementGroup(CreatePlacementGroupRequest)
       returns (CreatePlacementGroupReply);
-
   // Remove placement group via gcs service.
   rpc RemovePlacementGroup(RemovePlacementGroupRequest)
       returns (RemovePlacementGroupReply);
-
   // Get placement group information via gcs service.
   rpc GetPlacementGroup(GetPlacementGroupRequest) returns (GetPlacementGroupReply);
-
   // Get information of all placement group from GCS Service.
   rpc GetAllPlacementGroup(GetAllPlacementGroupRequest)
       returns (GetAllPlacementGroupReply);
+  // Wait for placement group until ready.
+  rpc WaitPlacementGroupUntilReady(WaitPlacementGroupUntilReadyRequest)
+      returns (WaitPlacementGroupUntilReadyReply);
 }

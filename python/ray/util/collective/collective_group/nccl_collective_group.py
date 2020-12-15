@@ -21,6 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 class Rendezvous:
+    """
+    A rendezvous class for different actor/task processes to meet.
+
+    To initialize an NCCL collective communication group, different
+    actors/tasks spawned in Ray in a collective group needs to meet
+    each other to synchronize the NCCLUniqueID. This class guarantees
+    they meet via the NCCLUniqueIDStore, initialized on the rank=0
+    process.
+
+    Args:
+        group_name (str): the unique user-specified group name.
+    """
+
     def __init__(self, group_name):
         if not group_name:
             raise ValueError("Invalid group name.")
@@ -28,13 +41,21 @@ class Rendezvous:
         self._store_name = None
         self._store = None
 
-    def meet(self, timeout=180):
-        """Meet at the named actor store."""
-        if timeout is not None and timeout < 0:
-            raise ValueError("The 'timeout' argument must be nonnegative. "
-                             f"Received {timeout}")
+    def meet(self, timeout_s=180):
+        """
+        Meet at the named actor store.
+
+        Args:
+            timeout_s: timeout in seconds.
+
+        Return:
+            None
+        """
+        if timeout_s <= 0:
+            raise ValueError("The 'timeout' argument must be positive. "
+                             "Got '{}'.".format(timeout_s))
         self._store_name = get_nccl_store_name(self._group_name)
-        timeout_delta = datetime.timedelta(seconds=timeout)
+        timeout_delta = datetime.timedelta(seconds=timeout_s)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
         while elapsed < timeout_delta:
@@ -58,12 +79,19 @@ class Rendezvous:
     def store(self):
         return self._store
 
-    def get_nccl_id(self, timeout=180):
-        """Get the NCCLUniqueID from the store."""
+    def get_nccl_id(self, timeout_s=180):
+        """
+        Get the NCCLUniqueID from the store through Ray.
+
+        Args:
+            timeout_s: timeout in seconds.
+        Return:
+            str: the NCCLUniqueID if successful.
+        """
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
         uid = None
-        timeout_delta = datetime.timedelta(seconds=timeout)
+        timeout_delta = datetime.timedelta(seconds=timeout_s)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
         while elapsed < timeout_delta:

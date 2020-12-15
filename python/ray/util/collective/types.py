@@ -1,15 +1,11 @@
 """Types conversion between different backends."""
 from enum import Enum
+from dataclasses import dataclass
 from datetime import timedelta
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
-
-try:
-    import numpy as np  # noqa: F401
-except ImportError:
-    _NUMPY_AVAILABLE = False
 
 try:
     import torch as th  # noqa: F401
@@ -20,10 +16,6 @@ try:
     import cupy as cp  # noqa: F401
 except ImportError:
     _CUPY_AVAILABLE = False
-
-
-def numpy_available():
-    return _NUMPY_AVAILABLE
 
 
 def cupy_available():
@@ -61,10 +53,12 @@ class ReduceOp(Enum):
 unset_timeout = timedelta(milliseconds=-1)
 
 
+@dataclass
 class AllReduceOptions:
     reduceOp = ReduceOp.SUM
     timeout = unset_timeout
 
 
+@dataclass
 class BarrierOptions:
     timeout = unset_timeout

@@ -1,20 +1,19 @@
 """Abstract class for collective groups."""
 from abc import ABCMeta
 from abc import abstractmethod
-import six
 
 from ray.util.collective.types import AllReduceOptions, BarrierOptions
 
 
-class BaseGroup(six.with_metaclass(ABCMeta)):
+class BaseGroup(metaclass=ABCMeta):
     def __init__(self, world_size, rank, group_name):
         """
         Init the process group with basic information.
 
         Args:
-            world_size:
-            rank:
-            group_name:
+            world_size (int): The total number of processes in the group.
+            rank (int): The rank of the current process.
+            group_name (str): The group name.
         """
         self._world_size = world_size
         self._rank = rank

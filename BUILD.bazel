@@ -33,6 +33,7 @@ cc_library(
     ]),
     hdrs = glob([
         "src/ray/rpc/*.h",
+        "src/ray/raylet_client/*.h",
     ]),
     copts = COPTS,
     strip_include_prefix = "src",
@@ -55,6 +56,9 @@ cc_grpc_library(
 # Node manager server and client.
 cc_library(
     name = "node_manager_rpc",
+    srcs = glob([
+        "src/ray/rpc/node_manager/*.cc",
+    ]),
     hdrs = glob([
         "src/ray/rpc/node_manager/*.h",
     ]),
@@ -810,6 +814,18 @@ cc_test(
 )
 
 cc_test(
+    name = "pull_manager_test",
+    srcs = [
+        "src/ray/object_manager/test/pull_manager_test.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "push_manager_test",
     srcs = [
         "src/ray/object_manager/test/push_manager_test.cc",
@@ -864,11 +880,13 @@ cc_test(
 )
 
 cc_test(
-    name = "scheduling_resources_test",
-    srcs = ["src/ray/common/task/scheduling_resources_test.cc"],
+    name = "local_placement_group_manager_test",
+    srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     copts = COPTS,
     deps = [
+        "gcs_test_util_lib",
         "ray_common",
+        "raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )

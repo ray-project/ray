@@ -44,15 +44,20 @@ def get_nccl_runtime_version():
     return get_version()
 
 
+def get_nccl_unique_id():
+    return nccl.get_unique_id()
+
+
 def create_nccl_communicator(world_size, nccl_unique_id, rank):
     """
     Create an NCCL communicator using NCCL APIs.
 
-    TODO(Hao): verify that the call has big overhead.
-
+    Args:
+        world_size (int): the number of processes of this communcator group.
+        nccl_unique_id (str): the NCCLUniqueID for this group.
+        rank (int): the rank of this process.
     Returns:
-        comm(nccl.ncclComm_t): an NCCL communicator.
-
+        comm (nccl.ncclComm_t): an NCCL communicator.
     """
     # TODO(Hao): make this inside the NCCLComm class,
     #  and implement the abort method. Make it RAII.
@@ -64,12 +69,14 @@ def get_nccl_reduce_op(reduce_op):
     """
     Map the reduce op to NCCL reduce op type.
 
+    Args:
+        reduce_op (ReduceOp): ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
     Returns:
-        Nccl_op (nccl.ncclRedOp_t)
+        (nccl.ncclRedOp_t): the mapped NCCL reduce op.
     """
     if reduce_op not in NCCL_REDUCE_OP_MAP:
         raise RuntimeError(
-            "NCCL does not support ReduceOp: '{}'".format(reduce_op))
+            "NCCL does not support reduce op: '{}'".format(reduce_op))
     return NCCL_REDUCE_OP_MAP[reduce_op]
 
 
@@ -80,7 +87,8 @@ def get_nccl_tensor_dtype(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return TORCH_NCCL_DTYPE_MAP[tensor.dtype]
-    raise ValueError("Unsupported tensor type")
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {}.".format(type(tensor)))
 
 
 def get_tensor_ptr(tensor):
@@ -94,7 +102,8 @@ def get_tensor_ptr(tensor):
             if not tensor.is_cuda:
                 raise RuntimeError("torch tensor must be on gpu.")
             return tensor.data_ptr()
-    raise ValueError("Unsupported tensor type.")
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {}.".format(type(tensor)))
 
 
 def get_tensor_n_elements(tensor):
@@ -104,4 +113,5 @@ def get_tensor_n_elements(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return torch.numel(tensor)
-    raise ValueError("Unsupported tensor type")
+    raise ValueError("Unsupported tensor type. "
+                     "Got: {}.".format(type(tensor)))

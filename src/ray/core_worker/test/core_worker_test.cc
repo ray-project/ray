@@ -257,7 +257,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       TaskOptions options;
       std::vector<ObjectID> return_ids;
       driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0,
-                        std::make_pair(PlacementGroupID::Nil(), -1), true);
+                        std::make_pair(PlacementGroupID::Nil(), -1), true,
+                        /*debugger_breakpoint=*/"");
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -533,7 +534,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true);
+                              std::make_pair(PlacementGroupID::Nil(), -1), true, "");
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
@@ -619,8 +620,9 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
   TaskSpecification task_spec;
   size_t num_returns = 3;
+  task_spec.GetMutableMessage().set_job_id(job_id.Binary());
   task_spec.GetMutableMessage().set_num_returns(num_returns);
-  context.ResetCurrentTask(task_spec);
+  context.ResetCurrentTask();
   context.SetCurrentTask(task_spec);
   ASSERT_EQ(context.GetCurrentTaskID(), task_spec.TaskId());
 
