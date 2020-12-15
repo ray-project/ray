@@ -247,8 +247,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param node_id ID of the node where the dead worker was located.
   /// \param worker_id ID of the dead worker.
-  /// \param intentional_exit Whether the death was intentional. If yes and the
-  /// worker was an actor, we should not attempt to restart the actor.
+  /// \param disconnect_type the reason why the worker is disconnected.
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
                     rpc::ClientDisconnectType disconnect_type =
                         rpc::ClientDisconnectType::UNEXPECTED_EXIT);

@@ -333,7 +333,7 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 
 void NodeManager::DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
                                           rpc::ClientDisconnectType disconnect_type) {
-  // Used to destroy workers when its the bundle resource is released (unused or
+  // Used to destroy a worker when its bundle resource is released (unused or
   // placementgroup is deleted.)
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
@@ -592,7 +592,7 @@ void NodeManager::HandleReleaseUnusedBundles(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DisconnectAndKillWorker(worker, rpc::ClientDisconnectType::RELEASE_UNUSED_RESOURCE);
+    DisconnectAndKillWorker(worker, rpc::ClientDisconnectType::UNUSED_RESOURCE_RELEASED);
   }
 
   // Return unused bundle resources.
@@ -1382,8 +1382,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         type_str = "worker_died";
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
-      }
-      if (disconnect_type == rpc::ClientDisconnectType::PLACEGROUP_REMOVED) {
+      } else if (disconnect_type == rpc::ClientDisconnectType::PLACEGROUP_REMOVED) {
         error_type = ErrorType::PLACEMENT_GROUP_ERROR;
         type_str = "placement_group_error";
         error_message << "A worker was killed while executing task " << task_id

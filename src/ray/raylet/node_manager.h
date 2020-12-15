@@ -437,6 +437,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
                                rpc::ClientDisconnectType disconnect_type);
 
+  /// Disconnect a client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param disconnect_type The reason to disconnect the specified client.
+  /// \return Void.
   void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                         rpc::ClientDisconnectType disconnect_type);
 

@@ -399,7 +399,7 @@ message WorkerTableData {
   Address worker_address = 2;
   // The UNIX timestamp at which this worker's state was updated.
   int64 timestamp = 3;
-  // Whether it's an intentional disconnect, only applies then `is_alive` is false.
+  // The type of worker exit.
   ClientDisconnectType disconnect_type = 4;
   // Type of this worker.
   WorkerType worker_type = 5;

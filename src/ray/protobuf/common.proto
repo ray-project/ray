@@ -133,7 +133,7 @@ enum ErrorType {
   TASK_CANCELLED = 5;
   // Inidicates that creating the GCS service failed to create the actor.
   ACTOR_CREATION_FAILED = 6;
-  // Indicates failure due to placementgroup
+  // Indicates failure due to placement group
   PLACEMENT_GROUP_ERROR = 7;
 }
 
@@ -440,14 +440,14 @@ message MetricPoint {
   string units = 6;
 }
 
-// Type of a worker.
+// Type of a worker exit.
 enum ClientDisconnectType {
   // Intended worker exit.
   FINISHED = 0;
   // Unintended worker exit.
   UNEXPECTED_EXIT = 1;
   // Worker exit due to resource bundle release.
-  RELEASE_UNUSED_RESOURCE = 2;
+  UNUSED_RESOURCE_RELEASED = 2;
   // Worker exit due to placement group removal.
   PLACEGROUP_REMOVED = 3;
 }
