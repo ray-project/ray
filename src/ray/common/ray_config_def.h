@@ -32,14 +32,14 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 
 /// The duration that a single handler on the event loop can take before a
 /// warning is logged that the handler is taking too long.
-RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
+RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 1000)
+RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
+RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -179,6 +179,10 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
 /// ObjectManager.
+RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
+
+/// Timeout, in milliseconds, to wait before retrying a failed pull in the
+/// ObjectManager.
 RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 
 /// Timeout, in milliseconds, to wait until the Push request fails.
@@ -243,6 +247,12 @@ RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
 /// Duration to sleep after failing to put an object in plasma because it is full.
 /// This will be exponentially increased for each retry.
 RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+
+/// The amount of time to wait between logging plasma space usage debug messages.
+RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
+
+/// The amount of time between automatic local Python GC triggers.
+RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)

@@ -421,7 +421,6 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl),
-      resource_sub_executor_(client_impl_->resource_table()),
       resource_usage_batch_sub_executor_(client_impl->resource_usage_batch_table()) {}
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
@@ -549,7 +548,10 @@ Status RedisNodeInfoAccessor::AsyncSubscribeBatchedResourceUsage(
                                                               done);
 }
 
-Status RedisNodeInfoAccessor::AsyncGetResources(
+RedisNodeResourceInfoAccessor::RedisNodeResourceInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), resource_sub_executor_(client_impl_->resource_table()) {}
+
+Status RedisNodeResourceInfoAccessor::AsyncGetResources(
     const NodeID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const NodeID &id,
@@ -565,9 +567,8 @@ Status RedisNodeInfoAccessor::AsyncGetResources(
   return resource_table.Lookup(JobID::Nil(), node_id, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncUpdateResources(const NodeID &node_id,
-                                                   const ResourceMap &resources,
-                                                   const StatusCallback &callback) {
+Status RedisNodeResourceInfoAccessor::AsyncUpdateResources(
+    const NodeID &node_id, const ResourceMap &resources, const StatusCallback &callback) {
   Hash<NodeID, ResourceTableData>::HashCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const NodeID &node_id,
@@ -578,7 +579,7 @@ Status RedisNodeInfoAccessor::AsyncUpdateResources(const NodeID &node_id,
   return resource_table.Update(JobID::Nil(), node_id, resources, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncDeleteResources(
+Status RedisNodeResourceInfoAccessor::AsyncDeleteResources(
     const NodeID &node_id, const std::vector<std::string> &resource_names,
     const StatusCallback &callback) {
   Hash<NodeID, ResourceTableData>::HashRemoveCallback on_done = nullptr;
@@ -593,7 +594,7 @@ Status RedisNodeInfoAccessor::AsyncDeleteResources(
   return resource_table.RemoveEntries(JobID::Nil(), node_id, resource_names, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
+Status RedisNodeResourceInfoAccessor::AsyncSubscribeToResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const NodeID &id,

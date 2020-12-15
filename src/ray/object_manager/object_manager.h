@@ -32,12 +32,14 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"
 #include "ray/object_manager/plasma/store_runner.h"
+#include "ray/object_manager/pull_manager.h"
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
@@ -49,6 +51,8 @@ struct ObjectManagerConfig {
   /// from other object managers. If this is 0, the object manager will choose
   /// its own port.
   int object_manager_port;
+  /// The object manager's global timer frequency.
+  unsigned int timer_freq_ms;
   /// The time in milliseconds to wait before retrying a pull
   /// that fails due to node id lookup.
   unsigned int pull_timeout_ms;
@@ -78,7 +82,6 @@ struct LocalObjectInfo {
   /// Information from the object store about the object.
   object_manager::protocol::ObjectInfoT object_info;
 };
-
 class ObjectStoreRunner {
  public:
   ObjectStoreRunner(const ObjectManagerConfig &config,
@@ -171,9 +174,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// Send pull request
   ///
   /// \param object_id Object id
-  /// \param node_id Remote server node id
-  void SendPullRequest(const ObjectID &object_id, const NodeID &node_id,
-                       std::shared_ptr<rpc::ObjectManagerClient> rpc_client);
+  /// \param client_id Remote server client id
+  void SendPullRequest(const ObjectID &object_id, const NodeID &client_id);
 
   /// Get the rpc client according to the node ID
   ///
@@ -235,17 +237,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Status of whether the pull request successfully initiated.
   ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
 
-  /// Try to Pull an object from one of its expected node locations. If there
-  /// are more node locations to try after this attempt, then this method
-  /// will try each of the other nodes in succession, with a timeout between
-  /// each attempt. If the object is received or if the Pull is Canceled before
-  /// the timeout, then no more Pull requests for this object will be sent
-  /// to other node managers until TryPull is called again.
-  ///
-  /// \param object_id The object's object id.
-  /// \return Void.
-  void TryPull(const ObjectID &object_id);
-
   /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
   /// method is idempotent.
   ///
@@ -293,15 +284,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// Record metrics.
   void RecordMetrics() const;
 
+  void Tick();
+
  private:
   friend class TestObjectManager;
-
-  struct PullRequest {
-    PullRequest() : retry_timer(nullptr), timer_set(false), node_locations() {}
-    std::unique_ptr<boost::asio::deadline_timer> retry_timer;
-    bool timer_set;
-    std::vector<NodeID> node_locations;
-  };
 
   struct WaitState {
     WaitState(boost::asio::io_service &service, int64_t timeout_ms,
@@ -406,6 +392,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const NodeID &node_id);
 
+  /// Weak reference to main service. We ensure this object is destroyed before
+  /// main_service_ is stopped.
+  boost::asio::io_service *main_service_;
+
   NodeID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -415,10 +405,6 @@ class ObjectManager : public ObjectManagerInterface,
   // we will decide its type at runtime, and we would pass it to Plasma Store.
   std::shared_ptr<ObjectStoreNotificationManager> store_notification_;
   ObjectBufferPool buffer_pool_;
-
-  /// Weak reference to main service. We ensure this object is destroyed before
-  /// main_service_ is stopped.
-  boost::asio::io_service *main_service_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   boost::asio::io_service rpc_service_;
@@ -448,10 +434,6 @@ class ObjectManager : public ObjectManagerInterface,
       ObjectID, std::unordered_map<NodeID, std::unique_ptr<boost::asio::deadline_timer>>>
       unfulfilled_push_requests_;
 
-  /// The objects that this object manager is currently trying to fetch from
-  /// remote object managers.
-  std::unordered_map<ObjectID, PullRequest> pull_requests_;
-
   /// Profiling events that are to be batched together and added to the profile
   /// table in the GCS.
   std::vector<rpc::ProfileTableData::ProfileEvent> profile_events_;
@@ -459,9 +441,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// mutex lock used to protect profile_events_, profile_events_ is used in main thread
   /// and rpc thread.
   std::mutex profile_mutex_;
-
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
 
   /// The gPRC server.
   rpc::GrpcServer object_manager_server_;
@@ -478,8 +457,15 @@ class ObjectManager : public ObjectManagerInterface,
 
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
+  /// Pull manager retry timer .
+  /* std::unique_ptr<boost::asio::deadline_timer> pull_retry_timer_; */
+  boost::asio::deadline_timer pull_retry_timer_;
+
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;
+
+  /// Object pull manager.
+  std::unique_ptr<PullManager> pull_manager_;
 
   /// Running sum of the amount of memory used in the object store.
   int64_t used_memory_ = 0;

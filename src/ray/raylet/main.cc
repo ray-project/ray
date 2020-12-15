@@ -234,6 +234,9 @@ int main(int argc, char *argv[]) {
         ray::ObjectManagerConfig object_manager_config;
         object_manager_config.object_manager_port = object_manager_port;
         object_manager_config.store_socket_name = store_socket_name;
+
+        object_manager_config.timer_freq_ms =
+            RayConfig::instance().object_manager_timer_freq_ms();
         object_manager_config.pull_timeout_ms =
             RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
@@ -257,7 +260,7 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "1.1.0.dev0"},
+            {ray::stats::VersionKey, "1.2.0.dev0"},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port);
 
