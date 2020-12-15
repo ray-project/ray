@@ -318,7 +318,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             auto now = absl::GetCurrentTimeNanos();
             auto restored_bytes = r.bytes_restored_total();
             RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
-                          << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
+                           << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
             restored_bytes_total_ += restored_bytes;
             restored_objects_total_ += 1;
             // Adjust throughput timing to account for concurrent restore operations.
@@ -327,12 +327,12 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             if (now - last_restore_log_ns_ > 1e9) {
               last_restore_log_ns_ = now;
               RAY_LOG(INFO) << "Restored "
-                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
-                             << " MiB, " << restored_objects_total_
-                             << " objects, read throughput "
-                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
-                                                 restore_time_total_s_)
-                             << " MiB/s";
+                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
+                            << " MiB, " << restored_objects_total_
+                            << " objects, read throughput "
+                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
+                                                restore_time_total_s_)
+                            << " MiB/s";
             }
             last_restore_finish_ns_ = now;
           }

@@ -1142,7 +1142,7 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
 
 bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   // The lock is acquired when a request is received to the plasma store.
-  // recursive mutex is used here to allow 
+  // recursive mutex is used here to allow
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   return entry->ref_count == 1;
