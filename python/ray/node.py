@@ -733,7 +733,12 @@ class Node:
         raise NotImplementedError
 
     def start_monitor(self):
-        """Start the monitor."""
+        """Start the monitor.
+
+        Autoscaling output goes to these monitor.err/out files, and
+        any modification to these files may break existing
+        cluster launching commands.
+        """
         stdout_file, stderr_file = self.get_log_file_handles(
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
