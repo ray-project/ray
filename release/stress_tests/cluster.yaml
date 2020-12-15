@@ -23,11 +23,16 @@ target_utilization_fraction: 0.8
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
 
+docker:
+    image: anyscale/ray:latest
+    container_name: ray_container
+    pull_before_run: False
+
 # Cloud-provider specific configuration.
 provider:
     type: aws
     region: us-west-2
-    availability_zone: us-west-2a
+    availability_zone: us-west-2a, us-west-2b, us-west-2c
     cache_stopped_nodes: False
 
 # How Ray will authenticate with newly launched nodes.
@@ -44,30 +49,13 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m4.16xlarge
-    ImageId: ami-042d0d6196f494652 # Custom ami
-
-    # Set primary volume to 25 GiB
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
-
-    # Additional options in the boto docs.
-
+    
 # Provider-specific config for worker nodes, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m4.large
-    ImageId: ami-042d0d6196f494652 # Custom ami
-
-    # Set primary volume to 25 GiB
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 100
-
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
         MarketType: spot
@@ -85,23 +73,12 @@ setup_commands:
     # # Build Ray.
     # - git clone https://github.com/ray-project/ray || true
     # - ray/ci/travis/install-bazel.sh
-    - pip install -U pip
     - pip install terminado
     - pip install boto3==1.4.8 cython==0.29.0
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
-    - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/ray-1.1.0/c7239d7b738919daa2fad65e26d3634a9f36f2eb/ray-1.1.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
-# Custom commands that will be run on the head node after common setup.
+    - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.1.0/496e449a8bc022b3cd544f7bca76d91be05f04f4/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+
 head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
-
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; ray start --head --port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --num-gpus=100
