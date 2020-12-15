@@ -12,7 +12,7 @@ import psutil
 import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
-from ray.test_utils import new_scheduler_enabled, wait_for_condition
+from ray.test_utils import wait_for_condition
 
 bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
@@ -338,7 +338,6 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_spill_during_get(object_spilling_config, shutdown_only):
     ray.init(
         num_cpus=4,
@@ -569,7 +568,6 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-@pytest.mark.skipif(new_scheduler_enabled(), reason="flaky")
 def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
