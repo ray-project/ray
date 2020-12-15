@@ -4,6 +4,7 @@ import grpc
 from collections import defaultdict
 
 from typing import Dict
+from typing import Set
 
 from ray import cloudpickle
 import ray
@@ -28,7 +29,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
             dict)
         self.function_refs = {}
-        self.actor_refs = {}
+        self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
+        self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
         self._test_mode = test_mode
 
@@ -68,20 +70,40 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return json.dumps(data)
 
     def release(self, client_id: str, id: bytes) -> bool:
-        released = False
         if client_id in self.object_refs:
             if id in self.object_refs[client_id]:
                 del self.object_refs[client_id][id]
-                released = True
-        return released
+                return True
+
+        if client_id in self.actor_owners:
+            if id in self.actor_owners[client_id]:
+                del self.actor_refs[id]
+                self.actor_owners[client_id].remove(id)
+                return True
+
+        return False
 
     def release_all(self, client_id):
+        self._release_objects(client_id)
+        self._release_actors(client_id)
+
+    def _release_objects(self, client_id):
         if client_id not in self.object_refs:
-            logger.error(f"Releasing client with no references: {client_id}")
+            logger.info(f"Releasing client with no references: {client_id}")
             return
         count = len(self.object_refs[client_id])
         del self.object_refs[client_id]
         logger.info(f"Released all {count} objects for client {client_id}")
+
+    def _release_actors(self, client_id):
+        if client_id not in self.actor_owners:
+            logger.info(f"Releasing client with no actors: {client_id}")
+        count = 0
+        for handle_bytes in self.actor_owners[client_id]:
+            count += 1
+            del self.actor_refs[handle_bytes]
+        del self.actor_owners[client_id]
+        logger.info(f"Released all {count} actors for client: {client_id}")
 
     def Terminate(self, request, context=None):
         if request.WhichOneof("terminate_type") == "task_object":
@@ -232,6 +254,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             actor = remote_class.remote(*arglist)
             actorhandle = cloudpickle.dumps(actor)
             self.actor_refs[actorhandle] = actor
+            self.actor_owners[task.client_id].add(actorhandle)
         return ray_client_pb2.ClientTaskTicket(
             return_ref=make_remote_ref(actor._actor_id.binary(), actorhandle))
 

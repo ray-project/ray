@@ -28,13 +28,13 @@ class ClientBaseRef:
     def from_remote_ref(cls, ref: ray_client_pb2.RemoteRef):
         return cls(id=ref.id, handle=ref.handle)
 
-    def __del__(self):
-        ray.call_release(self.id)
-
 
 class ClientObjectRef(ClientBaseRef):
     def _unpack_ref(self):
         return cloudpickle.loads(self.handle)
+
+    def __del__(self):
+        ray.call_release(self.id)
 
 
 class ClientActorRef(ClientBaseRef):
@@ -200,6 +200,9 @@ class ClientActorHandle(ClientStub):
         self.actor_ref = state["actor_ref"]
         self.actor_class = state["actor_class"]
         self._real_actor_handle = state["_real_actor_handle"]
+
+    def __del__(self) -> None:
+        ray.call_release(self.actor_ref.handle)
 
     @property
     def _actor_id(self):
