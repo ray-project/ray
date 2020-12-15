@@ -351,6 +351,18 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
+    # Helper method used to exit current asyncio actor.
+    # This is called when a KeyboardInterrupt is received by the main thread.
+    # Upon receiving a KeyboardInterrupt signal, Ray will exit the current
+    # worker. If the worker is processing normal tasks, Ray treat it as task
+    # cancellation from ray.cancel(object_ref). If the worker is an asyncio
+    # actor, Ray will exit the actor.
+    def exit_current_actor_if_asyncio():
+        if core_worker.current_actor_is_asyncio():
+            error = SystemExit(0)
+            error.is_ray_terminate = True
+            raise error
+
     function_descriptor = CFunctionDescriptorToPython(
         ray_function.GetFunctionDescriptor())
 
@@ -476,6 +488,7 @@ cdef execute_task(
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
                 except KeyboardInterrupt as e:
+                    exit_current_actor_if_asyncio()
                     raise TaskCancelledError(
                             core_worker.get_current_task_id())
                 if c_return_ids.size() == 1:
@@ -483,6 +496,7 @@ cdef execute_task(
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
+                exit_current_actor_if_asyncio()
                 task_exception = True
                 raise TaskCancelledError(
                             core_worker.get_current_task_id())
@@ -1077,16 +1091,18 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
-            with nogil:
-                CCoreWorkerProcess.GetCoreWorker().SubmitTask(
-                    ray_function, args_vector, CTaskOptions(
-                        name, num_returns, c_resources,
-                        c_override_environment_variables),
-                    &return_ids, max_retries,
-                    c_pair[CPlacementGroupID, int64_t](
-                        c_placement_group_id, placement_group_bundle_index),
-                    placement_group_capture_child_tasks,
-                    debugger_breakpoint)
+            # NOTE(edoakes): releasing the GIL while calling this method causes
+            # segfaults. See relevant issue for details:
+            # https://github.com/ray-project/ray/pull/12803
+            CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                ray_function, args_vector, CTaskOptions(
+                    name, num_returns, c_resources,
+                    c_override_environment_variables),
+                &return_ids, max_retries,
+                c_pair[CPlacementGroupID, int64_t](
+                    c_placement_group_id, placement_group_bundle_index),
+                placement_group_capture_child_tasks,
+                debugger_breakpoint)
 
             return VectorToObjectRefs(return_ids)
 
@@ -1224,12 +1240,14 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
-            with nogil:
-                CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                    c_actor_id,
-                    ray_function,
-                    args_vector, CTaskOptions(name, num_returns, c_resources),
-                    &return_ids)
+            # NOTE(edoakes): releasing the GIL while calling this method causes
+            # segfaults. See relevant issue for details:
+            # https://github.com/ray-project/ray/pull/12803
+            CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                c_actor_id,
+                ray_function,
+                args_vector, CTaskOptions(name, num_returns, c_resources),
+                &return_ids)
 
             return VectorToObjectRefs(return_ids)
 

@@ -128,7 +128,8 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
   auto on_done =
       [&node_resource_map, &promise](
           const Status &status,
-          const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap> &result) {
+          const boost::optional<ray::gcs::NodeResourceInfoAccessor::ResourceMap>
+              &result) {
         RAY_CHECK_OK(status);
         if (result) {
           auto result_value = result.get();
@@ -138,7 +139,7 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
         }
         promise.set_value();
       };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(node_id, on_done));
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(node_id, on_done));
   promise.get_future().get();
   return node_resource_map.SerializeAsString();
 }
@@ -146,7 +147,7 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
 std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   std::vector<std::string> available_resources;
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
       TransformForMultiItemCallback<rpc::AvailableResources>(available_resources,
                                                              promise)));
   promise.get_future().get();
@@ -174,14 +175,14 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   return config_proto.SerializeAsString();
 }
 
-std::unique_ptr<std::string> GlobalStateAccessor::GetAllHeartbeat() {
-  std::unique_ptr<std::string> heartbeat_batch_data;
+std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
+  std::unique_ptr<std::string> resource_batch_data;
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllHeartbeat(
-      TransformForItemCallback<rpc::HeartbeatBatchTableData>(heartbeat_batch_data,
-                                                             promise)));
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllResourceUsage(
+      TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
+                                                            promise)));
   promise.get_future().get();
-  return heartbeat_batch_data;
+  return resource_batch_data;
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
