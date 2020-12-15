@@ -67,9 +67,6 @@ class LeasePolicy : public LeasePolicyInterface {
   /// Get the best lessor node for the provided task.
   absl::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
 
-  /// Get the best lessor node for the provided objects.
-  absl::optional<NodeID> GetBestNodeIdForObjects(const std::vector<ObjectID> &object_ids);
-
   /// Provider of locality data that will be used in choosing the best lessor.
   std::shared_ptr<LocalityDataProviderInterface> locality_data_provider_;
 
