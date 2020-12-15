@@ -106,7 +106,7 @@ class CNNPlusFCConcatModel(TFModelV2):
         return self._value_out
 
 
-class TorchCNNPlusFCConcatModel(TorchModelV2):
+class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
     """TorchModelV2 concat'ing CNN outputs to flat input(s), followed by FC(s).
 
     Note: This model should be used for complex (Dict or Tuple) observation
@@ -118,8 +118,9 @@ class TorchCNNPlusFCConcatModel(TorchModelV2):
         assert isinstance(obs_space.original_space, (Tuple)), \
             "`obs_space.original_space` must be Tuple!"
 
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+        nn.Module.__init__()
+        TorchModelV2.__init__(obs_space, action_space, num_outputs, model_config,
+                              name)
 
         # Build the CNN(s) given obs_space's image components.
         self.cnns = {}
