@@ -261,8 +261,8 @@ class NodeUpdater:
                             elif isinstance(e.cmd, list):
                                 cmd_ = " ".join(e.cmd)
                             else:
-                                logger.debug(
-                                    f"e.cmd type ({type(e.cmd)}) not list or str.")
+                                logger.debug(f"e.cmd type ({type(e.cmd)}) not "
+                                             "list or str.")
                                 cmd_ = str(e.cmd)
                             retry_str = "(Exit Status {}): {}".format(
                                 e.returncode, cmd_)
