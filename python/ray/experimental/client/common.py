@@ -28,6 +28,9 @@ class ClientBaseRef:
     def from_remote_ref(cls, ref: ray_client_pb2.RemoteRef):
         return cls(id=ref.id, handle=ref.handle)
 
+    def __del__(self):
+        ray.call_release(self.id)
+
 
 class ClientObjectRef(ClientBaseRef):
     def _unpack_ref(self):

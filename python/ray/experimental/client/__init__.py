@@ -91,6 +91,14 @@ def _get_client_api() -> APIImpl:
     return api
 
 
+def _get_server_instance():
+    """Used inside tests to inspect the running server.
+    """
+    global _server_api
+    if _server_api is not None:
+        return _server_api.server
+
+
 class RayAPIStub:
     def connect(self,
                 conn_str: str,

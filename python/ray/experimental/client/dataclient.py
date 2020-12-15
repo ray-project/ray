@@ -2,6 +2,7 @@
 This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
+import logging
 import queue
 import threading
 
@@ -10,6 +11,9 @@ from typing import Dict
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+
+
+logger = logging.getLogger(__name__)
 
 
 class DataClient:
@@ -33,6 +37,9 @@ class DataClient:
         self._req_id += 1
         if self._req_id > self._max_id:
             self._req_id = 1
+        # Responses that aren't tracked (like opportunistic releases)
+        # have req_id=0, so make sure we never mint such an id.
+        assert self._req_id != 0
         return self._req_id
 
     def _start_datathread(self) -> threading.Thread:
@@ -47,6 +54,10 @@ class DataClient:
             )
         )
         for response in resp_stream:
+            if response.req_id == 0:
+                # This is not being waited for.
+                logger.debug(f"Got unawaited response {response}")
+                continue
             with self.cv:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
@@ -90,9 +101,8 @@ class DataClient:
         resp = self._blocking_send(datareq)
         return resp.put
 
-    def ReleaseObject(self, request: ray_client_pb2.ReleaseRequest, context=None) -> ray_client_pb2.ReleaseRequest:
+    def ReleaseObject(self, request: ray_client_pb2.ReleaseRequest, context=None) -> None:
         datareq = ray_client_pb2.DataRequest(
             release=request,
         )
-        resp = self._blocking_send(datareq)
-        return resp.release
+        self.request_queue.put(datareq)

@@ -59,6 +59,9 @@ class CoreRayAPI(APIImpl):
     def is_initialized(self) -> bool:
         return ray.is_initialized()
 
+    def call_release(self, id: bytes) -> None:
+        return None
+
     # Allow for generic fallback to ray.* in remote methods. This allows calls
     # like ray.nodes() to be run in remote functions even though the client
     # doesn't currently support them.
@@ -99,3 +102,6 @@ class RayServerAPI(CoreRayAPI):
         task = instance._prepare_client_task()
         ticket = self.server.Schedule(task, prepared_args=args)
         return ClientObjectRef(ticket.return_id)
+
+    def call_release(self, id: bytes) -> None:
+        return None
