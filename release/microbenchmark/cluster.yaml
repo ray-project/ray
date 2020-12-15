@@ -4,6 +4,8 @@ docker:
     image: anyscale/ray:latest
     container_name: ray_container
     pull_before_run: False
+    run_options:
+        - "--shm-size=100gb"
 
 provider:
     type: aws
