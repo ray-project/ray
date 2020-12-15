@@ -1,7 +1,7 @@
 import setuptools
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+# with open("README.md", "r") as fh:
+#     long_description = fh.read()
 
 
 setuptools.setup(
@@ -10,8 +10,8 @@ setuptools.setup(
     # author="hhsecond",
     # author_email="sherin@tensorwerk.com",
     # description="MLFlow + Ray Serve integration package",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
+    # long_description=long_description,
+    # long_description_content_type="text/markdown",
     # url="https://github.com/RedisAI/mlflow-redisai",
     packages=setuptools.find_packages(),
     # classifiers=[

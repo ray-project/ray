@@ -6,9 +6,6 @@ import time
 
 import ray
 from ray import serve
-import redisai
-import redis
-import ml2rt
 from mlflow.deployments import BaseDeploymentClient
 from mlflow.exceptions import MlflowException
 from mlflow.tracking.artifact_utils import _download_artifact_from_uri
