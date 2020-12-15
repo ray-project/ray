@@ -51,9 +51,13 @@ class DataClient:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
 
-    def close(self, close_channel: bool) -> None:
-        self.request_queue.put(None)
-        self.data_thread.join()
+    def close(self, close_channel: bool = False) -> None:
+        if self.request_queue is not None:
+            self.request_queue.put(None)
+            self.request_queue = None
+        if self.data_thread is not None:
+            self.data_thread.join()
+            self.data_thread = None
         if close_channel:
             self.channel.close()
 

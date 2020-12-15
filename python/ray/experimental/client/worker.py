@@ -154,10 +154,11 @@ class Worker:
         return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def close(self):
-        self.data_client.close(False)
+        self.data_client.close()
         self.server = None
         if self.channel:
             self.channel.close()
+            self.channel = None
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:

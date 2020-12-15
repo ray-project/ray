@@ -150,14 +150,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         object_refs = [cloudpickle.loads(o) for o in request.object_handles]
         num_returns = request.num_returns
         timeout = request.timeout
-        object_refs_ids = []
-        for object_ref in object_refs:
-            if object_ref.binary() not in self.object_refs:
-                return ray_client_pb2.WaitResponse(valid=False)
-            object_refs_ids.append(self.object_refs[object_ref.binary()])
         try:
             ready_object_refs, remaining_object_refs = ray.wait(
-                object_refs_ids,
+                object_refs,
                 num_returns=num_returns,
                 timeout=timeout if timeout != -1 else None)
         except Exception:
