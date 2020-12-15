@@ -1007,6 +1007,7 @@ def exit_actor():
     """Intentionally exit the current actor.
 
     This function is used to disconnect an actor and exit the worker.
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         Exception: An exception is raised if this is a driver or this

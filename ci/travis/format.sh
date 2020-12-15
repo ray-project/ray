@@ -114,8 +114,6 @@ GIT_LS_EXCLUDES=(
 # TODO(barakmich): This should be cleaned up. I've at least excised the copies
 # of these arguments to this location, but the long-term answer is to actually
 # make a flake8 config file
-FLAKE8_EXCLUDE="--exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files/,python/build/,python/.eggs/"
-FLAKE8_IGNORES="--ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605"
 FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605"
 
 shellcheck_scripts() {
@@ -195,10 +193,10 @@ format_all() {
     if [ $HAS_FLAKE8 ]; then
       echo "$(date)" "Flake8...."
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --inline-quotes '"' --no-avoid-escape  "$FLAKE8_EXCLUDE" "$FLAKE8_IGNORES"
+        flake8 --config=.flake8
 
       git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 \
-        flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_PYX_IGNORES"
+        flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
     fi
 
     echo "$(date)" "clang-format...."
@@ -237,14 +235,14 @@ format_changed() {
              yapf --in-place "${YAPF_EXCLUDES[@]}" "${YAPF_FLAGS[@]}"
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_IGNORES"
+                 flake8 --config=.flake8
         fi
     fi
 
     if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape "$FLAKE8_EXCLUDE" "$FLAKE8_PYX_IGNORES"
+                 flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
         fi
     fi
 

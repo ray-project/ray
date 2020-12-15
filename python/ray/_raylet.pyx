@@ -1095,16 +1095,18 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
-            with nogil:
-                CCoreWorkerProcess.GetCoreWorker().SubmitTask(
-                    ray_function, args_vector, CTaskOptions(
-                        name, num_returns, c_resources,
-                        c_override_environment_variables),
-                    &return_ids, max_retries,
-                    c_pair[CPlacementGroupID, int64_t](
-                        c_placement_group_id, placement_group_bundle_index),
-                    placement_group_capture_child_tasks,
-                    debugger_breakpoint)
+            # NOTE(edoakes): releasing the GIL while calling this method causes
+            # segfaults. See relevant issue for details:
+            # https://github.com/ray-project/ray/pull/12803
+            CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                ray_function, args_vector, CTaskOptions(
+                    name, num_returns, c_resources,
+                    c_override_environment_variables),
+                &return_ids, max_retries,
+                c_pair[CPlacementGroupID, int64_t](
+                    c_placement_group_id, placement_group_bundle_index),
+                placement_group_capture_child_tasks,
+                debugger_breakpoint)
 
             return VectorToObjectRefs(return_ids)
 
@@ -1242,12 +1244,14 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
-            with nogil:
-                CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                    c_actor_id,
-                    ray_function,
-                    args_vector, CTaskOptions(name, num_returns, c_resources),
-                    &return_ids)
+            # NOTE(edoakes): releasing the GIL while calling this method causes
+            # segfaults. See relevant issue for details:
+            # https://github.com/ray-project/ray/pull/12803
+            CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                c_actor_id,
+                ray_function,
+                args_vector, CTaskOptions(name, num_returns, c_resources),
+                &return_ids)
 
             return VectorToObjectRefs(return_ids)
 
