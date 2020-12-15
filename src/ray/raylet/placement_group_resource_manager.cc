@@ -220,12 +220,11 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   if (bundle_state->state_ == CommitState::PREPARED) {
     CommitBundle(bundle_spec);
   }
-  pg_bundles_.erase(it);
 
   // Return original resources to resource allocator `ClusterResourceScheduler`.
-  const auto &original_resources = it->second->resources_;
+  auto original_resources = it->second->resources_;
   cluster_resource_scheduler_->FreeLocalTaskResources(original_resources);
-
+  
   // Substract placement group resources from resource allocator `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   std::shared_ptr<TaskResourceInstances> resource_instances =
@@ -238,6 +237,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
       cluster_resource_scheduler_->DeleteLocalResource(resource.first);
     }
   }
+  pg_bundles_.erase(it);
 }
 
 }  // namespace raylet

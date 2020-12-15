@@ -478,9 +478,11 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
       local_view->custom_resources.erase(itr);
     }
 
-    if (node_id == local_node_id_) {
+    auto ltr = local_resources_.custom_resources.find(resource_id);
+    if (node_id == local_node_id_ && ltr != local_resources_.custom_resources.end()) {
       local_resources_.custom_resources[resource_id].total.clear();
       local_resources_.custom_resources[resource_id].available.clear();
+      local_resources_.custom_resources.erase(ltr);
     }
   }
 }
