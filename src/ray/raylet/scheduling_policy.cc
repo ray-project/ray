@@ -151,38 +151,6 @@ std::unordered_map<TaskID, NodeID> SchedulingPolicy::Schedule(
   return decision;
 }
 
-bool SchedulingPolicy::ScheduleBundle(
-    std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-    const NodeID &local_node_id, const ray::BundleSpecification &bundle_spec) {
-#ifndef NDEBUG
-  RAY_LOG(DEBUG) << "Cluster resource map: ";
-  for (const auto &node_resource_pair : cluster_resources) {
-    const NodeID &node_id = node_resource_pair.first;
-    const SchedulingResources &resources = node_resource_pair.second;
-    RAY_LOG(DEBUG) << "node_id: " << node_id << " "
-                   << resources.GetAvailableResources().ToString();
-  }
-#endif
-  const auto &node_resource_pair = cluster_resources.find(local_node_id);
-  if (node_resource_pair == cluster_resources.end()) {
-    return false;
-  }
-  const auto &resource_demand = bundle_spec.GetRequiredResources();
-  NodeID node_id = node_resource_pair->first;
-  const auto &node_resources = node_resource_pair->second;
-  ResourceSet available_node_resources =
-      ResourceSet(node_resources.GetAvailableResources());
-  available_node_resources.SubtractResources(node_resources.GetLoadResources());
-  RAY_LOG(DEBUG) << "Scheduling bundle, node id = " << node_id
-                 << ", available resources = "
-                 << node_resources.GetAvailableResources().ToString()
-                 << ", resources load = " << node_resources.GetLoadResources().ToString()
-                 << ", the resource needed = " << resource_demand.ToString();
-  /// If the resource_demand is subset of the whole available_node_resources, this bundle
-  /// can be set in this node, return true.
-  return resource_demand.IsSubset(available_node_resources);
-}
-
 std::vector<TaskID> SchedulingPolicy::SpillOverInfeasibleTasks(
     SchedulingResources &node_resources) const {
   // The policy decision to be returned.

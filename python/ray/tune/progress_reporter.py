@@ -460,7 +460,7 @@ def memory_debug_str():
             round(used_gb, 1), round(total_gb, 1), warn)
     except ImportError:
         return ("Unknown memory usage. Please run `pip install psutil` "
-                "(or ray[debug]) to resolve)")
+                "to resolve)")
 
 
 def _get_trials_by_state(trials: List[Trial]):

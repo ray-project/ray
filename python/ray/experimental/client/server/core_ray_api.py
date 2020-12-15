@@ -8,6 +8,7 @@
 # making into the core-ray module are contained and well-defined.
 
 from typing import Any
+from typing import Optional
 from typing import Union
 
 import ray
@@ -24,8 +25,14 @@ class CoreRayAPI(APIImpl):
     to core ray when passed client stubs.
     """
 
-    def get(self, *args, **kwargs):
-        return ray.get(*args, **kwargs)
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
+        if isinstance(vals, list):
+            if isinstance(vals[0], ClientObjectRef):
+                return ray.get(
+                    [val._unpack_ref() for val in vals], timeout=timeout)
+        elif isinstance(vals, ClientObjectRef):
+            return ray.get(vals._unpack_ref(), timeout=timeout)
+        return ray.get(vals, timeout=timeout)
 
     def put(self, vals: Any, *args,
             **kwargs) -> Union[ClientObjectRef, ray._raylet.ObjectRef]:
@@ -42,6 +49,15 @@ class CoreRayAPI(APIImpl):
 
     def close(self) -> None:
         return None
+
+    def kill(self, actor, *, no_restart=True):
+        return ray.kill(actor, no_restart=no_restart)
+
+    def cancel(self, obj, *, force=False, recursive=True):
+        return ray.cancel(obj, force=force, recursive=recursive)
+
+    def is_initialized(self) -> bool:
+        return ray.is_initialized()
 
     # Allow for generic fallback to ray.* in remote methods. This allows calls
     # like ray.nodes() to be run in remote functions even though the client

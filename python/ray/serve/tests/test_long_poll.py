@@ -1,5 +1,4 @@
 import sys
-import functools
 import time
 import asyncio
 import os
@@ -8,12 +7,12 @@ from typing import Dict
 import pytest
 
 import ray
-from ray.serve.long_poll import (LongPollerAsyncClient, LongPollerHost,
+from ray.serve.long_poll import (LongPollAsyncClient, LongPollHost,
                                  UpdatedObject)
 
 
 def test_host_standalone(serve_instance):
-    host = ray.remote(LongPollerHost).remote()
+    host = ray.remote(LongPollHost).remote()
 
     # Write two values
     ray.get(host.notify_changed.remote("key_1", 999))
@@ -44,10 +43,10 @@ def test_long_poll_restarts(serve_instance):
         max_restarts=-1,
         max_task_retries=-1,
     )
-    class RestartableLongPollerHost:
+    class RestartableLongPollHost:
         def __init__(self) -> None:
             print("actor started")
-            self.host = LongPollerHost()
+            self.host = LongPollHost()
             self.host.notify_changed("timer", time.time())
             self.should_exit = False
 
@@ -63,7 +62,7 @@ def test_long_poll_restarts(serve_instance):
                 print("actor exit")
                 os._exit(1)
 
-    host = RestartableLongPollerHost.remote()
+    host = RestartableLongPollHost.remote()
     updated_values = ray.get(host.listen_for_change.remote({"timer": -1}))
     timer: UpdatedObject = updated_values["timer"]
 
@@ -81,22 +80,31 @@ def test_long_poll_restarts(serve_instance):
 
 @pytest.mark.asyncio
 async def test_async_client(serve_instance):
-    host = ray.remote(LongPollerHost).remote()
+    host = ray.remote(LongPollHost).remote()
 
     # Write two values
     ray.get(host.notify_changed.remote("key_1", 100))
     ray.get(host.notify_changed.remote("key_2", 999))
 
+    # Check that construction fails with a sync callback.
+    def callback(result, key):
+        pass
+
+    with pytest.raises(ValueError):
+        client = LongPollAsyncClient(host, {"key": callback})
+
     callback_results = dict()
 
-    async def callback(result, key):
-        callback_results[key] = result
+    async def key_1_callback(result):
+        callback_results["key_1"] = result
 
-    client = LongPollerAsyncClient(
-        host, {
-            "key_1": functools.partial(callback, key="key_1"),
-            "key_2": functools.partial(callback, key="key_2")
-        })
+    async def key_2_callback(result):
+        callback_results["key_2"] = result
+
+    client = LongPollAsyncClient(host, {
+        "key_1": key_1_callback,
+        "key_2": key_2_callback,
+    })
 
     while len(client.object_snapshots) == 0:
         # Yield the loop for client to get the result

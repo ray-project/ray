@@ -172,6 +172,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn"]
@@ -186,6 +187,7 @@ py_test(
     data = [
         "tuned_examples/dqn/cartpole-simpleq.yaml",
         "tuned_examples/dqn/cartpole-dqn.yaml",
+        "tuned_examples/dqn/cartpole-dqn-softq.yaml",
         "tuned_examples/dqn/cartpole-dqn-param-noise.yaml",
     ],
     args = ["--yaml-dir=tuned_examples/dqn", "--torch"]

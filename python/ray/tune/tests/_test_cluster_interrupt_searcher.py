@@ -28,12 +28,12 @@ if __name__ == "__main__":
         {
             "width": 1,
             "height": 2,
-            "activation": 0  # Activation will be relu
+            "activation": "relu"  # Activation will be relu
         },
         {
             "width": 4,
             "height": 2,
-            "activation": 1  # Activation will be tanh
+            "activation": "tanh"  # Activation will be tanh
         }
     ]
     algo = HyperOptSearch(

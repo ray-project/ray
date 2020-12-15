@@ -13,7 +13,6 @@ import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,34 +173,12 @@ public class RayConfig {
     if (config.hasPath("ray.job.code-search-path")) {
       codeSearchPathString = config.getString("ray.job.code-search-path");
     }
-    if (!StringUtils.isEmpty(codeSearchPathString)) {
-      codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
-    } else {
-      codeSearchPath = Collections.emptyList();
+    if (StringUtils.isEmpty(codeSearchPathString)) {
+      codeSearchPathString = System.getProperty("java.class.path");
     }
+    codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
-    boolean enableMultiTenancy;
-    if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
-      enableMultiTenancy =
-          Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
-    } else {
-      String envString = System.getenv("RAY_ENABLE_MULTI_TENANCY");
-      if (StringUtils.isNotBlank(envString)) {
-        enableMultiTenancy = "1".equals(envString);
-      } else {
-        enableMultiTenancy = true; // Default value
-      }
-    }
-
-    if (!enableMultiTenancy) {
-      if (!isDriver) {
-        numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
-      } else {
-        numWorkersPerProcess = 1; // Actually this value isn't used in RayNativeRuntime.
-      }
-    } else {
-      numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
-    }
+    numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
     headArgs = config.getStringList("ray.head-args");
 
