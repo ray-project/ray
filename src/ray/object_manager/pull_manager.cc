@@ -16,8 +16,7 @@ PullManager::PullManager(
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
-  RAY_LOG(DEBUG) << "Pull "
-                 << " of object " << object_id;
+  RAY_LOG(DEBUG) << "Pull of object " << object_id;
   // Check if object is already local.
   if (object_is_local_(object_id)) {
     RAY_LOG(DEBUG) << object_id << " attempted to pull an object that's already local.";

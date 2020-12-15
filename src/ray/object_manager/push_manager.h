@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <queue>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -52,7 +53,8 @@ class PushManager {
 
   /// Called every time a chunk completes to trigger additional sends.
   /// TODO(ekl) maybe we should cancel the entire push on error.
-  void OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id);
+  void OnChunkComplete(const ray::Status &status, int64_t chunk_id, const NodeID &dest_id,
+                       const ObjectID &obj_id);
 
   /// Return the number of chunks currently in flight. For testing only.
   int64_t NumChunksInFlight() const { return chunks_in_flight_; };
@@ -91,6 +93,8 @@ class PushManager {
     /// The number of chunks remaining to send. Once this number drops
     /// to zero, the push is considered complete.
     int64_t chunks_remaining;
+    /// Chunks failed to push. Need to retry.
+    std::queue<int64_t> failed_chunks;
 
     PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
         : num_chunks(num_chunks),

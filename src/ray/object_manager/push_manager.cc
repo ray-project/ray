@@ -33,13 +33,21 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
   ScheduleRemainingPushes();
 }
 
-void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
+void PushManager::OnChunkComplete(const ray::Status &status, int64_t chunk_id,
+                                  const NodeID &dest_id, const ObjectID &obj_id) {
   auto push_id = std::make_pair(dest_id, obj_id);
-  chunks_in_flight_ -= 1;
-  if (--push_info_[push_id]->chunks_remaining <= 0) {
-    push_info_.erase(push_id);
-    RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
-                   << " completed, remaining: " << NumPushesInFlight();
+  --chunks_in_flight_;
+  if (status.ok()) {
+    if (--push_info_[push_id]->chunks_remaining <= 0) {
+      push_info_.erase(push_id);
+      RAY_LOG(DEBUG) << "Push for " << dest_id << ", " << obj_id
+                     << " completed, remaining: " << NumPushesInFlight();
+    }
+  } else {
+    RAY_LOG(DEBUG) << " Push for " << dest_id << ", " << obj_id << " failed due to "
+                   << status.message()
+                   << ", retry later, remaining: " << NumPushesInFlight();
+    push_info_[push_id]->failed_chunks.push(chunk_id);
   }
   ScheduleRemainingPushes();
 }
@@ -56,9 +64,17 @@ void PushManager::ScheduleRemainingPushes() {
     while (it != push_info_.end() && chunks_in_flight_ < max_chunks_in_flight_) {
       auto push_id = it->first;
       auto &info = it->second;
+      int64_t chunk_id = -1;
       if (info->next_chunk_id < info->num_chunks) {
         // Send the next chunk for this push.
-        info->chunk_send_fn(info->next_chunk_id++);
+        chunk_id = info->next_chunk_id++;
+      } else if (info->failed_chunks.size()) {
+        // Re-send the failed chunk for this push
+        chunk_id = info->failed_chunks.front();
+        info->failed_chunks.pop();
+      }
+      if (chunk_id >= 0) {
+        info->chunk_send_fn(chunk_id);
         chunks_in_flight_ += 1;
         keep_looping = true;
         RAY_LOG(DEBUG) << "Sending chunk " << info->next_chunk_id << " of "

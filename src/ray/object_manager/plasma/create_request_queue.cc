@@ -113,12 +113,12 @@ Status CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &reques
     if (trigger_global_gc_) {
       trigger_global_gc_();
     }
-
     status = Status::ObjectStoreFull("Object store full, should retry on timeout");
   } else if (request->error == PlasmaError::OutOfMemory) {
     RAY_LOG(ERROR) << "Not enough memory to create object " << request->object_id
                    << " after " << num_retries_
                    << " tries, will return OutOfMemory to the client";
+    status = Status::OutOfMemory("Object store full");
   }
 
   return status;

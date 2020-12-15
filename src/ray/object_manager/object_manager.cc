@@ -362,7 +362,8 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
     push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
       SendObjectChunk(push_id, object_id, owner_address, node_id, data_size,
                       metadata_size, chunk_id, rpc_client, [=](const Status &status) {
-                        push_manager_->OnChunkComplete(node_id, object_id);
+                        push_manager_->OnChunkComplete(status, chunk_id, node_id,
+                                                       object_id);
                       });
     });
   } else {
@@ -666,19 +667,19 @@ ray::Status ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, owner_address, data_size, metadata_size,
                                chunk_index);
-  ray::Status status;
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
   num_chunks_received_total_++;
-  if (chunk_status.second.ok()) {
+  ray::Status status = chunk_status.second;
+  if (status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
     std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
     buffer_pool_.SealChunk(object_id, chunk_index);
   } else {
     num_chunks_received_failed_++;
     RAY_LOG(INFO) << "ReceiveObjectChunk index " << chunk_index << " of object "
-                  << object_id << " failed: " << chunk_status.second.message()
-                  << ", overall " << num_chunks_received_failed_ << "/"
-                  << num_chunks_received_total_ << " failed";
+                  << object_id << " failed: " << status.message() << ", overall "
+                  << num_chunks_received_failed_ << "/" << num_chunks_received_total_
+                  << " failed";
   }
   return status;
 }
