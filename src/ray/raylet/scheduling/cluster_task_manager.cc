@@ -46,16 +46,17 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
+      bool is_infeasible;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
           placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
-          &_unused);
+          &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
       if (node_id_string.empty()) {
-        RAY_LOG(DEBUG) << "No feasible node found for task "
+        RAY_LOG(DEBUG) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId();
-        is_shape_infeasible = true;
+        is_shape_infeasible = is_infeasible;
         break;
       }
 
@@ -74,12 +75,12 @@ bool ClusterTaskManager::SchedulePendingTasks() {
 
     if (is_shape_infeasible) {
       RAY_CHECK(!work_queue.empty());
-      // All the items in the queue must be infeasible.
+      // Only announce the first item as infeasible.
       auto &work_queue = shapes_it->second;
-      for (const auto &work : work_queue) {
-        const Task task = std::get<0>(work);
-        announce_infeasible_task_(task);
-      }
+      const auto &work = work_queue[0];
+      const Task task = std::get<0>(work);
+      announce_infeasible_task_(task);
+
       // TODO(sang): Use a shared pointer deque to reduce copy overhead.
       infeasible_tasks_[shapes_it->first] = shapes_it->second;
       shapes_it = tasks_to_schedule_.erase(shapes_it);
@@ -190,9 +191,12 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
     // Spill at most one task from this queue, then move on to the next
     // queue.
     int64_t _unused;
+    bool is_infeasible;
     auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, spec.IsActorCreationTask(), &_unused);
+        placement_resources, spec.IsActorCreationTask(), &_unused, &is_infeasible);
+    RAY_CHECK(!is_infeasible)
+        << "Task cannot be infeasible when it is about to be dispatched";
     if (node_id_string != self_node_id_.Binary() && !node_id_string.empty()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, work);
@@ -490,12 +494,14 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
         task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
     // This argument is used to set violation, which is an unsupported feature now.
     int64_t _unused;
+    bool is_infeasible;
     std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources, task.GetTaskSpecification().IsActorCreationTask(), &_unused);
+        placement_resources, task.GetTaskSpecification().IsActorCreationTask(), &_unused,
+        &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
-    if (node_id_string.empty()) {
+    if (is_infeasible) {
       RAY_LOG(DEBUG) << "No feasible node found for task "
                      << task.GetTaskSpecification().TaskId();
       shapes_it++;
