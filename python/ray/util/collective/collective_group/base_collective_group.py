@@ -68,8 +68,8 @@ class BaseGroup(metaclass=ABCMeta):
         raise NotImplementedError()
 
     @abstractmethod
-    def reduce_scatter(self,
-                       tensor,
-                       tensor_list,
-                       reducescatter_options=ReduceScatterOptions()):
+    def reducescatter(self,
+                      tensor,
+                      tensor_list,
+                      reducescatter_options=ReduceScatterOptions()):
         raise NotImplementedError()
