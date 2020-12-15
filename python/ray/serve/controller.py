@@ -520,9 +520,7 @@ class ServeController:
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
-            await self.write_lock.acquire()
-            asyncio.get_event_loop().create_task(
-                self._recover_from_checkpoint(checkpoint))
+            await self._recover_from_checkpoint(checkpoint)
 
         # NOTE(simon): Currently we do all-to-all broadcast. This means
         # any listeners will receive notification for all changes. This
@@ -530,6 +528,7 @@ class ServeController:
         # will send over the entire configs. In the future, we should
         # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
+        # XXX: comment here that this gets updated in recover_from_checkpoint
         self.notify_backend_configs_changed()
         self.notify_replica_handles_changed()
         self.notify_traffic_policies_changed()
@@ -632,11 +631,8 @@ class ServeController:
             3) Starts/stops any replicas that are pending creation or
                deletion.
 
-        NOTE: this requires that self.write_lock is already acquired and will
-        release it before returning.
+        NOTE: this should be called by the constructor.
         """
-        assert self.write_lock.locked()
-
         start = time.time()
         logger.info("Recovering from checkpoint")
 
@@ -647,18 +643,23 @@ class ServeController:
         # Restore ActorStateReconciler
         self.actor_reconciler = restored_checkpoint.reconciler
 
-        # Recreate self.inflight_requests!
+        # Recreate self.inflight_requests
         self._serializable_inflight_results = restored_checkpoint.inflight_reqs
         for uuid, fut_result in self._serializable_inflight_results.items():
             self._create_event_with_result(fut_result.requested_goal, uuid)
 
-        self.autoscaling_policies = await self.actor_reconciler.\
-            _recover_from_checkpoint(self.current_state, self)
+        # XXX: make some detailed comments here.
+        async def finish_recover_from_checkpoint():
+            assert self.write_lock.locked()
+            self.autoscaling_policies = await self.actor_reconciler.\
+                _recover_from_checkpoint(self.current_state, self)
+            self.write_lock.release()
+            logger.info(
+                "Recovered from checkpoint in {:.3f}s".format(time.time() -
+                                                              start))
 
-        logger.info(
-            "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
-
-        self.write_lock.release()
+        await self.write_lock.acquire()
+        asyncio.get_event_loop().create_task(finish_recover_from_checkpoint())
 
     async def do_autoscale(self) -> None:
         for backend, info in self.current_state.backends.items():
