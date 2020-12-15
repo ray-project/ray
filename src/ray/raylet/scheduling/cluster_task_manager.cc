@@ -54,7 +54,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // Move on to the next shape.
       if (node_id_string.empty()) {
         RAY_LOG(DEBUG) << "No node found to schedule a task "
-                       << task.GetTaskSpecification().TaskId();
+                       << task.GetTaskSpecification().TaskId() << " is infeasible?"
+                       << is_infeasible;
         break;
       }
 

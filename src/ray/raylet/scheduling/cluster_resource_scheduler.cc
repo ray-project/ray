@@ -249,8 +249,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
       best_node = node.first;
     }
     if (violations == 0) {
-      *total_violations = 0;
-      return best_node;
+      // If violation is 0, we can schedule the task. So just break the loop
+      break;
     }
   }
   *total_violations = min_violations;
