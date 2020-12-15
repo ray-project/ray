@@ -243,7 +243,7 @@ class LocalObjectManagerTest : public ::testing::Test {
                     freed.insert(object_id);
                   }
                 },
-                /*is_plasma_object_evictable=*/
+                /*is_plasma_object_spillable=*/
                 [&](const ray::ObjectID &object_id) {
                   return unevictable_objects_.count(object_id) == 0;
                 }),

@@ -120,7 +120,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_,
-              std::function<bool(const ObjectID &)> is_plasma_object_evictable);
+              std::function<bool(const ObjectID &)> is_plasma_object_spillable);
 
   /// Process a new client connection.
   ///

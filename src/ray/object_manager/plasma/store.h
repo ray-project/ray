@@ -186,7 +186,12 @@ class PlasmaStore {
                         plasma::flatbuf::MessageType type,
                         const std::vector<uint8_t> &message);
 
-  bool IsObjectEvictable(const ObjectID &object_id);
+  /// Return true if the given object id has only one reference.
+  /// Only one reference means there's only a raylet that pins the object
+  /// so it is safe to spill the object.
+  /// NOTE: Avoid using this method outside object spilling context (e.g., unless you absolutely know what's going on).
+  /// This method won't work correctly if it is used before the object is pinned by raylet for the first time.
+  bool IsObjectSpillable(const ObjectID &object_id);
 
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
@@ -314,6 +319,12 @@ class PlasmaStore {
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
 
+  /// This mutex is used in order to make plasma store threas-safe with raylet.
+  /// Raylet's local_object_manager needs to ping access plasma store's method in order to
+  /// figure out the correct view of the object store. recursive_mutex is used to avoid deadlock
+  /// while we keep the simplest possible change.
+  /// NOTE(sang): Avoid adding more interface that node manager or object manager can access
+  /// the plasma store with this mutex if it is not absolutely necessary. 
   std::recursive_mutex mutex_;
 };
 

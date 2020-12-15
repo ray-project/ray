@@ -134,8 +134,8 @@ void PlasmaStoreRunner::Shutdown() {
   }
 }
 
-bool PlasmaStoreRunner::IsPlasmaObjectEvictable(const ObjectID &object_id) {
-  return store_->IsObjectEvictable(object_id);
+bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
+  return store_->IsObjectSpillable(object_id);
 }
 
 std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;

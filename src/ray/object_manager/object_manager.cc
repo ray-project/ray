@@ -125,9 +125,9 @@ void ObjectManager::Stop() {
   }
 }
 
-bool ObjectManager::IsPlasmaObjectEvictable(const ObjectID &object_id) {
+bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
   if (plasma::plasma_store_runner != nullptr) {
-    return plasma::plasma_store_runner->IsPlasmaObjectEvictable(object_id);
+    return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
   }
   return false;
 }

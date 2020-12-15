@@ -135,7 +135,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
   while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end()) {
-    if (is_plasma_object_evictable_(it->first)) {
+    if (is_plasma_object_spillable_(it->first)) {
       bytes_to_spill += it->second->GetSize();
       objects_to_spill.push_back(it->first);
     }
@@ -305,7 +305,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
-    RAY_LOG(ERROR) << "Restoring " << object_url << " for object id " << object_id;
     request.add_object_ids_to_restore(object_id.Binary());
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
@@ -318,7 +317,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
           } else {
             auto now = absl::GetCurrentTimeNanos();
             auto restored_bytes = r.bytes_restored_total();
-            RAY_LOG(INFO) << "Restored " << restored_bytes << " in "
+            RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
                           << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
             restored_bytes_total_ += restored_bytes;
             restored_objects_total_ += 1;
@@ -327,7 +326,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                 (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
             if (now - last_restore_log_ns_ > 1e9) {
               last_restore_log_ns_ = now;
-              RAY_LOG(ERROR) << "Restored "
+              RAY_LOG(INFO) << "Restored "
                              << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
                              << " MiB, " << restored_objects_total_
                              << " objects, read throughput "

@@ -117,7 +117,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         std::function<bool(const ObjectID &)> is_plasma_object_evictable)
+                         std::function<bool(const ObjectID &)> is_plasma_object_spillable)
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
@@ -173,7 +173,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                               object_manager_.FreeObjects(object_ids,
                                                           /*local_only=*/false);
                             },
-                            is_plasma_object_evictable),
+                            is_plasma_object_spillable),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),

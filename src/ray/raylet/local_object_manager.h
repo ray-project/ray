@@ -41,7 +41,7 @@ class LocalObjectManager {
       bool automatic_object_deletion_enabled, int max_io_workers,
       int64_t min_spilling_size,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
-      std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable)
+      std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
       : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -54,7 +54,7 @@ class LocalObjectManager {
         min_spilling_size_(min_spilling_size),
         num_active_workers_(0),
         max_active_workers_(max_io_workers),
-        is_plasma_object_evictable_(is_plasma_object_evictable) {}
+        is_plasma_object_spillable_(is_plasma_object_spillable) {}
 
   /// Pin objects.
   ///
@@ -229,7 +229,7 @@ class LocalObjectManager {
 
   /// Callback to check if a plasma object is pinned in workers.
   /// Return true if unpinned, meaning we can safely spill the object. False otherwise.
-  std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable_;
+  std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
 
   ///
   /// Stats

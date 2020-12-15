@@ -958,6 +958,8 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    fb::MessageType type,
                                    const std::vector<uint8_t> &message) {
+  // Global lock is used here so that we allow raylet to access some of methods
+  // that are required for object spilling directly without releasing a lock.
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   uint8_t *input = (uint8_t *)message.data();
@@ -1138,7 +1140,9 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   }
 }
 
-bool PlasmaStore::IsObjectEvictable(const ObjectID &object_id) {
+bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
+  // The lock is acquired when a request is received to the plasma store.
+  // recursive mutex is used here to allow 
   std::lock_guard<std::recursive_mutex> guard(mutex_);
   auto entry = GetObjectTableEntry(&store_info_, object_id);
   return entry->ref_count == 1;
