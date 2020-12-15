@@ -15,6 +15,11 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 logger = logging.getLogger(__name__)
 
 
+# The maximum field value for request_id -- which is also the maximum
+# number of simultaneous in-flight requests.
+INT32_MAX = (2 ** 31) - 1
+
+
 class DataClient:
     def __init__(self, channel, client_id):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
@@ -28,13 +33,12 @@ class DataClient:
         self.ready_data: Dict[int, Any] = {}
         self.cv = threading.Condition()
         self._req_id = 0
-        self._max_id = 100000
         self._client_id = client_id
         self.data_thread.start()
 
     def _next_id(self) -> int:
         self._req_id += 1
-        if self._req_id > self._max_id:
+        if self._req_id > INT32_MAX:
             self._req_id = 1
         # Responses that aren't tracked (like opportunistic releases)
         # have req_id=0, so make sure we never mint such an id.
