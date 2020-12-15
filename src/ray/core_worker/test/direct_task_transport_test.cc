@@ -185,13 +185,18 @@ class MockActorCreator : public ActorCreatorInterface {
 
 class MockLeasePolicy : public LeasePolicyInterface {
  public:
-  MockLeasePolicy() {}
+  MockLeasePolicy(const NodeID &node_id = NodeID::Nil()) {
+    fallback_rpc_address_ = rpc::Address();
+    fallback_rpc_address_.set_raylet_id(node_id.Binary());
+  }
 
-  absl::optional<rpc::Address> GetBestNodeForTask(const TaskSpecification &spec) {
-    return absl::nullopt;
+  rpc::Address GetBestNodeForTask(const TaskSpecification &spec) {
+    return fallback_rpc_address_;
   };
 
   ~MockLeasePolicy() {}
+
+  rpc::Address fallback_rpc_address_;
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
@@ -827,7 +832,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto local_raylet_id = NodeID::FromRandom();
   auto actor_creator = std::make_shared<MockActorCreator>();
-  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>(local_raylet_id);
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, lease_client_factory, lease_policy, store,
       task_finisher, local_raylet_id, kLongTimeout, actor_creator);

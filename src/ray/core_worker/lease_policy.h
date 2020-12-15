@@ -40,8 +40,7 @@ class LocalityDataProviderInterface {
 class LeasePolicyInterface {
  public:
   /// Get the address of the best worker node for a lease request for the provided task.
-  virtual absl::optional<rpc::Address> GetBestNodeForTask(
-      const TaskSpecification &spec) = 0;
+  virtual rpc::Address GetBestNodeForTask(const TaskSpecification &spec) = 0;
 
   virtual ~LeasePolicyInterface() {}
 };
@@ -49,19 +48,21 @@ class LeasePolicyInterface {
 typedef std::function<absl::optional<rpc::Address>(const NodeID &node_id)>
     NodeAddrFactory;
 
-/// Class used by the core worker to implement a lease policy for picking the best
-/// worker node for a lease request. This class is not thread-safe.
-class LeasePolicy : public LeasePolicyInterface {
+/// Class used by the core worker to implement a locality-aware lease policy for
+/// picking a worker node for a lease request. This class is not thread-safe.
+class LocalityLeasePolicy : public LeasePolicyInterface {
  public:
-  LeasePolicy(std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
-              NodeAddrFactory node_addr_factory)
+  LocalityLeasePolicy(
+      std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
+      NodeAddrFactory node_addr_factory, const rpc::Address fallback_rpc_address)
       : locality_data_provider_(locality_data_provider),
-        node_addr_factory_(node_addr_factory) {}
+        node_addr_factory_(node_addr_factory),
+        fallback_rpc_address_(fallback_rpc_address) {}
 
-  ~LeasePolicy() {}
+  ~LocalityLeasePolicy() {}
 
   /// Get the address of the best worker node for a lease request for the provided task.
-  absl::optional<rpc::Address> GetBestNodeForTask(const TaskSpecification &spec);
+  rpc::Address GetBestNodeForTask(const TaskSpecification &spec);
 
  private:
   /// Get the best worker node for a lease request for the provided task.
@@ -72,6 +73,26 @@ class LeasePolicy : public LeasePolicyInterface {
 
   /// Factory for building node RPC addresses given a NodeID.
   NodeAddrFactory node_addr_factory_;
+
+  /// RPC address of fallback node (usually the local node).
+  const rpc::Address fallback_rpc_address_;
+};
+
+/// Class used by the core worker to implement a local-only lease policy for picking
+/// a worker node for a lease request. This class is not thread-safe.
+class LocalLeasePolicy : public LeasePolicyInterface {
+ public:
+  LocalLeasePolicy(const rpc::Address fallback_rpc_address)
+      : fallback_rpc_address_(fallback_rpc_address) {}
+
+  ~LocalLeasePolicy() {}
+
+  /// Get the address of the best worker node for a lease request for the provided task.
+  rpc::Address GetBestNodeForTask(const TaskSpecification &spec);
+
+ private:
+  /// RPC address of fallback node (usually the local node).
+  const rpc::Address fallback_rpc_address_;
 };
 
 }  // namespace ray

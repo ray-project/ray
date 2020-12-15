@@ -232,8 +232,7 @@ std::shared_ptr<WorkerLeaseInterface>
 CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
-  if (raylet_address &&
-      NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
+  if (NodeID::FromBinary(raylet_address->raylet_id()) != local_raylet_id_) {
     // A remote raylet was specified. Connect to the raylet if needed.
     NodeID raylet_id = NodeID::FromBinary(raylet_address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
@@ -283,16 +282,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   TaskSpecification &resource_spec = task_queue.front();
   rpc::Address best_node_address;
-  if (raylet_address == nullptr &&
-      RayConfig::instance().locality_aware_leasing_enabled()) {
-    // If no raylet address is given, try to find the best worker for our next lease
-    // request.
-    if (auto addr = lease_policy_->GetBestNodeForTask(resource_spec)) {
-      best_node_address = addr.value();
-      raylet_address = &best_node_address;
-    }
-    // If no best worker returned, then we fall back to the default behavior, in which
-    // the local node is chosen in GetOrConnectLeaseClient.
+  if (raylet_address == nullptr) {
+    // If no raylet address is given, find the best worker for our next lease request.
+    best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
+    raylet_address = &best_node_address;
   }
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskID task_id = resource_spec.TaskId();

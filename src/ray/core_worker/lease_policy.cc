@@ -16,16 +16,18 @@
 
 namespace ray {
 
-absl::optional<rpc::Address> LeasePolicy::GetBestNodeForTask(
-    const TaskSpecification &spec) {
+rpc::Address LocalityLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec) {
   if (auto node_id = GetBestNodeIdForTask(spec)) {
-    return node_addr_factory_(node_id.value());
+    if (auto addr = node_addr_factory_(node_id.value())) {
+      return addr.value();
+    }
   }
-  return absl::nullopt;
+  return fallback_rpc_address_;
 }
 
 /// Criteria for "best" node: The node with the most object bytes (from object_ids) local.
-absl::optional<NodeID> LeasePolicy::GetBestNodeIdForTask(const TaskSpecification &spec) {
+absl::optional<NodeID> LocalityLeasePolicy::GetBestNodeIdForTask(
+    const TaskSpecification &spec) {
   auto object_ids = spec.GetDependencyIds();
   // Number of object bytes (from object_ids) that a given node has local.
   absl::flat_hash_map<NodeID, uint64_t> bytes_local_table;
@@ -49,6 +51,11 @@ absl::optional<NodeID> LeasePolicy::GetBestNodeIdForTask(const TaskSpecification
     }
   }
   return max_bytes_node;
+}
+
+rpc::Address LocalLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec) {
+  // Always return the fallback (local) node.
+  return fallback_rpc_address_;
 }
 
 }  // namespace ray

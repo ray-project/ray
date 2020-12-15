@@ -500,8 +500,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
     return addr;
   };
-  std::shared_ptr<LeasePolicyInterface> lease_policy =
-      std::make_shared<LeasePolicy>(reference_counter_, node_addr_factory);
+  auto lease_policy =
+      RayConfig::instance().locality_aware_leasing_enabled()
+          ? std::shared_ptr<LeasePolicyInterface>(std::make_shared<LocalityLeasePolicy>(
+                reference_counter_, node_addr_factory, rpc_address_))
+          : std::shared_ptr<LeasePolicyInterface>(
+                std::make_shared<LocalLeasePolicy>(rpc_address_));
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           rpc_address_, local_raylet_client_, core_worker_client_pool_,
