@@ -84,7 +84,7 @@ import os
 import ray
 from ray import tune
 from ray.rllib.examples.models.cnn_plus_fc_concat_model import \
-    CNNPlusFCConcatModel
+    CNNPlusFCConcatModel, TorchCNNPlusFCConcatModel
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 
@@ -164,7 +164,7 @@ if __name__ == "__main__":
         "rollout_fragment_length": 200,
         "clip_param": 0.1,
         "model": {
-            "custom_model": CNNPlusFCConcatModel,
+            "custom_model": TorchCNNPlusFCConcatModel if args.torch else CNNPlusFCConcatModel,
             "custom_model_config": {},
             "max_seq_len": 100,
             "use_lstm": True,
