@@ -104,7 +104,7 @@ class DashboardAgent(object):
                         dashboard_consts.
                         DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_SECONDS)
             except Exception:
-                logger.error("Failed to check parent PID. Exiting.")
+                logger.error("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
         check_parent_task = create_task(_check_parent())
