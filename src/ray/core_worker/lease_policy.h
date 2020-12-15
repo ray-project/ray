@@ -39,7 +39,7 @@ class LocalityDataProviderInterface {
 /// Interface for mocking the lease policy.
 class LeasePolicyInterface {
  public:
-  /// Get the address of the best lessor node for the provided task.
+  /// Get the address of the best worker node for a lease request for the provided task.
   virtual absl::optional<rpc::Address> GetBestNodeForTask(
       const TaskSpecification &spec) = 0;
 
@@ -50,7 +50,7 @@ typedef std::function<absl::optional<rpc::Address>(const NodeID &node_id)>
     NodeAddrFactory;
 
 /// Class used by the core worker to implement a lease policy for picking the best
-/// lessor node. This class is not thread-safe.
+/// worker node for a lease request. This class is not thread-safe.
 class LeasePolicy : public LeasePolicyInterface {
  public:
   LeasePolicy(std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
@@ -60,11 +60,11 @@ class LeasePolicy : public LeasePolicyInterface {
 
   ~LeasePolicy() {}
 
-  /// Get the address of the best lessor node for the provided task.
+  /// Get the address of the best worker node for a lease request for the provided task.
   absl::optional<rpc::Address> GetBestNodeForTask(const TaskSpecification &spec);
 
  private:
-  /// Get the best lessor node for the provided task.
+  /// Get the best worker node for a lease request for the provided task.
   absl::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
 
   /// Provider of locality data that will be used in choosing the best lessor.

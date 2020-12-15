@@ -162,7 +162,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
 
-  /// Provider of worker leasing decisions.
+  /// Provider of worker leasing decisions for the first lease request (not on
+  /// spillback).
   std::shared_ptr<LeasePolicyInterface> lease_policy_;
 
   /// Resolve local and remote dependencies;
