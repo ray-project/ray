@@ -387,9 +387,9 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, one before run, two final calls to cp
+        # Two initial calls to docker cp, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
-                               ["false", "false", "false", "true", "true"])
+                               ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
         commands.get_or_create_head_node(
             SMALL_CLUSTER,
@@ -1347,7 +1347,77 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.1", "start_ray_worker")
 
-    def testSetupCommandsWithStoppedNodeCaching(self):
+    def testSetupCommandsWithStoppedNodeCachingNoDocker(self):
+        file_mount_dir = tempfile.mkdtemp()
+        config = SMALL_CLUSTER.copy()
+        del config["docker"]
+        config["file_mounts"] = {"/root/test-folder": file_mount_dir}
+        config["file_mounts_sync_continuously"] = True
+        config["min_workers"] = 1
+        config["max_workers"] = 1
+        config_path = self.write_config(config)
+        self.provider = MockProvider(cache_stopped=True)
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
+        lm = LoadMetrics()
+        autoscaler = StandardAutoscaler(
+            config_path,
+            lm,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_has_call("172.0.0.0", "init_cmd")
+        runner.assert_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+
+        # Check the node was indeed reused
+        self.provider.terminate_node(0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        runner.clear_history()
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_not_has_call("172.0.0.0", "init_cmd")
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+
+        with open(f"{file_mount_dir}/new_file", "w") as f:
+            f.write("abcdefgh")
+
+        # Check that run_init happens when file_mounts have updated
+        self.provider.terminate_node(0)
+        autoscaler.update()
+        self.waitForNodes(1)
+        runner.clear_history()
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        runner.assert_not_has_call("172.0.0.0", "init_cmd")
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "start_ray_worker")
+
+        runner.clear_history()
+        autoscaler.update()
+        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
+
+        # We did not start any other nodes
+        runner.assert_not_has_call("172.0.0.1", " ")
+
+    def testSetupCommandsWithStoppedNodeCachingDocker(self):
+        # NOTE(ilr) Setup & Init commands **should** run with stopped nodes
+        # when Docker is in use.
         file_mount_dir = tempfile.mkdtemp()
         config = SMALL_CLUSTER.copy()
         config["file_mounts"] = {"/root/test-folder": file_mount_dir}
@@ -1386,9 +1456,10 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        runner.assert_not_has_call("172.0.0.0", "init_cmd")
-        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
-        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        # These all must happen when the node is stopped and resued
+        runner.assert_has_call("172.0.0.0", "init_cmd")
+        runner.assert_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
         runner.assert_has_call("172.0.0.0", "docker run")
 
@@ -1404,9 +1475,9 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        runner.assert_not_has_call("172.0.0.0", "init_cmd")
-        runner.assert_not_has_call("172.0.0.0", "setup_cmd")
-        runner.assert_not_has_call("172.0.0.0", "worker_setup_cmd")
+        runner.assert_has_call("172.0.0.0", "init_cmd")
+        runner.assert_has_call("172.0.0.0", "setup_cmd")
+        runner.assert_has_call("172.0.0.0", "worker_setup_cmd")
         runner.assert_has_call("172.0.0.0", "start_ray_worker")
         runner.assert_has_call("172.0.0.0", "docker run")
 
@@ -1419,12 +1490,13 @@ class AutoscalingTest(unittest.TestCase):
 
     def testMultiNodeReuse(self):
         config = SMALL_CLUSTER.copy()
+        # Docker re-runs setup commands when nodes are reused.
+        del config["docker"]
         config["min_workers"] = 3
         config["max_workers"] = 3
         config_path = self.write_config(config)
         self.provider = MockProvider(cache_stopped=True)
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(13)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1476,6 +1548,8 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
+        runner.respond_to_call("command -v docker",
+                               ["docker" for _ in range(4)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
@@ -1503,7 +1577,9 @@ class AutoscalingTest(unittest.TestCase):
 
         with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
             temp_file.write("hello".encode())
-
+        print("abc\n" * 300)
+        runner.respond_to_call(".Config.Image", ["example" for _ in range(4)])
+        runner.respond_to_call(".State.Running", ["true" for _ in range(4)])
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()

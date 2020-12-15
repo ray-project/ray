@@ -287,7 +287,7 @@ class NodeUpdater:
             init_required = self.cmd_runner.run_init(
                 as_head=self.is_head_node, file_mounts=self.file_mounts)
             if init_required:
-                node_tags.get[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
+                node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
