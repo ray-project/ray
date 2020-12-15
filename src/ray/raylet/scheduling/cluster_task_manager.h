@@ -153,7 +153,9 @@ class ClusterTaskManager {
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+
   /// Queue of lease requests that are infeasible.
+  /// Tasks go between scheduling <-> infeasible.
   std::unordered_map<SchedulingClass, std::deque<Work>> infeasible_tasks_;
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.

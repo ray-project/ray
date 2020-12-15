@@ -223,36 +223,32 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // More space is still needed. Try to spill objects to external storage to
     // make room.
     if (space_needed > 0) {
-      *error = PlasmaError::TransientOutOfMemory;
-      // SANG-TODO Remove it.
-      // if (spill_objects_callback_) {
-      //   // If the space needed is too small, we'd like to bump up to the minimum
-      //   spilling
-      //   // size. Cap the max size to be lower than the plasma store limit.
-      //   int64_t byte_to_spill =
-      //       std::min(PlasmaAllocator::GetFootprintLimit(),
-      //                std::max(space_needed,
-      //                RayConfig::instance().min_spilling_size()));
-      //   // Object spilling is asynchronous so that we do not block the plasma
-      //   // store thread. Therefore the client must try again, even if enough
-      //   // space will be made after the spill is complete.
-      //   // TODO(swang): Only respond to the client with OutOfMemory if we could not
-      //   // make enough space through spilling. If we could make enough space,
-      //   // respond to the plasma client once spilling is complete.
-      //   space_needed = spill_objects_callback_(byte_to_spill, space_needed);
-      // }
-      // if (space_needed > 0) {
-      //   // There is still not enough space, even once all evictable objects
-      //   // were evicted and all pending object spills have finished.  The
-      //   // client may choose to try again, or throw an OutOfMemory error to
-      //   // the application immediately.
-      //   *error = PlasmaError::OutOfMemory;
-      // } else {
-      //   // Once all pending object spills have finished, there should be
-      //   // enough space for this allocation. Return a transient error to the
-      //   // client so that they try again soon.
-      //   *error = PlasmaError::TransientOutOfMemory;
-      // }
+      if (spill_objects_callback_) {
+        // If the space needed is too small, we'd like to bump up to the minimum
+        // size. Cap the max size to be lower than the plasma store limit.
+        int64_t byte_to_spill =
+            std::min(PlasmaAllocator::GetFootprintLimit(),
+                     std::max(space_needed, RayConfig::instance().min_spilling_size()));
+        // Object spilling is asynchronous so that we do not block the plasma
+        // store thread. Therefore the client must try again, even if enough
+        // space will be made after the spill is complete.
+        // TODO(swang): Only respond to the client with OutOfMemory if we could not
+        // make enough space through spilling. If we could make enough space,
+        // respond to the plasma client once spilling is complete.
+        space_needed = spill_objects_callback_(byte_to_spill, space_needed);
+      }
+      if (space_needed > 0) {
+        // There is still not enough space, even once all evictable objects
+        // were evicted and all pending object spills have finished.  The
+        // client may choose to try again, or throw an OutOfMemory error to
+        // the application immediately.
+        *error = PlasmaError::OutOfMemory;
+      } else {
+        // Once all pending object spills have finished, there should be
+        // enough space for this allocation. Return a transient error to the
+        // client so that they try again soon.
+        *error = PlasmaError::TransientOutOfMemory;
+      }
       // Return an error to the client if not enough space could be freed to
       // create the object.
       break;

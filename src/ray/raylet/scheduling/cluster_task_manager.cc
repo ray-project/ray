@@ -31,7 +31,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
   for (auto shapes_it = tasks_to_schedule_.begin();
        shapes_it != tasks_to_schedule_.end();) {
     auto &work_queue = shapes_it->second;
-    bool is_shape_infeasible = false;
+    bool is_infeasible = false;
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       // Check every task in task_to_schedule queue to see
       // whether it can be scheduled. This avoids head-of-line
@@ -46,7 +46,6 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
-      bool is_infeasible;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
           placement_resources, task.GetTaskSpecification().IsActorCreationTask(),
           &_unused, &is_infeasible);
@@ -56,7 +55,6 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       if (node_id_string.empty()) {
         RAY_LOG(DEBUG) << "No node found to schedule a task "
                        << task.GetTaskSpecification().TaskId();
-        is_shape_infeasible = is_infeasible;
         break;
       }
 
@@ -73,7 +71,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       work_it = work_queue.erase(work_it);
     }
 
-    if (is_shape_infeasible) {
+    if (is_infeasible) {
       RAY_CHECK(!work_queue.empty());
       // Only announce the first item as infeasible.
       auto &work_queue = shapes_it->second;
@@ -391,13 +389,8 @@ void ClusterTaskManager::FillResourceUsage(
     // If a task is not feasible on the local node it will not be feasible on any other
     // node in the cluster. See the scheduling policy defined by
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
-    if (cluster_resource_scheduler_->IsLocallyFeasible(resources)) {
-      int num_ready = by_shape_entry->num_ready_requests_queued();
-      by_shape_entry->set_num_ready_requests_queued(num_ready + count);
-    } else {
-      int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
-      by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
-    }
+    int num_ready = by_shape_entry->num_ready_requests_queued();
+    by_shape_entry->set_num_ready_requests_queued(num_ready + count);
     auto backlog_it = backlog_tracker_.find(scheduling_class);
     if (backlog_it != backlog_tracker_.end()) {
       by_shape_entry->set_backlog_size(backlog_it->second);
@@ -442,6 +435,15 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
+    if (scheduling_class == one_cpu_scheduling_cls) {
+      continue;
+    }
+    if (num_reported++ >= max_resource_shapes_per_load_report_ &&
+        max_resource_shapes_per_load_report_ >= 0) {
+      // TODO (Alex): It's possible that we skip a different scheduling key which contains
+      // the same resources.
+      break;
+    }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
             .GetResourceMap();
@@ -458,9 +460,16 @@ void ClusterTaskManager::FillResourceUsage(
 
       // Add to `resource_load_by_shape`.
       (*by_shape_entry->mutable_shape())[label] = quantity;
-      // TODO (Alex): Technically being on `tasks_to_schedule` could also mean
-      // that the entire cluster is utilized.
-      by_shape_entry->set_num_infeasible_requests_queued(count);
+    }
+
+    // If a task is not feasible on the local node it will not be feasible on any other
+    // node in the cluster. See the scheduling policy defined by
+    // ClusterResourceScheduler::GetBestSchedulableNode for more details.
+    int num_ready = by_shape_entry->num_infeasible_requests_queued();
+    by_shape_entry->set_num_infeasible_requests_queued(num_ready + count);
+    auto backlog_it = backlog_tracker_.find(scheduling_class);
+    if (backlog_it != backlog_tracker_.end()) {
+      by_shape_entry->set_backlog_size(backlog_it->second);
     }
   }
 }
