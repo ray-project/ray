@@ -17,9 +17,9 @@ from ray.tune.suggest.dragonfly import DragonflySearch
 
 def objective(config):
     for i in range(config["iterations"]):
-        vol1 = config["point"][0]  # LiNO3
-        vol2 = config["point"][1]  # Li2SO4
-        vol3 = config["point"][2]  # NaClO4
+        vol1 = config["LiNO3_vol"]  # LiNO3
+        vol2 = config["Li2SO4_vol"]  # Li2SO4
+        vol3 = config["NaClO4_vol"]  # NaClO4
         vol4 = 10 - (vol1 + vol2 + vol3)  # Water
         # Synthetic functions
         conductivity = vol1 + 0.1 * (vol2 + vol3)**2 + 2.3 * vol4 * (vol1**1.5)
