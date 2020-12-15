@@ -1267,7 +1267,7 @@ def test_placement_group_wait_api(ray_start_cluster_head):
 
     # Create placement group 1 successfully.
     placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    assert placement_group1.wait(10000)
+    assert placement_group1.wait(10)
 
     # Restart gcs server.
     cluster.head_node.kill_gcs_server()
@@ -1275,7 +1275,14 @@ def test_placement_group_wait_api(ray_start_cluster_head):
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    assert placement_group2.wait(10000)
+    assert placement_group2.wait(10)
+
+    # Remove placement group 1.
+    ray.util.remove_placement_group(placement_group1)
+
+    # Wait for placement group 1 after it is removed.
+    with pytest.raises(Exception):
+        placement_group1.wait(10)
 
 
 if __name__ == "__main__":

@@ -1207,14 +1207,14 @@ cdef class CoreWorker:
 
     def wait_placement_group_ready(self,
                                    PlacementGroupID placement_group_id,
-                                   int32_t timeout_ms):
+                                   int32_t timeout_seconds):
         cdef CRayStatus status
         cdef CPlacementGroupID cplacement_group_id = (
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
-        cdef int ctimeout_ms = timeout_ms
+        cdef int ctimeout_seconds = timeout_seconds
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker() \
-                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
+                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_seconds)
             if status.IsNotFound():
                 raise Exception("Placement group {} does not exist.".format(
                     placement_group_id))
