@@ -16,11 +16,13 @@ def server_ref_count(n):
             return n == 0
         client_id = list(server.object_refs.keys())[0]
         return len(server.object_refs[client_id]) == n
+
     return test_cond
 
 
 def test_delete_refs_on_disconnect(ray_start_regular):
     with ray_start_client_server() as ray:
+
         @ray.remote
         def f(x):
             return x + 2

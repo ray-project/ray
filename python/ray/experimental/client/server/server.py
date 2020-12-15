@@ -20,13 +20,13 @@ from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.server.core_ray_api import RayServerAPI
 from ray.experimental.client.server.dataservicer import DataServicer
 
-
 logger = logging.getLogger(__name__)
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(self, test_mode=False):
-        self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(dict)
+        self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
+            dict)
         self.function_refs = {}
         self.actor_refs = {}
         self.registered_actor_classes = {}
@@ -124,12 +124,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         item_ser = cloudpickle.dumps(item)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
 
-    def PutObject(self, request: ray_client_pb2.PutRequest, context=None) -> ray_client_pb2.PutResponse:
+    def PutObject(self, request: ray_client_pb2.PutRequest,
+                  context=None) -> ray_client_pb2.PutResponse:
         """gRPC entrypoint for unary PutObject
         """
         return self._put_object(request, "", context)
 
-    def _put_object(self, request: ray_client_pb2.PutRequest, client_id: str, context=None):
+    def _put_object(self,
+                    request: ray_client_pb2.PutRequest,
+                    client_id: str,
+                    context=None):
         """Put an object in the cluster with ray.put() via gRPC.
 
         Args:

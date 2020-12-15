@@ -3,11 +3,14 @@ import time
 
 ray.connect("localhost:50050")
 
+
 @ray.remote
 def plus2(x):
     return x + 2
 
+
 print(ray.get(plus2.remote(24)))
+
 
 @ray.remote
 def fact(x):

@@ -12,7 +12,6 @@ from typing import Dict
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -49,10 +48,7 @@ class DataClient:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
-            metadata=(
-                ("client_id", self._client_id),
-            )
-        )
+            metadata=(("client_id", self._client_id), ))
         for response in resp_stream:
             if response.req_id == 0:
                 # This is not being waited for.
@@ -72,9 +68,8 @@ class DataClient:
         if close_channel:
             self.channel.close()
 
-    def _blocking_send(
-        self, req: ray_client_pb2.DataRequest
-    ) -> ray_client_pb2.DataResponse:
+    def _blocking_send(self, req: ray_client_pb2.DataRequest
+                       ) -> ray_client_pb2.DataResponse:
         req_id = self._next_id()
         req.req_id = req_id
         self.request_queue.put(req)
@@ -87,22 +82,20 @@ class DataClient:
             raise Exception("Couldn't get data")
         return data
 
-    def GetObject(self, request: ray_client_pb2.GetRequest, context=None) -> ray_client_pb2.GetResponse:
-        datareq = ray_client_pb2.DataRequest(
-            get=request,
-        )
+    def GetObject(self, request: ray_client_pb2.GetRequest,
+                  context=None) -> ray_client_pb2.GetResponse:
+        datareq = ray_client_pb2.DataRequest(get=request, )
         resp = self._blocking_send(datareq)
         return resp.get
 
-    def PutObject(self, request: ray_client_pb2.PutRequest, context=None) -> ray_client_pb2.PutResponse:
-        datareq = ray_client_pb2.DataRequest(
-            put=request,
-        )
+    def PutObject(self, request: ray_client_pb2.PutRequest,
+                  context=None) -> ray_client_pb2.PutResponse:
+        datareq = ray_client_pb2.DataRequest(put=request, )
         resp = self._blocking_send(datareq)
         return resp.put
 
-    def ReleaseObject(self, request: ray_client_pb2.ReleaseRequest, context=None) -> None:
-        datareq = ray_client_pb2.DataRequest(
-            release=request,
-        )
+    def ReleaseObject(self,
+                      request: ray_client_pb2.ReleaseRequest,
+                      context=None) -> None:
+        datareq = ray_client_pb2.DataRequest(release=request, )
         self.request_queue.put(datareq)

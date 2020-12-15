@@ -156,8 +156,8 @@ class Worker:
     def call_release(self, id: bytes) -> None:
         logging.debug(f"Releasing {id.hex}")
         if self.data_client is not None:
-            self.data_client.ReleaseObject(ray_client_pb2.ReleaseRequest(
-                ids=[id]))
+            self.data_client.ReleaseObject(
+                ray_client_pb2.ReleaseRequest(ids=[id]))
 
     def close(self):
         self.data_client.close()

@@ -9,7 +9,6 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 if TYPE_CHECKING:
     from ray.experimental.client.server.server import RayletServicer
 
-
 logger = logging.getLogger(__name__)
 
 
