@@ -49,6 +49,7 @@ class CreateRequestQueueTest : public ::testing::Test {
       : queue_(
             /*max_retries=*/2,
             /*evict_if_full=*/true,
+            /*spill_object_callback=*/[&]() { return true; },
             /*on_global_gc=*/[&]() { num_global_gc_++; }) {}
 
   void AssertNoLeaks() {
@@ -131,6 +132,8 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
   CreateRequestQueue queue(
       /*max_retries=*/-1,
       /*evict_if_full=*/true,
+      // Spilling is failing.
+      /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() { num_global_gc_++; });
 
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
@@ -248,6 +251,7 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
   CreateRequestQueue queue(
       /*max_retries=*/2,
       /*evict_if_full=*/false,
+      /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() {});
 
   bool first_try = true;

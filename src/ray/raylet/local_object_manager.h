@@ -38,7 +38,8 @@ class LocalObjectManager {
       int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
       rpc::CoreWorkerClientPool &owner_client_pool, bool object_pinning_enabled,
-      bool automatic_object_deletion_enabled,
+      bool automatic_object_deletion_enabled, int max_io_workers,
+      int64_t min_spilling_size,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable)
       : free_objects_period_ms_(free_objects_period_ms),
@@ -50,12 +51,10 @@ class LocalObjectManager {
         automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
-        min_spilling_size_(RayConfig::instance().min_spilling_size()),
+        min_spilling_size_(min_spilling_size),
         num_active_workers_(0),
-        max_active_workers_(RayConfig::instance().max_io_workers()),
-        is_plasma_object_evictable_(is_plasma_object_evictable) {
-    min_spilling_size_ = RayConfig::instance().min_spilling_size();
-  }
+        max_active_workers_(max_io_workers),
+        is_plasma_object_evictable_(is_plasma_object_evictable) {}
 
   /// Pin objects.
   ///
@@ -113,22 +112,15 @@ class LocalObjectManager {
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest,
               TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
 
   /// Asynchronously spill objects when space is needed.
   /// The callback tries to spill objects as much as num_bytes_to_spill and returns
-  /// the amount of space needed after the spilling is complete.
-  /// The returned value is calculated based off of min_bytes_to_spill. That says,
-  /// although it fails to spill num_bytes_to_spill, as long as it spills more than
-  /// min_bytes_to_spill, it will return the value that is less than 0 (meaning we
-  /// don't need any more additional space).
+  /// true if we could spill the corresponding bytes.
+  /// NOTE(sang): If 0 is given, this method spills a single object.
   ///
-  /// \param num_bytes_to_spill The total number of bytes to spill. The method tries to
-  /// spill bytes as much as this value.
-  /// \param min_bytes_to_spill The minimum bytes that
-  /// need to be spilled.
-  /// \return The number of bytes of space still required after the
-  /// spill is complete. This return the value is less than 0 if it satifies the
-  /// min_bytes_to_spill.
+  /// \param num_bytes_to_spill The total number of bytes to spill.
+  /// \return True if it can spill num_bytes_to_spill. False otherwise.
   bool SpillObjectsOfSize(int64_t num_bytes_to_spill) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Internal helper method for spilling objects.
@@ -235,6 +227,14 @@ class LocalObjectManager {
   /// The max number of active spill workers.
   int64_t max_active_workers_;
 
+  /// Callback to check if a plasma object is pinned in workers.
+  /// Return true if unpinned, meaning we can safely spill the object. False otherwise.
+  std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable_;
+
+  ///
+  /// Stats
+  ///
+
   /// The last time a spill operation finished.
   int64_t last_spill_finish_ns_ = 0;
 
@@ -264,9 +264,6 @@ class LocalObjectManager {
 
   /// The last time a restore log finished.
   int64_t last_restore_log_ns_ = 0;
-
-  /// Callback to check if a plasma object is pinned in workers.
-  std::function<bool(const ray::ObjectID &)> is_plasma_object_evictable_;
 };
 
 };  // namespace raylet

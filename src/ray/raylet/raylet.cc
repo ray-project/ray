@@ -78,16 +78,20 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                 object_id, spilled_url, callback);
           },
           [this]() {
+            // This callback is called from the plasma store thread.
+            // NOTE: It means the local object manager should be thread-safe.
             return node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
           },
           [this]() {
             // Post on the node manager's event loop since this
-            // will be called from the plasma store thread.
+            // callback is called from the plasma store thread.
+            // This will help keep node manager lock-less.
             main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
           }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_,
                     [this](const ObjectID &object_id) {
+                      // It is used by local_object_store.
                       return object_manager_.IsPlasmaObjectEvictable(object_id);
                     }),
       socket_name_(socket_name),

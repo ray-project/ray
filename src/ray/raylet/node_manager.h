@@ -103,6 +103,10 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
+  // The number if max io workers.
+  int max_io_workers;
+  // The minimum object size that can be spilled by each spill operation.
+  int64_t min_spilling_size;
 };
 
 struct pair_hash {
@@ -750,8 +754,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Pool of RPC client connections to core workers.
   rpc::CoreWorkerClientPool worker_rpc_pool_;
-
-  std::function<bool(const ObjectID &)> is_plasma_object_evictable_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

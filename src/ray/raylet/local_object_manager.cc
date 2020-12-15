@@ -118,6 +118,7 @@ bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
     }
     num_active_workers_ += 1;
   }
+  RAY_LOG(ERROR) << "Sang max throughput, num active worker: " << num_active_workers_;
 
   // Return whether spilling is still in progress.
   return num_active_workers_ > 0;
@@ -150,21 +151,21 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
       } else {
         auto now = absl::GetCurrentTimeNanos();
-        RAY_LOG(INFO) << "Spilled " << bytes_to_spill << " in "
-                      << (now - start_time) / 1e6 << "ms";
+        RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
+                       << (now - start_time) / 1e6 << "ms";
         spilled_bytes_total_ += bytes_to_spill;
         spilled_objects_total_ += objects_to_spill.size();
         // Adjust throughput timing to account for concurrent spill operations.
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
-          RAY_LOG(ERROR) << "Spilled "
-                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
-                         << " MiB, " << spilled_objects_total_
-                         << " objects, write throughput "
-                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
-                                             spill_time_total_s_)
-                         << " MiB/s";
+          RAY_LOG(INFO) << "Spilled "
+                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
+                        << " MiB, " << spilled_objects_total_
+                        << " objects, write throughput "
+                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
+                                            spill_time_total_s_)
+                        << " MiB/s";
         }
         last_spill_finish_ns_ = now;
       }
@@ -304,7 +305,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
-    RAY_LOG(ERROR) << "Restoring " << object_url;
+    RAY_LOG(ERROR) << "Restoring " << object_url << " for object id " << object_id;
     request.add_object_ids_to_restore(object_id.Binary());
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
@@ -318,7 +319,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             auto now = absl::GetCurrentTimeNanos();
             auto restored_bytes = r.bytes_restored_total();
             RAY_LOG(INFO) << "Restored " << restored_bytes << " in "
-                          << (now - start_time) / 1e6 << "ms";
+                          << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
             restored_bytes_total_ += restored_bytes;
             restored_objects_total_ += 1;
             // Adjust throughput timing to account for concurrent restore operations.
