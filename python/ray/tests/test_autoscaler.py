@@ -1577,7 +1577,7 @@ class AutoscalingTest(unittest.TestCase):
 
         with open(os.path.join(file_mount_dir, "test.txt"), "wb") as temp_file:
             temp_file.write("hello".encode())
-        print("abc\n" * 300)
+
         runner.respond_to_call(".Config.Image", ["example" for _ in range(4)])
         runner.respond_to_call(".State.Running", ["true" for _ in range(4)])
         autoscaler.update()
