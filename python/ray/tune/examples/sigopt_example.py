@@ -67,7 +67,8 @@ if __name__ == "__main__":
         name="my_exp",
         search_alg=algo,
         scheduler=scheduler,
-        num_samples=10 if args.smoke_test else 1000,
+        num_samples=4 if args.smoke_test else 100,
         config={"steps": 10})
 
-    print("Best hyperparameters found were: ", analysis.best_config)
+    print("Best hyperparameters found were: ",
+          analysis.get_best_config("mean_loss", "min"))

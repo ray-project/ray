@@ -44,7 +44,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    samples = 10 if args.smoke_test else 1000
+    samples = 4 if args.smoke_test else 100
 
     conn = Connection(client_token=os.environ["SIGOPT_KEY"])
     experiment = conn.experiments().create(
@@ -95,4 +95,6 @@ if __name__ == "__main__":
         search_alg=algo,
         num_samples=samples,
         config={})
-    print("Best hyperparameters found were: ", analysis.best_config)
+
+    print("Best hyperparameters found were: ",
+          analysis.get_best_config("average", "min"))
