@@ -68,7 +68,7 @@ void GcsServer::Start() {
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
-  InitGcsResourceManager();
+  InitGcsResourceManager(gcs_init_data);
 
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
@@ -160,8 +160,16 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*heartbeat_info_service_);
 }
 
-void GcsServer::InitGcsResourceManager() {
-  gcs_resource_manager_ = std::make_shared<GcsResourceManager>();
+void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
+  gcs_resource_manager_ =
+      std::make_shared<GcsResourceManager>(gcs_pub_sub_, gcs_table_storage_);
+  // Initialize by gcs tables data.
+  gcs_resource_manager_->Initialize(gcs_init_data);
+  // Register service.
+  node_resource_info_service_.reset(
+      new rpc::NodeResourceInfoGrpcService(main_service_, *gcs_resource_manager_));
+  rpc_server_.RegisterService(*node_resource_info_service_);
 }
 
 void GcsServer::InitGcsJobManager() {
@@ -296,7 +304,6 @@ void GcsServer::InstallEventListeners() {
         // node is removed from the GCS.
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
-        gcs_resource_manager_->RemoveResources(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
       });
 
