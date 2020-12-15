@@ -1,7 +1,5 @@
 from ray.util.iter import LocalIterator
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.typing import Dict, SampleBatchType
-from ray.util.iter_metrics import MetricsContext
 
 # Counters for training progress (keys for metrics.counters).
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
@@ -25,19 +23,19 @@ LEARNER_INFO = "learner"
 
 
 # Asserts that an object is a type of SampleBatch.
-def _check_sample_batch_type(batch: SampleBatchType) -> None:
+def _check_sample_batch_type(batch):
     if not isinstance(batch, (SampleBatch, MultiAgentBatch)):
         raise ValueError("Expected either SampleBatch or MultiAgentBatch, "
                          "got {}: {}".format(type(batch), batch))
 
 
 # Returns pipeline global vars that should be periodically sent to each worker.
-def _get_global_vars() -> Dict:
+def _get_global_vars():
     metrics = LocalIterator.get_metrics()
     return {"timestep": metrics.counters[STEPS_SAMPLED_COUNTER]}
 
 
-def _get_shared_metrics() -> MetricsContext:
+def _get_shared_metrics():
     """Return shared metrics for the training workflow.
 
     This only applies if this trainer has an execution plan."""
