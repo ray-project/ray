@@ -32,8 +32,8 @@ class ComposedModel:
         self.model_two = client.get_handle("model_two")
 
     # This method can be called concurrently!
-    async def __call__(self, flask_request):
-        data = await flask_request.body()
+    async def __call__(self, starlette_request):
+        data = await starlette_request.body()
 
         score = await self.model_one.remote(data=data)
         if score > 0.5:

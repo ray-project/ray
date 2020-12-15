@@ -277,7 +277,7 @@ async def test_user_config_update(serve_instance, router,
         def __init__(self):
             self.reval = ""
 
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return self.retval
 
         def reconfigure(self, config):

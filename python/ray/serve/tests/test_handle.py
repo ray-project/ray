@@ -8,7 +8,7 @@ def test_handle_in_endpoint(serve_instance):
     client = serve_instance
 
     class Endpoint1:
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return "hello"
 
     class Endpoint2:

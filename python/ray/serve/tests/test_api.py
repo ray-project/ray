@@ -819,8 +819,7 @@ def test_starlette_request(serve_instance):
         data = await starlette_request.body()
         return data
 
-
-    UVICORN_HIGH_WATER_MARK = 65536 # max bytes in one message
+    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
 
     # Long string to test serialization of multiple messages.
     long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK

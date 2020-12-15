@@ -28,7 +28,7 @@ A backend consists of a number of *replicas*, which are individual copies of the
 
 .. code-block:: python
 
-  def handle_request(flask_request):
+  def handle_request(starlette_request):
     return "hello world"
 
   class RequestHandler:
@@ -36,7 +36,7 @@ A backend consists of a number of *replicas*, which are individual copies of the
     def __init__(self, msg):
         self.msg = msg
 
-    def __call__(self, flask_request):
+    def __call__(self, starlette_request):
         return self.msg
 
   client.create_backend("simple_backend", handle_request)

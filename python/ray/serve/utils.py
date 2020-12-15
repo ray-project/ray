@@ -37,8 +37,8 @@ class ServeRequest:
 
     ServeRequest partially implements the API of Starlette Request. You only
     need to write your model serving code once; it can be queried by both HTTP
-    and Python.  
-    
+    and Python.
+
     To use the full Starlette Request interface with ServeHandle, you may
     instead directly pass in a Starlette Request object to the ServeHandle.
     """
