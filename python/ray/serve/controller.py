@@ -155,11 +155,23 @@ class ActorStateReconciler:
     backends_to_remove: List[BackendTag] = field(default_factory=list)
     endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
 
-    currently_starting_replicas: Dict[ray.ObjectRef, Tuple[
+    # NOTE(ilr): These are not checkpointed, but will be recreated by
+    # `_enqueue_kill_actor`.
+    currently_starting_replicas: Dict[asyncio.Future, Tuple[
         BackendTag, ReplicaTag, ActorHandle]] = field(default_factory=dict)
-
-    currently_stopping_replicas: Dict[ray.ObjectRef, Tuple[
+    currently_stopping_replicas: Dict[asyncio.Future, Tuple[
         BackendTag, ReplicaTag]] = field(default_factory=dict)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["currently_stopping_replicas"]
+        del state["currently_starting_replicas"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.currently_stopping_replicas = {}
+        self.currently_starting_replicas = {}
 
     # TODO(edoakes): consider removing this and just using the names.
 
@@ -278,7 +290,7 @@ class ActorStateReconciler:
             for replica_tag in replicas_to_create:
                 replica_handle = await self._start_backend_replica(
                     current_state, backend_tag, replica_tag)
-                ready_future = replica_handle.ready.remote()
+                ready_future = replica_handle.ready.remote().as_future()
                 self.currently_starting_replicas[ready_future] = (
                     backend_tag, replica_tag, replica_handle)
 
@@ -288,8 +300,7 @@ class ActorStateReconciler:
                 replica_name = format_actor_name(replica_tag,
                                                  self.controller_name)
 
-                @ray.remote
-                def kill_actor(replica_name_to_use):
+                async def kill_actor(replica_name_to_use):
                     # NOTE: the replicas may already be stopped if we failed
                     # after stopping them but before writing a checkpoint.
                     try:
@@ -304,8 +315,9 @@ class ActorStateReconciler:
                     # if it successfully killed the worker or not.
                     ray.kill(replica, no_restart=True)
 
-                self.currently_stopping_replicas[kill_actor.remote(
-                    replica_name)] = tuple([backend_tag, replica_tag])
+                self.currently_stopping_replicas[asyncio.ensure_future(
+                    kill_actor(replica_name))] = tuple(
+                        [backend_tag, replica_tag])
 
     async def _backend_control_loop(self):
         start = time.time()
