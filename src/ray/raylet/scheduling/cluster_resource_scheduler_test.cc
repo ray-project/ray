@@ -1200,11 +1200,18 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   cluster_resources.DeleteLocalResource("custom123");
   result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
   ASSERT_TRUE(result.empty());
+
+  cluster_resources.AddLocalResource("custom123", 5);
+  task_request = {{"custom123", 5}};
+  result = cluster_resources.GetBestSchedulableNode(task_request, false, &t);
+  ASSERT_FALSE(result.empty());
+  ASSERT_TRUE(cluster_resources.IsAvailableResourceEmpty("custom123"));
 }
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  ::testing::GTEST_FLAG(filter) = "*DynamicResourceTest*";
   return RUN_ALL_TESTS();
 }

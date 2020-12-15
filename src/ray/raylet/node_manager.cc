@@ -175,8 +175,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_(config.record_metrics_period_ms) {
-  placement_group_resource_manager_ = std::make_shared<OldPlacementGroupResourceManager>(
-      local_available_resources_, cluster_resource_map_, self_node_id_);
+  
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -219,6 +218,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
         self_node_id_, new_resource_scheduler_, fulfills_dependencies_func,
         is_owner_alive, get_node_info_func));
+    placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
+      new_resource_scheduler_);
+  } else {
+    placement_group_resource_manager_ = std::make_shared<OldPlacementGroupResourceManager>(
+      local_available_resources_, cluster_resource_map_, self_node_id_);
   }
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -1733,21 +1737,15 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 void NodeManager::HandlePrepareBundleResources(
     const rpc::PrepareBundleResourcesRequest &request,
     rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // TODO(sang): Port this onto the new scheduler.
-  // RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
                  << bundle_spec.DebugString();
-
-  if (new_scheduler_enabled_) {
-    auto prepared = cluster_task_manager_->PreparePGBundle(bundle_spec);
-    reply->set_success(prepared);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    // We don't need to schedule and dispatch because all we've done so far is allocate resources.
-  } else {
-    auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
-    reply->set_success(prepared);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+  
+  auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
+  reply->set_success(prepared);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  
+  if (!new_scheduler_enabled_) {
     // Call task dispatch to assign work to the new group.
     TryLocalInfeasibleTaskScheduling();
     DispatchTasks(local_queues_.GetReadyTasksByClass());
@@ -1757,20 +1755,16 @@ void NodeManager::HandlePrepareBundleResources(
 void NodeManager::HandleCommitBundleResources(
     const rpc::CommitBundleResourcesRequest &request,
     rpc::CommitBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // RAY_CHECK(!new_scheduler_enabled_) << "Not implemented yet.";
-
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to commit bundle resources is received, "
                  << bundle_spec.DebugString();
+  placement_group_resource_manager_->CommitBundle(bundle_spec);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+  
   if (new_scheduler_enabled_) {
-    cluster_task_manager_->CommitPGBundle(bundle_spec);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
     // Schedule in case a lease request for this placement group arrived before the commit message.
     ScheduleAndDispatch();
   } else {
-    placement_group_resource_manager_->CommitBundle(bundle_spec);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-
     // Call task dispatch to assign work to the new group.
     TryLocalInfeasibleTaskScheduling();
     DispatchTasks(local_queues_.GetReadyTasksByClass());

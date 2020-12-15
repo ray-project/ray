@@ -420,50 +420,6 @@ void ClusterTaskManager::FillResourceUsage(
   }
 }
 
-bool ClusterTaskManager::PreparePGBundle(BundleSpecification &bundle_spec) {
-  if (pg_bundles_.count(bundle_spec.BundleId()) > 0) {
-    // Duplicate prepare request.
-    return true;
-  }
-
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
-      bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
-
-  if (!allocated) {
-    return false;
-  }
-
-  auto bundle_state = std::make_shared<BundleTransactionState>(CommitState::COMMITTED,
-                                                               resource_instances);
-  pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-
-  return true;
-}
-
-void ClusterTaskManager::CommitPGBundle(BundleSpecification &bundle_spec) {
-  auto it = pg_bundles_.find(bundle_spec.BundleId());
-  if (it == pg_bundles_.end()) {
-    // We should only ever receive a commit for a non-existent placement group when a placement group is created and removed in quick succession.
-    RAY_LOG(DEBUG) << "Received a commit message for an unknown bundle. The bundle info is " << bundle_spec.DebugString();
-    return;
-  }
-
-  const auto &bundle_state = it->second;
-  bundle_state->state_ = CommitState::COMMITTED;
-
-  for (const auto &resource : bundle_spec.GetRequiredResources().GetResourceMap()) {
-    const auto &orig_name = resource.first;
-    const auto &formatted_name = FormatPlacementGroupResource(orig_name, bundle_spec);
-    const auto &wildcard_name = FormatPlacementGroupResource(orig_name, bundle_spec.PlacementGroupId(), -1);
-    double quantity = resource.second;
-    cluster_resource_scheduler_->AddLocalResource(formatted_name, quantity);
-    cluster_resource_scheduler_->AddLocalResource(wildcard_name, quantity);
-  }
-}
-
-
 std::string ClusterTaskManager::DebugString() const {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";

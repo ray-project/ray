@@ -162,6 +162,11 @@ class ClusterResourceScheduler {
   /// \param resource_total: New capacity of the resource.
   void AddLocalResource(const std::string &resource_name, double resource_total);
 
+  /// Check whether the available resources are empty.
+  ///
+  /// \param resource_name: Resource which we want to check.
+  bool IsAvailableResourceEmpty(const std::string &resource_name);
+
   /// Update total capacity of a given resource of a given node.
   ///
   /// \param node_name: Node whose resource we want to update.

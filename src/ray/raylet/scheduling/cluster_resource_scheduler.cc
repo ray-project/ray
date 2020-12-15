@@ -348,6 +348,40 @@ void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name
   }
 }
 
+bool ClusterResourceScheduler::IsAvailableResourceEmpty(
+  const std::string &resource_name) {
+  auto it = nodes_.find(local_node_id_);
+  if (it == nodes_.end()) {
+    RAY_LOG(WARNING) << "Can't find local node:[" << local_node_id_ << "] when check local available resource.";
+    return true;
+  }
+
+  int idx = -1;
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    idx = (int)CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    idx = (int)GPU;
+  } else if (resource_name == ray::kTPU_ResourceLabel) {
+    idx = (int)TPU;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    idx = (int)MEM;
+  };
+
+  auto local_view = it->second.GetMutableLocalView();
+  if (idx != -1) {
+    return local_view->predefined_resources[idx].available <= 0;
+  } else {
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    auto itr = local_view->custom_resources.find(resource_id);
+    if (itr != local_view->custom_resources.end()) {
+      return itr->second.available <= 0;
+    } else {
+      return true;
+    }
+  }
+}
+
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id_string,
                                                       const std::string &resource_name,
                                                       double resource_total) {
@@ -445,11 +479,6 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
     }
 
     if (node_id == local_node_id_) {
-      local_resources_.custom_resources[resource_id].total.clear();
-      local_resources_.custom_resources[resource_id].available.clear();
-    }
-
-    if (client_id == local_node_id_) {
       local_resources_.custom_resources[resource_id].total.clear();
       local_resources_.custom_resources[resource_id].available.clear();
     }
