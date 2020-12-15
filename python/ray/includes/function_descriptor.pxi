@@ -12,6 +12,7 @@ import hashlib
 import cython
 import inspect
 import uuid
+import ray.ray_constants as ray_constants
 
 
 ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)
@@ -188,7 +189,8 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         function_name = function.__name__
         class_name = ""
 
-        pickled_function_hash = hashlib.sha1(pickled_function).hexdigest()
+        pickled_function_hash = hashlib.shake_128(pickled_function).hexdigest(
+          ray_constants.ID_SIZE)
 
         return cls(module_name, function_name, class_name,
                    pickled_function_hash)
