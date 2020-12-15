@@ -4,6 +4,7 @@ import time
 import os
 import pytest
 import requests
+import starlette.responses
 
 import ray
 from ray import serve
@@ -30,6 +31,63 @@ def test_e2e(serve_instance):
 
     resp = requests.post("http://127.0.0.1:8000/api").json()["method"]
     assert resp == "POST"
+
+
+def test_starlette_response(serve_instance):
+    client = serve_instance
+
+    def basic_response(_):
+        return starlette.responses.Response(
+            "Hello, world!", media_type="text/plain")
+
+    client.create_backend("basic_response", basic_response)
+    client.create_endpoint(
+        "basic_response", backend="basic_response", route="/basic_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
+
+    def html_response(_):
+        return starlette.responses.HTMLResponse(
+            "<html><body><h1>Hello, world!</h1></body></html>")
+
+    client.create_backend("html_response", html_response)
+    client.create_endpoint(
+        "html_response", backend="html_response", route="/html_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/html_response"
+    ).text == "<html><body><h1>Hello, world!</h1></body></html>"
+
+    def plain_text_response(_):
+        return starlette.responses.PlainTextResponse("Hello, world!")
+
+    client.create_backend("plain_text_response", plain_text_response)
+    client.create_endpoint(
+        "plain_text_response",
+        backend="plain_text_response",
+        route="/plain_text_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/plain_text_response").text == "Hello, world!"
+
+    def json_response(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    client.create_backend("json_response", json_response)
+    client.create_endpoint(
+        "json_response", backend="json_response", route="/json_response")
+    assert requests.get("http://127.0.0.1:8000/json_response").json()[
+        "hello"] == "world"
+
+    def redirect_response(_):
+        return starlette.responses.RedirectResponse(
+            url="http://127.0.0.1:8000/basic_response")
+
+    client.create_backend("redirect_response", redirect_response)
+    client.create_endpoint(
+        "redirect_response",
+        backend="redirect_response",
+        route="/redirect_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
 
 
 def test_backend_user_config(serve_instance):
