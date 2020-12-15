@@ -185,7 +185,7 @@ if __name__ == "__main__":
     results = tune.run("PPO",
                        config=config,
                        stop=stop,
-                       verbose=1,
+                       verbose=2,
                        checkpoint_freq=20,
                        restore=args.from_checkpoint)
 
