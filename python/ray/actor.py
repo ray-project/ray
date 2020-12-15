@@ -662,10 +662,10 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
-        
+
         if collective:
-            override_environment_variables = collective_to_envs(collective,
-                    override_environment_variables)
+            override_environment_variables = collective_to_envs(
+                collective, override_environment_variables)
 
         actor_id = worker.core_worker.create_actor(
             meta.language,

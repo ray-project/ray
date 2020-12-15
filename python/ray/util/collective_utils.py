@@ -1,5 +1,6 @@
 """Collections of collective util functions"""
 
+
 def collective_to_envs(collective, envs):
     """A helper method that get information from collective and add to envs.
     Args:
@@ -11,8 +12,10 @@ def collective_to_envs(collective, envs):
     """
 
     if envs is not None:
-        assert all(["collective_group_name", "collective_rank", "collective_world_size",
-            "collective_backend"]) not in envs
+        assert all([
+            "collective_group_name", "collective_rank",
+            "collective_world_size", "collective_backend"
+        ]) not in envs
 
     else:
         envs = {}

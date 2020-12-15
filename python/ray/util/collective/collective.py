@@ -190,7 +190,7 @@ def declare_collective_group(actors, group_options):
 
     assert world_size > 0
     assert all(rank) >= 0 and all(rank) < world_size
-    
+
     from ray.util.collective.util import Info
     # store the information into a NamedActor that can be accessed later/
     name = "info_" + group_name
@@ -291,7 +291,8 @@ def _check_and_get_group(group_name):
             worker = ray.worker.global_worker
             id_ = worker.core_worker.get_actor_id()
             r = rank[ids.index(id_)]
-            _group_mgr.create_collective_group(backend, world_size, r, group_name)
+            _group_mgr.create_collective_group(backend, world_size, r,
+                                               group_name)
         except:
             # check if this group is initialized using options()
             if "collective_group_name" in os.environ and \
@@ -299,10 +300,12 @@ def _check_and_get_group(group_name):
                 rank = int(os.environ["collective_rank"])
                 world_size = int(os.environ["collective_world_size"])
                 backend = os.environ["collective_backend"]
-                _group_mgr.create_collective_group(backend, world_size, rank, group_name)
+                _group_mgr.create_collective_group(backend, world_size, rank,
+                                                   group_name)
             else:
-                raise RuntimeError("The collective group '{}' is not "
-                           "initialized in the process.".format(group_name))
+                raise RuntimeError(
+                    "The collective group '{}' is not "
+                    "initialized in the process.".format(group_name))
     g = _group_mgr.get_group_by_name(group_name)
     return g
 
