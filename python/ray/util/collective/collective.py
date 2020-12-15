@@ -176,12 +176,8 @@ def declare_collective_group(actors, group_options):
     _check_backend_availability(backend)
 
     name = "info" + group_name
-    try:
-        ray.get_actor(name)
+    if ray.get_actor(name):
         raise RuntimeError("Trying to initialize a group twice.")
-    except:
-        pass
-
     if len(rank) != len(actors):
         raise RuntimeError("Each actor should correspond to one rank.")
 
@@ -284,7 +280,8 @@ def _check_and_get_group(group_name):
     if not is_group_initialized(group_name):
         # try loading from remote info store
         try:
-            # if the information is stored in an Info object, get and create the group.
+            # if the information is stored in an Info object,
+            # get and create the group.
             name = "info_" + group_name
             mgr = ray.get_actor(name=name)
             ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
@@ -293,7 +290,7 @@ def _check_and_get_group(group_name):
             r = rank[ids.index(id_)]
             _group_mgr.create_collective_group(backend, world_size, r,
                                                group_name)
-        except:
+        except ValueError:
             # check if this group is initialized using options()
             if "collective_group_name" in os.environ and \
                     os.environ["collective_group_name"] == group_name:
