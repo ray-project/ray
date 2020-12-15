@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import List, Dict, Any
+from typing import List
 
 import ray
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
@@ -9,9 +9,8 @@ from ray.rllib.execution.replay_ops import MixInReplay
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.utils.actors import create_colocated
 from ray.util.iter import ParallelIterator, ParallelIteratorWorker, \
-    from_actors, LocalIterator
-from ray.rllib.utils.typing import SampleBatchType, ModelWeights
-from ray.rllib.evaluation.worker_set import WorkerSet
+    from_actors
+from ray.rllib.utils.typing import SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,7 @@ class Aggregator(ParallelIteratorWorker):
     work to be offloaded to these actors instead of run in the learner.
     """
 
-    def __init__(self, config: Dict,
+    def __init__(self, config: dict,
                  rollout_group: "ParallelIterator[SampleBatchType]"):
         self.weights = None
         self.global_vars = None
@@ -61,16 +60,15 @@ class Aggregator(ParallelIteratorWorker):
 
         super().__init__(generator, repeat=False)
 
-    def get_host(self) -> str:
+    def get_host(self):
         return platform.node()
 
-    def set_weights(self, weights: ModelWeights, global_vars: Dict) -> None:
+    def set_weights(self, weights, global_vars):
         self.weights = weights
         self.global_vars = global_vars
 
 
-def gather_experiences_tree_aggregation(workers: WorkerSet,
-                                        config: Dict) -> "LocalIterator[Any]":
+def gather_experiences_tree_aggregation(workers, config):
     """Tree aggregation version of gather_experiences_directly()."""
 
     rollouts = ParallelRollouts(workers, mode="raw")

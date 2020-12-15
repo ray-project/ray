@@ -1,3 +1,4 @@
+import copy
 import logging
 import pickle
 from typing import Dict, List, Optional, Tuple, Union
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _validate_warmstart(parameter_names: List[str],
-                        points_to_evaluate: List[List],
+                        points_to_evaluate: List[Union[List, Dict]],
                         evaluated_rewards: List):
     if points_to_evaluate:
         if not isinstance(points_to_evaluate, list):
@@ -29,10 +30,10 @@ def _validate_warmstart(parameter_names: List[str],
                 "points_to_evaluate expected to be a list, got {}.".format(
                     type(points_to_evaluate)))
         for point in points_to_evaluate:
-            if not isinstance(point, list):
+            if not isinstance(point, (dict, list)):
                 raise TypeError(
-                    "points_to_evaluate expected to include list, got {}.".
-                    format(point))
+                    f"points_to_evaluate expected to include list or dict, "
+                    f"got {point}.")
 
             if not len(point) == len(parameter_names):
                 raise ValueError("Dim of point {}".format(point) +
@@ -81,11 +82,11 @@ class SkOptSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list of lists): A list of points you'd like to run
-            first before sampling from the optimiser, e.g. these could be
-            parameter configurations you already know work well to help
-            the optimiser select good values. Each point is a list of the
-            parameters using the order definition given by parameter_names.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         evaluated_rewards (list): If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
@@ -104,7 +105,16 @@ class SkOptSearch(Searcher):
             "height": tune.uniform(-100, 100)
         }
 
-        current_best_params = [[10, 0], [15, -20]]
+        current_best_params = [
+            {
+                "width": 10,
+                "height": 0,
+            },
+            {
+                "width": 15,
+                "height": -20,
+            }
+        ]
 
         skopt_search = SkOptSearch(
             metric="mean_loss",
@@ -138,7 +148,7 @@ class SkOptSearch(Searcher):
                  space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[List]] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
@@ -182,7 +192,8 @@ class SkOptSearch(Searcher):
                 self._parameter_names = list(space.keys())
                 self._parameter_ranges = space.values()
 
-        self._points_to_evaluate = points_to_evaluate
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
+
         self._evaluated_rewards = evaluated_rewards
 
         self._skopt_opt = optimizer
@@ -192,6 +203,16 @@ class SkOptSearch(Searcher):
         self._live_trial_mapping = {}
 
     def _setup_skopt(self):
+        if self._points_to_evaluate and isinstance(self._points_to_evaluate,
+                                                   list):
+            if isinstance(self._points_to_evaluate[0], list):
+                # Keep backwards compatibility
+                self._points_to_evaluate = [
+                    dict(zip(self._parameter_names, point))
+                    for point in self._points_to_evaluate
+                ]
+            # Else: self._points_to_evaluate is already in correct format
+
         _validate_warmstart(self._parameter_names, self._points_to_evaluate,
                             self._evaluated_rewards)
 
@@ -204,8 +225,9 @@ class SkOptSearch(Searcher):
             self._skopt_opt = sko.Optimizer(self._parameter_ranges)
 
         if self._points_to_evaluate and self._evaluated_rewards:
-            self._skopt_opt.tell(self._points_to_evaluate,
-                                 self._evaluated_rewards)
+            skopt_points = [[point[par] for par in self._parameter_names]
+                            for point in self._points_to_evaluate]
+            self._skopt_opt.tell(skopt_points, self._evaluated_rewards)
         elif self._points_to_evaluate:
             self._initial_points = self._points_to_evaluate
         self._parameters = self._parameter_names
@@ -254,12 +276,13 @@ class SkOptSearch(Searcher):
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
         if self._initial_points:
-            suggested_config = self._initial_points[0]
-            del self._initial_points[0]
+            suggested_config = self._initial_points.pop(0)
+            skopt_config = [suggested_config[par] for par in self._parameters]
         else:
-            suggested_config = self._skopt_opt.ask()
-        self._live_trial_mapping[trial_id] = suggested_config
-        return unflatten_dict(dict(zip(self._parameters, suggested_config)))
+            skopt_config = self._skopt_opt.ask()
+            suggested_config = dict(zip(self._parameters, skopt_config))
+        self._live_trial_mapping[trial_id] = skopt_config
+        return unflatten_dict(suggested_config)
 
     def on_trial_complete(self,
                           trial_id: str,

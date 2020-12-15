@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import platform
 import random
-from typing import List, Dict
+from typing import List
 
 # Import ray before psutil will make sure we use psutil's bundled version
 import ray  # noqa F401
@@ -64,11 +64,11 @@ class ReplayBuffer:
         self._evicted_hit_stats = WindowStat("evicted_hit", 1000)
         self._est_size_bytes = 0
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self._storage)
 
     @DeveloperAPI
-    def add(self, item: SampleBatchType, weight: float) -> None:
+    def add(self, item: SampleBatchType, weight: float):
         warn_replay_buffer_size(
             item=item, num_items=self._maxsize / item.count)
         assert item.count > 0, item
@@ -116,7 +116,7 @@ class ReplayBuffer:
         return self._encode_sample(idxes)
 
     @DeveloperAPI
-    def stats(self, debug=False) -> dict:
+    def stats(self, debug=False):
         data = {
             "added_count": self._num_timesteps_added,
             "sampled_count": self._num_timesteps_sampled,
@@ -156,7 +156,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._prio_change_stats = WindowStat("reprio", 1000)
 
     @DeveloperAPI
-    def add(self, item: SampleBatchType, weight: float) -> None:
+    def add(self, item: SampleBatchType, weight: float):
         idx = self._next_idx
         super(PrioritizedReplayBuffer, self).add(item, weight)
         if weight is None:
@@ -164,7 +164,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self._it_sum[idx] = weight**self._alpha
         self._it_min[idx] = weight**self._alpha
 
-    def _sample_proportional(self, num_items: int) -> List[int]:
+    def _sample_proportional(self, num_items: int):
         res = []
         for _ in range(num_items):
             # TODO(szymon): should we ensure no repeats?
@@ -215,8 +215,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         return batch
 
     @DeveloperAPI
-    def update_priorities(self, idxes: List[int],
-                          priorities: List[float]) -> None:
+    def update_priorities(self, idxes, priorities):
         """Update priorities of sampled transitions.
 
         sets priority of transition at index idxes[i] in buffer
@@ -243,7 +242,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self._max_priority = max(self._max_priority, priority)
 
     @DeveloperAPI
-    def stats(self, debug: bool = False) -> Dict:
+    def stats(self, debug=False):
         parent = ReplayBuffer.stats(self, debug)
         if debug:
             parent.update(self._prio_change_stats.stats())
@@ -261,15 +260,15 @@ class LocalReplayBuffer(ParallelIteratorWorker):
     may be created to increase parallelism."""
 
     def __init__(self,
-                 num_shards: int = 1,
-                 learning_starts: int = 1000,
-                 buffer_size: int = 10000,
-                 replay_batch_size: int = 1,
-                 prioritized_replay_alpha: float = 0.6,
-                 prioritized_replay_beta: float = 0.4,
-                 prioritized_replay_eps: float = 1e-6,
-                 replay_mode: str = "independent",
-                 replay_sequence_length: int = 1):
+                 num_shards=1,
+                 learning_starts=1000,
+                 buffer_size=10000,
+                 replay_batch_size=1,
+                 prioritized_replay_alpha=0.6,
+                 prioritized_replay_beta=0.4,
+                 prioritized_replay_eps=1e-6,
+                 replay_mode="independent",
+                 replay_sequence_length=1):
         self.replay_starts = learning_starts // num_shards
         self.buffer_size = buffer_size // num_shards
         self.replay_batch_size = replay_batch_size
@@ -319,10 +318,10 @@ class LocalReplayBuffer(ParallelIteratorWorker):
         global _local_replay_buffer
         return _local_replay_buffer
 
-    def get_host(self) -> str:
+    def get_host(self):
         return platform.node()
 
-    def add_batch(self, batch: SampleBatchType) -> None:
+    def add_batch(self, batch):
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
         # Handle everything as if multiagent
@@ -343,7 +342,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                         self.replay_buffers[policy_id].add(s, weight=weight)
         self.num_added += batch.count
 
-    def replay(self) -> SampleBatchType:
+    def replay(self):
         if self._fake_batch:
             fake_batch = SampleBatch(self._fake_batch)
             return MultiAgentBatch({
@@ -365,7 +364,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                         beta=self.prioritized_replay_beta)
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
-    def update_priorities(self, prio_dict: Dict) -> None:
+    def update_priorities(self, prio_dict):
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
                 new_priorities = (
@@ -373,7 +372,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
                 self.replay_buffers[policy_id].update_priorities(
                     batch_indexes, new_priorities)
 
-    def stats(self, debug: bool = False) -> Dict:
+    def stats(self, debug=False):
         stat = {
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),
