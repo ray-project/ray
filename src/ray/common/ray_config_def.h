@@ -357,3 +357,5 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// When it is true, manual (force) spilling is not available.
 /// TODO(sang): Fix it.
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
+
+RAY_CONFIG(int32_t, max_delay_until_oom_s, 10);

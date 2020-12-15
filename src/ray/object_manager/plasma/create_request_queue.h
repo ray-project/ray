@@ -35,10 +35,12 @@ class CreateRequestQueue {
       std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
   CreateRequestQueue(int32_t max_retries, bool evict_if_full,
+                     int32_t max_delay_until_oom_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc)
       : max_retries_(max_retries),
         evict_if_full_(evict_if_full),
+        max_delay_until_oom_s_(max_delay_until_oom_s),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_
@@ -159,7 +161,15 @@ class CreateRequestQueue {
   /// always try to evict.
   const bool evict_if_full_;
 
+  /// The max time that we can wait for delaying the object creation for the head of the
+  /// entry in second.
+  int32_t max_delay_until_oom_s_;
+
+  /// A callback to trigger object spilling. It tries to spill objects upto max
+  /// throughput. It returns true if space is made by object spilling, and false if
+  /// there's no more space to be made.
   ray::SpillObjectsCallback spill_objects_callback_;
+
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.
   const std::function<void()> trigger_global_gc_;

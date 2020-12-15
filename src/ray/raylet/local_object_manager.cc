@@ -118,7 +118,6 @@ bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
     }
     num_active_workers_ += 1;
   }
-  RAY_LOG(ERROR) << "Sang max throughput, num active worker: " << num_active_workers_;
 
   // Return whether spilling is still in progress.
   return num_active_workers_ > 0;

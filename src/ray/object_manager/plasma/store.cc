@@ -138,6 +138,7 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       create_request_queue_(
           RayConfig::instance().object_store_full_max_retries(),
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
+          /*max_delay_until_oom_s=*/RayConfig::instance().max_delay_until_oom_s(),
           spill_objects_callback, object_store_full_callback) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;

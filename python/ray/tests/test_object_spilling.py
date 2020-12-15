@@ -74,6 +74,43 @@ def test_url_generation_and_parse():
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
+def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    ray.init(
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 4,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_initial_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+            "min_spilling_size": 0,
+            "max_delay_until_oom_s": 3,
+        })
+    arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+    ref = ray.get(ray.put(arr))  # noqa
+    # Since the ref exists, it should raise OOM.
+    with pytest.raises(ray.exceptions.ObjectStoreFullError):
+        ref2 = ray.put(arr)  # noqa
+
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
+
+    wait_for_condition(is_dir_empty)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
