@@ -130,7 +130,7 @@ setup_commands:
       && echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.profile
 
     # Install ray
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 
 
 # Custom commands that will be run on the head node after common setup.
