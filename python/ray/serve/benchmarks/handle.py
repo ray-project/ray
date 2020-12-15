@@ -91,7 +91,7 @@ async def run_test(num_replicas, num_forwarders, sync):
     if sync:
         ray.get([handle.remote() for _ in range(num_queries)])
     else:
-        ray.get([ await handle.remote_async() for _ in range(num_queries)])
+        ray.get([(await handle.remote_async()) for _ in range(num_queries)])
     qps = num_queries / (time.time() - start)
 
     print(
