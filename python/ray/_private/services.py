@@ -1618,12 +1618,13 @@ def determine_plasma_store_config(object_store_memory,
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
-                    "This may slow down performance! You may be able to free "
-                    "up space by deleting files in /dev/shm or terminating "
-                    "any running plasma_store_server processes. If you are "
-                    "inside a Docker container, you may need to pass an "
-                    "argument with the flag '--shm-size' to 'docker run'.".
-                    format(ray.utils.get_user_temp_dir(), shm_avail))
+                    "This will harm performance! You may be able to free up "
+                    "space by deleting files in /dev/shm. If you are inside a "
+                    "Docker container, you can increase /dev/shm size by "
+                    "passing '--shm-size=Xgb' to 'docker run' (or add it to "
+                    "the run_options list in a Ray cluster config). Make sure "
+                    "to set this to more than 2gb.".format(
+                        ray.utils.get_user_temp_dir(), shm_avail))
         else:
             plasma_directory = ray.utils.get_user_temp_dir()
 
