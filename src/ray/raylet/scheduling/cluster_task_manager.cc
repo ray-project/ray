@@ -256,6 +256,8 @@ void ReplyCancelled(Work &work) {
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
+  // TODO(sang): There are lots of repetitive code around task backlogs. We should
+  // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
        shapes_it++) {
     auto &work_queue = shapes_it->second;
@@ -284,6 +286,23 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
+        }
+        return true;
+      }
+    }
+  }
+
+  for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
+       shapes_it++) {
+    auto &work_queue = shapes_it->second;
+    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
+      const auto &task = std::get<0>(*work_it);
+      if (task.GetTaskSpecification().TaskId() == task_id) {
+        RemoveFromBacklogTracker(task);
+        ReplyCancelled(*work_it);
+        work_queue.erase(work_it);
+        if (work_queue.empty()) {
+          infeasible_tasks_.erase(shapes_it);
         }
         return true;
       }

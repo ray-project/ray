@@ -374,6 +374,43 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_EQ(leased_workers_.size(), 1);
 }
 
+TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
+  /* Make sure cancelTask works for infeasible tasks */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+  task_manager_.QueueTask(task, &reply, callback);
+
+  // Task is now queued so cancellation works.
+  ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Task will not execute.
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // Althoug the feasible node is added, task shouldn't be executed because it is
+  // cancelled.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 12);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+}
+
 TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
