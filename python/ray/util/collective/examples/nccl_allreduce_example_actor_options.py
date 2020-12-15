@@ -1,4 +1,3 @@
-import os
 import cupy as cp
 import ray
 
