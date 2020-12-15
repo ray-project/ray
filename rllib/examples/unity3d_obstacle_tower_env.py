@@ -98,8 +98,10 @@ class ObstacleTowerObservationWrapper(ObservationWrapper):
         # 0=image; 1=number of keys held; 2=time remaining; 3=?
         # Filter out last component and make sure that time remaining is a
         # Box((1,)), not Box(()) as returned by the env.
-        return tuple([observation[0], observation[1],
-                      np.array([observation[2]], dtype=np.float32)])
+        return tuple([
+            observation[0], observation[1],
+            np.array([observation[2]], dtype=np.float32)
+        ])
 
 
 parser = argparse.ArgumentParser()
@@ -108,14 +110,14 @@ parser.add_argument(
     type=str,
     default=None,
     help="Full path to a checkpoint file for restoring a previously saved "
-         "Trainer state.")
+    "Trainer state.")
 parser.add_argument(
     "--file-name",
     type=str,
     default=None,
     help="The Unity3d ObstacleTower binary (compiled) game, e.g. "
-         "'/home/ubuntu/ObstacleTower.x86_64'. Use `None` for finding this "
-         "automatically.")
+    "'/home/ubuntu/ObstacleTower.x86_64'. Use `None` for finding this "
+    "automatically.")
 parser.add_argument("--num-workers", type=int, default=0)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=9999)
@@ -131,10 +133,10 @@ if __name__ == "__main__":
 
     tune.register_env(
         "obstacle_tower",
-        lambda c: ObstacleTowerObservationWrapper(ObstacleTowerEnv(
-            environment_filename=args.file_name,
-            worker_id=c.worker_index,
-            **c)),
+        lambda c: ObstacleTowerObservationWrapper(
+            ObstacleTowerEnv(environment_filename=args.file_name,
+                             worker_id=c.worker_index,
+                             **c)),
     )
 
     config = {
@@ -180,13 +182,12 @@ if __name__ == "__main__":
     }
 
     # Run the experiment.
-    results = tune.run(
-        "PPO",
-        config=config,
-        stop=stop,
-        verbose=1,
-        checkpoint_freq=20,
-        restore=args.from_checkpoint)
+    results = tune.run("PPO",
+                       config=config,
+                       stop=stop,
+                       verbose=1,
+                       checkpoint_freq=20,
+                       restore=args.from_checkpoint)
 
     # And check the results.
     if args.as_test:

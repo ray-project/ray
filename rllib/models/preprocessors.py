@@ -26,7 +26,6 @@ class Preprocessor:
     Attributes:
         shape (List[int]): Shape of the preprocessed output.
     """
-
     @PublicAPI
     def __init__(self, obs_space: gym.Space, options: dict = None):
         legacy_patch_shapes(obs_space)
@@ -96,7 +95,6 @@ class GenericPixelPreprocessor(Preprocessor):
     Note: for Atari games, use config {"preprocessor_pref": "deepmind"}
     instead for deepmind-style Atari preprocessing.
     """
-
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         self._grayscale = options.get("grayscale")
@@ -174,8 +172,8 @@ class NoPreprocessor(Preprocessor):
     @override(Preprocessor)
     def write(self, observation: TensorType, array: np.ndarray,
               offset: int) -> None:
-        array[offset:offset + self._size] = np.array(
-            observation, copy=False).ravel()
+        array[offset:offset + self._size] = np.array(observation,
+                                                     copy=False).ravel()
 
     @property
     @override(Preprocessor)
@@ -188,7 +186,6 @@ class TupleFlatteningPreprocessor(Preprocessor):
 
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
-
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         assert isinstance(self._obs_space, gym.spaces.Tuple)
@@ -223,7 +220,6 @@ class DictFlatteningPreprocessor(Preprocessor):
 
     RLlib models will unpack the flattened output before _build_layers_v2().
     """
-
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         assert isinstance(self._obs_space, gym.spaces.Dict)
@@ -257,7 +253,6 @@ class DictFlatteningPreprocessor(Preprocessor):
 
 class RepeatedValuesPreprocessor(Preprocessor):
     """Pads and batches the variable-length list value."""
-
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         assert isinstance(self._obs_space, Repeated)

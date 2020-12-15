@@ -27,7 +27,6 @@ class SACTorchModel(TorchModelV2, nn.Module):
         `model_out`, `actions` -> get_q_values() -> Q(s, a)
         `model_out`, `actions` -> get_twin_q_values() -> Q_twin(s, a)
     """
-
     def __init__(self,
                  obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
@@ -87,29 +86,27 @@ class SACTorchModel(TorchModelV2, nn.Module):
         self.action_model = nn.Sequential()
         ins = self.num_outputs
         self.obs_ins = ins
-        activation = get_activation_fn(
-            actor_hidden_activation, framework="torch")
+        activation = get_activation_fn(actor_hidden_activation,
+                                       framework="torch")
         for i, n in enumerate(actor_hiddens):
             self.action_model.add_module(
                 "action_{}".format(i),
-                SlimFC(
-                    ins,
-                    n,
-                    initializer=torch.nn.init.xavier_uniform_,
-                    activation_fn=activation))
+                SlimFC(ins,
+                       n,
+                       initializer=torch.nn.init.xavier_uniform_,
+                       activation_fn=activation))
             ins = n
         self.action_model.add_module(
             "action_out",
-            SlimFC(
-                ins,
-                action_outs,
-                initializer=torch.nn.init.xavier_uniform_,
-                activation_fn=None))
+            SlimFC(ins,
+                   action_outs,
+                   initializer=torch.nn.init.xavier_uniform_,
+                   activation_fn=None))
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
-            activation = get_activation_fn(
-                critic_hidden_activation, framework="torch")
+            activation = get_activation_fn(critic_hidden_activation,
+                                           framework="torch")
             # For continuous actions: Feed obs and actions (concatenated)
             # through the NN. For discrete actions, only obs.
             q_net = nn.Sequential()
@@ -117,20 +114,18 @@ class SACTorchModel(TorchModelV2, nn.Module):
             for i, n in enumerate(critic_hiddens):
                 q_net.add_module(
                     "{}_hidden_{}".format(name_, i),
-                    SlimFC(
-                        ins,
-                        n,
-                        initializer=torch.nn.init.xavier_uniform_,
-                        activation_fn=activation))
+                    SlimFC(ins,
+                           n,
+                           initializer=torch.nn.init.xavier_uniform_,
+                           activation_fn=activation))
                 ins = n
 
             q_net.add_module(
                 "{}_out".format(name_),
-                SlimFC(
-                    ins,
-                    q_outs,
-                    initializer=torch.nn.init.xavier_uniform_,
-                    activation_fn=None))
+                SlimFC(ins,
+                       q_outs,
+                       initializer=torch.nn.init.xavier_uniform_,
+                       activation_fn=None))
             return q_net
 
         self.q_net = build_q_net("q")
@@ -147,14 +142,15 @@ class SACTorchModel(TorchModelV2, nn.Module):
         if target_entropy is None or target_entropy == "auto":
             # See hyperparams in [2] (README.md).
             if self.discrete:
-                target_entropy = 0.98 * np.array(
-                    -np.log(1.0 / action_space.n), dtype=np.float32)
+                target_entropy = 0.98 * np.array(-np.log(1.0 / action_space.n),
+                                                 dtype=np.float32)
             # See [1] (README.md).
             else:
                 target_entropy = -np.prod(action_space.shape)
 
-        self.target_entropy = torch.tensor(
-            data=[target_entropy], dtype=torch.float32, requires_grad=False)
+        self.target_entropy = torch.tensor(data=[target_entropy],
+                                           dtype=torch.float32,
+                                           requires_grad=False)
 
     def get_q_values(self,
                      model_out: TensorType,

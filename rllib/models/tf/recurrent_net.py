@@ -53,10 +53,9 @@ class RecurrentNetwork(TFModelV2):
             self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
-
     @override(ModelV2)
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
+    def forward(self, input_dict: Dict[str,
+                                       TensorType], state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
@@ -65,9 +64,9 @@ class RecurrentNetwork(TFModelV2):
         padded_inputs = input_dict["obs_flat"]
         max_seq_len = tf.shape(padded_inputs)[0] // tf.shape(seq_lens)[0]
         output, new_state = self.forward_rnn(
-            add_time_dimension(
-                padded_inputs, max_seq_len=max_seq_len, framework="tf"), state,
-            seq_lens)
+            add_time_dimension(padded_inputs,
+                               max_seq_len=max_seq_len,
+                               framework="tf"), state, seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs: TensorType, state: List[TensorType],
@@ -112,7 +111,6 @@ class RecurrentNetwork(TFModelV2):
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm.
     """
-
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
@@ -140,8 +138,8 @@ class LSTMWrapper(RecurrentNetwork):
             self.num_outputs += 1
 
         # Define input layers.
-        input_layer = tf.keras.layers.Input(
-            shape=(None, self.num_outputs), name="inputs")
+        input_layer = tf.keras.layers.Input(shape=(None, self.num_outputs),
+                                            name="inputs")
 
         self.num_outputs = num_outputs
 
@@ -154,18 +152,16 @@ class LSTMWrapper(RecurrentNetwork):
             self.cell_size,
             return_sequences=True,
             return_state=True,
-            name="lstm")(
-                inputs=input_layer,
-                mask=tf.sequence_mask(seq_in),
-                initial_state=[state_in_h, state_in_c])
+            name="lstm")(inputs=input_layer,
+                         mask=tf.sequence_mask(seq_in),
+                         initial_state=[state_in_h, state_in_c])
 
         # Postprocess LSTM output with another hidden layer and compute values
-        logits = tf.keras.layers.Dense(
-            self.num_outputs,
-            activation=tf.keras.activations.linear,
-            name="logits")(lstm_out)
-        values = tf.keras.layers.Dense(
-            1, activation=None, name="values")(lstm_out)
+        logits = tf.keras.layers.Dense(self.num_outputs,
+                                       activation=tf.keras.activations.linear,
+                                       name="logits")(lstm_out)
+        values = tf.keras.layers.Dense(1, activation=None,
+                                       name="values")(lstm_out)
 
         # Create the RNN model
         self._rnn_model = tf.keras.Model(
@@ -184,8 +180,8 @@ class LSTMWrapper(RecurrentNetwork):
                 ViewRequirement(SampleBatch.REWARDS, shift=-1)
 
     @override(RecurrentNetwork)
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
+    def forward(self, input_dict: Dict[str,
+                                       TensorType], state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.

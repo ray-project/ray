@@ -401,8 +401,9 @@ def with_common_config(
         TrainerConfigDict: The merged config dict resulting of COMMON_CONFIG
             plus `extra_config`.
     """
-    return Trainer.merge_trainer_configs(
-        COMMON_CONFIG, extra_config, _allow_unknown_configs=True)
+    return Trainer.merge_trainer_configs(COMMON_CONFIG,
+                                         extra_config,
+                                         _allow_unknown_configs=True)
 
 
 @PublicAPI
@@ -471,8 +472,8 @@ class Trainer(Trainable):
                 """
                 if not os.path.exists(DEFAULT_RESULTS_DIR):
                     os.makedirs(DEFAULT_RESULTS_DIR)
-                logdir = tempfile.mkdtemp(
-                    prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+                logdir = tempfile.mkdtemp(prefix=logdir_prefix,
+                                          dir=DEFAULT_RESULTS_DIR)
                 return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
@@ -584,7 +585,7 @@ class Trainer(Trainable):
                     # decent error message.
                     try:
                         return gym.make(env, **env_context)
-                    except gym.error.Error as e:
+                    except gym.error.Error:
                         raise ValueError(
                             "The env string you provided ({}) is a) not a "
                             "known gym/PyBullet environment specifier or b) "
@@ -699,11 +700,11 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(
-            self, *, env_creator: Callable[[EnvContext], EnvType],
-            validate_env: Optional[Callable[[EnvType, EnvContext], None]],
-            policy_class: Type[Policy], config: TrainerConfigDict,
-            num_workers: int) -> WorkerSet:
+    def _make_workers(self, *, env_creator: Callable[[EnvContext], EnvType],
+                      validate_env: Optional[Callable[[EnvType, EnvContext],
+                                                      None]],
+                      policy_class: Type[Policy], config: TrainerConfigDict,
+                      num_workers: int) -> WorkerSet:
         """Default factory method for a WorkerSet running under this Trainer.
 
         Override this method by passing a custom `make_workers` into
@@ -724,13 +725,12 @@ class Trainer(Trainable):
         Returns:
             WorkerSet: The created WorkerSet.
         """
-        return WorkerSet(
-            env_creator=env_creator,
-            validate_env=validate_env,
-            policy_class=policy_class,
-            trainer_config=config,
-            num_workers=num_workers,
-            logdir=self.logdir)
+        return WorkerSet(env_creator=env_creator,
+                         validate_env=validate_env,
+                         policy_class=policy_class,
+                         trainer_config=config,
+                         num_workers=num_workers,
+                         logdir=self.logdir)
 
     @DeveloperAPI
     def _init(self, config: TrainerConfigDict,
@@ -791,10 +791,10 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _sync_weights_to_workers(
-            self,
-            *,
-            worker_set: Optional[WorkerSet] = None,
-            workers: Optional[List[RolloutWorker]] = None,
+        self,
+        *,
+        worker_set: Optional[WorkerSet] = None,
+        workers: Optional[List[RolloutWorker]] = None,
     ) -> None:
         """Sync "main" weights to given WorkerSet or list of workers."""
         assert worker_set is not None
@@ -842,8 +842,8 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
+        preprocessed = self.workers.local_worker(
+        ).preprocessors[policy_id].transform(observation)
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
 
@@ -1062,11 +1062,12 @@ class Trainer(Trainable):
                 "The config of this agent is: {}".format(config))
 
     @classmethod
-    def merge_trainer_configs(cls,
-                              config1: TrainerConfigDict,
-                              config2: PartialTrainerConfigDict,
-                              _allow_unknown_configs: Optional[bool] = None
-                              ) -> TrainerConfigDict:
+    def merge_trainer_configs(
+            cls,
+            config1: TrainerConfigDict,
+            config2: PartialTrainerConfigDict,
+            _allow_unknown_configs: Optional[bool] = None
+    ) -> TrainerConfigDict:
         config1 = copy.deepcopy(config1)
         if "callbacks" in config2 and type(config2["callbacks"]) is dict:
             legacy_callbacks_dict = config2["callbacks"]

@@ -1,4 +1,4 @@
-from gym.spaces import Dict, Discrete, Tuple
+from gym.spaces import Discrete, Tuple
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -36,11 +36,16 @@ class CNNPlusFCConcatModel(TFModelV2):
             # Image space.
             if len(component.shape) == 3:
                 config = {
-                    "conv_filters": model_config.get("conv_filters", get_filter_config(component.shape)),
+                    "conv_filters": model_config.get(
+                        "conv_filters", get_filter_config(component.shape)),
                     "conv_activation": model_config.get("conv_activation"),
                 }
-                cnn = ModelCatalog.get_model_v2(
-                    component, action_space, num_outputs=None, model_config=config, framework="tf", name="cnn_{}".format(i))
+                cnn = ModelCatalog.get_model_v2(component,
+                                                action_space,
+                                                num_outputs=None,
+                                                model_config=config,
+                                                framework="tf",
+                                                name="cnn_{}".format(i))
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
                 self.register_variables(cnn.variables())
@@ -58,7 +63,7 @@ class CNNPlusFCConcatModel(TFModelV2):
         self._value_out = None
         if num_outputs:
             # Action-distribution head.
-            concat_layer = tf.keras.layers.Input((concat_size,))
+            concat_layer = tf.keras.layers.Input((concat_size, ))
             logits_layer = tf.keras.layers.Dense(
                 num_outputs,
                 activation=tf.keras.activations.linear,
@@ -70,7 +75,8 @@ class CNNPlusFCConcatModel(TFModelV2):
                 name="value_out",
                 activation=None,
                 kernel_initializer=normc_initializer(0.01))(concat_layer)
-            self.logits_and_value_model = tf.keras.models.Model(concat_layer, [logits_layer, value_layer])
+            self.logits_and_value_model = tf.keras.models.Model(
+                concat_layer, [logits_layer, value_layer])
             self.register_variables(self.logits_and_value_model.variables)
         else:
             self.num_outputs = concat_size
@@ -122,11 +128,16 @@ class TorchCNNPlusFCConcatModel(TorchModelV2):
             # Image space.
             if len(component.shape) == 3:
                 config = {
-                    "conv_filters": model_config.get("conv_filters", get_filter_config(component.shape)),
+                    "conv_filters": model_config.get(
+                        "conv_filters", get_filter_config(component.shape)),
                     "conv_activation": model_config.get("conv_activation"),
                 }
-                cnn = ModelCatalog.get_model_v2(
-                    component, action_space, num_outputs=None, model_config=config, framework="torch", name="cnn_{}".format(i))
+                cnn = ModelCatalog.get_model_v2(component,
+                                                action_space,
+                                                num_outputs=None,
+                                                model_config=config,
+                                                framework="torch",
+                                                name="cnn_{}".format(i))
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
             # Discrete inputs -> One-hot encode.
@@ -139,26 +150,22 @@ class TorchCNNPlusFCConcatModel(TorchModelV2):
                     "Only input Box 1D or 3D spaces allowed!"
                 concat_size += component.shape[-1]
 
-        #self.logits_and_value_model = None
         self.logits_layer = None
         self.value_layer = None
         self._value_out = None
         if num_outputs:
             # Action-distribution head.
-            #concat_layer = tf.keras.layers.Input((concat_size,))
             self.logits_layer = SlimFC(
                 in_size=concat_size,
                 out_size=num_outputs,
                 activation_fn=None,
-            )#(concat_layer)
+            )
 
             # Create the value branch model.
-            self.value_layer = SlimFC(
-                in_size=concat_size,
-                out_size=1,
-                activation_fn=None,
-                initializer=normc_initializer(0.01))#(concat_layer)
-            #self.logits_and_value_model = tf.keras.models.Model(concat_layer, [logits_layer, value_layer])
+            self.value_layer = SlimFC(in_size=concat_size,
+                                      out_size=1,
+                                      activation_fn=None,
+                                      initializer=normc_initializer(0.01))
         else:
             self.num_outputs = concat_size
 

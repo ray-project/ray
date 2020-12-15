@@ -48,9 +48,8 @@ if __name__ == "__main__":
         TwoStepGame.action_space,
     ])
     register_env(
-        "grouped_twostep",
-        lambda config: TwoStepGame(config).with_agent_groups(
-            grouping, obs_space=obs_space, act_space=act_space))
+        "grouped_twostep", lambda config: TwoStepGame(config).
+        with_agent_groups(grouping, obs_space=obs_space, act_space=act_space))
 
     if args.run == "contrib/MADDPG":
         obs_space_dict = {
@@ -75,8 +74,8 @@ if __name__ == "__main__":
                         "agent_id": 1,
                     }),
                 },
-                "policy_mapping_fn":
-                    lambda agent_id: "pol1" if agent_id == 0 else "pol2",
+                "policy_mapping_fn": lambda agent_id: "pol1"
+                if agent_id == 0 else "pol2",
             },
             "framework": "torch" if args.torch else "tf",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

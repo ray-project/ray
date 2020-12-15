@@ -115,15 +115,14 @@ class ModelCatalog:
         >>> dist = dist_class(model.outputs, model)
         >>> action = dist.sample()
     """
-
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(
-            action_space: gym.Space,
-            config: ModelConfigDict,
-            dist_type: Optional[Union[str, Type[ActionDistribution]]] = None,
-            framework: str = "tf",
-            **kwargs) -> (type, int):
+    def get_action_dist(action_space: gym.Space,
+                        config: ModelConfigDict,
+                        dist_type: Optional[Union[
+                            str, Type[ActionDistribution]]] = None,
+                        framework: str = "tf",
+                        **kwargs) -> (type, int):
         """Returns a distribution class and size for the given action space.
 
         Args:
@@ -323,7 +322,7 @@ class ModelCatalog:
                     model_cls = ModelCatalog._wrap_if_needed(
                         wrapped_cls, LSTMWrapper)
                     model_cls._wrapped_forward = forward
-    
+
                 # Track and warn if vars were created but not registered.
                 created = set()
 
@@ -494,8 +493,9 @@ class ModelCatalog:
                 "preprocessors for handling complex observation spaces. "
                 "Please use wrapper classes around your environment "
                 "instead of preprocessors.")
-            prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
-                observation_space, options)
+            prep = _global_registry.get(RLLIB_PREPROCESSOR,
+                                        preprocessor)(observation_space,
+                                                      options)
         else:
             cls = get_preprocessor(observation_space)
             prep = cls(observation_space, options)
@@ -616,9 +616,8 @@ class ModelCatalog:
                     s, config, framework=framework), flat_action_space)
             child_dists = [e[0] for e in child_dists_and_in_lens]
             input_lens = [int(e[1]) for e in child_dists_and_in_lens]
-            return partial(
-                dist_class,
-                action_space=action_space,
-                child_distributions=child_dists,
-                input_lens=input_lens), int(sum(input_lens))
+            return partial(dist_class,
+                           action_space=action_space,
+                           child_distributions=child_dists,
+                           input_lens=input_lens), int(sum(input_lens))
         return dist_class
