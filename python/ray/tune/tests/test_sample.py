@@ -946,7 +946,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertEqual(searcher.total_samples, 1 + 5 * 12)
 
         # When initialized with all points, the first three trials are
-        # defined by the logic above. Only 2 trials are grid searched
+        # defined by the logic above. Only 3 trials are grid searched
         # compeletely.
         searcher = BasicVariantGenerator(points_to_evaluate=points)
         exp = Experiment(
