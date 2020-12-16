@@ -80,7 +80,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def call_remote(self, instance: "ClientStub", *args, **kwargs) -> ray_client_pb2.RemoteRef:
+    def call_remote(self, instance: "ClientStub", *args, **kwargs):
         """
         call_remote is called by stub objects to execute them remotely.
 

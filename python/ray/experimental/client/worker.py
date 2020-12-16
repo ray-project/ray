@@ -21,7 +21,7 @@ import grpc
 from ray.exceptions import TaskCancelledError
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.experimental.client.common import convert_to_arg
+from ray.experimental.client.client_pickler import convert_to_arg
 from ray.experimental.client.common import decode_exception
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorClass
@@ -151,7 +151,7 @@ class Worker:
     def call_remote(self, instance, *args, **kwargs) -> ray_client_pb2.RemoteRef:
         task = instance._prepare_client_task()
         for arg in args:
-            pb_arg = convert_to_arg(arg)
+            pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
         task.client_id = self._client_id
         logging.debug("Scheduling %s" % task)
@@ -159,7 +159,9 @@ class Worker:
         return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def call_release(self, id: bytes) -> None:
-        logging.info(f"Releasing {id}")
+        import traceback
+        print("RELEASE", id.hex())
+        traceback.print_stack(limit=10)
         self.reference_count[id] -= 1
         if self.reference_count[id] == 0:
             self._release_server(id)
@@ -167,6 +169,7 @@ class Worker:
 
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
+            logging.info(f"Releasing {id}")
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 

@@ -16,7 +16,7 @@ import time
 import inspect
 import json
 from ray.experimental.client import stash_api_for_tests, _set_server_api
-from ray.experimental.client.common import convert_from_arg
+from ray.experimental.client.client_pickler import convert_from_arg
 from ray.experimental.client.common import encode_exception
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.server.core_ray_api import RayServerAPI
@@ -141,8 +141,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
-            print("XXX")
-            print(e)
             return_exception_in_context(e, context)
             return ray_client_pb2.GetResponse(valid=False)
         item_ser = cloudpickle.dumps(item)
@@ -175,8 +173,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ref=make_remote_ref(objectref.binary(), pickled_ref))
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
-        object_refs = [self.object_refs[request.client_id][i]
-                       for i in request.object_ids]
+        object_refs = []
+        for id in request.object_ids:
+            if id not in self.object_refs[request.client_id]:
+                raise Exception(
+                    "Asking for a ref not associated with this client: %s" % str(id))
+            object_refs.append(self.object_refs[request.client_id][id])
         num_returns = request.num_returns
         timeout = request.timeout
         try:
@@ -211,16 +213,17 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         logger.info("schedule: %s %s" %
                     (task.name,
                      ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
-        if task.type == ray_client_pb2.ClientTask.FUNCTION:
-            return self._schedule_function(task, context, prepared_args)
-        elif task.type == ray_client_pb2.ClientTask.ACTOR:
-            return self._schedule_actor(task, context, prepared_args)
-        elif task.type == ray_client_pb2.ClientTask.METHOD:
-            return self._schedule_method(task, context, prepared_args)
-        else:
-            raise NotImplementedError(
-                "Unimplemented Schedule task type: %s" %
-                ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
+        with stash_api_for_tests(self._test_mode):
+            if task.type == ray_client_pb2.ClientTask.FUNCTION:
+                return self._schedule_function(task, context, prepared_args)
+            elif task.type == ray_client_pb2.ClientTask.ACTOR:
+                return self._schedule_actor(task, context, prepared_args)
+            elif task.type == ray_client_pb2.ClientTask.METHOD:
+                return self._schedule_method(task, context, prepared_args)
+            else:
+                raise NotImplementedError(
+                    "Unimplemented Schedule task type: %s" %
+                    ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
 
     def _schedule_method(
             self,
@@ -231,11 +234,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if actor_handle is None:
             raise Exception(
                 "Can't run an actor the server doesn't have a handle for")
-        arglist = _convert_args(task.args, prepared_args)
-        with stash_api_for_tests(self._test_mode):
-            output = getattr(actor_handle, task.name).remote(*arglist)
-            self.object_refs[task.client_id][output.binary()] = output
-            pickled_ref = cloudpickle.dumps(output)
+        arglist = self._convert_args(task.args, prepared_args)
+        output = getattr(actor_handle, task.name).remote(*arglist)
+        self.object_refs[task.client_id][output.binary()] = output
+        pickled_ref = cloudpickle.dumps(output)
         return ray_client_pb2.ClientTaskTicket(
             return_ref=make_remote_ref(output.binary(), pickled_ref))
 
@@ -243,24 +245,23 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                         task: ray_client_pb2.ClientTask,
                         context=None,
                         prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        with stash_api_for_tests(self._test_mode):
-            payload_ref = cloudpickle.loads(task.payload_id)
-            if payload_ref.binary() not in self.registered_actor_classes:
-                actor_class_ref = \
-                        self.object_refs[task.client_id][payload_ref.binary()]
-                actor_class = ray.get(actor_class_ref)
-                if not inspect.isclass(actor_class):
-                    raise Exception("Attempting to schedule actor that "
-                                    "isn't a class.")
-                reg_class = ray.remote(actor_class)
-                self.registered_actor_classes[payload_ref.binary()] = reg_class
-            remote_class = self.registered_actor_classes[payload_ref.binary()]
-            arglist = _convert_args(task.args, prepared_args)
-            actor = remote_class.remote(*arglist)
-            actor._serialize_local = True
-            actorhandle = cloudpickle.dumps(actor)
-            self.actor_refs[actorhandle] = actor
-            self.actor_owners[task.client_id].add(actorhandle)
+        payload_ref = cloudpickle.loads(task.payload_id)
+        if payload_ref.binary() not in self.registered_actor_classes:
+            actor_class_ref = \
+                    self.object_refs[task.client_id][payload_ref.binary()]
+            actor_class = ray.get(actor_class_ref)
+            if not inspect.isclass(actor_class):
+                raise Exception("Attempting to schedule actor that "
+                                "isn't a class.")
+            reg_class = ray.remote(actor_class)
+            self.registered_actor_classes[payload_ref.binary()] = reg_class
+        remote_class = self.registered_actor_classes[payload_ref.binary()]
+        arglist = self._convert_args(task.args, prepared_args)
+        actor = remote_class.remote(*arglist)
+        actor._serialize_local = True
+        actorhandle = cloudpickle.dumps(actor)
+        self.actor_refs[actorhandle] = actor
+        self.actor_owners[task.client_id].add(actorhandle)
         return ray_client_pb2.ClientTaskTicket(
             return_ref=make_remote_ref(actor._actor_id.binary(), actorhandle))
 
@@ -278,30 +279,25 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                 "isn't a function.")
             self.function_refs[payload_ref.binary()] = ray.remote(func)
         remote_func = self.function_refs[payload_ref.binary()]
-        arglist = _convert_args(task.args, prepared_args)
+        arglist = self._convert_args(task.args, prepared_args)
         # Prepare call if we're in a test
-        with stash_api_for_tests(self._test_mode):
-            output = remote_func.remote(*arglist)
-            if output.binary() in self.object_refs[task.client_id]:
-                raise Exception("already found it")
-            print("Sched %s %s" % (task.client_id, output.binary()))
-            self.object_refs[task.client_id][output.binary()] = output
-            pickled_output = cloudpickle.dumps(output)
+        output = remote_func.remote(*arglist)
+        if output.binary() in self.object_refs[task.client_id]:
+            raise Exception("already found it")
+        print(f"Sched {output.binary()}")
+        self.object_refs[task.client_id][output.binary()] = output
+        pickled_output = cloudpickle.dumps(output)
         return ray_client_pb2.ClientTaskTicket(
             return_ref=make_remote_ref(output.binary(), pickled_output))
 
-
-def _convert_args(arg_list, prepared_args=None):
-    if prepared_args is not None:
-        return prepared_args
-    out = []
-    for arg in arg_list:
-        t = convert_from_arg(arg)
-        if isinstance(t, ClientObjectRef):
-            out.append(t._unpack_ref())
-        else:
+    def _convert_args(self, arg_list, prepared_args=None):
+        if prepared_args is not None:
+            return prepared_args
+        out = []
+        for arg in arg_list:
+            t = convert_from_arg(arg, self)
             out.append(t)
-    return out
+        return out
 
 
 def make_remote_ref(id: bytes, handle: bytes) -> ray_client_pb2.RemoteRef:

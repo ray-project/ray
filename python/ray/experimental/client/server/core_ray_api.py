@@ -37,7 +37,12 @@ class CoreRayAPI(APIImpl):
                 return ray.get(
                     [val._unpack_ref() for val in vals], timeout=timeout)
         elif isinstance(vals, ClientObjectRef):
-            return ray.get(vals._unpack_ref(), timeout=timeout)
+            print("Getting")
+            try:
+                ret = ray.get(vals._unpack_ref(), timeout=timeout)
+                return ret
+            finally:
+                print("Got")
         return ray.get(vals, timeout=timeout)
 
     def put(self, vals: Any, *args,
@@ -50,17 +55,8 @@ class CoreRayAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return ray.remote(*args, **kwargs)
 
-    def call_remote(self, instance: ClientStub, *args, **kwargs) -> ray_client_pb2.RemoteRef:
-        out = instance._get_ray_remote_impl().remote(*args, **kwargs)
-        if isinstance(out, ray.ObjectRef):
-            return ray_client_pb2.RemoteRef(id=out.binary(), handle=cloudpickle.dumps(out))
-        elif isinstance(out, ClientObjectRef):
-            return out.to_remote_ref()
-        elif isinstance(out, ray_client_pb2.RemoteRef):
-            return out
-        else:
-            logger.error(f"Returning remote instance {type(out)}")
-            return out
+    def call_remote(self, instance: ClientStub, *args, **kwargs):
+        return instance._get_ray_remote_impl().remote(*args, **kwargs)
 
     def close(self) -> None:
         return None

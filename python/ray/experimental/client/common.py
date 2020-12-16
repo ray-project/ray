@@ -30,9 +30,6 @@ class ClientBaseRef:
     def from_remote_ref(cls, ref: ray_client_pb2.RemoteRef):
         return cls(id=ref.id, handle=ref.handle)
 
-    def to_remote_ref(self):
-        return ray_client_pb2.RemoteRef(id=self.id, handle=self.handle)
-
     def __del__(self):
         ray.call_release(self.id)
 
@@ -88,8 +85,7 @@ class ClientRemoteFunc(ClientStub):
                         "Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
-        ref = ray.call_remote(self, *args, **kwargs)
-        return ClientObjectRef.from_remote_ref(ref)
+        return ray.call_remote(self, *args, **kwargs)
 
     def _get_ray_remote_impl(self):
         if self._raylet_remote is None:
@@ -256,8 +252,7 @@ class ClientRemoteMethod(ClientStub):
         self.method_name = state["method_name"]
 
     def remote(self, *args, **kwargs):
-        ref = ray.call_remote(self, *args, **kwargs)
-        return ClientObjectRef.from_remote_ref(ref)
+        return ray.call_remote(self, *args, **kwargs)
 
     def __repr__(self):
         name = "%s.%s" % (self.actor_handle.actor_class._name,
@@ -273,24 +268,6 @@ class ClientRemoteMethod(ClientStub):
         return task
 
 
-def convert_from_arg(pb) -> Any:
-    if pb.local == ray_client_pb2.Arg.Locality.REFERENCE:
-        return ClientObjectRef.from_remote_ref(pb.reference)
-    elif pb.local == ray_client_pb2.Arg.Locality.INTERNED:
-        return cloudpickle.loads(pb.data)
-
-    raise Exception("convert_from_arg: Uncovered locality enum")
-
-
-def convert_to_arg(val):
-    out = ray_client_pb2.Arg()
-    if isinstance(val, ClientObjectRef):
-        out.local = ray_client_pb2.Arg.Locality.REFERENCE
-        out.reference_id = val.id
-    else:
-        out.local = ray_client_pb2.Arg.Locality.INTERNED
-        out.data = cloudpickle.dumps(val)
-    return out
 
 
 def encode_exception(exception) -> str:

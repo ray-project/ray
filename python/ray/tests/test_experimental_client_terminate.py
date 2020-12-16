@@ -1,6 +1,7 @@
 import pytest
 import asyncio
 from ray.tests.test_experimental_client import ray_start_client_server
+from ray.experimental.client import _get_server_instance
 from ray.test_utils import wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.exceptions import RayTaskError
@@ -61,6 +62,7 @@ def test_cancel_chain(ray_start_regular, use_force):
                     await self.ready_event.wait()
 
         signaler = SignalActor.remote()
+        server = _get_server_instance()
 
         @ray.remote
         def wait_for(t):
