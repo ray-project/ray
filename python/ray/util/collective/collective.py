@@ -333,6 +333,48 @@ def reducescatter(tensor,
     g.reducescatter(tensor, tensor_list, opts)
 
 
+def send(tensor, dst_rank: int, group_name: str = "default"):
+    """
+    Send a tensor to a remote processes synchronously.
+
+    Args:
+        tensor: the tensor to send.
+        dst_rank (int): the rank of the destination process.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, dst_rank)
+
+    # check whether send/recv is available
+    if g.backend == types.Backend.NCCL:
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(nccl_util.get_nccl_runtime_version()))
+    g.send(tensor, dst_rank)
+
+
+def recv(tensor, src_rank: int, group_name: str = "default"):
+    """
+    Receive a tensor from a remote process synchronously.
+
+    Args:
+        tensor: the received tensor.
+        src_rank (int): the rank of the source process.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, src_rank)
+    g.recv(tensor, src_rank)
+
+
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
     _check_inside_actor()

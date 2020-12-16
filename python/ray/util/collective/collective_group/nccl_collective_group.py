@@ -301,6 +301,52 @@ class NCCLGroup(BaseGroup):
         comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
                            stream.ptr)
 
+    def send(self, tensor, dst_rank):
+        """
+        Send tensor to a destination process in the group.
+
+        Args:
+            tensor: the tensor to send.
+            dst_rank: the rank of the destination process.
+
+        Returns:
+            None
+        """
+
+        # check whether send/recv is available
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(nccl_util.get_nccl_runtime_version()))
+        comm = self._get_nccl_communicator()
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        comm.send(ptr, n_elems, dtype, dst_rank, stream.ptr)
+
+    def recv(self, tensor, src_rank):
+        """
+        Receive tensor from a source process in the group.
+
+        Args:
+            tensor: the received tensor.
+            src_rank:
+
+        Returns:
+            None
+        """
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(nccl_util.get_nccl_runtime_version()))
+        comm = self._get_nccl_communicator()
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        comm.recv(ptr, n_elems, dtype, src_rank, stream.ptr)
+
     def _get_nccl_communicator(self):
         """
         Create or use a cached NCCL communicator for the collective task.
@@ -319,6 +365,7 @@ class NCCLGroup(BaseGroup):
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
 
+    # Note(Hao): too many bipolate code -- make some abstraction.
     # def _collective_call(self, *args):
     #     """Private method to encapsulate all collective calls"""
     #     pass

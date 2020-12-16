@@ -52,6 +52,14 @@ class Worker:
         col.reducescatter(self.buffer, self.list_buffer, group_name, op)
         return self.buffer
 
+    def do_send(self, group_name="default", dst_rank=0):
+        col.send(self.buffer, dst_rank, group_name)
+        return self.buffer
+
+    def do_recv(self, group_name="default", src_rank=0):
+        col.recv(self.buffer, src_rank, group_name)
+        return self.buffer
+
     def destroy_group(self, group_name="default"):
         col.destroy_collective_group(group_name)
         return True
