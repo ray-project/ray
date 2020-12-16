@@ -22,10 +22,10 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
-
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -38,7 +38,7 @@ static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
-class ClusterResourceScheduler {
+class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
  public:
   ClusterResourceScheduler(void){};
 
@@ -66,12 +66,15 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &resource_map_total,
       const std::unordered_map<std::string, double> &resource_map_available);
 
+  bool UpdateNode(const std::string &node_id_string,
+                  const rpc::ResourcesData &resource_data) override;
+
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
-  bool RemoveNode(const std::string &node_id_string);
+  bool RemoveNode(const std::string &node_id_string) override;
 
   /// Check whether a task request is feasible on a given node. A node is
   /// feasible if it has the total resources needed to eventually execute the
@@ -175,7 +178,8 @@ class ClusterResourceScheduler {
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateResourceCapacity(const std::string &node_name,
-                              const std::string &resource_name, double resource_total);
+                              const std::string &resource_name,
+                              double resource_total) override;
 
   /// Delete a given resource from the local node.
   ///
@@ -186,13 +190,14 @@ class ClusterResourceScheduler {
   ///
   /// \param node_name: Node whose resource we want to delete.
   /// \param resource_name: Resource we want to delete
-  void DeleteResource(const std::string &node_name, const std::string &resource_name);
+  void DeleteResource(const std::string &node_name,
+                      const std::string &resource_name) override;
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
 
   /// Return local resources in human-readable string form.
-  std::string GetLocalResourceViewString() const;
+  std::string GetLocalResourceViewString() const override;
 
   /// Create instances for each resource associated with the local node, given
   /// the node's resources.
@@ -370,14 +375,14 @@ class ClusterResourceScheduler {
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
   void FillResourceUsage(bool light_report_resource_usage_enabled,
-                         std::shared_ptr<rpc::ResourcesData> resources_data);
+                         std::shared_ptr<rpc::ResourcesData> resources_data) override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.
   ///
   /// \param gcs_resources: The remote cache from gcs.
   void UpdateLastReportResourcesFromGcs(
-      std::shared_ptr<SchedulingResources> gcs_resources);
+      std::shared_ptr<SchedulingResources> gcs_resources) override;
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

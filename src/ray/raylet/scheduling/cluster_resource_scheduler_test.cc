@@ -1009,11 +1009,13 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   ASSERT_TRUE(EqualVectors(cpu_instances, expect_cpu_instance));
 }
 
+std::unordered_map<std::string, double> empty_map;
+
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   std::unordered_map<std::string, double> resource_spec({{"CPU", 1}});
-  ClusterResourceScheduler cluster_resources("local", {});
+  ClusterResourceScheduler cluster_resources("local", empty_map);
   for (int i = 0; i < 100; i++) {
-    cluster_resources.AddOrUpdateNode(std::to_string(i), {}, {});
+    cluster_resources.AddOrUpdateNode(std::to_string(i), empty_map, empty_map);
   }
 
   // No feasible nodes.

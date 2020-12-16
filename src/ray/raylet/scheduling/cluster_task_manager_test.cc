@@ -121,15 +121,17 @@ class ClusterTaskManagerTest : public ::testing::Test {
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
-        task_manager_(id_, scheduler_, dependency_manager_,
-                      [this](const WorkerID &worker_id, const NodeID &node_id) {
-                        return is_owner_alive_;
-                      },
-                      [this](const NodeID &node_id) {
-                        node_info_calls_++;
-                        return node_info_[node_id];
-                      },
-                      [this](const Task &task) { announce_infeasible_task_calls_++; }) {}
+        task_manager_(
+            id_, scheduler_, dependency_manager_,
+            [this](const WorkerID &worker_id, const NodeID &node_id) {
+              return is_owner_alive_;
+            },
+            [this](const NodeID &node_id) {
+              node_info_calls_++;
+              return node_info_[node_id];
+            },
+            [this](const Task &task) { announce_infeasible_task_calls_++; }, pool_,
+            leased_workers_) {}
 
   void SetUp() {}
 
@@ -277,8 +279,6 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   auto id = task.GetTaskSpecification().TaskId();
   std::vector<TaskID> unblocked = {id};
   task_manager_.TasksUnblocked(unblocked);
-  task_manager_.SchedulePendingTasks();
-  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   ASSERT_EQ(num_callbacks, 1);
@@ -512,7 +512,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
   {
     auto data = std::make_shared<rpc::ResourcesData>();
-    task_manager_.FillResourceUsage(false, data);
+    task_manager_.FillResourceUsage(data);
 
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -586,7 +586,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(node_info_calls_, 0);
 
   auto data = std::make_shared<rpc::ResourcesData>();
-  task_manager_.FillResourceUsage(false, data);
+  task_manager_.FillResourceUsage(data);
 
   auto resource_load_by_shape = data->resource_load_by_shape();
   auto shape1 = resource_load_by_shape.resource_demands()[0];
@@ -600,7 +600,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   }
 
   data = std::make_shared<rpc::ResourcesData>();
-  task_manager_.FillResourceUsage(false, data);
+  task_manager_.FillResourceUsage(data);
 
   resource_load_by_shape = data->resource_load_by_shape();
   shape1 = resource_load_by_shape.resource_demands()[0];

@@ -6,6 +6,7 @@
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -37,7 +38,7 @@ typedef std::function<boost::optional<rpc::GcsNodeInfo>(const NodeID &node_id)>
 ///       there is a new worker which can dispatch the tasks.
 /// 5. When a worker finishes executing its task(s), the requester will return
 ///    it and we should release the resources in our view of the node's state.
-class ClusterTaskManager {
+class ClusterTaskManager : public ClusterTaskManagerInterface {
  public:
   /// fullfills_dependencies_func Should return if all dependencies are
   /// fulfilled and unsubscribe from dependencies only if they're fulfilled. If
@@ -51,12 +52,15 @@ class ClusterTaskManager {
   /// \param is_owner_alive: A callback which returns if the owner process is alive
   /// (according to our ownership model).
   /// \param gcs_client: A gcs client.
-  ClusterTaskManager(const NodeID &self_node_id,
-                     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     TaskDependencyManagerInterface &task_dependency_manager,
-                     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-                     NodeInfoGetter get_node_info,
-                     std::function<void(const Task &)> announce_infeasible_task);
+  ClusterTaskManager(
+      const NodeID &self_node_id,
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      TaskDependencyManagerInterface &task_dependency_manager,
+      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
+      NodeInfoGetter get_node_info,
+      std::function<void(const Task &)> announce_infeasible_task,
+      WorkerPoolInterface &worker_pool,
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
@@ -72,10 +76,6 @@ class ClusterTaskManager {
   /// If there are not enough resources locally, up to one task per resource
   /// shape (the task at the head of the queue) will get spilled back to a
   /// different node.
-  ///
-  /// \param worker_pool: The pool of workers which will be dispatched to.
-  /// `worker_pool` state will be modified (idle workers will be popped) during
-  /// dispatching.
   void DispatchScheduledTasksToWorkers(
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
@@ -86,16 +86,22 @@ class ClusterTaskManager {
   void QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                  std::function<void(void)>);
 
+  void QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
   ///
   /// \param readyIds: The tasks which are now ready to be dispatched.
-  void TasksUnblocked(const std::vector<TaskID> ready_ids);
+  void TasksUnblocked(const std::vector<TaskID> &ready_ids) override;
 
   /// (Step 5) Call once a task finishes (i.e. a worker is returned).
   ///
   /// \param worker: The worker which was running the task.
-  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker);
+  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker,
+                          Task *finished_task = nullptr) override;
+
+  void ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
 
   /// Attempt to cancel an already queued task.
   ///
@@ -103,22 +109,20 @@ class ClusterTaskManager {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id);
+  bool CancelTask(const TaskID &task_id) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///
   /// \param Output parameter.
-  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
+  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(bool light_report_resource_usage_enabled,
-                         std::shared_ptr<rpc::ResourcesData> data) const;
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -128,9 +132,47 @@ class ClusterTaskManager {
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
   bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
-                       int *num_pending_tasks) const;
+                       int *num_pending_tasks) const override;
 
-  std::string DebugString() const;
+  /// Return the resources that were being used by this worker.
+  void FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) override;
+
+  /// When direct call task is blocked, the worker who is executing the task should give
+  /// up the cpu resources allocated for the running task for the time being and the
+  /// worker itself should also be marked as blocked.
+  bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(std::shared_ptr<WorkerInterface> worker,
+                                                 bool release_resources) override;
+
+  // When direct call task is unblocked, the cpu resources that the worker gave up should
+  // be returned to it.
+  bool ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+      std::shared_ptr<WorkerInterface> worker) override;
+
+  // Schedule and dispatch tasks.
+  void ScheduleAndDispatchTasks() override;
+
+  /// Handle the resource usage updated event of the specified node.
+  ///
+  /// \param node_id ID of the node which resources are updated.
+  /// \param resource_data The node resources.
+  void OnNodeResourceUsageUpdated(const NodeID &node_id,
+                                  const rpc::ResourcesData &resource_data) override;
+
+  /// Handle the bundle resources prepared event.
+  void OnBundleResourcesPrepared() override;
+
+  /// Handle the bundle resources committed event.
+  void OnBundleResourcesCommitted() override;
+
+  /// Handle the reserved resources canceled event.
+  void OnReservedResourcesCanceled() override;
+
+  /// Handle the object missing event.
+  void OnObjectMissing(const ObjectID &object_id,
+                       const std::vector<TaskID> &waiting_task_ids) override;
+
+  /// The helper to dump the debug state of the cluster task manater.
+  std::string DebugStr() const override;
 
  private:
   /// Helper method to try dispatching a single task from the queue to an
@@ -185,6 +227,10 @@ class ClusterTaskManager {
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
   std::unordered_map<SchedulingClass, int> backlog_tracker_;
+
+  WorkerPoolInterface &worker_pool_;
+
+  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.

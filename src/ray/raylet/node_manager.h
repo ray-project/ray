@@ -32,6 +32,8 @@
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
+#include "ray/raylet/scheduling/old_cluster_resource_scheduler.h"
+#include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -110,7 +112,8 @@ struct NodeManagerConfig {
   int64_t min_spilling_size;
 };
 
-class NodeManager : public rpc::NodeManagerServiceHandler {
+class NodeManager : public rpc::NodeManagerServiceHandler,
+                    public ClusterTaskManagerInterface {
  public:
   /// Create a node manager.
   ///
@@ -612,13 +615,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Dispatch tasks to available workers.
   void DispatchScheduledTasksToWorkers();
 
-  /// For the pending task at the head of tasks_to_schedule_, return a node
-  /// in the system (local or remote) that has enough resources available to
-  /// run the task, if any such node exist.
-  /// Repeat the process as long as we can schedule a task.
-  /// NEW SCHEDULER_FUNCTION
-  void ScheduleAndDispatch();
-
   /// Whether a task is an actor creation task.
   bool IsActorCreationTask(const TaskID &task_id);
 
@@ -633,6 +629,110 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param task Task that is infeasible
   void PublishInfeasibleTaskError(const Task &task) const;
+
+  std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
+      const std::vector<Task> &tasks) const;
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+  //////////////////// Begin of the Override of ClusterTaskManager //////////////////////
+  // The following methods are defined in node_manager.task.cc instead of node_manager.cc
+
+  /// Return the resources that were being used by this worker.
+  void FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) override;
+
+  /// When direct call task is blocked, the worker who is executing the task should give
+  /// up the cpu resources allocated for the running task for the time being and the
+  /// worker itself should also be marked as blocked.
+  bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(std::shared_ptr<WorkerInterface> worker,
+                                                 bool release_resources) override;
+
+  // When direct call task is unblocked, the cpu resources that the worker gave up should
+  // be returned to it.
+  bool ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+      std::shared_ptr<WorkerInterface> worker) override;
+
+  // Schedule and dispatch tasks.
+  void ScheduleAndDispatchTasks() override;
+
+  /// Move tasks from waiting to ready for dispatch. Called when a task's
+  /// dependencies are resolved.
+  ///
+  /// \param readyIds: The tasks which are now ready to be dispatched.
+  void TasksUnblocked(const std::vector<TaskID> &ready_ids) override;
+
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resource_load and resource_load_by_shape.
+  ///
+  /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
+  /// fields used.
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) override;
+
+  /// Populate the list of pending or infeasible actor tasks for node stats.
+  ///
+  /// \param Output parameter.
+  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
+
+  /// Call once a task finishes (i.e. a worker is returned).
+  ///
+  /// \param worker: The worker which was running the task.
+  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker,
+                          Task *finished_task = nullptr) override;
+
+  /// Return worker resources.
+  ///
+  /// \param worker: The worker which was running the task.
+  void ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id) override;
+
+  /// Queue task and schedule.
+  /// \param fn: The function used during dispatching.
+  /// \param task: The incoming task to schedule.
+  void QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Return if any tasks are pending resource acquisition.
+  ///
+  /// \param[in] exemplar An example task that is deadlocking.
+  /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
+  /// \param[in] num_pending_tasks Number of pending tasks.
+  /// \param[in] any_pending True if there's any pending exemplar.
+  /// \return True if any progress is any tasks are pending.
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+                       int *num_pending_tasks) const override;
+
+  /// Handle the resource usage updated event of the specified node.
+  ///
+  /// \param node_id ID of the node which resources are updated.
+  /// \param resource_data The node resources.
+  void OnNodeResourceUsageUpdated(const NodeID &node_id,
+                                  const rpc::ResourcesData &resource_data) override;
+
+  /// Handle the bundle resources prepared event.
+  void OnBundleResourcesPrepared() override;
+
+  /// Handle the bundle resources committed event.
+  void OnBundleResourcesCommitted() override;
+
+  /// Handle the reserved resources canceled event.
+  void OnReservedResourcesCanceled() override;
+
+  /// Handle the object missing event.
+  void OnObjectMissing(const ObjectID &object_id,
+                       const std::vector<TaskID> &waiting_task_ids) override;
+
+  /// The helper to dump the debug state of the cluster task manater.
+  std::string DebugStr() const override;
+
+  //////////////////// End of the Override of ClusterTaskManager //////////////////////
+  ///////////////////////////////////////////////////////////////////////////////////////
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -761,8 +861,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
   /// dispatching tasks.
-  std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  std::shared_ptr<ClusterResourceSchedulerInterface> cluster_resource_scheduler_;
+  std::shared_ptr<ClusterTaskManagerInterface> cluster_task_manager_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
