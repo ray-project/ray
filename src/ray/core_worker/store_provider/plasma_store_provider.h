@@ -90,7 +90,8 @@ class CoreWorkerPlasmaStoreProvider {
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception);
+             bool *got_exception,
+             bool release_resources);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
