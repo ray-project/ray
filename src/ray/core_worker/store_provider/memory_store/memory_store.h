@@ -58,13 +58,14 @@ class CoreWorkerMemoryStore {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              const WorkerContext &ctx, bool remove_after_get,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> *results,
+             bool release_resources = true);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception);
+             bool *got_exception, bool release_resources = true);
 
   /// Convenience wrapper around Get() that stores ready objects in a given result set.
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,

@@ -232,9 +232,10 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                   int num_objects, int64_t timeout_ms,
                                   const WorkerContext &ctx, bool remove_after_get,
-                                  std::vector<std::shared_ptr<RayObject>> *results) {
+                                  std::vector<std::shared_ptr<RayObject>> *results,
+                                  bool release_resources) {
   return GetImpl(object_ids, num_objects, timeout_ms, ctx, remove_after_get, results,
-                 /*abort_if_any_object_is_exception=*/true);
+                 /*abort_if_any_object_is_exception=*/true, release_resources);
 }
 
 Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
@@ -376,11 +377,11 @@ Status CoreWorkerMemoryStore::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception) {
+    bool *got_exception, bool release_resources) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_RETURN_NOT_OK(Get(id_vector, id_vector.size(), timeout_ms, ctx,
-                        /*remove_after_get=*/false, &result_objects));
+                        /*remove_after_get=*/false, &result_objects, release_resources));
 
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
@@ -404,7 +405,7 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
   auto status = GetImpl(id_vector, num_objects, timeout_ms, ctx, false, &result_objects,
-                        /*abort_if_any_object_is_exception=*/false);
+                        /*abort_if_any_object_is_exception=*/false, /*release_resources=*/true);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);

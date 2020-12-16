@@ -91,7 +91,7 @@ class CoreWorkerPlasmaStoreProvider {
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception,
-             bool release_resources);
+             bool release_resources = true);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
