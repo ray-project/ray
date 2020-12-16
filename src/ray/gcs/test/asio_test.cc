@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/gcs/asio.h"
+#include "ray/gcs/redis_context.h"
 
 #include <iostream>
 
