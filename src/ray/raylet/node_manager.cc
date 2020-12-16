@@ -1513,7 +1513,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 void NodeManager::ProcessDirectCallTaskBlocked(
     const std::shared_ptr<ClientConnection> &client,
     const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
+  auto message = flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
   bool release_resources = message->release_resources();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleDirectCallTaskBlocked(worker, release_resources);
