@@ -66,6 +66,11 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
   redisAsyncCommand(ac, GetCallback, nullptr, "GET key");
 
+  std::shared_ptr<RedisContext> shard_context =
+      std::make_shared<RedisContext>(io_service);
+  shard_context->Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(),
+                         /*sharding=*/true);
+
   io_service.run();
 }
 
