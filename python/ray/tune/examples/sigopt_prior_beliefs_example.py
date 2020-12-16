@@ -37,13 +37,19 @@ if __name__ == "__main__":
     import os
     from sigopt import Connection
 
-    assert "SIGOPT_KEY" in os.environ, \
-        "SigOpt API key must be stored as environment variable at SIGOPT_KEY"
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
+
+    if "SIGOPT_KEY" not in os.environ:
+        if args.smoke_test:
+            print("SigOpt API Key not found. Skipping smoke test.")
+        else:
+            raise ValueError(
+                "SigOpt API Key not found. Please set the SIGOPT_KEY "
+                "environment variable.")
+
     samples = 4 if args.smoke_test else 100
 
     conn = Connection(client_token=os.environ["SIGOPT_KEY"])
