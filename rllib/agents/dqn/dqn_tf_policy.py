@@ -164,7 +164,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
     else:
         num_outputs = action_space.n
 
-    policy.q_model = ModelCatalog.get_model_v2(
+    q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
         num_outputs=num_outputs,
@@ -206,7 +206,7 @@ def build_q_model(policy: Policy, obs_space: gym.spaces.Space,
             getattr(policy, "exploration", None), ParameterNoise)
         or config["exploration_config"]["type"] == "ParameterNoise")
 
-    return policy.q_model
+    return q_model
 
 
 def get_distribution_inputs_and_class(policy: Policy,
@@ -239,7 +239,7 @@ def build_q_losses(policy: Policy, model, _,
     # q network evaluation
     q_t, q_logits_t, q_dist_t = compute_q_values(
         policy,
-        policy.q_model,
+        model,
         train_batch[SampleBatch.CUR_OBS],
         explore=False)
 
@@ -263,7 +263,7 @@ def build_q_losses(policy: Policy, model, _,
     if config["double_q"]:
         q_tp1_using_online_net, q_logits_tp1_using_online_net, \
             q_dist_tp1_using_online_net = compute_q_values(
-                policy, policy.q_model,
+                policy, model,
                 train_batch[SampleBatch.NEXT_OBS],
                 explore=False)
         q_tp1_best_using_online_net = tf.argmax(q_tp1_using_online_net, 1)

@@ -22,7 +22,8 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
-from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork, \
+    TrainTFMultiGPU
 from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -132,6 +133,13 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+    # TODO: Experimental.
+    "simple_optimizer": False,
+    # Whether to fake GPUs (using CPUs).
+    # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
+    "_fake_gpus": False,
+
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -165,6 +173,21 @@ def validate_config(config: TrainerConfigDict) -> None:
         elif config["replay_sequence_length"] > 1:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
+
+    # Multi-gpu not supported for PyTorch and tf-eager.
+    if config["framework"] in ["tf2", "tfe", "torch"]:
+        config["simple_optimizer"] = True
+    # Performance warning, if "simple" optimizer used with (static-graph) tf.
+    elif config["simple_optimizer"]:
+        logger.warning(
+            "Using the simple minibatch optimizer. This will significantly "
+            "reduce performance, consider simple_optimizer=False.")
+    # Multi-agent mode and multi-GPU optimizer.
+    elif config["multiagent"]["policies"] and not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially "
+            "by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
 
 
 def execution_plan(workers: WorkerSet,
@@ -225,9 +248,26 @@ def execution_plan(workers: WorkerSet,
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step, and then we decide whether to update the target network.
     post_fn = config.get("before_learn_on_batch") or (lambda b, *a: b)
+
+    if config["simple_optimizer"]:
+        train_op = TrainOneStep(workers)
+    else:
+        train_op = TrainTFMultiGPU(
+                workers,
+                sgd_minibatch_size=config["train_batch_size"],
+                num_sgd_iter=1,
+                num_gpus=config["num_gpus"],
+                rollout_fragment_length="doesnt_matter", # :) config["rollout_fragment_length"],
+                num_envs_per_worker="doesnt_matter", # :) config["num_envs_per_worker"],
+                train_batch_size="doesnt_matter", # :)
+                shuffle_sequences=True,#DQN: always shuffle, no sequences.
+                _fake_gpus=config.get("_fake_gpus", False),
+                framework=config.get("framework"))
+
+
     replay_op = Replay(local_buffer=local_replay_buffer) \
         .for_each(lambda x: post_fn(x, workers, config)) \
-        .for_each(TrainOneStep(workers)) \
+        .for_each(train_op) \
         .for_each(update_prio) \
         .for_each(UpdateTargetNetwork(
             workers, config["target_network_update_freq"]))

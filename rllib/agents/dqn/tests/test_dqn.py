@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 import unittest
 
@@ -10,7 +11,7 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
 class TestDQN(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -49,6 +50,32 @@ class TestDQN(unittest.TestCase):
 
             check_compute_single_action(trainer)
             trainer.stop()
+
+    def test_ppo_fake_multi_gpu_learning(self):
+        """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
+        config = copy.deepcopy(dqn.DEFAULT_CONFIG)
+        # Fake GPU setup.
+        config["num_gpus"] = 2
+        config["_fake_gpus"] = True
+        config["framework"] = "tf"
+        # Mimick tuned_example for PPO CartPole.
+        config["num_workers"] = 1
+        config["lr"] = 0.0003
+        #config["observation_filter"] = "MeanStdFilter"
+        config["model"]["fcnet_hiddens"] = [32]
+        config["model"]["fcnet_activation"] = "linear"
+
+        trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
+        num_iterations = 200
+        learnt = False
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
+            if results["episode_reward_mean"] > 150:
+                learnt = True
+                break
+        assert learnt, "DQN multi-GPU (with fake-GPUs) did not learn CartPole!"
+        trainer.stop()
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
