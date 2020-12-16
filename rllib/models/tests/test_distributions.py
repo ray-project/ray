@@ -92,7 +92,7 @@ class TestDistributions(unittest.TestCase):
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
 
-        inputs = inputs_space.sample()
+        inputs = inputs_space.sample().astype(np.float64)
 
         for fw, sess in framework_iterator(
                 session=True, frameworks=("jax", "tf", "tf2", "torch")):
