@@ -254,7 +254,7 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
 
 
-# This is a basic (test) to ensure that the pull request retry timer is
+# This is a basic test to ensure that the pull request retry timer is
 # integrated properly. To test it, we create a 2 node cluster then do the
 # following:
 # (1) Fill up the driver's object store.
@@ -264,7 +264,7 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 # (4) Allow the local object to be evicted.
 # (5) Try to get the object again. Now the retry timer should kick in and
 #     successfuly pull the remote object.
-@pytest.mark.timeout(15)
+@pytest.mark.timeout(30)
 def test_pull_request_retry(shutdown_only):
     cluster = Cluster()
     cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
@@ -287,7 +287,8 @@ def test_pull_request_retry(shutdown_only):
 
         del local_ref
 
-        ready, _ = ray.wait([remote_ref], timeout=10)
+        # This should always complete within 10 seconds.
+        ready, _ = ray.wait([remote_ref], timeout=20)
         assert len(ready) > 0
 
     # Pretend the GPU node is the driver. We do this to force the placement of
