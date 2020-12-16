@@ -189,19 +189,10 @@ class StandardAutoscaler:
                         node_id, True)
             outdated = self.launch_config_ok(node_id)
 
-            print(f"{node_id} needed for ")
+            print(f"{node_id}, min_workers: {needed_for_min_workers}, min_resources: {needed_for_min_resources}, outdated: {outdated}")
             if (needed_for_min_resources or needed_for_min_resources) and not outdated:
                 continue
 
-
-            # if (
-            #         or ) and :
-            #     min_workers = self._keep_min_worker_of_node_type(node_id, node_type_counts)
-            #     allowed = not nodes_allowed_to_terminate.get(node_id, True)
-            #     launch_config = self.launch_config_ok(node_id)
-            #     print(f"Node: {node_id} skipping. min workers: {min_workers}, allowed: {allowed}, launch_config: {launch_config}")
-
-            #     continue
 
             node_ip = self.provider.internal_ip(node_id)
             print(f"Checking if node {node_ip} should be removed. Horizon: {horizon} last_used: {last_used}")

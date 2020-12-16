@@ -1966,7 +1966,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(node_ip,
                   config["available_node_types"]["def_worker"]["resources"],
                   {}, {})
-        print("============ Should scale down from here =============")
+        print("============ Should scale down from here =============", node_id)
         autoscaler.update()
         self.waitForNodes(1)
         # If node {node_id} was terminated any time then it's state will be set
