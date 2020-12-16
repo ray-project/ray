@@ -44,8 +44,15 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   node_manager.AddNode(node);
   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
+  node_manager.GetAllResourceUsage()
+    assert batch.batch.size == 1
+
   node_manager.RemoveNode(node_id);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
+
+  node_manager.GetAllResourceUsage()
+    assert batch.batch.size == 0
+
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
