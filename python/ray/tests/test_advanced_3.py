@@ -610,10 +610,9 @@ def test_lease_request_leak(shutdown_only):
         del obj_ref
     ray.get(tasks)
 
-    def _no_objects():
-        return len(ray.objects()) == 0
-
-    wait_for_condition(_no_objects, timeout=10)
+    time.sleep(
+        1)  # Sleep for an amount longer than the reconstruction timeout.
+    assert len(ray.objects()) == 0, ray.objects()
 
 
 @pytest.mark.parametrize(
