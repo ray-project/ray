@@ -87,7 +87,8 @@ class TestDistributions(unittest.TestCase):
         batch_size = 10000
         num_categories = 4
         # Create categorical distribution with n categories.
-        inputs_space = Box(-1.0, 2.0, shape=(batch_size, num_categories))
+        inputs_space = Box(
+            -1.0, 2.0, shape=(batch_size, num_categories), dtype=np.float32)
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
 
