@@ -462,10 +462,6 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         return search_alg, cost
 
-    @unittest.skip("Skip because this seems to have leaking state.")
-    def testRestore(self):
-        pass
-
 
 class SearcherTest(unittest.TestCase):
     class MockSearcher(Searcher):
