@@ -713,7 +713,7 @@ class BaseTorchTrainable(Trainable):
                 "removed in "
                 "a future version of Ray. Override Trainable.step instead.")
 
-        train_stats = self.trainer.train(max_retries=10, profile=True)
+        train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats
