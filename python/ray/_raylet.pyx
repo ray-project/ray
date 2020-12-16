@@ -877,7 +877,8 @@ cdef class CoreWorker:
         return self.plasma_event_handler
 
     def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1, release_resources, plasma_objects_only=False):
+                    int64_t timeout_ms=-1, release_resources,
+                    plasma_objects_only=False):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()

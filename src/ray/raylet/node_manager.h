@@ -468,7 +468,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param message_data A pointer to the message data.
   /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///

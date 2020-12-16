@@ -1511,8 +1511,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 }
 
 void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client,
-    const uint8_t *message_data) {
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
   bool release_resources = message->release_resources();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
@@ -2174,7 +2173,8 @@ void NodeManager::HandleDirectCallTaskBlocked(
     return;
   }
 
-  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked() || !release_resources) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked() ||
+      !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
@@ -2347,6 +2347,8 @@ void NodeManager::AsyncResolveObjectsFinish(
   // fetch or reconstruction operations to make the objects local are canceled.
   // `ray.wait` calls will stay active until the objects become local, or the
   // task/actor that called `ray.wait` exits.
+  RAY_LOG(ERROR) << "[AsyncResolveObjectsFinish] is unsubscribed task id:"
+                 << current_task_id;
   task_dependency_manager_.UnsubscribeGetDependencies(current_task_id);
   // Mark the task as unblocked.
   RAY_CHECK(worker);
@@ -2634,7 +2636,7 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
       result << task_id << "  ";
     }
   }
-  RAY_LOG(DEBUG) << result.str();
+  RAY_LOG(ERROR) << result.str();
 
   // Transition any tasks that were in the runnable state and are dependent on
   // this object to the waiting state.

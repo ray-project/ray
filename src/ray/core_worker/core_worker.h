@@ -540,12 +540,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
   /// \param[in] plasma_objects_only Only get objects from Plasma Store.
-  /// \param [in] release_resources if true, it releases resources when the worker is blocked.
-  /// \return Status.
+  /// \param [in] release_resources if true, it releases resources when the worker is
+  /// blocked. \return Status.
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results,
-             bool plasma_objects_only = false,
-             release_resources = true);
+             bool plasma_objects_only = false, release_resources = true);
 
   /// Return whether or not the object store contains the given object.
   ///

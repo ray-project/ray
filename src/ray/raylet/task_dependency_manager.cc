@@ -37,24 +37,34 @@ bool TaskDependencyManager::CheckObjectRequired(const ObjectID &object_id,
   // If there are no subscribed tasks that are dependent on the object, then do
   // nothing.
   if (task_entry == required_tasks_.end()) {
+    // RAY_LOG(ERROR) << "[CheckObjectRequired] object_id " << object_id << " is not
+    // required because required task is empty";
     return false;
   }
   if (task_entry->second.count(object_id) == 0) {
+    // RAY_LOG(ERROR) << "[CheckObjectRequired] object_id " << object_id << " doesn't have
+    // depedent objects";
     return false;
   }
   // If the object is already local, then the dependency is fulfilled. Do
   // nothing.
   if (local_objects_.count(object_id) == 1) {
+    // RAY_LOG(ERROR) << "[CheckObjectRequired] object_id " << object_id << " object
+    // already exists";
     return false;
   }
   // If the task that creates the object is pending execution, then the
   // dependency will be fulfilled locally. Do nothing.
   if (pending_tasks_.count(task_id) == 1) {
+    // RAY_LOG(ERROR) << "[CheckObjectRequired] object_id " << object_id << " has pending
+    // task already";
     return false;
   }
   if (owner_address != nullptr) {
     *owner_address = task_entry->second.at(object_id).owner_address;
   }
+  // RAY_LOG(ERROR) << "[CheckObjectRequired] object_id " << object_id << " is still
+  // needed!";
   return true;
 }
 
@@ -250,7 +260,7 @@ void TaskDependencyManager::SubscribeWaitDependencies(
 }
 
 bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "Task " << task_id << " no longer blocked";
+  RAY_LOG(ERROR) << "Task " << task_id << " no longer blocked";
   // Remove the task from the table of subscribed tasks.
   auto it = task_dependencies_.find(task_id);
   if (it == task_dependencies_.end()) {
@@ -275,6 +285,8 @@ bool TaskDependencyManager::UnsubscribeGetDependencies(const TaskID &task_id) {
       // Remove the task that creates this object if there are no more object
       // dependencies created by the task.
       if (creating_task_entry->second.empty()) {
+        RAY_LOG(ERROR) << "[UnsubscribeGetDependencies] task id " << object_id.TaskId()
+                       << " object id " << object_id << " is removed from required tasks";
         required_tasks_.erase(creating_task_entry);
       }
     }
