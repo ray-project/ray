@@ -2181,6 +2181,15 @@ void NodeManager::HandleDirectCallTaskBlocked(
 
 void NodeManager::HandleDirectCallTaskUnblocked(
     const std::shared_ptr<WorkerInterface> &worker) {
+  if (!worker || worker->GetAssignedTaskId().IsNil()) {
+    return;  // The worker may have died or is no longer processing the task.
+  }
+  TaskID task_id = worker->GetAssignedTaskId();
+
+  // First, always release task dependencies. This ensures we don't leak resources even
+  // if we don't need to unblock the worker below.
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+
   if (new_scheduler_enabled_) {
     // Important: avoid double unblocking if the unblock RPC finishes after task end.
     if (!worker || !worker->IsBlocked()) {
@@ -2199,15 +2208,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(
     ScheduleAndDispatch();
     return;
   }
-
-  if (!worker || worker->GetAssignedTaskId().IsNil()) {
-    return;  // The worker may have died or is no longer processing the task.
-  }
-  TaskID task_id = worker->GetAssignedTaskId();
-
-  // First, always release task dependencies. This ensures we don't leak resources even
-  // if we don't need to unblock the worker below.
-  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
 
   if (!worker->IsBlocked()) {
     return;  // Don't need to unblock the worker.
