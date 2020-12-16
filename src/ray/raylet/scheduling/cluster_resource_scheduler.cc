@@ -868,6 +868,12 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
+void ClusterResourceScheduler::UpdateLastReportResourcesFromGcs(std::shared_ptr<SchedulingResources> gcs_resources) {
+  NodeResources node_resources = ResourceMapToNodeResources(
+      string_to_int_map_, gcs_resources->GetTotalResources().GetResourceMap(), gcs_resources->GetAvailableResources().GetResourceMap());
+  last_report_resources_.reset(new NodeResources(node_resources));
+}
+
 void ClusterResourceScheduler::FillResourceUsage(
     bool light_report_resource_usage_enabled,
     std::shared_ptr<rpc::ResourcesData> resources_data) {
@@ -877,8 +883,46 @@ void ClusterResourceScheduler::FillResourceUsage(
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
 
-  if (!light_report_resource_usage_enabled || !last_report_resources_ ||
-      resources != *last_report_resources_.get()) {
+  if (light_report_resource_usage_enabled) {
+    // Reset all local views for remote nodes. This is needed in case tasks that
+    // we spilled back to a remote node were not actually scheduled on the
+    // node. Then, the remote node's resource availability may not change and
+    // so it may not send us another update.
+    for (auto &node : nodes_) {
+      if (node.first != local_node_id_) {
+        node.second.ResetLocalView();
+      }
+    }
+
+    for (int i = 0; i < PredefinedResources_MAX; i++) {
+      const auto &label = ResourceEnumToString((PredefinedResources)i);
+      const auto &capacity = resources.predefined_resources[i];
+      const auto &last_capacity = last_report_resources_->predefined_resources[i];
+      if (capacity.available != last_capacity.available) {
+        resources_data->set_resources_available_changed(true);
+        (*resources_data->mutable_resources_available())[label] =
+            capacity.available.Double();
+      }
+      if (capacity.total != last_capacity.total) {
+        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      }
+    }
+    for (auto it = resources.custom_resources.begin();
+         it != resources.custom_resources.end(); it++) {
+      uint64_t custom_id = it->first;
+      const auto &capacity = it->second;
+      const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
+      const auto &label = string_to_int_map_.Get(custom_id);
+      if (capacity.available != last_capacity.available) {
+        resources_data->set_resources_available_changed(true);
+        (*resources_data->mutable_resources_available())[label] =
+            capacity.available.Double();
+      }
+      if (capacity.total != last_capacity.total) {
+        (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
+      }
+    }
+  } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {
       const auto &label = ResourceEnumToString((PredefinedResources)i);
       const auto &capacity = resources.predefined_resources[i];
@@ -901,22 +945,6 @@ void ClusterResourceScheduler::FillResourceUsage(
       }
       if (capacity.total != 0) {
         (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
-      }
-    }
-    resources_data->set_resources_available_changed(true);
-    if (light_report_resource_usage_enabled) {
-      last_report_resources_.reset(new NodeResources(resources));
-    }
-  }
-
-  if (light_report_resource_usage_enabled) {
-    // Reset all local views for remote nodes. This is needed in case tasks that
-    // we spilled back to a remote node were not actually scheduled on the
-    // node. Then, the remote node's resource availability may not change and
-    // so it may not send us another update.
-    for (auto &node : nodes_) {
-      if (node.first != local_node_id_) {
-        node.second.ResetLocalView();
       }
     }
   }

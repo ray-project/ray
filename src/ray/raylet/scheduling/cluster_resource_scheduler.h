@@ -362,6 +362,12 @@ class ClusterResourceScheduler {
   /// fields used.
   void FillResourceUsage(bool light_report_resource_usage_enabled,
                          std::shared_ptr<rpc::ResourcesData> resources_data);
+  
+  /// Update last report resources local cache from gcs cache,
+  /// this is needed when gcs fo.
+  ///
+  /// \param gcs_resources: The remote cache from gcs.
+  void UpdateLastReportResourcesFromGcs(std::shared_ptr<SchedulingResources> gcs_resources);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

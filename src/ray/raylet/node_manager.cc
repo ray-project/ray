@@ -450,6 +450,7 @@ void NodeManager::ReportResourceUsage() {
   resources_data->set_node_id(self_node_id_.Binary());
 
   if (new_scheduler_enabled_) {
+    new_resource_scheduler_->UpdateLastReportResourcesFromGcs(gcs_client_->Nodes().GetLastResourceUsage());
     new_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
                                                resources_data);
     cluster_task_manager_->FillResourceUsage(light_report_resource_usage_enabled_,
