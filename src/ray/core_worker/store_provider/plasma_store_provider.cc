@@ -224,7 +224,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception, bool release_resources) {
+    bool *got_exception,
+    bool release_resources) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -333,8 +334,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       // SANG-TODO Implement wait
-      RAY_RETURN_NOT_OK(
-          raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(raylet_client_->Wait(

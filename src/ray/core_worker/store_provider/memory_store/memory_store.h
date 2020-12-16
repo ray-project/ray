@@ -137,12 +137,13 @@ class CoreWorkerMemoryStore {
  private:
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
-  /// \param[in] release_resources true if memory store blocking get needs to release
-  /// resources. is an exception.
+  /// \param[in] release_resources true if memory store blocking get needs to release resources.
+  /// is an exception.
   Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
                  int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
-                 bool abort_if_any_object_is_exception, bool release_resources);
+                 bool abort_if_any_object_is_exception,
+                 bool release_resources);
 
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
