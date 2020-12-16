@@ -1207,8 +1207,8 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   std::unordered_map<std::string, double> task_request = {{"custom123", 5}};
-  bool allocated = cluster_resources.AllocateLocalTaskResources(
-      task_request, resource_instances);
+  bool allocated =
+      cluster_resources.AllocateLocalTaskResources(task_request, resource_instances);
   ASSERT_TRUE(allocated);
   ASSERT_TRUE(cluster_resources.IsAvailableResourceEmpty("custom123"));
 }

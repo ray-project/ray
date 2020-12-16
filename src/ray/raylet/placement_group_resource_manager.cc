@@ -23,15 +23,15 @@ namespace ray {
 namespace raylet {
 
 void PlacementGroupResourceManager::ReturnUnusedBundle(
-  const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
+    const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
-     if (0 == in_use_bundles.count(iter->first)) {
+    if (0 == in_use_bundles.count(iter->first)) {
       ReturnBundle(*iter->second);
       bundle_spec_map_.erase(iter++);
-     } else {
+    } else {
       iter++;
-     }
     }
+  }
 }
 
 OldPlacementGroupResourceManager::OldPlacementGroupResourceManager(
@@ -153,7 +153,7 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
     : cluster_resource_scheduler_(cluster_resource_scheduler_) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
-  const BundleSpecification &bundle_spec) {
+    const BundleSpecification &bundle_spec) {
   auto iter = pg_bundles_.find(bundle_spec.BundleId());
   if (iter != pg_bundles_.end()) {
     if (iter->second->state_ == CommitState::COMMITTED) {
@@ -177,11 +177,11 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     return false;
   }
 
-  auto bundle_state = std::make_shared<BundleTransactionState>(CommitState::PREPARED,
-                                                               resource_instances);
+  auto bundle_state =
+      std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
   pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-  bundle_spec_map_.emplace(
-        bundle_spec.BundleId(), std::make_shared<BundleSpecification>(bundle_spec.GetMessage()));
+  bundle_spec_map_.emplace(bundle_spec.BundleId(), std::make_shared<BundleSpecification>(
+                                                       bundle_spec.GetMessage()));
 
   return true;
 }
@@ -190,8 +190,11 @@ void NewPlacementGroupResourceManager::CommitBundle(
     const BundleSpecification &bundle_spec) {
   auto it = pg_bundles_.find(bundle_spec.BundleId());
   if (it == pg_bundles_.end()) {
-    // We should only ever receive a commit for a non-existent placement group when a placement group is created and removed in quick succession.
-    RAY_LOG(DEBUG) << "Received a commit message for an unknown bundle. The bundle info is " << bundle_spec.DebugString();
+    // We should only ever receive a commit for a non-existent placement group when a
+    // placement group is created and removed in quick succession.
+    RAY_LOG(DEBUG)
+        << "Received a commit message for an unknown bundle. The bundle info is "
+        << bundle_spec.DebugString();
     return;
   } else {
     // Ignore request If the bundle state is already committed.
@@ -204,7 +207,7 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &bundle_state = it->second;
   bundle_state->state_ = CommitState::COMMITTED;
 
-  for (const auto &resource: bundle_spec.GetFormattedResources()) {
+  for (const auto &resource : bundle_spec.GetFormattedResources()) {
     cluster_resource_scheduler_->AddLocalResource(resource.first, resource.second);
   }
 }
@@ -224,16 +227,20 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   // Return original resources to resource allocator `ClusterResourceScheduler`.
   auto original_resources = it->second->resources_;
   cluster_resource_scheduler_->FreeLocalTaskResources(original_resources);
-  
-  // Substract placement group resources from resource allocator `ClusterResourceScheduler`.
+
+  // Substract placement group resources from resource allocator
+  // `ClusterResourceScheduler`.
   const auto &placement_group_resources = bundle_spec.GetFormattedResources();
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
-  cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources, resource_instances);
-  for (const auto &resource: placement_group_resources) {
+  cluster_resource_scheduler_->AllocateLocalTaskResources(placement_group_resources,
+                                                          resource_instances);
+  for (const auto &resource : placement_group_resources) {
     if (cluster_resource_scheduler_->IsAvailableResourceEmpty(resource.first)) {
-      RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first << "] is empty, Will delete it from local resource";
-      // Delete local resource if available resource is empty when return bundle, or there will be resource leak.
+      RAY_LOG(DEBUG) << "Available bundle resource:[" << resource.first
+                     << "] is empty, Will delete it from local resource";
+      // Delete local resource if available resource is empty when return bundle, or there
+      // will be resource leak.
       cluster_resource_scheduler_->DeleteLocalResource(resource.first);
     }
   }

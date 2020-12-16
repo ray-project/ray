@@ -77,8 +77,7 @@ class PlacementGroupResourceManager {
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec: A set of bundles which in use.
-  void ReturnUnusedBundle(
-      const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
+  void ReturnUnusedBundle(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
   virtual ~PlacementGroupResourceManager() {}
 
@@ -141,7 +140,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// Create a new placement group resource manager.
   ///
   /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
-  NewPlacementGroupResourceManager(std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_);
+  NewPlacementGroupResourceManager(
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_);
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
@@ -151,11 +151,13 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   void ReturnBundle(const BundleSpecification &bundle_spec);
 
-  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const { return cluster_resource_scheduler_; }
+  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
+    return cluster_resource_scheduler_;
+  }
 
  private:
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  
+
   /// Tracking placement group bundles and their states. This mapping is the source of
   /// truth for the new scheduler.
   std::unordered_map<BundleID, std::shared_ptr<BundleTransactionState>, pair_hash>

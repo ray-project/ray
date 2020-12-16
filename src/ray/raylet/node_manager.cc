@@ -175,7 +175,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_(config.record_metrics_period_ms) {
-  
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
@@ -218,11 +217,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
         self_node_id_, new_resource_scheduler_, fulfills_dependencies_func,
         is_owner_alive, get_node_info_func));
-    placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
-      new_resource_scheduler_);
+    placement_group_resource_manager_ =
+        std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler_);
   } else {
-    placement_group_resource_manager_ = std::make_shared<OldPlacementGroupResourceManager>(
-      local_available_resources_, cluster_resource_map_, self_node_id_);
+    placement_group_resource_manager_ =
+        std::make_shared<OldPlacementGroupResourceManager>(
+            local_available_resources_, cluster_resource_map_, self_node_id_);
   }
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -1739,11 +1739,11 @@ void NodeManager::HandlePrepareBundleResources(
   auto bundle_spec = BundleSpecification(request.bundle_spec());
   RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
                  << bundle_spec.DebugString();
-  
+
   auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  
+
   if (!new_scheduler_enabled_) {
     // Call task dispatch to assign work to the new group.
     TryLocalInfeasibleTaskScheduling();
@@ -1759,9 +1759,10 @@ void NodeManager::HandleCommitBundleResources(
                  << bundle_spec.DebugString();
   placement_group_resource_manager_->CommitBundle(bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-  
+
   if (new_scheduler_enabled_) {
-    // Schedule in case a lease request for this placement group arrived before the commit message.
+    // Schedule in case a lease request for this placement group arrived before the commit
+    // message.
     ScheduleAndDispatch();
   } else {
     // Call task dispatch to assign work to the new group.
@@ -1803,7 +1804,8 @@ void NodeManager::HandleCancelResourceReserve(
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
 
   if (new_scheduler_enabled_) {
-    // Schedule in case a lease request for this placement group arrived before the commit message.
+    // Schedule in case a lease request for this placement group arrived before the commit
+    // message.
     ScheduleAndDispatch();
   } else {
     // Call task dispatch to assign work to the new group.
