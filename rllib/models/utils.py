@@ -1,4 +1,6 @@
+from wrapt import decorator
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+import threading
 
 
 def get_filter_config(shape):
@@ -65,3 +67,19 @@ def get_initializer(name, framework="tf"):
 
     raise ValueError("Unknown activation ({}) for framework={}!".format(
         name, framework))
+
+
+@decorator
+def synchronized(wrapped, instance, args, kwargs):
+    if instance is None:
+        context = vars(wrapped)
+    else:
+        context = vars(instance)
+
+    lock = context.get('_synchronized_lock', None)
+
+    if lock is None:
+        lock = context.setdefault('_synchronized_lock', threading.RLock())
+
+    with lock:
+        return wrapped(*args, **kwargs)

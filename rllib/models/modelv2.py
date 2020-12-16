@@ -15,6 +15,8 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
 
+from ray.rllib.models.utils import synchronized
+
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
@@ -172,6 +174,7 @@ class ModelV2:
         """
         return {}
 
+    @synchronized
     def __call__(
             self,
             input_dict: Dict[str, TensorType],
@@ -229,6 +232,16 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state
 
+    @synchronized
+    def call_with_value(
+            self,
+            input_dict: Dict[str, TensorType],
+            state: List[Any] = None,
+            seq_lens: TensorType = None) -> (TensorType, TensorType, List[TensorType]):
+        model_out, state = self.__call__(input_dict, state, seq_lens)
+        value = self.value_function()
+        return model_out, value, state
+
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
@@ -245,6 +258,27 @@ class ModelV2:
             states.append(train_batch["state_in_{}".format(i)])
             i += 1
         ret = self.__call__(train_batch, states, train_batch.get("seq_lens"))
+        del train_batch["is_training"]
+        return ret
+
+    @PublicAPI
+    def from_batch_with_value(self, train_batch: SampleBatch,
+                              is_training: bool = True) -> (TensorType, TensorType, List[TensorType]):
+        """Convenience function that calls this model with a tensor batch and calls value function atomically so that
+            competing threads aren't exposed to other thread's value_function outputs
+
+        All this does is unpack the tensor batch to call this model with the
+        right input dict, state, and seq len arguments.
+        """
+
+        train_batch["is_training"] = is_training
+        states = []
+        i = 0
+        while "state_in_{}".format(i) in train_batch:
+            states.append(train_batch["state_in_{}".format(i)])
+            i += 1
+        ret = self.call_with_value(train_batch, states, train_batch.get("seq_lens"))
+
         del train_batch["is_training"]
         return ret
 

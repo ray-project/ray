@@ -9,8 +9,7 @@ torch, nn = try_import_torch()
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
-    logits, _ = model.from_batch(train_batch)
-    values = model.value_function()
+    logits, values, _ = model.from_batch_with_value(train_batch)
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().sum()
