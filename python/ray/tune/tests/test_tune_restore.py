@@ -425,14 +425,14 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
     def testWarmStart(self):
-        if ("SIGOPT_KEY" not in os.environ):
+        if "SIGOPT_KEY" not in os.environ:
             self.skipTest("No SigOpt API key found in environment.")
             return
 
         super().testWarmStart()
 
     def testRestore(self):
-        if ("SIGOPT_KEY" not in os.environ):
+        if "SIGOPT_KEY" not in os.environ:
             self.skipTest("No SigOpt API key found in environment.")
             return
         super().testRestore()
