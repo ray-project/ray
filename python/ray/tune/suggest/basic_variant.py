@@ -18,6 +18,18 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     See also: `ray.tune.suggest.variant_generator`.
 
+    This generator accepts a pre-set list of points that should be evaluated.
+    The points will replace the first samples of each experiment passed to
+    the ``BasicVariantGenerator``.
+
+    Each points will replace one sample of the specified ``num_samples``. If
+    grid search variables are overwritten with the values specified in the
+    presets, the number of samples will thus be reduced. For example, if
+    a grid search variable ``a`` with values ``[0, 1, 2]`` is passed, and
+    ``num_samples=5``, and if ``a=2`` is passed as the first and only
+    ``point_to_evaluate``, a total number of 13 samples is generated: One
+    for ``a=2``, and then 4 samples for each of the 3 grid search variables.
+
     Args:
         points_to_evaluate (list): Initial parameter suggestions to be run
         first. This is for when you already have some good parameters
