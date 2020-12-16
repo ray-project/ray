@@ -283,7 +283,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Record metrics.
   void RecordMetrics() const;
 
-  void Tick();
+  void Tick(const boost::system::error_code &e);
 
  private:
   friend class TestObjectManager;
@@ -453,7 +453,6 @@ class ObjectManager : public ObjectManagerInterface,
   const RestoreSpilledObjectCallback restore_spilled_object_;
 
   /// Pull manager retry timer .
-  /* std::unique_ptr<boost::asio::deadline_timer> pull_retry_timer_; */
   boost::asio::deadline_timer pull_retry_timer_;
 
   /// Object push manager.
