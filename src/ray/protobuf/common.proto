@@ -442,10 +442,10 @@ message MetricPoint {
 
 // Type of a worker exit.
 enum ClientDisconnectType {
-  // Intended worker exit.
-  FINISHED = 0;
   // Unintended worker exit.
-  UNEXPECTED_EXIT = 1;
+  UNEXPECTED_EXIT = 0;
+  // Intended worker exit.
+  FINISHED = 1;
   // Worker exit due to resource bundle release.
   UNUSED_RESOURCE_RELEASED = 2;
   // Worker exit due to placement group removal.
