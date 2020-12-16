@@ -36,7 +36,7 @@ HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 MAX_HOME_RETRIES = 3
-DELAY_BEFORE_HOME_RETRY = 5
+HOME_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -259,8 +259,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             except Exception:
                 # TODO (Dmitri): Identify the exception we're trying to avoid.
                 logger.info("Error reading container's home directory. "
-                            f"Retrying in {DELAY_BEFORE_HOME_RETRY} seconds.")
-                time.sleep(DELAY_BEFORE_HOME_RETRY)
+                            f"Retrying in {HOME_RETRY_DELAY_S} seconds.")
+                time.sleep(HOME_RETRY_DELAY_S)
         # Last try
         self._home_cached = self._try_to_get_home()
         return self._home_cached
