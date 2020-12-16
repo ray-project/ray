@@ -327,3 +327,10 @@ as shown below.
   :mod:`client.create_backend <ray.serve.api.Client.create_backend>` by
   default.
 
+Deploying MLFlow Models
+=======================
+
+MLFlow models can be loaded as ordinary python functions, which means it is
+straightforward to deploy them with Ray Serve, as shown in the example below.
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/mlflow_model.py

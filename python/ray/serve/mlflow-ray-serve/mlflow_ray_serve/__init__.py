@@ -8,6 +8,11 @@ import mlflow.pyfunc
 
 logger = logging.getLogger(__name__)
 
+def target_help():
+    # TODO: Improve
+    help_string = ("The mlflow-ray-serve plugin integrates Ray Serve "
+                       "with the MLFlow deployment API. ")
+    return help_string
 
 def run_local(name, model_uri, flavor=None, config=None):
     pass  # TODO
@@ -32,10 +37,7 @@ class RayServePlugin(BaseDeploymentClient):
         self.client = serve.start()
 
     def help():
-        help_string = ("The mlflow-ray-serve plugin integrates Ray Serve "
-                       "with the MLFlow deployment API. ")
-
-        return help_string
+        return target_help()
 
     def create_deployment(self, name, model_uri, flavor=None, config=None):
         self.client.create_backend(
