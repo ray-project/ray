@@ -222,7 +222,13 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
   RAY_LOG(DEBUG) << "Queuing task " << task.GetTaskSpecification().TaskId();
   Work work = std::make_tuple(task, reply, callback);
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
-  tasks_to_schedule_[scheduling_class].push_back(work);
+  // If the scheduling class is infeasible, just add the work to the infeasible queue
+  // directly.
+  if (infeasible_tasks_.count(scheduling_class) > 0) {
+    infeasible_tasks_[scheduling_class].push_back(work);
+  } else {
+    tasks_to_schedule_[scheduling_class].push_back(work);
+  }
   AddToBacklogTracker(task);
 }
 
@@ -471,7 +477,6 @@ void ClusterTaskManager::FillResourceUsage(
     const auto &count = queue.size();
 
     auto by_shape_entry = resource_load_by_shape->Add();
-
     for (const auto &resource : resources) {
       // Add to `resource_loads`.
       const auto &label = resource.first;
@@ -485,8 +490,8 @@ void ClusterTaskManager::FillResourceUsage(
     // If a task is not feasible on the local node it will not be feasible on any other
     // node in the cluster. See the scheduling policy defined by
     // ClusterResourceScheduler::GetBestSchedulableNode for more details.
-    int num_ready = by_shape_entry->num_infeasible_requests_queued();
-    by_shape_entry->set_num_infeasible_requests_queued(num_ready + count);
+    int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
+    by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
     auto backlog_it = backlog_tracker_.find(scheduling_class);
     if (backlog_it != backlog_tracker_.end()) {
       by_shape_entry->set_backlog_size(backlog_it->second);

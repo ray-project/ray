@@ -652,6 +652,30 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   ASSERT_EQ(reply.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
 }
 
+TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
+  /*
+    Test infeasible warning is printed only once when the same shape is queued again.
+   */
+
+  // Make sure the first infeasible task announces warning.
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+
+  // Make sure the same shape infeasible task won't be announced.
+  Task task2 = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply2;
+  std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
+  auto callback2 = [callback_occurred2]() { *callback_occurred2 = true; };
+  task_manager_.QueueTask(task2, &reply2, callback2);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
