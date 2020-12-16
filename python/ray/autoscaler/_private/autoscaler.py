@@ -28,7 +28,7 @@ from ray.autoscaler._private.resource_demand_scheduler import \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
     with_head_node_ip, hash_launch_conf, hash_runtime_conf,\
-    DEBUG_AUTOSCALING_STATUS, DEBUG_AUTOSCALING_ERROR
+    DEBUG_AUTOSCALING_ERROR
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
@@ -184,12 +184,27 @@ class StandardAutoscaler:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            if (self._keep_min_worker_of_node_type(node_id, node_type_counts)
-                    or not nodes_allowed_to_terminate.get(
-                        node_id, True)) and self.launch_config_ok(node_id):
+            needed_for_min_workers = self._keep_min_worker_of_node_type(node_id, node_type_counts)
+            needed_for_min_resources = not nodes_allowed_to_terminate.get(
+                        node_id, True)
+            outdated = self.launch_config_ok(node_id)
+
+            print(f"{node_id} needed for ")
+            if (needed_for_min_resources or needed_for_min_resources) and not outdated:
                 continue
 
+
+            # if (
+            #         or ) and :
+            #     min_workers = self._keep_min_worker_of_node_type(node_id, node_type_counts)
+            #     allowed = not nodes_allowed_to_terminate.get(node_id, True)
+            #     launch_config = self.launch_config_ok(node_id)
+            #     print(f"Node: {node_id} skipping. min workers: {min_workers}, allowed: {allowed}, launch_config: {launch_config}")
+
+            #     continue
+
             node_ip = self.provider.internal_ip(node_id)
+            print(f"Checking if node {node_ip} should be removed. Horizon: {horizon} last_used: {last_used}")
             if node_ip in last_used and last_used[node_ip] < horizon:
                 logger.debug("StandardAutoscaler: "
                              "{}: Terminating idle node.".format(node_id))
@@ -540,6 +555,14 @@ class StandardAutoscaler:
             delta = now - last_heartbeat_time
             if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
                 return
+
+        # if key not in self.load_metrics.last_heartbeat_time_by_ip:
+        #     self.load_metrics.last_heartbeat_time_by_ip[key] = now
+        # last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
+        # delta = now - last_heartbeat_time
+        # if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
+        #     return
+
         logger.warning("StandardAutoscaler: "
                        "{}: No recent heartbeat, "
                        "restarting Ray to recover...".format(node_id))

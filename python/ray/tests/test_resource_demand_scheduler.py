@@ -1070,6 +1070,13 @@ class AutoscalingTest(unittest.TestCase):
             lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
+        from ray.autoscaler._private.cli_logger import cli_logger
+
+        def do_nothing(*args, **kwargs):
+            pass
+
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
 
     def tearDown(self):
         self.provider = None
@@ -1959,6 +1966,7 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(node_ip,
                   config["available_node_types"]["def_worker"]["resources"],
                   {}, {})
+        print("============ Should scale down from here =============")
         autoscaler.update()
         self.waitForNodes(1)
         # If node {node_id} was terminated any time then it's state will be set
@@ -2037,6 +2045,7 @@ class AutoscalingTest(unittest.TestCase):
                 "max_workers": 3,
             }
         })
+        config["idle_timeout_minutes"] = 0
 
         config_path = self.write_config(config)
         self.provider = MockProvider()
