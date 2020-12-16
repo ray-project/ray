@@ -545,7 +545,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results,
              bool plasma_objects_only = false,
-             release_resources = true);
+             bool release_resources = true);
 
   /// Return whether or not the object store contains the given object.
   ///
