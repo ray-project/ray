@@ -105,11 +105,6 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
 
-    def testLogging(self):
-        from ray.tune.examples.logging_example import MyTrainableClass
-        validate_save_restore(MyTrainableClass)
-        validate_save_restore(MyTrainableClass, use_object_store=True)
-
     def testHyperbandExample(self):
         from ray.tune.examples.hyperband_example import MyTrainableClass
         validate_save_restore(MyTrainableClass)
