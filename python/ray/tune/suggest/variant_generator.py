@@ -1,6 +1,7 @@
 import copy
 import logging
-from typing import Any, Dict, Generator, List, Tuple
+from collections.abc import Mapping
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import numpy
 import random
@@ -138,13 +139,38 @@ def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
     return resolved_vars, domain_vars, grid_vars
 
 
-def count_variants(spec: Dict) -> int:
-    spec = copy.deepcopy(spec)
-    _, domain_vars, grid_vars = parse_spec_vars(spec)
-    grid_count = 1
-    for path, domain in grid_vars:
-        grid_count *= len(domain.categories)
-    return spec.get("num_samples", 1) * grid_count
+def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
+    # Helper function: Deep update dictionary
+    def deep_update(d, u):
+        for k, v in u.items():
+            if isinstance(v, Mapping):
+                d[k] = deep_update(d.get(k, {}), v)
+            else:
+                d[k] = v
+        return d
+
+    # Count samples for a specific spec
+    def spec_samples(spec, num_samples=1):
+        _, domain_vars, grid_vars = parse_spec_vars(spec)
+        grid_count = 1
+        for path, domain in grid_vars:
+            grid_count *= len(domain.categories)
+        return num_samples * grid_count
+
+    total_samples = 0
+    total_num_samples = spec.get("num_samples", 1)
+    # For each preset, overwrite the spec and count the samples generated
+    # for this preset
+    for preset in presets:
+        preset_spec = copy.deepcopy(spec)
+        deep_update(preset_spec["config"], preset)
+        total_samples += spec_samples(preset_spec, 1)
+        total_num_samples -= 1
+
+    # Add the remaining samples
+    if total_num_samples > 0:
+        total_samples += spec_samples(spec, total_num_samples)
+    return total_samples
 
 
 def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:

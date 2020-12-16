@@ -1,3 +1,4 @@
+import copy
 import itertools
 import os
 import uuid
@@ -82,12 +83,14 @@ class BasicVariantGenerator(SearchAlgorithm):
         """
         experiment_list = convert_to_experiment_list(experiments)
         for experiment in experiment_list:
-            self._total_samples += count_variants(experiment.spec)
+            points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
+            self._total_samples += count_variants(experiment.spec,
+                                                  points_to_evaluate)
             self._trial_generator = itertools.chain(
                 self._trial_generator,
                 self._generate_trials(
                     experiment.spec.get("num_samples", 1), experiment.spec,
-                    experiment.dir_name))
+                    experiment.dir_name, points_to_evaluate))
 
     def next_trial(self):
         """Provides one Trial object to be queued into the TrialRunner.
@@ -105,7 +108,11 @@ class BasicVariantGenerator(SearchAlgorithm):
             self.set_finished()
             return None
 
-    def _generate_trials(self, num_samples, unresolved_spec, output_path=""):
+    def _generate_trials(self,
+                         num_samples,
+                         unresolved_spec,
+                         output_path="",
+                         points_to_evaluate=None):
         """Generates Trial objects with the variant generation process.
 
         Uses a fixed point iteration to resolve variants. All trials
@@ -120,8 +127,10 @@ class BasicVariantGenerator(SearchAlgorithm):
         if "run" not in unresolved_spec:
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
 
-        while self._points_to_evaluate:
-            config = self._points_to_evaluate.pop(0)
+        points_to_evaluate = points_to_evaluate or []
+
+        while points_to_evaluate:
+            config = points_to_evaluate.pop(0)
             for resolved_vars, spec in get_preset_variants(
                     unresolved_spec, config):
                 trial_id = self._uuid_prefix + ("%05d" % self._counter)
