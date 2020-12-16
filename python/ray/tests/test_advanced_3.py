@@ -284,7 +284,7 @@ def test_workers(shutdown_only):
 
 
 def test_object_ref_properties():
-    id_bytes = b"001122334455667788990000"
+    id_bytes = b"0011223344556677889900001111"
     object_ref = ray.ObjectRef(id_bytes)
     assert object_ref.binary() == id_bytes
     object_ref = ray.ObjectRef.nil()
