@@ -1,5 +1,6 @@
 import mlflow.pyfunc
-
+import pandas as pd
+from mlflow.deployments import get_deploy_client
 
 # Define the model class
 class AddN(mlflow.pyfunc.PythonModel):
@@ -16,10 +17,7 @@ add5_model = AddN(n=5)
 mlflow.pyfunc.save_model(path=model_path, python_model=add5_model)
 
 # Evaluate the model
-import pandas as pd
-from mlflow.deployments import get_deploy_client
-
-client = get_deploy_client('ray-serve')
+client = get_deploy_client("ray-serve")
 
 client.create_deployment("add5", "/Users/archit/ray/add_n_model")
 print(client.list_deployments())
