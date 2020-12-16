@@ -2,6 +2,7 @@
 
 It also checks that it is usable with a separate scheduler.
 """
+import sys
 import time
 
 from ray import tune
@@ -37,6 +38,7 @@ if __name__ == "__main__":
     if "SIGOPT_KEY" not in os.environ:
         if args.smoke_test:
             print("SigOpt API Key not found. Skipping smoke test.")
+            sys.exit(0)
         else:
             raise ValueError(
                 "SigOpt API Key not found. Please set the SIGOPT_KEY "

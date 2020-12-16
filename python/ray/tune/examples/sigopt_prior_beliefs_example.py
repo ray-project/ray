@@ -1,4 +1,5 @@
 """"Example using Sigopt's support for prior beliefs."""
+import sys
 
 import numpy as np
 from ray import tune
@@ -45,6 +46,7 @@ if __name__ == "__main__":
     if "SIGOPT_KEY" not in os.environ:
         if args.smoke_test:
             print("SigOpt API Key not found. Skipping smoke test.")
+            sys.exit(0)
         else:
             raise ValueError(
                 "SigOpt API Key not found. Please set the SIGOPT_KEY "

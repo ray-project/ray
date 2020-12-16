@@ -1,5 +1,5 @@
 """Example using Sigopt's multi-objective functionality."""
-
+import sys
 import time
 
 import numpy as np
@@ -38,6 +38,7 @@ if __name__ == "__main__":
     if "SIGOPT_KEY" not in os.environ:
         if args.smoke_test:
             print("SigOpt API Key not found. Skipping smoke test.")
+            sys.exit(0)
         else:
             raise ValueError(
                 "SigOpt API Key not found. Please set the SIGOPT_KEY "
