@@ -263,7 +263,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 time.sleep(DELAY_BEFORE_HOME_RETRY)
         # Last try
         self._home_cached = self._try_to_get_home()
-        return self._home_cached()
+        return self._home_cached
 
     def _try_to_get_home(self):
         # TODO (Dmitri): Think about how to use the node's HOME variable
