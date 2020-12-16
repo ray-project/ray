@@ -100,11 +100,16 @@ def get_resource(container_resources, resource_name):
 
 
 def _get_resource(container_resources, resource_name, field_name):
-    if (field_name in container_resources
-            and resource_name in container_resources[field_name]):
-        return _parse_resource(container_resources[field_name][resource_name])
-    else:
+    if field_name not in container_resources:
         return float("inf")
+    resources = container_resources[field_name]
+    matching_keys = [key for key in resources if resource_name in key.lower()]
+    if len(matching_keys) == 0:
+        return float("inf")
+    if len(matching_keys) > 2:
+        raise ValueError(f"Multiple {resource_name} types not supported.")
+    resource_key = matching_keys.pop()
+    return _parse_resource(resources[resource_key])
 
 
 def _parse_resource(resource):
