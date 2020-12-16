@@ -33,11 +33,11 @@ class MLFlowLoggerCallback(LoggerCallback):
         registry_uri (str): The registry URI that gets passed directly to
             mlflow.tracking.MlflowClient initialization.
         experiment_name (str): The experiment name to use for this Tune run.
-            If the experiment alread exists with Mlflow, it will be reused.
+            If the experiment already exists with MlFlow, it will be reused.
             If not, a new experiment will be created.
         save_artifact (bool): If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
-            corresponding run in Mlflow.
+            corresponding run in MlFlow.
 
     Example:
 
@@ -63,7 +63,7 @@ class MLFlowLoggerCallback(LoggerCallback):
                  experiment_name: Optional[str] = None,
                  save_artifact: bool = False):
         if mlflow is None:
-            raise RuntimeError("mlflow has not been installed. Please `pip "
+            raise RuntimeError("MLFlow has not been installed. Please `pip "
                                "install mlflow` to use the MLFlowLogger.")
 
         self.client = MlflowClient(
@@ -206,7 +206,7 @@ def mlflow_mixin(func: Callable):
             ...
             mlflow.log_metric(...)
 
-    You can also use Mlflow's autologging feature if using a training
+    You can also use MlFlow's autologging feature if using a training
     framework like Pytorch Lightning, XGBoost, etc. More information can be
     found here (https://mlflow.org/docs/latest/tracking.html#automatic
     -logging).
@@ -220,11 +220,11 @@ def mlflow_mixin(func: Callable):
             mlflow.autolog()
             xgboost_results = xgb.train(config, ...)
 
-    The Mlflow configuration is done by passing a ``mlflow`` key to
+    The MlFlow configuration is done by passing a ``mlflow`` key to
     the ``config`` parameter of ``tune.run()`` (see example below).
 
     The content of the ``mlflow`` config entry is used to
-    configure Mlflow. Here are the keys you can pass in to this config entry:
+    configure MlFlow. Here are the keys you can pass in to this config entry:
 
     Args:
         tracking_uri (str): The tracking URI for MLflow tracking. If using
@@ -248,7 +248,7 @@ def mlflow_mixin(func: Callable):
 
         import mlflow
 
-        # Create the Mlflow expriment.
+        # Create the MlFlow expriment.
         mlflow.create_experiment("my_experiment")
 
         @mlflow_mixin
@@ -272,7 +272,7 @@ def mlflow_mixin(func: Callable):
             })
     """
     if mlflow is None:
-        raise RuntimeError("mlflow has not been installed. Please `pip "
+        raise RuntimeError("MLFlow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
     func.__mixins__ = (MLFlowTrainableMixin, )
     return func

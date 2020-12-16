@@ -266,7 +266,7 @@ class MLFlowTest(unittest.TestCase):
 
         train_fn.__mixins__ = (_MockMlFlowTrainableMixin, )
 
-        # No mlflow config passed in.
+        # No MLFlow config passed in.
         with self.assertRaises(ValueError):
             wrapped = wrap_function(train_fn)(trial_config)
 

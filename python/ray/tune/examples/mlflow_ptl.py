@@ -37,7 +37,7 @@ def tune_mnist(num_samples=10,
     # Download data
     MNISTDataModule(data_dir=data_dir).prepare_data()
 
-    # Set the mlflow experiment, or create it if it does not exist.
+    # Set the MLFlow experiment, or create it if it does not exist.
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("ptl_autologging_test")
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     if args.smoke_test:
         tune_mnist(
             num_samples=1,
-            num_epochs=3,
+            num_epochs=1,
             gpus_per_trial=0,
             tracking_uri=os.path.join(tempfile.gettempdir(), "mlruns"))
     else:

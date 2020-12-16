@@ -86,15 +86,15 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-tutorial.rst
    tune-advanced-tutorial.rst
-   tune-lifecycle.rst
    tune-distributed.rst
-   tune-sklearn.rst
+   tune-lifecycle.rst
+   tune-mlflow.rst
    tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
    tune-serve-integration-mnist.rst
+   tune-sklearn.rst
    tune-xgboost.rst
    tune-wandb.rst
-   tune-mlflow.rst
 
 Colab Exercises
 ---------------
