@@ -533,9 +533,6 @@ void NodeManager::ReportResourceUsage() {
   if (should_global_gc_) {
     resources_data->set_should_global_gc(true);
     should_global_gc_ = false;
-    RAY_LOG(INFO) << "Broadcasting Python GC request to all raylets since the cluster "
-                  << "is low on resources. This removes Ray actor and object refs "
-                  << "that are stuck in Python reference cycles.";
   }
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
