@@ -92,8 +92,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
   } else {
-    RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex()
-                   << " total handles " << actor_handles_.size();
+    RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex();
   }
 
   return inserted;
