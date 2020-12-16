@@ -6,12 +6,15 @@ import inspect
 import json
 import logging
 import uuid
+from collections import defaultdict
 from typing import Any
+from typing import Dict
 from typing import List
 from typing import Tuple
 from typing import Optional
 
-import ray.cloudpickle as cloudpickle
+#import ray.cloudpickle as cloudpickle
+import cloudpickle
 from ray.util.inspect import is_cython
 import grpc
 
@@ -50,6 +53,7 @@ class Worker:
             self.channel = grpc.insecure_channel(conn_str)
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
         self.data_client = DataClient(self.channel, self._client_id)
+        self.reference_count: Dict[bytes, int] = defaultdict(int)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -70,7 +74,7 @@ class Worker:
         return out
 
     def _get(self, ref: ClientObjectRef, timeout: float):
-        req = ray_client_pb2.GetRequest(handle=ref.handle, timeout=timeout)
+        req = ray_client_pb2.GetRequest(id=ref.id, timeout=timeout)
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
@@ -109,11 +113,12 @@ class Worker:
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
         data = {
-            "object_handles": [
-                object_ref.handle for object_ref in object_refs
+            "object_ids": [
+                object_ref.id for object_ref in object_refs
             ],
             "num_returns": num_returns,
-            "timeout": timeout if timeout else -1
+            "timeout": timeout if timeout else -1,
+            "client_id": self._client_id,
         }
         req = ray_client_pb2.WaitRequest(**data)
         resp = self.server.WaitObject(req, metadata=self.metadata)
@@ -143,7 +148,7 @@ class Worker:
             raise TypeError("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
-    def call_remote(self, instance, *args, **kwargs):
+    def call_remote(self, instance, *args, **kwargs) -> ray_client_pb2.RemoteRef:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg)
@@ -154,10 +159,20 @@ class Worker:
         return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def call_release(self, id: bytes) -> None:
-        logging.debug(f"Releasing {id.hex}")
+        logging.info(f"Releasing {id}")
+        self.reference_count[id] -= 1
+        if self.reference_count[id] == 0:
+            self._release_server(id)
+            del self.reference_count[id]
+
+    def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
+
+    def call_retain(self, id: bytes) -> None:
+        logging.info(f"Retaining {id}")
+        self.reference_count[id] += 1
 
     def close(self):
         self.data_client.close()

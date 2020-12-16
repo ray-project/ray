@@ -2,7 +2,8 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.experimental.client import ray
 from typing import Any
 from typing import Dict
-from ray import cloudpickle
+#from ray import cloudpickle
+import cloudpickle
 
 import base64
 
@@ -11,6 +12,7 @@ class ClientBaseRef:
     def __init__(self, id, handle=None):
         self.id = id
         self.handle = handle
+        ray.call_retain(id)
 
     def __repr__(self):
         return "%s(%s)" % (
@@ -28,13 +30,16 @@ class ClientBaseRef:
     def from_remote_ref(cls, ref: ray_client_pb2.RemoteRef):
         return cls(id=ref.id, handle=ref.handle)
 
+    def to_remote_ref(self):
+        return ray_client_pb2.RemoteRef(id=self.id, handle=self.handle)
+
+    def __del__(self):
+        ray.call_release(self.id)
+
 
 class ClientObjectRef(ClientBaseRef):
     def _unpack_ref(self):
         return cloudpickle.loads(self.handle)
-
-    def __del__(self):
-        ray.call_release(self.id)
 
 
 class ClientActorRef(ClientBaseRef):
@@ -83,7 +88,8 @@ class ClientRemoteFunc(ClientStub):
                         "Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, *args, **kwargs)
+        ref = ray.call_remote(self, *args, **kwargs)
+        return ClientObjectRef.from_remote_ref(ref)
 
     def _get_ray_remote_impl(self):
         if self._raylet_remote is None:
@@ -141,7 +147,7 @@ class ClientActorClass(ClientStub):
     def remote(self, *args, **kwargs):
         # Actually instantiate the actor
         ref = ray.call_remote(self, *args, **kwargs)
-        return ClientActorHandle(ClientActorRef(ref.id, ref.handle), self)
+        return ClientActorHandle(ClientActorRef.from_remote_ref(ref), self)
 
     def __repr__(self):
         return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
@@ -250,7 +256,8 @@ class ClientRemoteMethod(ClientStub):
         self.method_name = state["method_name"]
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, *args, **kwargs)
+        ref = ray.call_remote(self, *args, **kwargs)
+        return ClientObjectRef.from_remote_ref(ref)
 
     def __repr__(self):
         name = "%s.%s" % (self.actor_handle.actor_class._name,
@@ -268,7 +275,7 @@ class ClientRemoteMethod(ClientStub):
 
 def convert_from_arg(pb) -> Any:
     if pb.local == ray_client_pb2.Arg.Locality.REFERENCE:
-        return ClientObjectRef(pb.reference_id)
+        return ClientObjectRef.from_remote_ref(pb.reference)
     elif pb.local == ray_client_pb2.Arg.Locality.INTERNED:
         return cloudpickle.loads(pb.data)
 

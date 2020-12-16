@@ -80,7 +80,7 @@ class APIImpl(ABC):
         pass
 
     @abstractmethod
-    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+    def call_remote(self, instance: "ClientStub", *args, **kwargs) -> ray_client_pb2.RemoteRef:
         """
         call_remote is called by stub objects to execute them remotely.
 
@@ -143,12 +143,24 @@ class APIImpl(ABC):
         """
         Attempts to release an object reference.
 
-        When client references are destructed, they can opportunistically
-        send a notification through the data channel to release the reference
-        being held for that object on the server.
+        When client references are destructed, they release their reference,
+        which can opportunistically send a notification through the data channel
+        to release the reference being held for that object on the server.
 
         Args:
             id: The id of the reference to release on the server side.
+        """
+
+    @abstractmethod
+    def call_retain(self, id: bytes) -> None:
+        """
+        Attempts to retain a client object reference.
+
+        Increments the reference count on the client side, to prevent
+        the client worker from attempting to release the server reference.
+
+        Args:
+            id: The id of the reference to retain on the client side.
         """
 
 
@@ -173,11 +185,14 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, instance: "ClientStub", *args, **kwargs):
+    def call_remote(self, instance: "ClientStub", *args, **kwargs) -> ray_client_pb2.RemoteRef:
         return self.worker.call_remote(instance, *args, **kwargs)
 
     def call_release(self, id: bytes) -> None:
         return self.worker.call_release(id)
+
+    def call_retain(self, id: bytes) -> None:
+        return self.worker.call_retain(id)
 
     def close(self) -> None:
         return self.worker.close()

@@ -24,7 +24,7 @@ message Arg {
     REFERENCE = 1;
   }
   Locality local = 1;
-  bytes reference_id = 2;
+  RemoteRef reference = 2;
   bytes data = 3;
   Type type = 4;
 }
@@ -61,7 +61,7 @@ message PutResponse {
 }
 
 message GetRequest {
-  bytes handle = 1;
+  bytes id = 1;
   float timeout = 2;
 }
 
@@ -71,9 +71,10 @@ message GetResponse {
 }
 
 message WaitRequest {
-  repeated bytes object_handles = 1;
+  repeated bytes object_ids = 1;
   int64 num_returns = 2;
   double timeout = 3;
+  string client_id = 4;
 }
 
 message WaitResponse {

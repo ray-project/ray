@@ -6,7 +6,8 @@ from collections import defaultdict
 from typing import Dict
 from typing import Set
 
-from ray import cloudpickle
+#from ray import cloudpickle
+import cloudpickle
 import ray
 import ray.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -72,11 +73,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def release(self, client_id: str, id: bytes) -> bool:
         if client_id in self.object_refs:
             if id in self.object_refs[client_id]:
+                logger.info(f"Releasing object {id.hex()} for {client_id}")
                 del self.object_refs[client_id][id]
                 return True
 
         if client_id in self.actor_owners:
             if id in self.actor_owners[client_id]:
+                logger.info(f"Releasing actor {id.hex()} for {client_id}")
                 del self.actor_refs[id]
                 self.actor_owners[client_id].remove(id)
                 return True
@@ -131,14 +134,15 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return self._get_object(request, "", context)
 
     def _get_object(self, request, client_id: str, context=None):
-        request_ref = cloudpickle.loads(request.handle)
-        if request_ref.binary() not in self.object_refs[client_id]:
+        if request.id not in self.object_refs[client_id]:
             return ray_client_pb2.GetResponse(valid=False)
-        objectref = self.object_refs[client_id][request_ref.binary()]
+        objectref = self.object_refs[client_id][request.id]
         logger.info("get: %s" % objectref)
         try:
             item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
+            print("XXX")
+            print(e)
             return_exception_in_context(e, context)
             return ray_client_pb2.GetResponse(valid=False)
         item_ser = cloudpickle.dumps(item)
@@ -171,7 +175,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ref=make_remote_ref(objectref.binary(), pickled_ref))
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
-        object_refs = [cloudpickle.loads(o) for o in request.object_handles]
+        object_refs = [self.object_refs[request.client_id][i]
+                       for i in request.object_ids]
         num_returns = request.num_returns
         timeout = request.timeout
         try:
@@ -252,6 +257,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remote_class = self.registered_actor_classes[payload_ref.binary()]
             arglist = _convert_args(task.args, prepared_args)
             actor = remote_class.remote(*arglist)
+            actor._serialize_local = True
             actorhandle = cloudpickle.dumps(actor)
             self.actor_refs[actorhandle] = actor
             self.actor_owners[task.client_id].add(actorhandle)
@@ -278,6 +284,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             output = remote_func.remote(*arglist)
             if output.binary() in self.object_refs[task.client_id]:
                 raise Exception("already found it")
+            print("Sched %s %s" % (task.client_id, output.binary()))
             self.object_refs[task.client_id][output.binary()] = output
             pickled_output = cloudpickle.dumps(output)
         return ray_client_pb2.ClientTaskTicket(

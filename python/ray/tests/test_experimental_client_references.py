@@ -3,6 +3,7 @@ import pytest
 from ray.tests.test_experimental_client import ray_start_client_server
 from ray.test_utils import wait_for_condition
 import ray as real_ray
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.experimental.client import _get_server_instance
 
 
@@ -43,9 +44,13 @@ def test_delete_refs_on_disconnect(ray_start_regular):
         thing1 = f.remote(6)  # noqa
         thing2 = ray.put("Hello World")  # noqa
 
-        # One put, one result, one function
-        assert len(real_ray.objects()) == 3
+        # One put, one function -- the function result thing1 is
+        # in a different category, according to the raylet.
+        assert len(real_ray.objects()) == 2
+        # But we're maintaining the reference
         assert server_object_ref_count(3)()
+        # And can get the data
+        assert ray.get(thing1) == 8
 
         # Close the client
         ray.close()
@@ -55,12 +60,7 @@ def test_delete_refs_on_disconnect(ray_start_regular):
         def test_cond():
             return len(real_ray.objects()) == 0
 
-        # TODO(barakmich): https://github.com/ray-project/ray/issues/12863
-        # This test will succeed when the server can serialize an ObjectRef
-        # without pinning it. Until then, the objects still live, according to
-        # the raylet.
-        with pytest.raises(RuntimeError):
-            wait_for_condition(test_cond, timeout=5)
+        wait_for_condition(test_cond, timeout=5)
 
 
 def test_delete_ref_on_object_deletion(ray_start_regular):
@@ -85,21 +85,26 @@ def test_delete_actor_on_disconnect(ray_start_regular):
             def inc(self):
                 self.acc += 1
 
+            def get(self):
+                return self.acc
+
         actor = Accumulator.remote()
         actor.inc.remote()
 
         assert server_actor_ref_count(1)()
+
+        assert ray.get(actor.get.remote()) == 1
 
         ray.close()
 
         wait_for_condition(server_actor_ref_count(0), timeout=5)
 
         def test_cond():
-            return len(real_ray.actors()) == 0
+            non_dead_actors = [v for v in real_ray.actors().values()
+                               if v["State"] != ActorTableData.DEAD]
+            return len(non_dead_actors) == 0
 
-        # Ditto the TODO above
-        with pytest.raises(RuntimeError):
-            wait_for_condition(test_cond, timeout=5)
+        wait_for_condition(test_cond, timeout=10)
 
 
 def test_delete_actor(ray_start_regular):
