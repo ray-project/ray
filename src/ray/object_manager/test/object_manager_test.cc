@@ -207,7 +207,7 @@ class TestObjectManager : public TestObjectManagerBase {
               StartTests();
             }
           }
-        },	        
+        },
         nullptr));
     RAY_CHECK_OK(gcs_client_2->Nodes().AsyncSubscribeToNodeChange(
         [this](const NodeID &node_id, const GcsNodeInfo &data) {
@@ -220,7 +220,7 @@ class TestObjectManager : public TestObjectManagerBase {
               StartTests();
             }
           }
-        },	        
+        },
         nullptr));
   }
 
@@ -368,7 +368,7 @@ class TestObjectManager : public TestObjectManagerBase {
         oid = WriteDataToClient(client1, data_size);
       } else {
         oid = WriteDataToClient(client2, data_size);
-	server2->object_manager_.Push(oid, gcs_client_1->Nodes().GetSelfId());
+        server2->object_manager_.Push(oid, gcs_client_1->Nodes().GetSelfId());
       }
       object_ids.push_back(oid);
     }
