@@ -172,6 +172,39 @@ def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
             yield resolved_vars, spec
 
 
+def get_preset_variants(spec: Dict, config: Dict):
+    """Get variants according to a spec, but first overwrite spec config
+    variables with values from `config`"""
+    spec = copy.deepcopy(spec)
+
+    resolved, _, _ = parse_spec_vars(config)
+
+    for path, val in resolved:
+        try:
+            domain = _get_value(spec["config"], path)
+            if isinstance(domain, dict):
+                if "grid_search" in domain:
+                    domain = Categorical(domain["grid_search"])
+                else:
+                    # If users want to overwrite an entire subdict,
+                    # let them do it.
+                    domain = None
+        except IndexError as exc:
+            raise ValueError(
+                f"Pre-set config key `{'/'.join(path)}` does not correspond "
+                f"to a valid key in the search space definition. Please add "
+                f"this path to the `config` variable passed to `tune.run()`."
+            ) from exc
+
+        if domain and not domain.is_valid(val):
+            logger.warning(
+                f"Pre-set value `{val}` is not within valid values of "
+                f"parameter `{'/'.join(path)}`: {domain.domain_str}")
+        assign_value(spec["config"], path, val)
+
+    return _generate_variants(spec)
+
+
 def assign_value(spec: Dict, path: Tuple, value: Any):
     for k in path[:-1]:
         spec = spec[k]

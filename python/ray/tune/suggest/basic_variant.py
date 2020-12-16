@@ -1,13 +1,14 @@
 import itertools
 import os
 import uuid
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.variant_generator import (
-    count_variants, generate_variants, format_vars, flatten_resolved_vars)
+    count_variants, generate_variants, format_vars, flatten_resolved_vars,
+    get_preset_variants)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
@@ -15,6 +16,13 @@ class BasicVariantGenerator(SearchAlgorithm):
     """Uses Tune's variant generation for resolving variables.
 
     See also: `ray.tune.suggest.variant_generator`.
+
+    Args:
+        points_to_evaluate (list): Initial parameter suggestions to be run
+        first. This is for when you already have some good parameters
+        you want to run first to help the algorithm make better suggestions
+        for future parameters. Needs to be a list of dicts containing the
+        configurations.
 
     User API:
 
@@ -38,7 +46,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         searcher.is_finished == True
     """
 
-    def __init__(self):
+    def __init__(self, points_to_evaluate: Optional[List[Dict]] = None):
         """Initializes the Variant Generator.
 
         """
@@ -47,6 +55,8 @@ class BasicVariantGenerator(SearchAlgorithm):
         self._trial_iter = None
         self._counter = 0
         self._finished = False
+
+        self._points_to_evaluate = points_to_evaluate or []
 
         # Unique prefix for all trials generated, e.g., trial ids start as
         # 2f1e_00001, 2f1ef_00002, 2f1ef_0003, etc. Overridable for testing.
@@ -109,6 +119,26 @@ class BasicVariantGenerator(SearchAlgorithm):
 
         if "run" not in unresolved_spec:
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
+
+        while self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+            for resolved_vars, spec in get_preset_variants(
+                    unresolved_spec, config):
+                trial_id = self._uuid_prefix + ("%05d" % self._counter)
+                experiment_tag = str(self._counter)
+                self._counter += 1
+                yield create_trial_from_spec(
+                    spec,
+                    output_path,
+                    self._parser,
+                    evaluated_params=flatten_resolved_vars(resolved_vars),
+                    trial_id=trial_id,
+                    experiment_tag=experiment_tag)
+            num_samples -= 1
+
+        if num_samples <= 0:
+            return
+
         for _ in range(num_samples):
             for resolved_vars, spec in generate_variants(unresolved_spec):
                 trial_id = self._uuid_prefix + ("%05d" % self._counter)
