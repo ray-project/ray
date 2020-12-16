@@ -317,22 +317,28 @@ class ModelV2:
     # TODO: (sven) Experimental method.
     def get_input_dict(self, sample_batch,
                        index: Union[int, str] = "last") -> Dict[str, TensorType]:
-        if index == "last":
-        
-        elif index < 0:
-            index = sample_batch.count - 1
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
 
         input_dict = {}
         for view_col, view_req in self.inference_view_requirements.items():
             # Create batches of size 1 (single-agent input-dict).
-
-            # Index range.
-            if isinstance(index, tuple):
-                data = sample_batch[view_col][index[0]:index[1] + 1]
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                data = sample_batch[data_col][-1]
                 input_dict[view_col] = np.array([data])
-            # Single index.
             else:
-                input_dict[view_col] = sample_batch[view_col][index:index + 1]
+                # Index range.
+                if isinstance(index, tuple):
+                    data = sample_batch[data_col][index[0]:index[1] + 1]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = sample_batch[data_col][index:index + 1]
 
         # Add valid `seq_lens`, just in case RNNs need it.
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)
