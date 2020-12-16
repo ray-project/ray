@@ -129,11 +129,10 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_placement_group.py",  # placement groups not implemented
+    "test_placement_group.py",
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "new_scheduler_broken"],
   deps = ["//:ray_lib"],
 )
 
