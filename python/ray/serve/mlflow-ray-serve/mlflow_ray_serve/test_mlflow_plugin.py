@@ -2,6 +2,7 @@ import mlflow.pyfunc
 import pandas as pd
 from mlflow.deployments import get_deploy_client
 
+
 # Define the model class
 class AddN(mlflow.pyfunc.PythonModel):
     def __init__(self, n):
