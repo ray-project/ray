@@ -404,8 +404,9 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
-  auto status = GetImpl(id_vector, num_objects, timeout_ms, ctx, false, &result_objects,
-                        /*abort_if_any_object_is_exception=*/false, /*release_resources=*/true);
+  auto status =
+      GetImpl(id_vector, num_objects, timeout_ms, ctx, false, &result_objects,
+              /*abort_if_any_object_is_exception=*/false, /*release_resources=*/true);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);

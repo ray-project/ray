@@ -533,6 +533,9 @@ void NodeManager::ReportResourceUsage() {
   if (should_global_gc_) {
     resources_data->set_should_global_gc(true);
     should_global_gc_ = false;
+    RAY_LOG(INFO) << "Broadcasting Python GC request to all raylets since the cluster "
+                  << "is low on resources. This removes Ray actor and object refs "
+                  << "that are stuck in Python reference cycles.";
   }
 
   // Trigger local GC if needed. This throttles the frequency of local GC calls
@@ -1511,9 +1514,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
 }
 
 void NodeManager::ProcessDirectCallTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client,
-    const uint8_t *message_data) {
-  auto message = flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  auto message =
+      flatbuffers::GetRoot<protocol::NotifyDirectCallTaskBlocked>(message_data);
   bool release_resources = message->release_resources();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleDirectCallTaskBlocked(worker, release_resources);
@@ -2174,7 +2177,8 @@ void NodeManager::HandleDirectCallTaskBlocked(
     return;
   }
 
-  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked() || !release_resources) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked() ||
+      !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
@@ -3155,9 +3159,6 @@ void NodeManager::HandleGlobalGC(const rpc::GlobalGCRequest &request,
 }
 
 void NodeManager::TriggerGlobalGC() {
-  RAY_LOG(INFO) << "Broadcasting Python GC request to all raylets since the cluster "
-                << "is low on resources. This removes Ray actor and object refs "
-                << "that are stuck in Python reference cycles.";
   should_global_gc_ = true;
   // We won't see our own request, so trigger local GC in the next heartbeat.
   should_local_gc_ = true;

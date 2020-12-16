@@ -298,9 +298,8 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                             owner_worker_id, evict_if_full, data_size, metadata_size,
                             device_num, client, object);
   if (error == PlasmaError::OutOfMemory) {
-    RAY_LOG(WARNING) << "Not enough memory to create the object " << object_id
-                     << ", data_size=" << data_size
-                     << ", metadata_size=" << metadata_size;
+    RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
+                   << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
   }
   return error;
 }

@@ -141,8 +141,8 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     it++;
   }
   if (!objects_to_spill.empty()) {
-    RAY_LOG(INFO) << "Spilling objects of total size " << bytes_to_spill
-                  << " num objects " << objects_to_spill.size();
+    RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill
+                   << " num objects " << objects_to_spill.size();
     auto start_time = absl::GetCurrentTimeNanos();
     SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
                                             start_time](const Status &status) {

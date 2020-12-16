@@ -575,7 +575,8 @@ void CoreWorker::Exit(bool intentional) {
       << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/true));
+  RAY_CHECK_OK(
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, intentional]() {
@@ -950,8 +951,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results,
-                       bool plasma_objects_only,
-                       bool release_resources) {
+                       bool plasma_objects_only, bool release_resources) {
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -963,11 +963,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
   if (!plasma_objects_only) {
     if (!memory_object_ids.empty()) {
-      RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids,
-                                           timeout_ms,
-                                           worker_context_,
-                                           &result_map,
-                                           &got_exception,
+      RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
+                                           &result_map, &got_exception,
                                            release_resources));
     }
 
@@ -997,8 +994,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, local_timeout_ms,
                                                   worker_context_, &result_map,
-                                                  &got_exception,
-                                                  release_resources));
+                                                  &got_exception, release_resources));
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
