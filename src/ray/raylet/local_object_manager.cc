@@ -158,13 +158,14 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
         spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
         if (now - last_spill_log_ns_ > 1e9) {
           last_spill_log_ns_ = now;
-          RAY_LOG(INFO) << "Spilled "
-                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
-                        << " MiB, " << spilled_objects_total_
-                        << " objects, write throughput "
-                        << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
-                                            spill_time_total_s_)
-                        << " MiB/s";
+          // TODO(ekl) logging at error level until we add a better UX indicator.
+          RAY_LOG(ERROR) << "Spilled "
+                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
+                         << " MiB, " << spilled_objects_total_
+                         << " objects, write throughput "
+                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
+                                             spill_time_total_s_)
+                         << " MiB/s";
         }
         last_spill_finish_ns_ = now;
       }
@@ -325,13 +326,14 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                 (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
             if (now - last_restore_log_ns_ > 1e9) {
               last_restore_log_ns_ = now;
-              RAY_LOG(INFO) << "Restored "
-                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
-                            << " MiB, " << restored_objects_total_
-                            << " objects, read throughput "
-                            << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
-                                                restore_time_total_s_)
-                            << " MiB/s";
+              // TODO(ekl) logging at error level until we add a better UX indicator.
+              RAY_LOG(ERROR) << "Restored "
+                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
+                             << " MiB, " << restored_objects_total_
+                             << " objects, read throughput "
+                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
+                                                 restore_time_total_s_)
+                             << " MiB/s";
             }
             last_restore_finish_ns_ = now;
           }
