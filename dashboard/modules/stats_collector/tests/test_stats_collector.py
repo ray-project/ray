@@ -163,10 +163,18 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
         assert len(node["workers"]) == 2
         assert node["workers"][0]["logCount"] == 1
 
+    def check_actors():
+        resp = requests.get(f"{webui_url}/actors")
+        resp_json = resp.json()
+        resp_data = resp_json["data"]
+        actors = resp_data["actors"]
+        assert len(actors) == 2
+
     while True:
         time.sleep(1)
         try:
             check_node_details()
+            check_actors()
             break
         except (AssertionError, KeyError, IndexError) as ex:
             last_ex = ex

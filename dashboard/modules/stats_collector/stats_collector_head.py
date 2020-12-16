@@ -164,6 +164,14 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
+    @routes.get("/actors")
+    @dashboard_utils.aiohttp_cache
+    async def get_all_actors(self, req) -> aiohttp.web.Response:
+        return dashboard_utils.rest_response(
+            success=True,
+            message="All actors fetched.",
+            actors=DataSource.actors)
+
     async def _update_actors(self):
         # Subscribe actor channel.
         aioredis_client = self._dashboard_head.aioredis_client
@@ -246,7 +254,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
     @async_loop_forever(
         stats_collector_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
-        for node_id, stub in self._stubs.items():
+        # Copy self._stubs to avoid `dictionary changed size during iteration`.
+        for node_id, stub in list(self._stubs.items()):
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
