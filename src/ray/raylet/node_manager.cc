@@ -672,7 +672,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale.";
-    auto error_data_ptr = gcs::CreateErrorTableData(
+    const auto error_data_ptr = gcs::CreateErrorTableData(
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
@@ -1384,7 +1384,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << ".";
       } else if (disconnect_type == rpc::ClientDisconnectType::PLACEGROUP_REMOVED) {
         error_type = ErrorType::PLACEMENT_GROUP_ERROR;
-        type_str = "placement_group_error";
+        type_str = "placement_group";
         error_message << "A worker was killed while executing task " << task_id
                       << " due to placement group removal"
                       << ".";
@@ -1398,8 +1398,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       }
       // Push the error to driver.
       const JobID &job_id = worker->GetAssignedJobId();
-      auto error_data_ptr = gcs::CreateErrorTableData(type_str, error_message.str(),
-                                                      current_time_ms(), job_id);
+      const auto error_data_ptr = gcs::CreateErrorTableData(type_str, error_message.str(),
+                                                            current_time_ms(), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
 
@@ -1591,7 +1591,8 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto const &error_message = string_from_flatbuf(*message->error_message());
   double timestamp = message->timestamp();
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
-  auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
+  const auto error_data_ptr =
+      gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
