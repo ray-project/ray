@@ -69,7 +69,7 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 
   std::shared_ptr<RedisContext> shard_context =
       std::make_shared<RedisContext>(io_service);
-  shard_context->Connect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(),
+  shard_context->Connect(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front(),
                          /*sharding=*/true);
 
   io_service.run();
