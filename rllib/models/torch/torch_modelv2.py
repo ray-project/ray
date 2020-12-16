@@ -1,7 +1,8 @@
-import gym
 from typing import List
 
+import gym
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.utils import Synchronizable
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -10,7 +11,7 @@ _, nn = try_import_torch()
 
 
 @PublicAPI
-class TorchModelV2(ModelV2):
+class TorchModelV2(ModelV2, Synchronizable):
     """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
@@ -37,6 +38,7 @@ class TorchModelV2(ModelV2):
                 "Subclasses of TorchModelV2 must also inherit from "
                 "nn.Module, e.g., MyModel(TorchModelV2, nn.Module)")
 
+        Synchronizable.__init__(self)
         ModelV2.__init__(
             self,
             obs_space,
@@ -62,3 +64,11 @@ class TorchModelV2(ModelV2):
                 if v.requires_grad
             }
         return [v for v in self.variables() if v.requires_grad]
+
+    @Synchronizable.synchronized
+    def call_with_value(self, *args, **kwargs):
+        return super().call_with_value(*args, **kwargs)
+
+    @Synchronizable.synchronized
+    def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)

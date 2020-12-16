@@ -1,9 +1,9 @@
-from collections import OrderedDict
 import contextlib
-import gym
-import numpy as np
+from collections import OrderedDict
 from typing import Dict, List, Any, Union
 
+import gym
+import numpy as np
 from ray.rllib.models.preprocessors import get_preprocessor, \
     RepeatedValuesPreprocessor
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -14,8 +14,6 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
-
-from ray.rllib.models.utils import synchronized
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -33,8 +31,7 @@ class ModelV2:
                value_function() -> V(s)
     """
 
-    def __init__(self, obs_space: gym.spaces.Space,
-                 action_space: gym.spaces.Space, num_outputs: int,
+    def __init__(self, obs_space: gym.spaces.Space, action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 object.
 
@@ -174,7 +171,6 @@ class ModelV2:
         """
         return {}
 
-    @synchronized
     def __call__(
             self,
             input_dict: Dict[str, TensorType],
@@ -232,12 +228,12 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state
 
-    @synchronized
     def call_with_value(
             self,
             input_dict: Dict[str, TensorType],
             state: List[Any] = None,
             seq_lens: TensorType = None) -> (TensorType, TensorType, List[TensorType]):
+        """ Convenience function to use where both model out and value function are required """
         model_out, state = self.__call__(input_dict, state, seq_lens)
         value = self.value_function()
         return model_out, value, state

@@ -69,17 +69,14 @@ def get_initializer(name, framework="tf"):
         name, framework))
 
 
-@decorator
-def synchronized(wrapped, instance, args, kwargs):
-    if instance is None:
-        context = vars(wrapped)
-    else:
-        context = vars(instance)
+class Synchronizable:
+    """ Interface for classes that require instance-level thread locking for their methods """
+    def __init__(self):
+        self.synchronized_lock = threading.RLock()
 
-    lock = context.get('_synchronized_lock', None)
-
-    if lock is None:
-        lock = context.setdefault('_synchronized_lock', threading.RLock())
-
-    with lock:
-        return wrapped(*args, **kwargs)
+    @staticmethod
+    @decorator
+    def synchronized(wrapped, instance=None, args=None, kwargs=None):
+        """ wrapper used to decorate the instance methods that should be locked with self.synchronized_lock """
+        with instance.synchronized_lock:
+            return wrapped(*args, **kwargs)
