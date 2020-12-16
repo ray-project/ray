@@ -1163,8 +1163,7 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-    HandleDirectCallTaskBlocked(worker);
+    ProcessDirectCallTaskBlocked(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
     std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
@@ -1509,6 +1508,15 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     AsyncResolveObjects(client, refs, task_id, /*ray_get=*/true,
                         /*mark_worker_blocked*/ message->mark_worker_blocked());
   }
+}
+
+void NodeManager::ProcessDirectCallTaskBlocked(
+    const std::shared_ptr<ClientConnection> &client,
+    const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
+  bool release_resources = message->release_resources();
+  std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+  HandleDirectCallTaskBlocked(worker, release_resources);
 }
 
 void NodeManager::ProcessWaitRequestMessage(
@@ -2147,9 +2155,9 @@ void NodeManager::SubmitTask(const Task &task) {
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker) {
+    const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
   if (new_scheduler_enabled_) {
-    if (!worker || worker->IsBlocked()) {
+    if (!worker || worker->IsBlocked() || !release_resources) {
       return;
     }
     std::vector<double> cpu_instances;
@@ -2166,7 +2174,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
     return;
   }
 
-  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked() || !release_resources) {
     return;  // The worker may have died or is no longer processing the task.
   }
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
@@ -2291,7 +2299,6 @@ void NodeManager::AsyncResolveObjectsFinish(
     const std::shared_ptr<ClientConnection> &client, const TaskID &current_task_id,
     bool was_blocked) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
-
   // TODO(swang): Because the object dependencies are tracked in the task
   // dependency manager, we could actually remove this message entirely and
   // instead unblock the worker once all the objects become available.

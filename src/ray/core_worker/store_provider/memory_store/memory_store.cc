@@ -241,7 +241,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
                                       int num_objects, int64_t timeout_ms,
                                       const WorkerContext &ctx, bool remove_after_get,
                                       std::vector<std::shared_ptr<RayObject>> *results,
-                                      bool abort_if_any_object_is_exception) {
+                                      bool abort_if_any_object_is_exception,
+                                      bool release_resources) {
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
@@ -299,7 +300,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    // SANG-TODO Implement memory store get
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(release_resources));
   }
 
   bool done = false;
