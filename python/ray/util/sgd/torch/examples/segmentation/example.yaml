@@ -42,7 +42,7 @@ worker_nodes:
 
 setup_commands:
     # This replaces the standard anaconda Ray installation
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     # Uncomment this and the filemount to update the Ray installation with your local Ray code
     # - rm -rf ./anaconda3/lib/python3.6/site-packages/ray/util/sgd/
     # - cp -rf ~/sgd ./anaconda3/lib/python3.6/site-packages/ray/util/

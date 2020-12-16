@@ -27,6 +27,7 @@ class HTTPProxy:
 
     def __init__(self, controller_name):
         controller = ray.get_actor(controller_name)
+        self.route_table = {}  # Should be updated via long polling.
         self.router = Router(controller)
         self.long_poll_client = LongPollAsyncClient(controller, {
             LongPollKey.ROUTE_TABLE: self._update_route_table,
@@ -41,6 +42,7 @@ class HTTPProxy:
         await self.router.setup_in_async_loop()
 
     async def _update_route_table(self, route_table):
+        logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
         self.route_table = route_table
 
     async def receive_http_body(self, scope, receive, send):

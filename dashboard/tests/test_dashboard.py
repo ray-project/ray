@@ -137,6 +137,11 @@ def test_basic(ray_start_with_dashboard):
         assert agent_proc.pid == agent_pid
         time.sleep(1)
 
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
+
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
     dashboard_address = client.get(dashboard_consts.REDIS_KEY_DASHBOARD)
