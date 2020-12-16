@@ -3,7 +3,6 @@ import setuptools
 # with open("README.md", "r") as fh:
 #     long_description = fh.read()
 
-
 setuptools.setup(
     name="mlflow_ray_serve",
     version="0.0.1",
@@ -19,7 +18,6 @@ setuptools.setup(
     #     "License :: OSI Approved :: Apache Software License",
     #     "Operating System :: OS Independent",
     # ],
-    python_requires='>=3.6',
+    python_requires=">=3.6",
     install_requires=["ray[serve]", "mlflow"],
-    entry_points={"mlflow.deployments": "ray-serve=mlflow_ray_serve"}
-)
+    entry_points={"mlflow.deployments": "ray-serve=mlflow_ray_serve"})
