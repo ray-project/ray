@@ -129,7 +129,7 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
     return false;
   }
 
-  RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_to_spill;
+  RAY_LOG(DEBUG) << "Choosing objects to spill of total size " << num_bytes_to_spill;
   int64_t bytes_to_spill = 0;
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
