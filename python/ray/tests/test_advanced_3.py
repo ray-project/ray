@@ -289,9 +289,9 @@ def test_object_ref_properties():
     assert object_ref.binary() == id_bytes
     object_ref = ray.ObjectRef.nil()
     assert object_ref.is_nil()
-    with pytest.raises(ValueError, match=r".*needs to have length 24.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(id_bytes + b"1234")
-    with pytest.raises(ValueError, match=r".*needs to have length 24.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(b"0123456789")
     object_ref = ray.ObjectRef.from_random()
     assert not object_ref.is_nil()
