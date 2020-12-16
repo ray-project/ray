@@ -1,3 +1,4 @@
+import asyncio
 import atexit
 import time
 from functools import wraps
@@ -411,13 +412,17 @@ class Client:
     @_ensure_connected
     def get_handle(self,
                    endpoint_name: str,
-                   missing_ok: Optional[bool] = False) -> RayServeHandle:
+                   missing_ok: Optional[bool] = False,
+                   sync: bool = True) -> RayServeHandle:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
             endpoint_name (str): A registered service endpoint.
             missing_ok (bool): If true, then Serve won't check the endpoint is
                 registered. False by default.
+            sync (bool): If true, then Serve will return a ServeHandle that
+                works everywhere. Otherwise, Serve will return a ServeHandle
+                that's only usable in asyncio loop.
 
         Returns:
             RayServeHandle
@@ -426,8 +431,14 @@ class Client:
                 self._controller.get_all_endpoints.remote()):
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
+        if asyncio.get_event_loop().is_running() and sync:
+            logger.warning(
+                "You are retrieving a ServeHandle inside an asyncio loop. "
+                "Try getting client.get_handle(.., sync=False) to get better "
+                "performance.")
+
         if endpoint_name not in self._handle_cache:
-            handle = RayServeHandle(self._controller, endpoint_name, sync=True)
+            handle = RayServeHandle(self._controller, endpoint_name, sync=sync)
             self._handle_cache[endpoint_name] = handle
         return self._handle_cache[endpoint_name]
 
