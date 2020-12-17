@@ -19,7 +19,7 @@ metrics reported to Tune to the MLFlow Tracking API.
 
 The other one is the :ref:`@mlflow_mixin <tune-mlflow-mixin>` decorator, which can be
 used with the function API. It automatically
-initializes the MLflow API with Tune's training information and creates a run for each Tune trial.
+initializes the MLFlow API with Tune's training information and creates a run for each Tune trial.
 Then within your training function, you can just use the
 MLflow like you would normally do, e.g. using ``mlflow.log_metrics()`` or even ``mlflow.autolog()``
 to log to your training process.
