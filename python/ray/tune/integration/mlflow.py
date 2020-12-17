@@ -100,7 +100,7 @@ class MLFlowLoggerCallback(LoggerCallback):
                                  "set, and MLFLOW_EXPERIMENT_ID either "
                                  "is not set or does not exist. Please "
                                  "set one of these to use the "
-                                 "MlFlowLoggerCallback.")
+                                 "MLFlowLoggerCallback.")
 
         # At this point, experiment_id should be set.
         self.experiment_id = experiment_id
