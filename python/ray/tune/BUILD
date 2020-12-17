@@ -696,6 +696,15 @@ py_test(
     args = ["--smoke-test"]
 )
 
+py_test(
+    name = "tune_basic_example",
+    size = "small",
+    srcs = ["examples/tune_basic_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
 # Downloads too much data.
 # py_test(
 #     name = "tune_cifar10_gluon",
