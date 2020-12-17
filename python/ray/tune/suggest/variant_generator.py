@@ -199,8 +199,14 @@ def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
 
 
 def get_preset_variants(spec: Dict, config: Dict):
-    """Get variants according to a spec, but first overwrite spec config
-    variables with values from `config`"""
+    """Get variants according to a spec, initialized with a config.
+
+    Variables from the spec are overwritten by the variables in the config.
+    Thus, we may end up with less sampled parameters.
+
+    This function also checks if values used to overwrite search space
+    parameters are valid, and logs a warning if not.
+    """
     spec = copy.deepcopy(spec)
 
     resolved, _, _ = parse_spec_vars(config)
