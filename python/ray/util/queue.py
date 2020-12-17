@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
 
 import ray
@@ -28,6 +28,9 @@ class Queue:
     Args:
         maxsize (optional, int): maximum size of the queue. If zero, size is
             unbounded.
+        actor_options (optional, Dict): Dictionary of options to pass into
+            the QueueActor during creation. This could be useful if you
+            need to pass in custom resource requirements, for example.
 
     Examples:
         >>> q = Queue()
@@ -38,9 +41,9 @@ class Queue:
         >>>     assert item == q.get()
     """
 
-    def __init__(self, maxsize: int = 0) -> None:
+    def __init__(self, maxsize: int = 0, actor_options: Dict = {}) -> None:
         self.maxsize = maxsize
-        self.actor = _QueueActor.remote(self.maxsize)
+        self.actor = _QueueActor.options(**actor_options).remote(self.maxsize)
 
     def __len__(self) -> int:
         return self.size()
@@ -211,6 +214,14 @@ class Queue:
             raise ValueError("'num_items' must be nonnegative")
 
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
+
+    def shutdown(self) -> None:
+        """Terminates the underlying QueueActor and release all of its
+        resources.
+        """
+        if self.actor:
+            ray.kill(self.actor)
+        self.actor = None
 
 
 @ray.remote
