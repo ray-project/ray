@@ -91,7 +91,8 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for job info.";
   auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all jobs from gcs server.";
+    RAY_LOG(INFO) << "Finished fetching all job information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
   };
 
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
@@ -307,7 +308,8 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
   auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all actors from gcs server.";
+    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
   };
 
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
@@ -662,7 +664,8 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
   auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all nodes from gcs server.";
+    RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
   };
 
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
