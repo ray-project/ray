@@ -1523,9 +1523,6 @@ void NodeManager::ProcessWaitRequestMessage(
   // Read the data.
   auto message = flatbuffers::GetRoot<protocol::WaitRequest>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
-  int64_t wait_ms = message->timeout();
-  uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
-  bool wait_local = message->wait_local();
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   std::unordered_map<ObjectID, rpc::Address> owner_addresses;
@@ -1551,9 +1548,11 @@ void NodeManager::ProcessWaitRequestMessage(
     AsyncResolveObjects(client, refs, current_task_id, /*ray_get=*/false,
                         /*mark_worker_blocked*/ was_blocked);
   }
-
+  int64_t wait_ms = message->timeout();
+  uint64_t num_required_objects = static_cast<uint64_t>(message->num_ready_objects());
+  // TODO Remove in the future since it should have already be done in other place
   ray::Status status = object_manager_.Wait(
-      object_ids, owner_addresses, wait_ms, num_required_objects, wait_local,
+      object_ids, owner_addresses, wait_ms, num_required_objects,
       [this, resolve_objects, was_blocked, client, current_task_id](
           std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         // Write the data.
@@ -1600,7 +1599,7 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
   // has been found, so the object may still be on a remote node when the
   // client receives the reply.
   ray::Status status = object_manager_.Wait(
-      object_ids, owner_addresses, -1, object_ids.size(), false,
+      object_ids, owner_addresses, -1, object_ids.size(),
       [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
         RAY_CHECK(remaining.empty());
         std::shared_ptr<WorkerInterface> worker =
