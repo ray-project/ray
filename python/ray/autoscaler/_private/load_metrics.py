@@ -171,10 +171,16 @@ class LoadMetrics:
 
     def get_resource_demand_vector(self, clip=True):
         if clip:
-            # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
-            # This guarantees the resource demand scheduler bin packing algorithm takes
-            # a reasonable amount of time to run.
-            return self.waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE] + self.infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+            # Bound the total number of bundles to
+            # 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE. This guarantees the resource
+            # demand scheduler bin packing algorithm takes a reasonable amount
+            # of time to run.
+            return (
+                self.
+                waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE] +
+                self.
+                infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+            )
         else:
             return self.waiting_bundles + self.infeasible_bundles
 

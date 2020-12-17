@@ -293,6 +293,7 @@ def format_pg(pg):
     bundles_str = ", ".join(shape_strs)
     return f"{bundles_str} ({strategy})"
 
+
 def get_usage_report(lm_summary):
     usage_lines = []
     for resource, (used, total) in lm_summary.usage.items():
@@ -305,6 +306,7 @@ def get_usage_report(lm_summary):
         usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report
+
 
 def get_demand_report(lm_summary):
     demand_lines = []
@@ -321,6 +323,7 @@ def get_demand_report(lm_summary):
         demand_lines.append(line)
     demand_report = "\n".join(demand_lines)
     return demand_report
+
 
 def format_info_string(lm_summary, autoscaler_summary, time=None):
     if time is None:

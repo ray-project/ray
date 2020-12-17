@@ -1071,13 +1071,6 @@ class AutoscalingTest(unittest.TestCase):
             lambda config: self.create_provider
         self.provider = None
         self.tmpdir = tempfile.mkdtemp()
-        from ray.autoscaler._private.cli_logger import cli_logger
-
-        def do_nothing(*args, **kwargs):
-            pass
-
-        cli_logger._print = type(cli_logger._print)(do_nothing,
-                                                    type(cli_logger))
 
     def tearDown(self):
         self.provider = None
@@ -1170,13 +1163,6 @@ class AutoscalingTest(unittest.TestCase):
             "empty_node")
 
     def testSummary(self):
-        from ray.autoscaler._private.cli_logger import cli_logger
-
-        def do_nothing(*args, **kwargs):
-            pass
-
-        cli_logger._print = type(cli_logger._print)(do_nothing,
-                                                    type(cli_logger))
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["m4.large"]["min_workers"] = \
             config["min_workers"]
