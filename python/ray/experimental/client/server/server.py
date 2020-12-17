@@ -1,13 +1,13 @@
 import logging
 from concurrent import futures
 import grpc
+import base64
 from collections import defaultdict
 
 from typing import Dict
 from typing import Set
 
-#from ray import cloudpickle
-import cloudpickle
+from ray import cloudpickle
 import ray
 import ray.state
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -16,11 +16,12 @@ import time
 import inspect
 import json
 from ray.experimental.client import stash_api_for_tests, _set_server_api
-from ray.experimental.client.client_pickler import convert_from_arg
-from ray.experimental.client.common import encode_exception
-from ray.experimental.client.common import ClientObjectRef
+from ray.experimental.client.server.server_pickler import convert_from_arg
+from ray.experimental.client.server.server_pickler import dumps_from_server
+from ray.experimental.client.server.server_pickler import loads_from_client
 from ray.experimental.client.server.core_ray_api import RayServerAPI
 from ray.experimental.client.server.dataservicer import DataServicer
+from ray.experimental.client.server.server_stubs import current_func
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
         self._test_mode = test_mode
+        self._current_function_stub = None
 
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
@@ -102,26 +104,27 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if client_id not in self.actor_owners:
             logger.info(f"Releasing client with no actors: {client_id}")
         count = 0
-        for handle_bytes in self.actor_owners[client_id]:
+        for id_bytes in self.actor_owners[client_id]:
             count += 1
-            del self.actor_refs[handle_bytes]
+            del self.actor_refs[id_bytes]
         del self.actor_owners[client_id]
         logger.info(f"Released all {count} actors for client: {client_id}")
 
-    def Terminate(self, request, context=None):
-        if request.WhichOneof("terminate_type") == "task_object":
+    def Terminate(self, req, context=None):
+        if req.WhichOneof("terminate_type") == "task_object":
             try:
-                object_ref = cloudpickle.loads(request.task_object.handle)
+                object_ref = \
+                        self.object_refs[req.client_id][req.task_object.id]
                 ray.cancel(
                     object_ref,
-                    force=request.task_object.force,
-                    recursive=request.task_object.recursive)
+                    force=req.task_object.force,
+                    recursive=req.task_object.recursive)
             except Exception as e:
                 return_exception_in_context(e, context)
-        elif request.WhichOneof("terminate_type") == "actor":
+        elif req.WhichOneof("terminate_type") == "actor":
             try:
-                actor_ref = cloudpickle.loads(request.actor.handle)
-                ray.kill(actor_ref, no_restart=request.actor.no_restart)
+                actor_ref = self.actor_refs[req.actor.id]
+                ray.kill(actor_ref, no_restart=req.actor.no_restart)
             except Exception as e:
                 return_exception_in_context(e, context)
         else:
@@ -141,9 +144,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
+            print(f"{e}")
             return_exception_in_context(e, context)
             return ray_client_pb2.GetResponse(valid=False)
-        item_ser = cloudpickle.dumps(item)
+        item_ser = dumps_from_server(item, client_id, self)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
 
     def PutObject(self, request: ray_client_pb2.PutRequest,
@@ -164,13 +168,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
               delete this reference.
             context: gRPC context.
         """
-        obj = cloudpickle.loads(request.data)
+        obj = loads_from_client(request.data, self)
         objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
         logger.info("put: %s" % objectref)
-        pickled_ref = cloudpickle.dumps(objectref)
         return ray_client_pb2.PutResponse(
-            ref=make_remote_ref(objectref.binary(), pickled_ref))
+            ref=make_remote_ref(objectref.binary(), b''))
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
@@ -194,13 +197,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         ready_object_ids = [
             make_remote_ref(
                 id=ready_object_ref.binary(),
-                handle=cloudpickle.dumps(ready_object_ref),
+                handle=b'',
             ) for ready_object_ref in ready_object_refs
         ]
         remaining_object_ids = [
             make_remote_ref(
                 id=remaining_object_ref.binary(),
-                handle=cloudpickle.dumps(remaining_object_ref),
+                handle=b'',
             ) for remaining_object_ref in remaining_object_refs
         ]
         return ray_client_pb2.WaitResponse(
@@ -237,58 +240,45 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         arglist = self._convert_args(task.args, prepared_args)
         output = getattr(actor_handle, task.name).remote(*arglist)
         self.object_refs[task.client_id][output.binary()] = output
-        pickled_ref = cloudpickle.dumps(output)
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(output.binary(), pickled_ref))
+            return_ref=make_remote_ref(output.binary(), b''))
 
     def _schedule_actor(self,
                         task: ray_client_pb2.ClientTask,
                         context=None,
                         prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        payload_ref = cloudpickle.loads(task.payload_id)
-        if payload_ref.binary() not in self.registered_actor_classes:
+        if task.payload_id not in self.registered_actor_classes:
             actor_class_ref = \
-                    self.object_refs[task.client_id][payload_ref.binary()]
+                    self.object_refs[task.client_id][task.payload_id]
             actor_class = ray.get(actor_class_ref)
             if not inspect.isclass(actor_class):
                 raise Exception("Attempting to schedule actor that "
                                 "isn't a class.")
             reg_class = ray.remote(actor_class)
-            self.registered_actor_classes[payload_ref.binary()] = reg_class
-        remote_class = self.registered_actor_classes[payload_ref.binary()]
+            self.registered_actor_classes[task.payload_id] = reg_class
+        remote_class = self.registered_actor_classes[task.payload_id]
         arglist = self._convert_args(task.args, prepared_args)
         actor = remote_class.remote(*arglist)
-        actor._serialize_local = True
-        actorhandle = cloudpickle.dumps(actor)
-        self.actor_refs[actorhandle] = actor
-        self.actor_owners[task.client_id].add(actorhandle)
+        self.actor_refs[actor._actor_id.binary()] = actor
+        self.actor_owners[task.client_id].add(actor._actor_id.binary())
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(actor._actor_id.binary(), actorhandle))
+            return_ref=make_remote_ref(actor._actor_id.binary(), b''))
 
     def _schedule_function(
             self,
             task: ray_client_pb2.ClientTask,
             context=None,
             prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        payload_ref = cloudpickle.loads(task.payload_id)
-        if payload_ref.binary() not in self.function_refs:
-            funcref = self.object_refs[task.client_id][payload_ref.binary()]
-            func = ray.get(funcref)
-            if not inspect.isfunction(func):
-                raise Exception("Attempting to schedule function that "
-                                "isn't a function.")
-            self.function_refs[payload_ref.binary()] = ray.remote(func)
-        remote_func = self.function_refs[payload_ref.binary()]
+        remote_func = self.lookup_or_register_func(task.payload_id, task.client_id)
         arglist = self._convert_args(task.args, prepared_args)
         # Prepare call if we're in a test
-        output = remote_func.remote(*arglist)
+        with current_func(remote_func):
+            output = remote_func.remote(*arglist)
         if output.binary() in self.object_refs[task.client_id]:
             raise Exception("already found it")
-        print(f"Sched {output.binary()}")
         self.object_refs[task.client_id][output.binary()] = output
-        pickled_output = cloudpickle.dumps(output)
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(output.binary(), pickled_output))
+            return_ref=make_remote_ref(output.binary(), b''))
 
     def _convert_args(self, arg_list, prepared_args=None):
         if prepared_args is not None:
@@ -298,6 +288,17 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             t = convert_from_arg(arg, self)
             out.append(t)
         return out
+
+    def lookup_or_register_func(self, id, client_id):
+        if id not in self.function_refs:
+            funcref = self.object_refs[client_id][id]
+            func = ray.get(funcref)
+            if not inspect.isfunction(func):
+                raise Exception("Attempting to register function that "
+                                "isn't a function.")
+            self.function_refs[id] = ray.remote(func)
+        return self.function_refs[id]
+
 
 
 def make_remote_ref(id: bytes, handle: bytes) -> ray_client_pb2.RemoteRef:
@@ -311,6 +312,11 @@ def return_exception_in_context(err, context):
     if context is not None:
         context.set_details(encode_exception(err))
         context.set_code(grpc.StatusCode.INTERNAL)
+
+
+def encode_exception(exception) -> str:
+    data = cloudpickle.dumps(exception)
+    return base64.standard_b64encode(data).decode()
 
 
 def serve(connection_str, test_mode=False):

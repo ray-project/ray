@@ -142,7 +142,7 @@ def test_function_calling_function(ray_start_regular_shared):
 
         @ray.remote
         def f():
-            print(f, f._name, g._name, g)
+            print(f, g)
             return ray.get(g.remote())
 
         print(f, type(f))

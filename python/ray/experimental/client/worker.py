@@ -13,8 +13,6 @@ from typing import List
 from typing import Tuple
 from typing import Optional
 
-#import ray.cloudpickle as cloudpickle
-import cloudpickle
 from ray.util.inspect import is_cython
 import grpc
 
@@ -22,7 +20,8 @@ from ray.exceptions import TaskCancelledError
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.client_pickler import convert_to_arg
-from ray.experimental.client.common import decode_exception
+from ray.experimental.client.client_pickler import loads_from_server
+from ray.experimental.client.client_pickler import dumps_from_client
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientActorHandle
@@ -80,8 +79,8 @@ class Worker:
         except grpc.RpcError as e:
             raise decode_exception(e.details())
         if not data.valid:
-            raise TaskCancelledError(ref.handle)
-        return cloudpickle.loads(data.data)
+            raise TaskCancelledError(ref.id)
+        return loads_from_server(data.data)
 
     def put(self, vals):
         to_put = []
@@ -98,7 +97,7 @@ class Worker:
         return out
 
     def _put(self, val):
-        data = cloudpickle.dumps(val)
+        data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.data_client.PutObject(req)
         return ClientObjectRef.from_remote_ref(resp.ref)
@@ -150,18 +149,18 @@ class Worker:
 
     def call_remote(self, instance, *args, **kwargs) -> ray_client_pb2.RemoteRef:
         task = instance._prepare_client_task()
+        i = 0
         for arg in args:
+            print(i, arg)
+            i+=1
             pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
         task.client_id = self._client_id
-        logging.debug("Scheduling %s" % task)
+        logging.info("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
         return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
     def call_release(self, id: bytes) -> None:
-        import traceback
-        print("RELEASE", id.hex())
-        traceback.print_stack(limit=10)
         self.reference_count[id] -= 1
         if self.reference_count[id] == 0:
             self._release_server(id)
@@ -190,10 +189,11 @@ class Worker:
             raise ValueError("ray.kill() only supported for actors. "
                              "Got: {}.".format(type(actor)))
         term_actor = ray_client_pb2.TerminateRequest.ActorTerminate()
-        term_actor.handle = actor.actor_ref.handle
+        term_actor.id = actor.actor_ref.id
         term_actor.no_restart = no_restart
         try:
             term = ray_client_pb2.TerminateRequest(actor=term_actor)
+            term.client_id = self._client_id
             self.server.Terminate(term)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
@@ -205,11 +205,12 @@ class Worker:
                 "ray.cancel() only supported for non-actor object refs. "
                 f"Got: {type(obj)}.")
         term_object = ray_client_pb2.TerminateRequest.TaskObjectTerminate()
-        term_object.handle = obj.handle
+        term_object.id = obj.id
         term_object.force = force
         term_object.recursive = recursive
         try:
             term = ray_client_pb2.TerminateRequest(task_object=term_object)
+            term.client_id = self._client_id
             self.server.Terminate(term)
         except grpc.RpcError as e:
             raise decode_exception(e.details())
@@ -232,3 +233,8 @@ class Worker:
 def make_client_id() -> str:
     id = uuid.uuid4()
     return id.hex
+
+
+def decode_exception(data) -> Exception:
+    data = base64.standard_b64decode(data)
+    return loads_from_server(data)

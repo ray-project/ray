@@ -120,6 +120,10 @@ class RayAPIStub:
         api = _get_client_api()
         return getattr(api, key)
 
+    def is_connected(self) -> bool:
+        global _client_api
+        return _client_api is not None
+
 
 ray = RayAPIStub()
 

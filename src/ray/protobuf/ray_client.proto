@@ -110,18 +110,19 @@ message ClusterInfoResponse {
 
 message TerminateRequest {
   message ActorTerminate {
-    bytes handle = 1;
+    bytes id = 1;
     bool no_restart = 2;
   }
   message TaskObjectTerminate {
-    bytes handle = 1;
+    bytes id = 1;
     bool force = 2;
     bool recursive = 3;
   }
 
+  string client_id = 1;
   oneof terminate_type {
-    ActorTerminate actor = 1;
-    TaskObjectTerminate task_object = 2;
+    ActorTerminate actor = 2;
+    TaskObjectTerminate task_object = 3;
   }
 }
 

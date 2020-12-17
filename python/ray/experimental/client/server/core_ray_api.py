@@ -11,7 +11,6 @@ from typing import Any
 from typing import Optional
 from typing import Union
 
-import cloudpickle
 import logging
 import ray
 
@@ -56,7 +55,7 @@ class CoreRayAPI(APIImpl):
         return ray.remote(*args, **kwargs)
 
     def call_remote(self, instance: ClientStub, *args, **kwargs):
-        return instance._get_ray_remote_impl().remote(*args, **kwargs)
+        return instance._execute(*args, **kwargs)
 
     def close(self) -> None:
         return None
