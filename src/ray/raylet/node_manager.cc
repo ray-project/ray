@@ -462,6 +462,8 @@ void NodeManager::ReportResourceUsage() {
   resources_data->set_node_id(self_node_id_.Binary());
 
   if (new_scheduler_enabled_) {
+    // Update local chche from gcs remote cache, this is needed when gcs restart.
+    // We should always keep the cache view consistent.
     new_resource_scheduler_->UpdateLastReportResourcesFromGcs(
         gcs_client_->Nodes().GetLastResourceUsage());
     new_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,

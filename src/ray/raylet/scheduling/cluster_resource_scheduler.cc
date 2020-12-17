@@ -375,15 +375,14 @@ bool ClusterResourceScheduler::IsAvailableResourceEmpty(
   auto local_view = it->second.GetMutableLocalView();
   if (idx != -1) {
     return local_view->predefined_resources[idx].available <= 0;
+  }
+  string_to_int_map_.Insert(resource_name);
+  int64_t resource_id = string_to_int_map_.Get(resource_name);
+  auto itr = local_view->custom_resources.find(resource_id);
+  if (itr != local_view->custom_resources.end()) {
+    return itr->second.available <= 0;
   } else {
-    string_to_int_map_.Insert(resource_name);
-    int64_t resource_id = string_to_int_map_.Get(resource_name);
-    auto itr = local_view->custom_resources.find(resource_id);
-    if (itr != local_view->custom_resources.end()) {
-      return itr->second.available <= 0;
-    } else {
-      return true;
-    }
+    return true;
   }
 }
 
@@ -483,11 +482,11 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
       local_view->custom_resources.erase(itr);
     }
 
-    auto ltr = local_resources_.custom_resources.find(resource_id);
-    if (node_id == local_node_id_ && ltr != local_resources_.custom_resources.end()) {
+    auto c_itr = local_resources_.custom_resources.find(resource_id);
+    if (node_id == local_node_id_ && c_itr != local_resources_.custom_resources.end()) {
       local_resources_.custom_resources[resource_id].total.clear();
       local_resources_.custom_resources[resource_id].available.clear();
-      local_resources_.custom_resources.erase(ltr);
+      local_resources_.custom_resources.erase(c_itr);
     }
   }
 }
