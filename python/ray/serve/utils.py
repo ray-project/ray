@@ -1,5 +1,6 @@
 import asyncio
 from functools import singledispatch
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -358,7 +359,7 @@ def import_class(full_path: str):
     last_period_idx = full_path.rfind(".")
     class_name = full_path[last_period_idx + 1:]
     module_name = full_path[:last_period_idx]
-    module = __import__(module_name, globals(), locals(), [class_name])
+    module = importlib.import_module(module_name)
     return getattr(module, class_name)
 
 
