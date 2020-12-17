@@ -163,7 +163,7 @@ MLFlowLogger
 ------------
 
 Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``.
-You can see the :doc:`tutorial here </tune/tutorials/tune-mlflow>`
+You can see the :doc:`tutorial here </tune/tutorials/tune-mlflow>`.
 
 WandbLogger
 -----------
