@@ -99,11 +99,11 @@ def test_delete_actor_on_disconnect(ray_start_regular):
         wait_for_condition(server_actor_ref_count(0), timeout=5)
 
         def test_cond():
-            non_dead_actors = [
+            alive_actors = [
                 v for v in real_ray.actors().values()
                 if v["State"] != ActorTableData.DEAD
             ]
-            return len(non_dead_actors) == 0
+            return len(alive_actors) == 0
 
         wait_for_condition(test_cond, timeout=10)
 

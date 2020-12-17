@@ -171,8 +171,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
         logger.debug("put: %s" % objectref)
-        return ray_client_pb2.PutResponse(
-            ref=make_remote_ref(objectref.binary()))
+        return ray_client_pb2.PutResponse(id=objectref.binary())
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
@@ -195,11 +194,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         logger.debug("wait: %s %s" % (str(ready_object_refs),
                                       str(remaining_object_refs)))
         ready_object_ids = [
-            make_remote_ref(id=ready_object_ref.binary(), )
+            ready_object_ref.binary()
             for ready_object_ref in ready_object_refs
         ]
         remaining_object_ids = [
-            make_remote_ref(id=remaining_object_ref.binary(), )
+            remaining_object_ref.binary()
             for remaining_object_ref in remaining_object_refs
         ]
         return ray_client_pb2.WaitResponse(
@@ -236,8 +235,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         arglist = self._convert_args(task.args, prepared_args)
         output = getattr(actor_handle, task.name).remote(*arglist)
         self.object_refs[task.client_id][output.binary()] = output
-        return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(output.binary()))
+        return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
     def _schedule_actor(self,
                         task: ray_client_pb2.ClientTask,
@@ -258,7 +256,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(actor._actor_id.binary()))
+            return_id=actor._actor_id.binary())
 
     def _schedule_function(
             self,
@@ -274,8 +272,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if output.binary() in self.object_refs[task.client_id]:
             raise Exception("already found it")
         self.object_refs[task.client_id][output.binary()] = output
-        return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(output.binary()))
+        return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
     def _convert_args(self, arg_list, prepared_args=None):
         if prepared_args is not None:
@@ -295,10 +292,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                 "isn't a function.")
             self.function_refs[id] = ray.remote(func)
         return self.function_refs[id]
-
-
-def make_remote_ref(id: bytes) -> ray_client_pb2.RemoteRef:
-    return ray_client_pb2.RemoteRef(id=id)
 
 
 def return_exception_in_context(err, context):

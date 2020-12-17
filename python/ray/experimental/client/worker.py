@@ -101,7 +101,7 @@ class Worker:
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.data_client.PutObject(req)
-        return ClientObjectRef.from_remote_ref(resp.ref)
+        return ClientObjectRef(resp.id)
 
     def wait(self,
              object_refs: List[ClientObjectRef],
@@ -124,13 +124,9 @@ class Worker:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
         client_ready_object_ids = [
-            ClientObjectRef.from_remote_ref(ref)
-            for ref in resp.ready_object_ids
-        ]
+            ClientObjectRef(ref) for ref in resp.ready_object_ids]
         client_remaining_object_ids = [
-            ClientObjectRef.from_remote_ref(ref)
-            for ref in resp.remaining_object_ids
-        ]
+            ClientObjectRef(ref) for ref in resp.remaining_object_ids]
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
@@ -147,7 +143,7 @@ class Worker:
                             "either a function or to a class.")
 
     def call_remote(self, instance, *args,
-                    **kwargs) -> ray_client_pb2.RemoteRef:
+                    **kwargs) -> bytes:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
@@ -155,7 +151,7 @@ class Worker:
         task.client_id = self._client_id
         logger.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ClientObjectRef.from_remote_ref(ticket.return_ref)
+        return ticket.return_id
 
     def call_release(self, id: bytes) -> None:
         self.reference_count[id] -= 1

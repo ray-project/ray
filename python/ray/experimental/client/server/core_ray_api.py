@@ -43,7 +43,8 @@ class CoreRayAPI(APIImpl):
         return ray.remote(*args, **kwargs)
 
     def call_remote(self, instance: ClientStub, *args, **kwargs):
-        return instance._execute(*args, **kwargs)
+        raise NotImplementedError(
+            "Should not attempt execution of a client stub inside the raylet")
 
     def close(self) -> None:
         return None
@@ -81,7 +82,7 @@ class RayServerAPI(CoreRayAPI):
         self.server = server_instance
 
     def call_remote(self, instance: ClientStub, *args,
-                    **kwargs) -> ray_client_pb2.RemoteRef:
+                    **kwargs) -> bytes:
         task = instance._prepare_client_task()
         ticket = self.server.Schedule(task, prepared_args=args)
-        return ticket.return_ref
+        return ticket.return_id

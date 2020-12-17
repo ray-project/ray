@@ -66,10 +66,9 @@ class ClientUnpickler(pickle.Unpickler):
             return self.server.object_refs[pid.client_id][pid.ref_id]
         elif pid.type == "Actor":
             return self.server.actor_refs[pid.ref_id]
+        elif pid.type == "RemoteFuncSelfReference":
+            return ServerFunctionSentinel()
         elif pid.type == "RemoteFunc":
-            if len(pid.ref_id) == 0:
-                # This is a recursive func
-                return ServerFunctionSentinel()
             return self.server.lookup_or_register_func(pid.ref_id,
                                                        pid.client_id)
         else:

@@ -9,6 +9,7 @@ from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorHandle
 from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client.common import SelfReferenceSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 if sys.version_info < (3, 8):
@@ -48,6 +49,11 @@ class ClientPickler(cloudpickle.CloudPickler):
             # with ensure_ref and return appropriately) But punting for now.
             if obj._ref is None:
                 obj._ensure_ref()
+            if type(obj._ref) == SelfReferenceSentinel:
+                return PickleStub(
+                    type="RemoteFuncSelfReference",
+                    client_id=self.client_id,
+                    ref_id=b"")
             return PickleStub(
                 type="RemoteFunc",
                 client_id=self.client_id,

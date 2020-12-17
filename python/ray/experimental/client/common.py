@@ -6,8 +6,7 @@ from typing import Dict
 class ClientBaseRef:
     def __init__(self, id: bytes):
         self.id: bytes = id
-        if len(id) != 0:
-            ray.call_retain(id)
+        ray.call_retain(id)
 
     def __repr__(self):
         return "%s(%s)" % (
@@ -21,14 +20,9 @@ class ClientBaseRef:
     def binary(self):
         return self.id
 
-    @classmethod
-    def from_remote_ref(cls, ref: ray_client_pb2.RemoteRef):
-        return cls(id=ref.id)
-
     def __del__(self):
-        if len(self.id) != 0:
-            if ray.is_connected():
-                ray.call_release(self.id)
+        if ray.is_connected():
+            ray.call_release(self.id)
 
 
 class ClientObjectRef(ClientBaseRef):
@@ -66,14 +60,22 @@ class ClientRemoteFunc(ClientStub):
                         "Use {self._name}.remote method instead")
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, *args, **kwargs)
+        return ClientObjectRef(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self._ref)
 
     def _ensure_ref(self):
         if self._ref is None:
-            self._ref = ClientObjectRef(b"")
+            # While calling ray.put() on our function, if
+            # our function is recursive, it will attempt to
+            # encode the ClientRemoteFunc -- itself -- and
+            # infinitely recurse on _ensure_ref.
+            #
+            # So we set the state of the reference to be an
+            # in-progress self reference value, which
+            # the encoding can detect and handle correctly.
+            self._ref = SelfReferenceSentinel()
             self._ref = ray.put(self._func)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
@@ -120,8 +122,8 @@ class ClientActorClass(ClientStub):
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor
-        ref = ray.call_remote(self, *args, **kwargs)
-        return ClientActorHandle(ClientActorRef.from_remote_ref(ref), self)
+        ref_id = ray.call_remote(self, *args, **kwargs)
+        return ClientActorHandle(ClientActorRef(ref_id), self)
 
     def __repr__(self):
         return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
@@ -195,7 +197,7 @@ class ClientRemoteMethod(ClientStub):
                         f"Use {self._name}.remote() instead")
 
     def remote(self, *args, **kwargs):
-        return ray.call_remote(self, *args, **kwargs)
+        return ClientObjectRef(ray.call_remote(self, *args, **kwargs))
 
     def __repr__(self):
         return "ClientRemoteMethod(%s, %s)" % (self.method_name,
@@ -207,3 +209,14 @@ class ClientRemoteMethod(ClientStub):
         task.name = self.method_name
         task.payload_id = self.actor_handle.actor_ref.id
         return task
+
+
+class DataEncodingSentinel:
+    def __repr__(self) -> str:
+        return self.__class__.__name__
+
+
+class SelfReferenceSentinel(DataEncodingSentinel):
+    pass
+
+
