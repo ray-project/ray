@@ -42,7 +42,7 @@ if __name__ == "__main__":
         mode="min",
         num_samples=5 if args.smoke_test else 50,
         config={
-            "steps": 100,
+            "steps": 5 if args.smoke_test else 100,
             "width": tune.uniform(0, 20),
             "height": tune.uniform(-100, 100),
             "activation": tune.grid_search(["relu", "tanh"])
