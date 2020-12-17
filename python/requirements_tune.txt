@@ -30,7 +30,7 @@ torch>=1.6.0
 torchvision>=0.6.0
 # transformers
 git+git://github.com/huggingface/transformers.git@bdcc4b78a27775d1ec8f3fd297cb679c257289db#transformers
-git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
+git+git://github.com/ray-project/tune-sklearn@master@70b4da460cfae0dfed39a965be6b768b4918d109#tune-sklearn
 git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
 wandb
 xgboost
