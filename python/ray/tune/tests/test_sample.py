@@ -253,10 +253,14 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertLess(config1["b"]["z"], 1e-2)
 
         searcher = BayesOptSearch()
+
         invalid_config = {"a/b": tune.uniform(4.0, 8.0)}
+
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
+
         invalid_config = {"a": {"b/c": tune.uniform(4.0, 8.0)}}
+
         with self.assertRaises(ValueError):
             searcher.set_search_properties("none", "max", invalid_config)
 
@@ -373,7 +377,7 @@ class SearchSpaceTest(unittest.TestCase):
         config2 = searcher2.suggest("0")
 
         self.assertEqual(config1, config2)
-        self.assertLess(config2["point"], 1e-2)
+        self.assertLess(config2["b"]["z"], 1e-2)
 
         searcher = DragonflySearch()
         invalid_config = {"a/b": tune.uniform(4.0, 8.0)}
@@ -388,7 +392,7 @@ class SearchSpaceTest(unittest.TestCase):
         analysis = tune.run(
             _mock_objective, config=config, search_alg=searcher, num_samples=1)
         trial = analysis.trials[0]
-        self.assertLess(trial.config["point"], 1e-2)
+        self.assertLess(trial.config["b"]["z"], 1e-2)
 
         mixed_config = {
             "a": tune.uniform(5, 6),
@@ -402,8 +406,8 @@ class SearchSpaceTest(unittest.TestCase):
             mode="max")
         config = searcher.suggest("0")
 
-        self.assertTrue(5 <= config["point"][0] <= 6)
-        self.assertTrue(8 <= config["point"][1] <= 9)
+        self.assertTrue(5 <= config["a"] <= 6)
+        self.assertTrue(8 <= config["b"] <= 9)
 
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
@@ -566,49 +570,6 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
-
-    def testNevergradBestParams(self):
-        from ray.tune.suggest.nevergrad import NevergradSearch
-        import nevergrad as ng
-
-        config = {
-            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
-            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
-            "b": tune.sample.Integer(0, 5),
-            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
-        }
-
-        best_params = [{
-            "metric": 1,
-            "a": "t1",
-            "b": 1,
-            "c": 1e-1
-        }, {
-            "metric": 2,
-            "a": "t2",
-            "b": 2,
-            "c": 1e-2
-        }]
-
-        searcher = NevergradSearch(
-            optimizer=ng.optimizers.OnePlusOne, points_to_evaluate=best_params)
-        analysis = tune.run(
-            _mock_objective,
-            config=config,
-            metric="metric",
-            mode="max",
-            search_alg=searcher,
-            num_samples=5)
-
-        for i in range(len(best_params)):
-            trial_config = analysis.trials[i].config
-            trial_config_dict = {
-                "metric": trial_config["metric"],
-                "a": trial_config["a"],
-                "b": trial_config["b"],
-                "c": trial_config["c"]
-            }
-            self.assertDictEqual(trial_config_dict, best_params[i])
 
     def testConvertOptuna(self):
         from ray.tune.suggest.optuna import OptunaSearch, param
@@ -779,6 +740,136 @@ class SearchSpaceTest(unittest.TestCase):
         config = searcher.suggest("0")
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
+
+    def _testPointsToEvaluate(self, cls, config, **kwargs):
+        points_to_evaluate = [{k: v.sample()
+                               for k, v in config.items()} for _ in range(2)]
+        print(f"Points to evaluate: {points_to_evaluate}")
+        searcher = cls(points_to_evaluate=points_to_evaluate, **kwargs)
+
+        analysis = tune.run(
+            _mock_objective,
+            config=config,
+            metric="metric",
+            mode="max",
+            search_alg=searcher,
+            num_samples=5)
+
+        for i in range(len(points_to_evaluate)):
+            trial_config = analysis.trials[i].config
+            trial_config_dict = {
+                "metric": trial_config["metric"],
+                "a": trial_config["a"],
+                "b": trial_config["b"],
+                "c": trial_config["c"]
+            }
+            self.assertDictEqual(trial_config_dict, points_to_evaluate[i])
+
+    def testPointsToEvaluateAx(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.ax import AxSearch
+        return self._testPointsToEvaluate(AxSearch, config)
+
+    def testPointsToEvaluateBayesOpt(self):
+        config = {
+            "metric": tune.sample.Float(10, 20).uniform(),
+            "a": tune.sample.Float(-30, -20).uniform(),
+            "b": tune.sample.Float(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.bayesopt import BayesOptSearch
+        return self._testPointsToEvaluate(BayesOptSearch, config)
+
+    def testPointsToEvaluateBOHB(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.bohb import TuneBOHB
+        return self._testPointsToEvaluate(TuneBOHB, config)
+
+    def testPointsToEvaluateDragonfly(self):
+        config = {
+            "metric": tune.sample.Float(10, 20).uniform(),
+            "a": tune.sample.Float(-30, -20).uniform(),
+            "b": tune.sample.Float(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.dragonfly import DragonflySearch
+        return self._testPointsToEvaluate(
+            DragonflySearch, config, domain="euclidean", optimizer="bandit")
+
+    def testPointsToEvaluateHyperOpt(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        return self._testPointsToEvaluate(HyperOptSearch, config)
+
+    def testPointsToEvaluateNevergrad(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.nevergrad import NevergradSearch
+        import nevergrad as ng
+        return self._testPointsToEvaluate(
+            NevergradSearch, config, optimizer=ng.optimizers.OnePlusOne)
+
+    def testPointsToEvaluateOptuna(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.optuna import OptunaSearch
+        return self._testPointsToEvaluate(OptunaSearch, config)
+
+    def testPointsToEvaluateSkOpt(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.skopt import SkOptSearch
+        return self._testPointsToEvaluate(SkOptSearch, config)
+
+    def testPointsToEvaluateZoOpt(self):
+        # https://github.com/polixir/ZOOpt/issues/5
+        self.skipTest("ZoOpt currently ignores initial points. This test "
+                      "will be enabled after this has been fixed.")
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).uniform()
+        }
+
+        from ray.tune.suggest.zoopt import ZOOptSearch
+        return self._testPointsToEvaluate(
+            ZOOptSearch, config, budget=10, parallel_num=8)
 
 
 if __name__ == "__main__":
