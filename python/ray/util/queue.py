@@ -44,7 +44,8 @@ class Queue:
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
         actor_options = actor_options or {}
         self.maxsize = maxsize
-        self.actor = _QueueActor.options(**actor_options).remote(self.maxsize)
+        self.actor = ray.remote(_QueueActor).options(**actor_options).remote(
+            self.maxsize)
 
     def __len__(self) -> int:
         return self.size()
@@ -226,7 +227,6 @@ class Queue:
         self.actor = None
 
 
-@ray.remote
 class _QueueActor:
     def __init__(self, maxsize):
         self.maxsize = maxsize
