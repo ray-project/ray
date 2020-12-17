@@ -129,3 +129,24 @@ def test_delete_actor(ray_start_regular):
         del actor
 
         wait_for_condition(server_actor_ref_count(1), timeout=5)
+
+
+def test_simple_multiple_references(ray_start_regular):
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        class A:
+            def __init__(self):
+                self.x = ray.put("hi")
+
+            def get(self):
+                return [self.x]
+
+        a = A.remote()
+        ref1 = ray.get(a.get.remote())[0]
+        ref2 = ray.get(a.get.remote())[0]
+        del a
+        assert ray.get(ref1) == "hi"
+        del ref1
+        assert ray.get(ref2) == "hi"
+        del ref2
