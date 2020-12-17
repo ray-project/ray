@@ -191,12 +191,15 @@ class MockLeasePolicy : public LeasePolicyInterface {
   }
 
   rpc::Address GetBestNodeForTask(const TaskSpecification &spec) {
+    num_lease_policy_consults++;
     return fallback_rpc_address_;
   };
 
   ~MockLeasePolicy() {}
 
   rpc::Address fallback_rpc_address_;
+
+  int num_lease_policy_consults = 0;
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
@@ -368,6 +371,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -448,21 +452,25 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed; worker 2 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Task 2 is pushed; worker 3 is requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // Task 3 is pushed; no more workers requested.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 3);
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // All workers returned.
@@ -504,11 +512,13 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
 
@@ -531,6 +541,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, NodeID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 3);
@@ -778,6 +789,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -787,6 +799,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto remote_raylet_id = NodeID::FromRandom();
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
   ASSERT_EQ(remote_lease_clients.count(7777), 1);
+  // Confirm that lease policy is not consulted on spillback.
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   // There should be no more callbacks on the local client.
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger retry at the remote node.
@@ -851,6 +865,8 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto remote_raylet_id = NodeID::FromRandom();
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
   ASSERT_EQ(remote_lease_clients.count(7777), 1);
+  // Confirm that lease policy is not consulted on spillback.
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
   // Trigger a spillback back to the local node.
   ASSERT_TRUE(
