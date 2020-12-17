@@ -115,7 +115,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Process a new client connection.
   ///
@@ -648,6 +648,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param bundle_spec: Specification of bundle whose resources will be returned.
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
+
+  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
+  /// print.
+  ///
+  /// \param task Task that is infeasible
+  void PublishInfeasibleTaskError(const Task &task) const;
 
   /// ID of this node.
   NodeID self_node_id_;

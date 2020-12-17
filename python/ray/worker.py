@@ -1417,7 +1417,7 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_refs, *, num_returns=1, timeout=None):
+def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1445,6 +1445,11 @@ def wait(object_refs, *, num_returns=1, timeout=None):
         num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
+        fetch_local (bool): If True, wait for the object to be downloaded onto
+            the local node before returning it as ready. If False, ray.wait()
+            will not trigger fetching of objects to the local node and will
+            return immediately once the object is available anywhere in the
+            cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
@@ -1507,6 +1512,7 @@ def wait(object_refs, *, num_returns=1, timeout=None):
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
+            fetch_local,
         )
         return ready_ids, remaining_ids
 
