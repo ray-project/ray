@@ -120,7 +120,8 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
         # 1 ref for my_obj
         assert summary["totalLocalRefCount"] == 1
 
-    wait_until_succeeded_without_exception(check_mem_table, (AssertionError,), timeout_ms=1000)
+    wait_until_succeeded_without_exception(
+        check_mem_table, (AssertionError, ), timeout_ms=1000)
 
 
 def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
