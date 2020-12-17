@@ -125,6 +125,13 @@ class RemotePdb(Pdb):
 
     do_q = do_exit = do_quit
 
+    def do_continue(self, arg):
+        self.__restore()
+        self.handle.connection.close()
+        return Pdb.do_continue(self, arg)
+
+    do_c = do_continue
+
     def set_trace(self, frame=None):
         if frame is None:
             frame = sys._getframe().f_back

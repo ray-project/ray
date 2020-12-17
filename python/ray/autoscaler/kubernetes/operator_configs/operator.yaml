@@ -9,8 +9,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: ray-operator-role
 rules:
-- apiGroups: ["", "rbac.authorization.k8s.io"]
-  resources: ["configmaps", "pods", "pods/exec", "services", "serviceaccounts", "roles", "rolebindings"]
+- apiGroups: ["", "cluster.ray.io"]
+  resources: ["rayclusters", "pods", "pods/exec"]
   verbs: ["get", "watch", "list", "create", "delete", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -35,8 +35,7 @@ spec:
   - name: ray
     imagePullPolicy: Always
     image: rayproject/ray:nightly
-    command: ["/bin/bash", "-c", "--"]
-    args: ["ray-operator; trap : TERM INT; sleep infinity & wait;"]
+    command: ["ray-operator"]
     env:
     - name: RAY_OPERATOR_POD_NAMESPACE
       valueFrom:

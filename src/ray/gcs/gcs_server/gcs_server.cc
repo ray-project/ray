@@ -151,9 +151,8 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
         main_service_.post(
             [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); });
       });
-  for (const auto &node : gcs_init_data.Nodes()) {
-    gcs_heartbeat_manager_->AddNode(node.first);
-  }
+  // Initialize by gcs tables data.
+  gcs_heartbeat_manager_->Initialize(gcs_init_data);
   // Register service.
   heartbeat_info_service_.reset(new rpc::HeartbeatInfoGrpcService(
       heartbeat_manager_io_service_, *gcs_heartbeat_manager_));
