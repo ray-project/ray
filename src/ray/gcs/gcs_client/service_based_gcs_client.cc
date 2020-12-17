@@ -196,8 +196,9 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
       // After GCS is restarted, the gcs client will reestablish the connection. At
       // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to
       // avoid repeated connections in a short period of time, we add a protection
-      // mechanism: if the address does not change, the connection can be made at most
-      // once in `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
+      // mechanism: if the address does not change (meaning gcs server doesn't restart),
+      // the connection can be made at most once in
+      // `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
       if (last_reconnect_address_ == address &&
           (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
               RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
