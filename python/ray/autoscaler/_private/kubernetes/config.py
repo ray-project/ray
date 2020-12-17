@@ -60,6 +60,14 @@ def bootstrap_kubernetes(config):
 
 
 def fillout_resources_kubernetes(config):
+    """
+    Fills CPU and GPU resources by reading pod spec of each available node
+    type.
+
+    For each node type and each of CPU/GPU, looks at container's resources
+    and limits, takes min of the two. The result is rounded up, as Ray does
+    not currently support fractional CPU.
+    """
     if "available_node_types" not in config:
         return config["available_node_types"]
     node_types = copy.deepcopy(config["available_node_types"])
@@ -96,25 +104,42 @@ def get_resource(container_resources, resource_name):
     limit = _get_resource(
         container_resources, resource_name, field_name="limits")
     resource = min(request, limit)
+    # float("inf") value means the resource wasn't detected in either
+    # requests or limits
     return 0 if resource == float("inf") else int(resource)
 
 
 def _get_resource(container_resources, resource_name, field_name):
+    """Returns amount of resource rounded up to nearest integer, or
+    float("inf") if the resource is not present.
+
+    Args:
+        container_resources: Container's resource field.
+        resource_name: 'cpu' or 'gpu'
+        field_name: 'requests' or 'limits'
+    """
     if field_name not in container_resources:
+        # No limit/resource field.
         return float("inf")
     resources = container_resources[field_name]
+    # Look for keys containing the resource_name. For example,
+    # the key 'nvidia.com/gpu' contains the key 'gpu'.
     matching_keys = [key for key in resources if resource_name in key.lower()]
     if len(matching_keys) == 0:
         return float("inf")
-    if len(matching_keys) > 2:
+    if len(matching_keys) > 1:
+        # Should have only one match -- mostly relevant for gpu.
         raise ValueError(f"Multiple {resource_name} types not supported.")
+    # E.g. 'nvidia.com/gpu' or 'cpu'.
     resource_key = matching_keys.pop()
-    return _parse_resource(resources[resource_key])
+    resource_quantity = resources[resource_key]
+    return _parse_resource(resource_quantity)
 
 
 def _parse_resource(resource):
     resource_str = str(resource)
     if resource_str[-1] == "m":
+        # For example, '500m' rounds up to 1.
         return math.ceil(int(resource_str[:-1]) / 1000)
     else:
         return int(resource_str)
