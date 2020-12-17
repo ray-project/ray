@@ -25,10 +25,10 @@ using ::testing::_;
 class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest() {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
   }
 
-  std::shared_ptr<gcs::GcsResourceManagerInterface> gcs_resource_manager_;
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
 TEST_F(GcsResourceManagerTest, TestBasic) {
@@ -38,7 +38,7 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   std::unordered_map<std::string, double> resource_map;
   resource_map[cpu_resource] = 10;
   ResourceSet resource_set(resource_map);
-  gcs_resource_manager_->UpdateResources(node_id, resource_set);
+  gcs_resource_manager_->UpdateResourceCapacity(node_id, resource_map);
 
   // Get and check cluster resources.
   const auto &cluster_resource = gcs_resource_manager_->GetClusterResources();

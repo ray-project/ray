@@ -1004,7 +1004,7 @@ cdef class CoreWorker:
         return c_object_id.Binary()
 
     def wait(self, object_refs, int num_returns, int64_t timeout_ms,
-             TaskID current_task_id):
+             TaskID current_task_id, c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
@@ -1013,7 +1013,7 @@ cdef class CoreWorker:
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results))
+                wait_ids, num_returns, timeout_ms, &results, fetch_local))
 
         assert len(results) == len(object_refs)
 
@@ -1207,14 +1207,17 @@ cdef class CoreWorker:
 
     def wait_placement_group_ready(self,
                                    PlacementGroupID placement_group_id,
-                                   int32_t timeout_ms):
+                                   int32_t timeout_seconds):
         cdef CRayStatus status
         cdef CPlacementGroupID cplacement_group_id = (
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
-        cdef int ctimeout_ms = timeout_ms
+        cdef int ctimeout_seconds = timeout_seconds
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker() \
-                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
+                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_seconds)
+            if status.IsNotFound():
+                raise Exception("Placement group {} does not exist.".format(
+                    placement_group_id))
         return status.ok()
 
     def submit_actor_task(self,
