@@ -33,8 +33,12 @@ class MLFlowLoggerCallback(LoggerCallback):
         registry_uri (str): The registry URI that gets passed directly to
             mlflow.tracking.MlflowClient initialization.
         experiment_name (str): The experiment name to use for this Tune run.
-            If the experiment already exists with MlFlow, it will be reused.
-            If not, a new experiment will be created.
+            If None is passed in here, the Logger will automatically then
+            check the MLFLOW_EXPERIMENT_NAME and then the MLFLOW_EXPERIMENT_ID
+            environment variables to determine the experiment name.
+            If the experiment with the name already exists with MlFlow,
+            it will be reused. If not, a new experiment will be created with
+            that name.
         save_artifact (bool): If set to True, automatically save the entire
             contents of the Tune local_dir as an artifact to the
             corresponding run in MlFlow.
@@ -69,27 +73,28 @@ class MLFlowLoggerCallback(LoggerCallback):
         self.client = MlflowClient(
             tracking_uri=tracking_uri, registry_uri=registry_uri)
 
-        # Setup MLFlow experiment.
-        experiment_id = None
         if experiment_name is None:
             # If no name is passed in, then check env vars.
             # First check if experiment_name env var is set.
             experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME")
-            if experiment_name is None:
-                # Then check if experiment_id is set and exists.
-                experiment_id = int(os.environ.get("MLFLOW_EXPERIMENT_ID"))
-                if experiment_id is None or not self.client.get_experiment(
-                        experiment_id):
-                    experiment_id = None
 
-        if experiment_id is None:
+        if experiment_name is not None:
+            # First check if experiment with name exists.
             experiment = self.client.get_experiment_by_name(experiment_name)
             if experiment is not None:
+                # If it already exists then get the id.
                 experiment_id = experiment.experiment_id
-            elif experiment_name is not None:
+            else:
+                # If it does not exist, create the experiment.
                 experiment_id = self.client.create_experiment(
                     name=experiment_name)
-            else:
+        else:
+            # No experiment_name is passed in and name env var is not set.
+            # Now check the experiment id env var.
+            experiment_id = os.environ.get("MLFLOW_EXPERIMENT_ID")
+            # Confirm that an experiment with this id exists.
+            if experiment_id is None or self.client.get_experiment(
+                        experiment_id) is None:
                 raise ValueError("No experiment_name passed, "
                                  "MLFLOW_EXPERIMENT_NAME env var is not "
                                  "set, and MLFLOW_EXPERIMENT_ID either "
@@ -97,7 +102,7 @@ class MLFlowLoggerCallback(LoggerCallback):
                                  "set one of these to use the "
                                  "MlFlowLoggerCallback.")
 
-
+        # At this point, experiment_id should be set.
         self.experiment_id = experiment_id
         self.save_artifact = save_artifact
 
@@ -125,6 +130,9 @@ class MLFlowLoggerCallback(LoggerCallback):
             try:
                 value = float(value)
             except (ValueError, TypeError):
+                logger.debug("Cannot log key {} with value {} since the "
+                             "value cannot be converted to float.".format(
+                    key, value))
                 continue
             self.client.log_metric(
                 run_id=run_id, key=key, value=value, step=iteration)
@@ -232,12 +240,14 @@ def mlflow_mixin(func: Callable):
             tracking.
         experiment_id (str): The id of an already created MLflow experiment.
             All logs from all trials in ``tune.run`` will be reported to this
-            experiment. If this is not provided, you must provide an
-            ``experiment_name``.
-        experiment_name (str): The name of an already created MLflow
-            experiment. All logs from all trials in ``tune.run`` will be
-            reported to this experiment. If this is not provided, you must
-            provide an ``experiment_id``.
+            experiment. If this is not provided or the experiment with this
+            id does not exist, you must provide an``experiment_name``. This
+            parameter takes precedence over ``experiment_name``.
+        experiment_name (str): The name of an MLflow experiment. All logs
+            from all trials in ``tune.run`` will be
+            reported to this experiment. If an experiment with this name
+            does not exist, a new experiment will be created with this name. If
+            this is not provided, you must provide a valid ``experiment_id``.
 
     Example:
 
@@ -274,7 +284,10 @@ def mlflow_mixin(func: Callable):
     if mlflow is None:
         raise RuntimeError("MLFlow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
-    func.__mixins__ = (MLFlowTrainableMixin, )
+    if func.hasattr("__mixins__"):
+        func.__mixins__ = func.__mixins__ + (MLFlowTrainableMixin, )
+    else:
+        func.__mixins__ = (MLFlowTrainableMixin, )
     return func
 
 
@@ -311,7 +324,11 @@ class MLFlowTrainableMixin:
 
         # First see if experiment_id is passed in.
         experiment_id = mlflow_config.pop("experiment_id", None)
-        if experiment_id is None:
+        if experiment_id is None or self._mlflow.get_experiment(
+            experiment_id) is None:
+            logger.debug("Either no experiment_id is passed in, or the "
+                         "experiment with the given id does not exist. "
+                         "Checking experiment_name")
             # Check for name.
             experiment_name = mlflow_config.pop("experiment_name", None)
             if experiment_name is None:
@@ -322,9 +339,13 @@ class MLFlowTrainableMixin:
                     "key in your `config` dict containing at "
                     "least a `experiment_name` or `experiment_id` "
                     "specification.")
-            # Name exists.
             experiment = self._mlflow.get_experiment_by_name(experiment_name)
-            experiment_id = experiment.experiment_id
+            if experiment is not None:
+                # Experiment with this name exists.
+                experiment_id = experiment.experiment_id
+            else:
+                raise ValueError("No experiment with the given experiment "
+                                 "name or id currently exists.")
 
         self.experiment_id = experiment_id
 

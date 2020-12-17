@@ -66,6 +66,7 @@ class MockMlflowClient:
             return None
 
     def get_experiment(self, experiment_id):
+        experiment_id = int(experiment_id)
         try:
             return self.experiments[experiment_id]
         except IndexError:
@@ -85,13 +86,9 @@ class MockMlflowClient:
         return run
 
     def start_run(self, experiment_id, run_name):
-        # Set active run if already exists, or creates new one if not.
-        runs = self.runs[experiment_id]
-        if len(runs) > 0:
-            self.active_run = runs[-1]
-        else:
-            run = self.create_run(experiment_id)
-            self.active_run = run
+        # Creates new run and sets it as active.
+        run = self.create_run(experiment_id)
+        self.active_run = run
 
     def get_mock_run(self, run_id):
         return self.runs[run_id[0]][run_id[1]]
@@ -117,7 +114,7 @@ class MockMlflowClient:
         return [e.name for e in self.experiments]
 
 
-class _MockMlFlowTrainableMixin(MLFlowTrainableMixin):
+class _MockMLFlowTrainableMixin(MLFlowTrainableMixin):
     _mlflow = MockMlflowClient()
 
 
@@ -211,9 +208,10 @@ class MLFlowTest(unittest.TestCase):
         self.assertEqual(len(logger.client.runs[1]), 1)
 
         # Check metrics are logged properly.
-        result = {"metric1": 0.8, "metric2": 1}
+        result = {"metric1": 0.8, "metric2": 1, "metric3": None}
         logger.on_trial_result(0, [], trial, result)
         mock_run = logger.client.runs[1][0]
+        # metric3 is not logged since it cannot be converted to float.
         self.assertListEqual(mock_run.metrics, [{
             "metric1": 0.8
         }, {
@@ -264,13 +262,19 @@ class MLFlowTest(unittest.TestCase):
         def train_fn(config):
             return 1
 
-        train_fn.__mixins__ = (_MockMlFlowTrainableMixin, )
+        train_fn.__mixins__ = (_MockMLFlowTrainableMixin,)
 
         # No MLFlow config passed in.
         with self.assertRaises(ValueError):
             wrapped = wrap_function(train_fn)(trial_config)
 
         trial_config.update({"mlflow": {}})
+        # No tracking uri or experiment_id/name passed in.
+        with self.assertRaises(ValueError):
+            wrapped = wrap_function(train_fn)(trial_config)
+
+        # Invalid experiment-id
+        trial_config["mlflow"].update({"experiment_id": "500"})
         # No tracking uri or experiment_id/name passed in.
         with self.assertRaises(ValueError):
             wrapped = wrap_function(train_fn)(trial_config)
@@ -283,6 +287,22 @@ class MLFlowTest(unittest.TestCase):
         client = wrapped._mlflow
         self.assertEqual(client.tracking_uri, "test_tracking_uri")
         self.assertTupleEqual(client.active_run.run_id, (0, 0))
+
+        class _MockMLFlowExistingMixin(MLFlowTrainableMixin):
+            _mlflow = client
+
+        train_fn.__mixins__ = (_MockMLFlowExistingMixin, )
+        wrapped = wrap_function(train_fn)(trial_config)
+        client = wrapped._mlflow
+        self.assertTupleEqual(client.active_run.run_id, (0, 1))
+
+        # Set to experiment that does not already exist.
+        # New experiment should be created.
+        trial_config["mlflow"]["experiment_name"] = "new_experiment"
+        with self.assertRaises(ValueError):
+            wrapped = wrap_function(train_fn)(trial_config)
+
+
 
 
 if __name__ == "__main__":
