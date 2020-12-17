@@ -27,7 +27,7 @@ to log to your training process.
 Please :doc:`see here </tune/examples/mlflow_example>` for a full example on how you can use either the
 MLFlowLoggerCallback or the mlflow_mixin.
 
-MLflow AutoLogging
+MLFlow AutoLogging
 ------------------
 You can also check out :doc:`here </tune/examples/mlflow_ptl_example>` for an example on how you can leverage MLflow
 autologging, in this case with Pytorch Lightning
