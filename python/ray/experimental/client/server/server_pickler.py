@@ -4,9 +4,14 @@ import sys
 import ray
 
 from typing import Any
+from typing import TYPE_CHECKING
 
 from ray.experimental.client.client_pickler import PickleStub
 from ray.experimental.client.server.server_stubs import ServerFunctionSentinel
+
+if TYPE_CHECKING:
+    from ray.experimental.client.server.server import RayletServicer
+    import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 if sys.version_info < (3, 8):
     try:
@@ -18,7 +23,7 @@ else:
 
 
 class ServerPickler(cloudpickle.CloudPickler):
-    def __init__(self, client_id, server, *args, **kwargs):
+    def __init__(self, client_id: str, server: "RayletServicer", *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.client_id = client_id
         self.server = server
@@ -71,29 +76,26 @@ class ClientUnpickler(pickle.Unpickler):
             raise NotImplementedError("Uncovered client data type")
 
 
-def dumps_from_server(obj,
-                      client_id,
-                      server_instance,
-                      protocol=None,
-                      buffer_callback=None):
+def dumps_from_server(obj: Any,
+                      client_id: str,
+                      server_instance: "RayletServicer",
+                      protocol=None) -> bytes:
     with io.BytesIO() as file:
         sp = ServerPickler(
             client_id,
             server_instance,
             file,
-            protocol=protocol,
-            buffer_callback=buffer_callback)
+            protocol=protocol)
         sp.dump(obj)
         return file.getvalue()
 
 
-def loads_from_client(data,
-                      server_instance,
+def loads_from_client(data: bytes,
+                      server_instance: "RayletServicer",
                       *,
                       fix_imports=True,
                       encoding="ASCII",
-                      errors="strict",
-                      buffers=None):
+                      errors="strict") -> Any:
     if isinstance(data, str):
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)
@@ -101,10 +103,8 @@ def loads_from_client(data,
         server_instance,
         file,
         fix_imports=fix_imports,
-        buffers=buffers,
-        encoding=encoding,
-        errors=errors).load()
+        encoding=encoding).load()
 
 
-def convert_from_arg(pb, server) -> Any:
+def convert_from_arg(pb: "ray_client_pb2.Arg", server: "RayletServicer") -> Any:
     return loads_from_client(pb.data, server)

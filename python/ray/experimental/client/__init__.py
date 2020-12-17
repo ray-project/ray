@@ -104,7 +104,7 @@ class RayAPIStub:
                 conn_str: str,
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
-                stub=None):
+                stub=None) -> None:
         from ray.experimental.client.worker import Worker
         _client_worker = Worker(conn_str, secure=secure, metadata=metadata)
         _set_client_api(ClientAPI(_client_worker))

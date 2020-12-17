@@ -3,6 +3,7 @@ import io
 import sys
 
 from typing import NamedTuple
+from typing import Any
 
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorHandle
@@ -65,35 +66,32 @@ class ServerUnpickler(pickle.Unpickler):
             raise NotImplementedError("Being passed back an unknown stub")
 
 
-def dumps_from_client(obj, client_id, protocol=None, buffer_callback=None):
+def dumps_from_client(obj: Any, client_id: str, protocol=None) -> bytes:
     with io.BytesIO() as file:
         cp = ClientPickler(
             client_id,
             file,
-            protocol=protocol,
-            buffer_callback=buffer_callback)
+            protocol=protocol)
         cp.dump(obj)
         return file.getvalue()
 
 
-def loads_from_server(data,
+def loads_from_server(data: bytes,
                       *,
                       fix_imports=True,
                       encoding="ASCII",
-                      errors="strict",
-                      buffers=None):
+                      errors="strict") -> Any:
     if isinstance(data, str):
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)
     return ServerUnpickler(
         file,
         fix_imports=fix_imports,
-        buffers=buffers,
         encoding=encoding,
         errors=errors).load()
 
 
-def convert_to_arg(val, client_id):
+def convert_to_arg(val: Any, client_id: str) -> ray_client_pb2.Arg:
     out = ray_client_pb2.Arg()
     out.local = ray_client_pb2.Arg.Locality.INTERNED
     out.data = dumps_from_client(val, client_id)

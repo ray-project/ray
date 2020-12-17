@@ -4,8 +4,8 @@ from typing import Dict
 
 
 class ClientBaseRef:
-    def __init__(self, id):
-        self.id = id
+    def __init__(self, id: bytes):
+        self.id: bytes = id
         if len(id) != 0:
             ray.call_retain(id)
 
@@ -118,7 +118,7 @@ class ClientActorClass(ClientStub):
         self._name = state["_name"]
         self._ref = state["_ref"]
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor
         ref = ray.call_remote(self, *args, **kwargs)
         return ClientActorHandle(ClientActorRef.from_remote_ref(ref), self)
@@ -192,7 +192,7 @@ class ClientRemoteMethod(ClientStub):
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote method cannot be called directly. "
-                        "Use {self._name}.remote() instead")
+                        f"Use {self._name}.remote() instead")
 
     def remote(self, *args, **kwargs):
         return ray.call_remote(self, *args, **kwargs)

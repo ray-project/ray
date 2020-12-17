@@ -43,11 +43,12 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     resp = ray_client_pb2.DataResponse(
                         release=ray_client_pb2.ReleaseResponse(ok=released))
                 else:
-                    raise Exception("Uncovered request type")
+                    raise Exception(f"Unreachable code: Request type "
+                                    f"{req_type} not handled in Datapath")
                 resp.req_id = req.req_id
                 yield resp
-        except grpc.RpcError:
-            logger.debug("Closing channel: {e}")
+        except grpc.RpcError as e:
+            logger.debug(f"Closing channel: {e}")
         finally:
             logger.info(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)

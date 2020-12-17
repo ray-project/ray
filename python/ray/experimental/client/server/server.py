@@ -286,7 +286,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             out.append(t)
         return out
 
-    def lookup_or_register_func(self, id, client_id):
+    def lookup_or_register_func(self, id: bytes, client_id: str) -> ray.remote_function.RemoteFunction:
         if id not in self.function_refs:
             funcref = self.object_refs[client_id][id]
             func = ray.get(funcref)

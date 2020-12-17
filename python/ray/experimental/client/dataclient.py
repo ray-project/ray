@@ -20,7 +20,7 @@ INT32_MAX = (2**31) - 1
 
 
 class DataClient:
-    def __init__(self, channel, client_id):
+    def __init__(self, channel: 'grpc._channel.Channel', client_id: str):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
@@ -81,8 +81,6 @@ class DataClient:
             self.cv.wait_for(lambda: req_id in self.ready_data)
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
-        if data is None:
-            raise Exception("Couldn't get data")
         return data
 
     def GetObject(self, request: ray_client_pb2.GetRequest,
