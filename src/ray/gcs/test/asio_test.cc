@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
 
 extern "C" {
@@ -65,6 +66,14 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 
   redisAsyncCommand(ac, NULL, NULL, "SET key test");
   redisAsyncCommand(ac, GetCallback, nullptr, "GET key");
+
+  std::shared_ptr<RedisContext> shard_context =
+      std::make_shared<RedisContext>(io_service);
+  ASSERT_TRUE(shard_context
+                  ->Connect(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front(),
+                            /*sharding=*/true,
+                            /*password=*/std::string())
+                  .ok());
 
   io_service.run();
 }
