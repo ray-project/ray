@@ -144,9 +144,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         try:
             item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
-            print(f"{e}")
-            return_exception_in_context(e, context)
-            return ray_client_pb2.GetResponse(valid=False)
+            return ray_client_pb2.GetResponse(
+                valid=False, error=cloudpickle.dumps(e))
         item_ser = dumps_from_server(item, client_id, self)
         return ray_client_pb2.GetResponse(valid=True, data=item_ser)
 
@@ -269,7 +268,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             task: ray_client_pb2.ClientTask,
             context=None,
             prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        remote_func = self.lookup_or_register_func(task.payload_id, task.client_id)
+        remote_func = self.lookup_or_register_func(
+            task.payload_id, task.client_id)
         arglist = self._convert_args(task.args, prepared_args)
         # Prepare call if we're in a test
         with current_func(remote_func):

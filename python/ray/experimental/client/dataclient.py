@@ -62,6 +62,7 @@ class DataClient:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
 
+
     def close(self, close_channel: bool = False) -> None:
         if self.request_queue is not None:
             self.request_queue.put(None)

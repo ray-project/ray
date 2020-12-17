@@ -68,6 +68,7 @@ message GetRequest {
 message GetResponse {
   bool valid = 1;
   bytes data = 2;
+  bytes error = 3;
 }
 
 message WaitRequest {

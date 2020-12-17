@@ -16,7 +16,7 @@ from typing import Optional
 from ray.util.inspect import is_cython
 import grpc
 
-from ray.exceptions import TaskCancelledError
+import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.client_pickler import convert_to_arg
@@ -77,9 +77,9 @@ class Worker:
         try:
             data = self.data_client.GetObject(req)
         except grpc.RpcError as e:
-            raise decode_exception(e.details())
+            raise e.details()
         if not data.valid:
-            raise TaskCancelledError(ref.id)
+            raise cloudpickle.loads(data.error)
         return loads_from_server(data.data)
 
     def put(self, vals):
