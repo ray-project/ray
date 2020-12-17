@@ -14,6 +14,7 @@ from ray.util.collective.types import AllReduceOptions, \
 from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
 # TODO(Hao):
 # (1) stream management, instead of using the default stream,
 #     using a dedicate stream
@@ -126,7 +127,7 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = cupy.array([1])
 
         self._dev_comm_map = dict()
-        self._dev_streams_map = dict)()
+        self._dev_streams_map = dict()
 
     def destroy_group(self):
         """
@@ -174,14 +175,13 @@ class NCCLGroup(BaseGroup):
         streams = self._dev_streams_map[key]
         self._sync_streams(devices, streams)
         # for non-blocking calls of all-reduce
-        logger.debug(f"{tensor}, {comms}")
         groupStart()
         for i in range(len(tensor)):
             dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
             ptr = nccl_util.get_tensor_ptr(tensor[i])
             n_elems = nccl_util.get_tensor_n_elements(tensor[i])
             # in-place allreduce
-            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream[i].ptr)
+            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, streams[i])
         groupEnd()
 
     def barrier(self, barrier_options=BarrierOptions()):
@@ -234,6 +234,7 @@ class NCCLGroup(BaseGroup):
                     stream = runtime.streamCreate() 
                 comms.append(comm)
                 nccl_streams.append(stream)
+                logger.debug(f"{stream}")
             groupEnd()
 
         # cache the result
@@ -249,17 +250,9 @@ class NCCLGroup(BaseGroup):
         for i in range(len(devices)):
             nccl_stream = nccl_streams[i]
             nccl_event = Event()
-            #FIXME: Not sure cupy still associate stream to a device in nccl sytle.
-            # 90% sure about this.
             with Device(devices[i]): 
                 nccl_event.record(get_current_stream())
                 nccl_event.synchronize()
-
-    @staticmethod
-    def _get_cuda_stream():
-        """Obtain an idle stream from a stream pool for the collective task."""
-        # TODO: implement a simple stream manager.
-        return cupy.cuda.Stream.null
 
     # def _collective_call(self, *args):
     #     """Private method to encapsulate all collective calls"""
