@@ -72,6 +72,7 @@ void GcsObjectManager::HandleAddObjectLocation(
     AddObjectLocationInCache(object_id, node_id);
   } else {
     absl::MutexLock lock(&mutex_);
+    RAY_CHECK(!request.spilled_url().empty());
     object_to_locations_[object_id].spilled_url = request.spilled_url();
     RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
   }

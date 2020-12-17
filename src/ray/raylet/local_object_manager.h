@@ -76,7 +76,7 @@ class LocalObjectManager {
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
   /// \return True if spilling is in progress.
-  bool SpillObjectUptoMaxThroughput();
+  void SpillObjectUptoMaxThroughput();
 
   /// Spill objects to external storage.
   ///
@@ -108,6 +108,8 @@ class LocalObjectManager {
   /// invocation.
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
 
+  bool IsSpillingInProgress();
+
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest,
@@ -121,12 +123,11 @@ class LocalObjectManager {
   ///
   /// \param num_bytes_to_spill The total number of bytes to spill.
   /// \return True if it can spill num_bytes_to_spill. False otherwise.
-  bool SpillObjectsOfSize(int64_t num_bytes_to_spill) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
 
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
-                            std::function<void(const ray::Status &)> callback)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                            std::function<void(const ray::Status &)> callback);
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
@@ -144,8 +145,7 @@ class LocalObjectManager {
   /// Delete spilled objects stored in given urls.
   ///
   /// \param urls_to_delete List of urls to delete from external storages.
-  void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;
@@ -173,14 +173,12 @@ class LocalObjectManager {
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   // Objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
@@ -194,7 +192,7 @@ class LocalObjectManager {
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
-  size_t num_bytes_pending_spill_ GUARDED_BY(mutex_);
+  size_t num_bytes_pending_spill_;
 
   /// This class is accessed by both the raylet and plasma store threads. The
   /// mutex protects private members that relate to object spilling.
@@ -222,10 +220,10 @@ class LocalObjectManager {
   int64_t min_spilling_size_;
 
   /// The current number of active spill workers.
-  int64_t num_active_workers_;
+  int64_t num_active_workers_ GUARDED_BY(mutex_);
 
   /// The max number of active spill workers.
-  int64_t max_active_workers_;
+  const int64_t max_active_workers_;
 
   /// Callback to check if a plasma object is pinned in workers.
   /// Return true if unpinned, meaning we can safely spill the object. False otherwise.

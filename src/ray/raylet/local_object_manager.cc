@@ -22,7 +22,6 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects) {
-  absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_pinning_enabled_);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
@@ -62,7 +61,6 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   // object_pinning_enabled_ flag is off when the --lru-evict flag is on.
   if (object_pinning_enabled_) {
-    absl::MutexLock lock(&mutex_);
     RAY_LOG(DEBUG) << "Unpinning object " << object_id;
     // The object should be in one of these stats. pinned, spilling, or spilled.
     RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
@@ -104,22 +102,28 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
-bool LocalObjectManager::SpillObjectUptoMaxThroughput() {
+void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
-    return false;
+    return;
   }
-  absl::MutexLock lock(&mutex_);
 
   // Spill as fast as we can using all our spill workers.
-  while (num_active_workers_ < max_active_workers_) {
+  bool can_spill_more = true;
+  while (can_spill_more) {
     if (!SpillObjectsOfSize(min_spilling_size_)) {
       break;
     }
-    num_active_workers_ += 1;
+    {
+      absl::MutexLock lock(&mutex_);
+      num_active_workers_ += 1;
+      can_spill_more = num_active_workers_ < max_active_workers_;
+    }
   }
+}
 
-  // Return whether spilling is still in progress.
+bool LocalObjectManager::IsSpillingInProgress() {
+  absl::MutexLock lock(&mutex_);
   return num_active_workers_ > 0;
 }
 
@@ -177,7 +181,6 @@ bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
-  absl::MutexLock lock(&mutex_);
   SpillObjectsInternal(object_ids, callback);
 }
 
@@ -226,8 +229,10 @@ void LocalObjectManager::SpillObjectsInternal(
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
-              absl::MutexLock lock(&mutex_);
-              num_active_workers_ -= 1;
+              {              
+                absl::MutexLock lock(&mutex_);
+                num_active_workers_ -= 1;
+              }
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {
@@ -264,7 +269,6 @@ void LocalObjectManager::AddSpilledUrls(
         object_id, object_url,
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
-          absl::MutexLock lock(&mutex_);
           // Unpin the object.
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
@@ -345,7 +349,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
 }
 
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
-  absl::MutexLock lock(&mutex_);
   std::vector<std::string> object_urls_to_delete;
 
   // Process upto batch size of objects to delete.
