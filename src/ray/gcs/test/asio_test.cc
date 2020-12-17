@@ -72,6 +72,10 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
   ASSERT_TRUE(
       shard_context->PingPort(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front())
           .ok());
+  ASSERT_FALSE(
+      shard_context
+          ->PingPort(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front() + 987)
+          .ok());
   ASSERT_TRUE(shard_context
                   ->Connect(std::string("127.0.0.1"), TEST_REDIS_SERVER_PORTS.front(),
                             /*sharding=*/true,
