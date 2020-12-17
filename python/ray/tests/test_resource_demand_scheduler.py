@@ -1968,6 +1968,7 @@ class AutoscalingTest(unittest.TestCase):
                   {}, {})
         print("============ Should scale down from here =============", node_id)
         autoscaler.update()
+        print(self.provider.non_terminated_node_ips({}))
         self.waitForNodes(1)
         # If node {node_id} was terminated any time then it's state will be set
         # to terminated.

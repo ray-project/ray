@@ -171,7 +171,7 @@ class StandardAutoscaler:
         nodes_to_terminate: Dict[NodeID, bool] = []
         node_type_counts = collections.defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
-        # were most recently used. Otherwise, _keep_min_workers_of_node_type
+        # were most recently used. Otherwise, _keep_min_worker_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
         # Don't terminate nodes needed by request_resources()
@@ -189,18 +189,20 @@ class StandardAutoscaler:
                         node_id, True)
             outdated = self.launch_config_ok(node_id)
 
-            print(f"{node_id}, min_workers: {needed_for_min_workers}, min_resources: {needed_for_min_resources}, outdated: {outdated}")
+            # print(f"{node_id}, min_workers: {needed_for_min_workers}, min_resources: {needed_for_min_resources}, outdated: {outdated}")
             if (needed_for_min_resources or needed_for_min_resources) and not outdated:
                 continue
 
 
             node_ip = self.provider.internal_ip(node_id)
-            print(f"Checking if node {node_ip} should be removed. Horizon: {horizon} last_used: {last_used}")
+            # print(f"Checking if node {node_ip} should be removed. Horizon: {horizon} last_used: {last_used}")
             if node_ip in last_used and last_used[node_ip] < horizon:
                 logger.debug("StandardAutoscaler: "
                              "{}: Terminating idle node.".format(node_id))
+                print(f"Terminating {node_id} for being idle.")
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
+                print(f"Terminating {node_id} for being out of date.")
                 logger.debug("StandardAutoscaler: "
                              "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
@@ -215,6 +217,7 @@ class StandardAutoscaler:
         while (len(nodes) -
                len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
             to_terminate = nodes.pop()
+            print(f"Terminating {node_id} to satisfy max_workers")
             logger.debug("StandardAutoscaler: "
                          "{}: Terminating unneeded node.".format(to_terminate))
             nodes_to_terminate.append(to_terminate)
@@ -674,6 +677,8 @@ class StandardAutoscaler:
 
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
+            "StandardAutoscaler: Queue {} new nodes for launch".format(count))
+        print(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
