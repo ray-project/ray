@@ -28,6 +28,9 @@ class Worker:
         self.buffer = data
         return self.buffer
 
+    def get_buffer(self):
+        return self.buffer
+
     def set_list_buffer(self, list_of_arrays):
         self.list_buffer = list_of_arrays
         return self.list_buffer

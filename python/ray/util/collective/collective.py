@@ -55,17 +55,6 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise NotImplementedError()
         elif backend == types.Backend.NCCL:
-            # create the ncclUniqueID
-            if rank == 0:
-                # availability has been checked before entering here.
-                group_uid = nccl_util.get_nccl_unique_id()
-                store_name = get_nccl_store_name(group_name)
-                # Avoid a potential circular dependency in ray/actor.py
-                from ray.util.collective.util import NCCLUniqueIDStore
-                store = NCCLUniqueIDStore.options(
-                    name=store_name, lifetime="detached").remote(store_name)
-                ray.wait([store.set_id.remote(group_uid)])
-
             logger.debug("creating NCCL group: '{}'".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
@@ -91,19 +80,9 @@ class GroupManager(object):
 
         # release the collective group resource
         g = self._name_group_map[group_name]
-        rank = g.rank
-        backend = g.backend()
-
         # clean up the dicts
         del self._group_name_map[g]
         del self._name_group_map[group_name]
-        if backend == types.Backend.NCCL:
-            # release the named actor
-            if rank == 0:
-                store_name = get_nccl_store_name(group_name)
-                store = ray.get_actor(store_name)
-                ray.wait([store.__ray_terminate__.remote()])
-                ray.kill(store)
         # Release the communicator resources
         g.destroy_group()
 
@@ -348,12 +327,8 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, dst_rank)
-
-    # check whether send/recv is available
-    if g.backend == types.Backend.NCCL:
-        if nccl_util.get_nccl_runtime_version() < 2704:
-            raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(nccl_util.get_nccl_runtime_version()))
+    if dst_rank == g.rank:
+        raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
     g.send(tensor, dst_rank)
 
 
@@ -372,6 +347,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, src_rank)
+    if src_rank == g.rank:
+        raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
     g.recv(tensor, src_rank)
 
 
