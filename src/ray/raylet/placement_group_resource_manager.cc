@@ -221,7 +221,8 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   }
   const auto &bundle_state = it->second;
   if (bundle_state->state_ == CommitState::PREPARED) {
-    // Commit bundle first so that we can remove the bundle with consistent implementation.
+    // Commit bundle first so that we can remove the bundle with consistent
+    // implementation.
     CommitBundle(bundle_spec);
   }
 
