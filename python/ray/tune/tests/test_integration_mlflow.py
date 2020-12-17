@@ -167,7 +167,7 @@ class MLFlowTest(unittest.TestCase):
         logger = MLFlowLoggerCallback()
         self.assertListEqual(logger.client.experiment_names,
                              ["existing_experiment"])
-        self.assertEqual(logger.experiment_id, 0)
+        self.assertEqual(logger.experiment_id, "0")
 
         # Pass in non existing experiment id as env var.
         clear_env_vars()
