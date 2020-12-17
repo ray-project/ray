@@ -8,10 +8,10 @@ from .util import create_collective_workers
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("dst_rank", [0, 1])
-@pytest.mark.parametrize("array_size",
-                         [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]])
-def test_reduce_different_name(ray_start_single_node_2_gpus, group_name, array_size,
-                               dst_rank):
+@pytest.mark.parametrize(
+    "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]])
+def test_reduce_different_name(ray_start_single_node_2_gpus, group_name,
+                               array_size, dst_rank):
     world_size = 2
     actors, _ = create_collective_workers(
         num_workers=world_size, group_name=group_name)
@@ -29,7 +29,8 @@ def test_reduce_different_name(ray_start_single_node_2_gpus, group_name, array_s
         refs.append(ref)
     results = ray.get(refs)
     for i in range(world_size):
-        assert (results[i] == cp.ones(array_size, dtype=cp.float32) * (src_rank + 1)).all()
+        assert (results[i] == cp.ones(array_size, dtype=cp.float32) *
+                (src_rank + 1)).all()
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])

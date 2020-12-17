@@ -328,7 +328,8 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
-        raise RuntimeError("The destination rank '{}' is self.".format(dst_rank))
+        raise RuntimeError(
+            "The destination rank '{}' is self.".format(dst_rank))
     g.send(tensor, dst_rank)
 
 
@@ -348,7 +349,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
-        raise RuntimeError("The destination rank '{}' is self.".format(src_rank))
+        raise RuntimeError(
+            "The destination rank '{}' is self.".format(src_rank))
     g.recv(tensor, src_rank)
 
 

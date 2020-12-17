@@ -14,7 +14,7 @@ def clean_up():
         for i in range(max_world_size):
             for j in range(max_world_size):
                 if i <= j:
-                    p2p_group_name =  name + "_" + str(i) + "_" + str(j)
+                    p2p_group_name = name + "_" + str(i) + "_" + str(j)
                     p2p_group_names.append(p2p_group_name)
     all_names = group_names + p2p_group_names
     for group_name in all_names:

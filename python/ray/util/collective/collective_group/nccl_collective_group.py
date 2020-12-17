@@ -315,7 +315,8 @@ class NCCLGroup(BaseGroup):
         # check whether send/recv is available
         if nccl_util.get_nccl_runtime_version() < 2704:
             raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(nccl_util.get_nccl_runtime_version()))
+                               "Got '{}'.".format(
+                                   nccl_util.get_nccl_runtime_version()))
 
         peer_p2p_rank = 0 if self.rank > dst_rank else 1
         comm = self._get_nccl_p2p_communicator(self.rank, dst_rank)
@@ -339,7 +340,8 @@ class NCCLGroup(BaseGroup):
         """
         if nccl_util.get_nccl_runtime_version() < 2704:
             raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(nccl_util.get_nccl_runtime_version()))
+                               "Got '{}'.".format(
+                                   nccl_util.get_nccl_runtime_version()))
         peer_p2p_rank = 0 if self.rank > src_rank else 1
         comm = self._get_nccl_p2p_communicator(src_rank, self.rank)
         stream = self._get_cuda_stream()
@@ -394,8 +396,7 @@ class NCCLGroup(BaseGroup):
                 rendezvous = Rendezvous(p2p_group_key)
                 rendezvous.meet()
                 group_uid = rendezvous.get_nccl_id()
-            comm = nccl_util.create_nccl_communicator(2,
-                group_uid, my_rank)
+            comm = nccl_util.create_nccl_communicator(2, group_uid, my_rank)
             self._p2p_comm_cache[p2p_group_key] = comm
         return comm
 
@@ -404,7 +405,7 @@ class NCCLGroup(BaseGroup):
 
     @staticmethod
     def _parse_p2p_group_key(key):
-        strs =  key.split("_")
+        strs = key.split("_")
         return int(strs[-2]), int(strs[-1])
 
     @staticmethod
