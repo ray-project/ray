@@ -68,11 +68,7 @@ def parse_resource_demands(resource_load_by_shape):
     except Exception:
         logger.exception("Failed to parse resource demands.")
 
-    # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
-    # This guarantees the resource demand scheduler bin packing algorithm takes
-    # a reasonable amount of time to run.
-    return waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE], \
-        infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+    return waiting_bundles, infeasible_bundles
 
 
 class Monitor:

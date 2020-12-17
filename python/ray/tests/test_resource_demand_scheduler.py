@@ -2157,8 +2157,8 @@ Usage:
  530/544 CPU
  2/2 GPU
  0/2 AcceleratorType:V100
- 0/1583.19 memory
- 0/471.02 object_store_memory
+0.00/77.304 GiB memory
+0.00/22.999 GiB object_store_memory
 Demands:
  {'CPU': 1}: 150 pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420 pending placement groups
@@ -2210,8 +2210,8 @@ Usage:
  530/544 CPU
  2/2 GPU
  0/2 AcceleratorType:V100
- 0/1583.19 memory
- 0/471.02 object_store_memory
+0.00/77.304 GiB memory
+0.00/22.999 GiB object_store_memory
 Demands:
  {'CPU': 1}: 150 pending tasks/actors
  {'CPU': 4} * 5 (PACK): 420 pending placement groups

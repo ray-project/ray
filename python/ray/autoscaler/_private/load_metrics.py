@@ -6,7 +6,8 @@ from typing import Dict, List
 
 import numpy as np
 import ray._private.services as services
-from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray.autoscaler._private.util import add_resources, freq_of_dicts
 from ray.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.resource_demand_scheduler import \
@@ -168,8 +169,14 @@ class LoadMetrics:
 
         return resources_used, resources_total
 
-    def get_resource_demand_vector(self):
-        return self.waiting_bundles + self.infeasible_bundles
+    def get_resource_demand_vector(self, clip=True):
+        if clip:
+            # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
+            # This guarantees the resource demand scheduler bin packing algorithm takes
+            # a reasonable amount of time to run.
+            return self.waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE] + self.infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+        else:
+            return self.waiting_bundles + self.infeasible_bundles
 
     def get_resource_requests(self):
         return self.resource_requests
@@ -190,7 +197,7 @@ class LoadMetrics:
             usage_dict[key] = (total - available_resources[key], total)
 
         summarized_demand_vector = freq_of_dicts(
-            self.get_resource_demand_vector())
+            self.get_resource_demand_vector(clip=False))
         summarized_resource_requests = freq_of_dicts(
             self.get_resource_requests())
 

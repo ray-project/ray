@@ -9,6 +9,7 @@ import threading
 from typing import Any, Dict, List
 
 import ray
+import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
@@ -292,6 +293,34 @@ def format_pg(pg):
     bundles_str = ", ".join(shape_strs)
     return f"{bundles_str} ({strategy})"
 
+def get_usage_report(lm_summary):
+    usage_lines = []
+    for resource, (used, total) in lm_summary.usage.items():
+        line = f" {used}/{total} {resource}"
+        if resource in ["memory", "object_store_memory"]:
+            to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
+            used *= to_GiB
+            total *= to_GiB
+            line = f"{used:.2f}/{total:.3f} GiB {resource}"
+        usage_lines.append(line)
+    usage_report = "\n".join(usage_lines)
+    return usage_report
+
+def get_demand_report(lm_summary):
+    demand_lines = []
+    for bundle, count in lm_summary.resource_demand:
+        line = f" {bundle}: {count} pending tasks/actors"
+        demand_lines.append(line)
+    for entry in lm_summary.pg_demand:
+        pg, count = entry
+        pg_str = format_pg(pg)
+        line = f" {pg_str}: {count} pending placement groups"
+        demand_lines.append(line)
+    for bundle, count in lm_summary.request_demand:
+        line = f" {bundle}: {count} from request_resources()"
+        demand_lines.append(line)
+    demand_report = "\n".join(demand_lines)
+    return demand_report
 
 def format_info_string(lm_summary, autoscaler_summary, time=None):
     if time is None:
@@ -318,25 +347,8 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
         line = f" {ip}: {node_type}"
     failure_report = "\n".join(failure_lines)
 
-    usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
-        line = f" {used}/{total} {resource}"
-        usage_lines.append(line)
-    usage_report = "\n".join(usage_lines)
-
-    demand_lines = []
-    for bundle, count in lm_summary.resource_demand:
-        line = f" {bundle}: {count} pending tasks/actors"
-        demand_lines.append(line)
-    for entry in lm_summary.pg_demand:
-        pg, count = entry
-        pg_str = format_pg(pg)
-        line = f" {pg_str}: {count} pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count} from request_resources()"
-        demand_lines.append(line)
-    demand_report = "\n".join(demand_lines)
+    usage_report = get_usage_report(lm_summary)
+    demand_report = get_demand_report(lm_summary)
 
     formatted_output = f"""{header}
 Node status
@@ -368,25 +380,8 @@ def format_info_string_no_node_types(lm_summary, time=None):
         node_lines.append(line)
     node_report = "\n".join(node_lines)
 
-    usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
-        line = f" {used}/{total} {resource}"
-        usage_lines.append(line)
-    usage_report = "\n".join(usage_lines)
-
-    demand_lines = []
-    for bundle, count in lm_summary.resource_demand:
-        line = f" {bundle}: {count} pending tasks/actors"
-        demand_lines.append(line)
-    for entry in lm_summary.pg_demand:
-        pg, count = entry
-        pg_str = format_pg(pg)
-        line = f" {pg_str}: {count} pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count} from request_resources()"
-        demand_lines.append(line)
-    demand_report = "\n".join(demand_lines)
+    usage_report = get_usage_report(lm_summary)
+    demand_report = get_demand_report(lm_summary)
 
     formatted_output = f"""{header}
 Node status
