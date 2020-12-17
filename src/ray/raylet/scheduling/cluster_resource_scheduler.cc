@@ -891,7 +891,8 @@ void ClusterResourceScheduler::FillResourceUsage(
 
   // Initialize if last report resources is empty.
   if (!last_report_resources_) {
-    NodeResources node_resources = ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}});
+    NodeResources node_resources =
+        ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 

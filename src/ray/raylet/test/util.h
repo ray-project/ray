@@ -170,9 +170,7 @@ class MockWorker : public WorkerInterface {
     return bundle_id_;
   }
 
-  void SetBundleId(const BundleID &bundle_id) {
-    bundle_id_ = bundle_id;
-  }
+  void SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
   std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; }
 
