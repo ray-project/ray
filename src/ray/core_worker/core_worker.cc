@@ -155,7 +155,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
   RAY_LOG(DEBUG) << "Stats setup in core worker.";
   // Initialize stats in core worker global tags.
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "core_worker"},
-                                            {ray::stats::VersionKey, "1.1.0.dev0"}};
+                                            {ray::stats::VersionKey, "1.2.0.dev0"}};
 
   // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
   // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
@@ -1061,7 +1061,8 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
 }
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                        int64_t timeout_ms, std::vector<bool> *results) {
+                        int64_t timeout_ms, std::vector<bool> *results,
+                        bool fetch_local) {
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -1082,19 +1083,21 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
       memory_object_ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
       worker_context_, &ready));
-  RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
-                            plasma_object_ids, ready);
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
   }
-  if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-        plasma_object_ids,
-        std::min(static_cast<int>(plasma_object_ids.size()),
-                 num_objects - static_cast<int>(ready.size())),
-        timeout_ms, worker_context_, &ready));
+  if (fetch_local) {
+    RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
+                              plasma_object_ids, ready);
+    if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+          plasma_object_ids,
+          std::min(static_cast<int>(plasma_object_ids.size()),
+                   num_objects - static_cast<int>(ready.size())),
+          timeout_ms, worker_context_, &ready));
+    }
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -1460,14 +1463,14 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
-                                           int timeout_ms) {
+                                           int timeout_seconds) {
   std::shared_ptr<std::promise<Status>> status_promise =
       std::make_shared<std::promise<Status>>();
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
       placement_group_id,
       [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::milliseconds(timeout_ms)) !=
+  if (status_future.wait_for(std::chrono::seconds(timeout_seconds)) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id

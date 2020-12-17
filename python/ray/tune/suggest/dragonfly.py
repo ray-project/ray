@@ -12,7 +12,7 @@ from ray.tune.sample import Domain, Float, Quantized
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, is_nan_or_inf
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
@@ -68,11 +68,11 @@ class DragonflySearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list of lists): A list of points you'd like to run
-            first before sampling from the optimiser, e.g. these could be
-            parameter configurations you already know work well to help
-            the optimiser select good values. Each point is a list of the
-            parameters using the order definition given by parameter_names.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         evaluated_rewards (list): If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
@@ -142,7 +142,7 @@ class DragonflySearch(Searcher):
                  space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[List]] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
@@ -170,6 +170,7 @@ class DragonflySearch(Searcher):
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
+        self._point_parameter_names = []
 
         self._opt = None
         if isinstance(optimizer, BlackboxOptimiser):
@@ -205,6 +206,8 @@ class DragonflySearch(Searcher):
             raise ValueError(
                 "You have to set a `domain` when initializing dragonfly. "
                 "Choose one of [Cartesian, Euclidean].")
+
+        self._point_parameter_names = [param["name"] for param in self._space]
 
         if self._domain.lower().startswith("cartesian"):
             function_caller_cls = CPFunctionCaller
@@ -250,12 +253,18 @@ class DragonflySearch(Searcher):
         self.init_dragonfly()
 
     def init_dragonfly(self):
+        if self._points_to_evaluate:
+            points_to_evaluate = [[
+                config[par] for par in self._point_parameter_names
+            ] for config in self._points_to_evaluate]
+        else:
+            points_to_evaluate = None
+
         self._opt.initialise()
-        if self._points_to_evaluate and self._evaluated_rewards:
-            self._opt.tell([(self._points_to_evaluate,
-                             self._evaluated_rewards)])
-        elif self._points_to_evaluate:
-            self._initial_points = self._points_to_evaluate
+        if points_to_evaluate and self._evaluated_rewards:
+            self._opt.tell([(points_to_evaluate, self._evaluated_rewards)])
+        elif points_to_evaluate:
+            self._initial_points = points_to_evaluate
         # Dragonfly internally maximizes, so "min" => -1
         if self._mode == "min":
             self._metric_op = -1.
@@ -306,7 +315,11 @@ class DragonflySearch(Searcher):
                     "parallelism in the experiment: %s", str(exc))
                 return None
         self._live_trial_mapping[trial_id] = suggested_config
-        return {"point": suggested_config}
+
+        config = dict(zip(self._point_parameter_names, suggested_config))
+        # Keep backwards compatibility
+        config.update(point=suggested_config)
+        return unflatten_dict(config)
 
     def on_trial_complete(self,
                           trial_id: str,

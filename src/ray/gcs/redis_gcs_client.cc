@@ -71,6 +71,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));
+  node_resource_accessor_.reset(new RedisNodeResourceInfoAccessor(this));
   task_accessor_.reset(new RedisTaskInfoAccessor(this));
   error_accessor_.reset(new RedisErrorInfoAccessor(this));
   stats_accessor_.reset(new RedisStatsInfoAccessor(this));
