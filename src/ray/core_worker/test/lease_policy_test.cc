@@ -71,7 +71,7 @@ TEST(LocalLeasePolicyTest, TestReturnFallback) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
 }
 
-TEST(LocalityLeasePolicyTest, TestBestLocalityDominatingNode) {
+TEST(LocalityAwareLeasePolicyTest, TestBestLocalityDominatingNode) {
   absl::flat_hash_map<ObjectID, LocalityData> locality_data;
   NodeID fallback_node = NodeID::FromRandom();
   rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
@@ -83,8 +83,8 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityDominatingNode) {
   locality_data.emplace(obj2, LocalityData{16, {best_node}});
   auto mock_locality_data_provider =
       std::make_shared<MockLocalityDataProvider>(locality_data);
-  LocalityLeasePolicy locality_lease_policy(mock_locality_data_provider,
-                                            MockNodeAddrFactory, fallback_rpc_address);
+  LocalityAwareLeasePolicy locality_lease_policy(
+      mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
   auto task_spec = CreateFakeTask(deps);
   rpc::Address best_node_address = locality_lease_policy.GetBestNodeForTask(task_spec);
@@ -94,7 +94,7 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityDominatingNode) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), best_node);
 }
 
-TEST(LocalityLeasePolicyTest, TestBestLocalityBiggerObject) {
+TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBiggerObject) {
   absl::flat_hash_map<ObjectID, LocalityData> locality_data;
   NodeID fallback_node = NodeID::FromRandom();
   rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
@@ -107,8 +107,8 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityBiggerObject) {
   locality_data.emplace(obj2, LocalityData{16, {best_node}});
   auto mock_locality_data_provider =
       std::make_shared<MockLocalityDataProvider>(locality_data);
-  LocalityLeasePolicy locality_lease_policy(mock_locality_data_provider,
-                                            MockNodeAddrFactory, fallback_rpc_address);
+  LocalityAwareLeasePolicy locality_lease_policy(
+      mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
   auto task_spec = CreateFakeTask(deps);
   rpc::Address best_node_address = locality_lease_policy.GetBestNodeForTask(task_spec);
@@ -118,7 +118,7 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityBiggerObject) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), best_node);
 }
 
-TEST(LocalityLeasePolicyTest, TestBestLocalityBetterNode) {
+TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBetterNode) {
   absl::flat_hash_map<ObjectID, LocalityData> locality_data;
   NodeID fallback_node = NodeID::FromRandom();
   rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
@@ -135,8 +135,8 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityBetterNode) {
   locality_data.emplace(obj3, LocalityData{12, {best_node}});
   auto mock_locality_data_provider =
       std::make_shared<MockLocalityDataProvider>(locality_data);
-  LocalityLeasePolicy locality_lease_policy(mock_locality_data_provider,
-                                            MockNodeAddrFactory, fallback_rpc_address);
+  LocalityAwareLeasePolicy locality_lease_policy(
+      mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2, obj3};
   auto task_spec = CreateFakeTask(deps);
   rpc::Address best_node_address = locality_lease_policy.GetBestNodeForTask(task_spec);
@@ -146,7 +146,7 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityBetterNode) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), best_node);
 }
 
-TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
+TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
   absl::flat_hash_map<ObjectID, LocalityData> locality_data;
   NodeID fallback_node = NodeID::FromRandom();
   rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
@@ -157,8 +157,8 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
   locality_data.emplace(obj2, LocalityData{16, {}});
   auto mock_locality_data_provider =
       std::make_shared<MockLocalityDataProvider>(locality_data);
-  LocalityLeasePolicy locality_lease_policy(mock_locality_data_provider,
-                                            MockNodeAddrFactory, fallback_rpc_address);
+  LocalityAwareLeasePolicy locality_lease_policy(
+      mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
   auto task_spec = CreateFakeTask(deps);
   rpc::Address best_node_address = locality_lease_policy.GetBestNodeForTask(task_spec);
@@ -168,13 +168,13 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
 }
 
-TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackNoDeps) {
+TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoDeps) {
   absl::flat_hash_map<ObjectID, LocalityData> locality_data;
   NodeID fallback_node = NodeID::FromRandom();
   rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
   auto mock_locality_data_provider = std::make_shared<MockLocalityDataProvider>();
-  LocalityLeasePolicy locality_lease_policy(mock_locality_data_provider,
-                                            MockNodeAddrFactory, fallback_rpc_address);
+  LocalityAwareLeasePolicy locality_lease_policy(
+      mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   // No task dependencies.
   std::vector<ObjectID> deps;
   auto task_spec = CreateFakeTask(deps);
@@ -185,7 +185,7 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackNoDeps) {
   ASSERT_EQ(NodeID::FromBinary(best_node_address.raylet_id()), fallback_node);
 }
 
-TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
+TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   absl::flat_hash_map<ObjectID, LocalityData> locality_data;
   NodeID fallback_node = NodeID::FromRandom();
   rpc::Address fallback_rpc_address = MockNodeAddrFactory(fallback_node).value();
@@ -197,7 +197,7 @@ TEST(LocalityLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   auto mock_locality_data_provider =
       std::make_shared<MockLocalityDataProvider>(locality_data);
   // Provided node address factory always returns absl::nullopt.
-  LocalityLeasePolicy locality_lease_policy(
+  LocalityAwareLeasePolicy locality_lease_policy(
       mock_locality_data_provider, MockNodeAddrFactoryAlwaysNull, fallback_rpc_address);
   std::vector<ObjectID> deps{obj1, obj2};
   auto task_spec = CreateFakeTask(deps);

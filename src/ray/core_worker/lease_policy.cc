@@ -16,7 +16,7 @@
 
 namespace ray {
 
-rpc::Address LocalityLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec) {
+rpc::Address LocalityAwareLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec) {
   if (auto node_id = GetBestNodeIdForTask(spec)) {
     if (auto addr = node_addr_factory_(node_id.value())) {
       return addr.value();
@@ -26,7 +26,7 @@ rpc::Address LocalityLeasePolicy::GetBestNodeForTask(const TaskSpecification &sp
 }
 
 /// Criteria for "best" node: The node with the most object bytes (from object_ids) local.
-absl::optional<NodeID> LocalityLeasePolicy::GetBestNodeIdForTask(
+absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
     const TaskSpecification &spec) {
   auto object_ids = spec.GetDependencyIds();
   // Number of object bytes (from object_ids) that a given node has local.
