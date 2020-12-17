@@ -364,10 +364,16 @@ def import_class(full_path: str):
 
 
 class MockImportedBackend:
-    """XXX"""
+    """Used for testing backends.ImportedBackend.
+
+    This is necessary because we need the class to be installed in the worker
+    processes. We could instead mock out importlib but doing so is messier and
+    reduces confidence in the test (it isn't truly end-to-end).
+    """
 
     def __init__(self, arg):
         self.arg = arg
+        self.config = None
 
     def reconfigure(self, config):
         self.config = config
