@@ -216,8 +216,9 @@ class Queue:
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
 
     def shutdown(self) -> None:
-        """Terminates the underlying QueueActor and release all of its
-        resources.
+        """Terminates the underlying QueueActor.
+
+        All of the resources reserved by the queue will be released.
         """
         if self.actor:
             ray.kill(self.actor)
