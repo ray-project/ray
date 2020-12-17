@@ -312,7 +312,7 @@ class MLFlowTrainableMixin:
                 "containing at least a `tracking_uri` and either "
                 "`experiment_name` or `experiment_id` specification.") from e
 
-        tracking_uri = mlflow_config.pop("tracking_uri")
+        tracking_uri = mlflow_config.pop("tracking_uri", None)
         if tracking_uri is None:
             raise ValueError("MLFlow mixin specified but no "
                              "tracking_uri has been "
@@ -322,14 +322,14 @@ class MLFlowTrainableMixin:
         self._mlflow.set_tracking_uri(tracking_uri)
 
         # First see if experiment_id is passed in.
-        experiment_id = mlflow_config.pop("experiment_id")
+        experiment_id = mlflow_config.pop("experiment_id", None)
         if experiment_id is None or self._mlflow.get_experiment(
                 experiment_id) is None:
             logger.debug("Either no experiment_id is passed in, or the "
                          "experiment with the given id does not exist. "
                          "Checking experiment_name")
             # Check for name.
-            experiment_name = mlflow_config.pop("experiment_name")
+            experiment_name = mlflow_config.pop("experiment_name", None)
             if experiment_name is None:
                 raise ValueError(
                     "MLFlow mixin specified but no "
