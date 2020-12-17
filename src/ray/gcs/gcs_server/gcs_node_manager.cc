@@ -258,6 +258,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from cluster resources.
     gcs_resource_manager_->OnNodeDead(node_id);
     resources_buffer_.erase(node_id);
+    node_resource_usages_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.

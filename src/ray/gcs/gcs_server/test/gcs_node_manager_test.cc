@@ -41,11 +41,40 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
+  {
+    rpc::GetAllResourceUsageRequest request;
+    rpc::GetAllResourceUsageReply reply;
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1, std::function<void()> f2){};
+    node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
+    ASSERT_EQ(reply.resource_usage_data().batch().size(), 0);
+  }
+
   node_manager.AddNode(node);
   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
+  rpc::ReportResourceUsageRequest report_request;
+  (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
+  (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
+  node_manager.UpdateNodeResourceUsage(node_id, report_request);
+
+  {
+    rpc::GetAllResourceUsageRequest request;
+    rpc::GetAllResourceUsageReply reply;
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1, std::function<void()> f2){};
+    node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
+    ASSERT_EQ(reply.resource_usage_data().batch().size(), 1);
+  }
+
   node_manager.RemoveNode(node_id);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
+
+  {
+    rpc::GetAllResourceUsageRequest request;
+    rpc::GetAllResourceUsageReply reply;
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1, std::function<void()> f2){};
+    node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
+    ASSERT_EQ(reply.resource_usage_data().batch().size(), 0);
+  }
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
