@@ -132,11 +132,13 @@ class ClusterResourceScheduler {
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
+  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
-                                 int64_t *violations);
+                                 int64_t *violations, bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -147,7 +149,7 @@ class ClusterResourceScheduler {
   //           task request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, bool actor_creation,
-      int64_t *violations);
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.

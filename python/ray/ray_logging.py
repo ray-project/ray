@@ -153,6 +153,46 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
         os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
+def get_worker_log_file_name(worker_type):
+    job_id = os.environ.get("RAY_JOB_ID")
+    if worker_type == "WORKER":
+        assert job_id is not None, (
+            "RAY_JOB_ID should be set as an env "
+            "variable within default_worker.py. If you see this error, "
+            "please report it to Ray's Github issue.")
+        worker_name = "worker"
+    else:
+        job_id = ray.JobID.nil()
+        worker_name = "io_worker"
+
+    # Make sure these values are set already.
+    assert ray.worker._global_node is not None
+    assert ray.worker.global_worker is not None
+    filename = (f"{worker_name}-"
+                f"{binary_to_hex(ray.worker.global_worker.worker_id)}-"
+                f"{job_id}-{os.getpid()}")
+    return filename
+
+
+def configure_log_file(out_file, err_file):
+    stdout_fileno = sys.stdout.fileno()
+    stderr_fileno = sys.stderr.fileno()
+    # C++ logging requires redirecting the stdout file descriptor. Note that
+    # dup2 will automatically close the old file descriptor before overriding
+    # it.
+    os.dup2(out_file.fileno(), stdout_fileno)
+    os.dup2(err_file.fileno(), stderr_fileno)
+    # We also manually set sys.stdout and sys.stderr because that seems to
+    # have an effect on the output buffering. Without doing this, stdout
+    # and stderr are heavily buffered resulting in seemingly lost logging
+    # statements. We never want to close the stdout file descriptor, dup2 will
+    # close it when necessary and we don't want python's GC to close it.
+    sys.stdout = ray.utils.open_log(
+        stdout_fileno, unbuffered=True, closefd=False)
+    sys.stderr = ray.utils.open_log(
+        stderr_fileno, unbuffered=True, closefd=False)
+
+
 def setup_and_get_worker_interceptor_logger(args,
                                             max_bytes=0,
                                             backup_count=0,

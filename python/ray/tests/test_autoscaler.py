@@ -1076,7 +1076,7 @@ class AutoscalingTest(unittest.TestCase):
                 2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
         except AssertionError:
             # The failed nodes might have been already terminated by autoscaler
-            assert len(self.provider.non_terminated_nodes({})) == 0
+            assert len(self.provider.non_terminated_nodes({})) < 2
 
     def testConfiguresOutdatedNodes(self):
         config_path = self.write_config(SMALL_CLUSTER)

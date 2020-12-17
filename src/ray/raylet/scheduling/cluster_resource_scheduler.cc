@@ -172,7 +172,8 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
                                                          bool actor_creation,
-                                                         int64_t *total_violations) {
+                                                         int64_t *total_violations,
+                                                         bool *is_infeasible) {
   // Minimum number of soft violations across all nodes that can schedule the request.
   // We will pick the node with the smallest number of soft violations.
   int64_t min_violations = INT_MAX;
@@ -248,20 +249,23 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
       best_node = node.first;
     }
     if (violations == 0) {
-      *total_violations = 0;
-      return best_node;
+      // If violation is 0, we can schedule the task. So just break the loop
+      break;
     }
   }
   *total_violations = min_violations;
+  // If there's no best node, and the task is not feasible locally,
+  // it means the task is infeasible.
+  *is_infeasible = best_node == -1 && !local_node_feasible;
   return best_node;
 }
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources, bool actor_creation,
-    int64_t *total_violations) {
+    int64_t *total_violations, bool *is_infeasible) {
   TaskRequest task_request = ResourceMapToTaskRequest(string_to_int_map_, task_resources);
-  int64_t node_id =
-      GetBestSchedulableNode(task_request, actor_creation, total_violations);
+  int64_t node_id = GetBestSchedulableNode(task_request, actor_creation, total_violations,
+                                           is_infeasible);
 
   std::string id_string;
   if (node_id == -1) {

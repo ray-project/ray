@@ -224,7 +224,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // make room.
     if (space_needed > 0) {
       if (spill_objects_callback_) {
-        // If the space needed is too small, we'd like to bump up to the minimum spilling
+        // If the space needed is too small, we'd like to bump up to the minimum
         // size. Cap the max size to be lower than the plasma store limit.
         int64_t byte_to_spill =
             std::min(PlasmaAllocator::GetFootprintLimit(),

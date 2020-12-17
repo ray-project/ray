@@ -3,6 +3,7 @@ import socket
 from typing import List
 
 import uvicorn
+import starlette.responses
 
 import ray
 from ray.exceptions import RayTaskError
@@ -26,6 +27,7 @@ class HTTPProxy:
 
     def __init__(self, controller_name):
         controller = ray.get_actor(controller_name)
+        self.route_table = {}  # Should be updated via long polling.
         self.router = Router(controller)
         self.long_poll_client = LongPollAsyncClient(controller, {
             LongPollKey.ROUTE_TABLE: self._update_route_table,
@@ -40,6 +42,7 @@ class HTTPProxy:
         await self.router.setup_in_async_loop()
 
     async def _update_route_table(self, route_table):
+        logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
         self.route_table = route_table
 
     async def receive_http_body(self, scope, receive, send):
@@ -126,6 +129,18 @@ class HTTPProxy:
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
+        elif isinstance(result, starlette.responses.Response):
+            if isinstance(result, starlette.responses.StreamingResponse):
+                raise TypeError("Starlette StreamingResponse returned by "
+                                f"backend for endpoint {endpoint_name}. "
+                                "StreamingResponse is unserializable and not "
+                                "supported by Ray Serve.  Consider using "
+                                "another Starlette response type such as "
+                                "Response, HTMLResponse, PlainTextResponse, "
+                                "or JSONResponse.  If support for "
+                                "StreamingResponse is desired, please let "
+                                "the Ray team know by making a Github issue!")
+            await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
 
