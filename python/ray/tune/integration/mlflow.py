@@ -197,7 +197,7 @@ def mlflow_mixin(func: Callable):
     MLFlow (https://mlflow.org) Tracking is an open source library for
     recording and querying experiments. This Ray Tune Trainable mixin helps
     initialize the MLflow API for use with the ``Trainable`` class or the
-    `@mlflow_mixin` function API. This mixin automatically configures mlflow
+    ``@mlflow_mixin`` function API. This mixin automatically configures MLFlow
     and creates a run in the same process as each Tune trial. You can then
     use the mlflow API inside the your training function and it will
     automatically get reported to the correct run.
