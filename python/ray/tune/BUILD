@@ -494,7 +494,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mlflow_ptl.py"],
     deps = [":tune_lib"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "py37"],
     args = ["--smoke-test"]
 )
 py_test(
