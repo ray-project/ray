@@ -5,7 +5,7 @@ Using MLFlow with Tune
 
 `MLFlow <https://mlflow.org/>`_ is an open source platform to manage the ML lifecycle, including experimentation,
 reproducibility, deployment, and a central model registry. It currently offers four components, including
-MLflow Tracking to record and query experiments, including code, data, config, and results.
+MLFlow Tracking to record and query experiments, including code, data, config, and results.
 
 .. image:: /images/mlflow.png
   :height: 80px
