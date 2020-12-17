@@ -1112,7 +1112,8 @@ class Trainer(Trainable):
 
         # If evaluation_num_workers > 0, warn if evaluation_interval is None
         # (also set it to 1).
-        if config["evaluation_num_workers"] > 0 and not config["evaluation_interval"]:
+        if config["evaluation_num_workers"] > 0 and not config[
+                "evaluation_interval"]:
             logger.warning(
                 "You have specified {} evaluation workers, but no evaluation "
                 "interval! Will set the interval to 1 (each `train()` call). "
