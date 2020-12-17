@@ -778,6 +778,16 @@ cc_test(
 )
 
 cc_test(
+    name = "lease_policy_test",
+    srcs = ["src/ray/core_worker/test/lease_policy_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "cluster_resource_scheduler_test",
     srcs = [
         "src/ray/raylet/scheduling/cluster_resource_scheduler_test.cc",
