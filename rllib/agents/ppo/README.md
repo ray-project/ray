@@ -1,3 +1,5 @@
+# Proximal Policy Optimization (PPO)
+
 ## Overview 
 
 [PPO](https://arxiv.org/abs/1707.06347) is an model-free on-policy RL algorithm that works well for both discrete and continuous action space environments. PPO utilizes an actor-critic framework, where there are two networks, an actor (policy network) and critic network (value function). 
