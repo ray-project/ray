@@ -5,7 +5,7 @@ import time
 import ray
 import cupy
 from cupy.cuda.nccl import groupStart, groupEnd
-from cupy.cuda import Device, Event, runtime, get_current_stream
+from cupy.cuda import Device, Event, Stream, runtime, get_current_stream
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
@@ -173,7 +173,7 @@ class NCCLGroup(BaseGroup):
        
         # First wait for current tensor allocation stream
         streams = self._dev_streams_map[key]
-        self._sync_streams(devices, streams)
+        self._sync_streams()
         # for non-blocking calls of all-reduce
         groupStart()
         for i in range(len(tensor)):
@@ -181,7 +181,7 @@ class NCCLGroup(BaseGroup):
             ptr = nccl_util.get_tensor_ptr(tensor[i])
             n_elems = nccl_util.get_tensor_n_elements(tensor[i])
             # in-place allreduce
-            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, streams[i])
+            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, streams[i].ptr)
         groupEnd()
 
     def barrier(self, barrier_options=BarrierOptions()):
@@ -231,10 +231,10 @@ class NCCLGroup(BaseGroup):
                 with Device(devices[i]):
                     comm = nccl_util.create_nccl_communicator(
                                 _world_size, nccl_uid, _rank)
-                    stream = runtime.streamCreate() 
+                    stream = Stream(non_blocking=True)
+                    logger.debug(f"{stream}")
                 comms.append(comm)
                 nccl_streams.append(stream)
-                logger.debug(f"{stream}")
             groupEnd()
 
         # cache the result
@@ -245,15 +245,12 @@ class NCCLGroup(BaseGroup):
         self._dev_streams_map[key] = nccl_streams
         return comms
     
-    def _sync_streams(self, devices, nccl_streams):
+    def _sync_streams(self):
         """Let Nccl streams wait for current streams for every device."""
-        for i in range(len(devices)):
-            nccl_stream = nccl_streams[i]
-            nccl_event = Event()
-            with Device(devices[i]): 
-                nccl_event.record(get_current_stream())
-                nccl_event.synchronize()
-
+        #FIXME: This behavior is different from nccl document. It seems like
+        # cupy allocate tensors on null streams.
+        cupy.cuda.Stream.null.synchronize()
+    
     # def _collective_call(self, *args):
     #     """Private method to encapsulate all collective calls"""
     #     pass
