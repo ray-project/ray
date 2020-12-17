@@ -5,6 +5,7 @@ import time
 import ray
 import cupy
 from cupy.cuda.nccl import groupStart, groupEnd
+from cupy.cuda import Device, Event, runtime, get_current_stream
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
@@ -125,6 +126,7 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = cupy.array([1])
 
         self._dev_comm_map = dict()
+        self._dev_streams_map = dict)()
 
     def destroy_group(self):
         """
@@ -133,15 +135,16 @@ class NCCLGroup(BaseGroup):
         """
         if len(self._dev_comm_map.keys()) > 0:
             self.barrier()
-            # We also need a barrier call here.
-            stream = self._get_cuda_stream()
-            stream.synchronize()
-            # destroy the communicator
+            # destroy the streams and  communicator
+            for _, stream in self._dev_streams_map.items():
+                runtime.streamDestroy(stream)
+            
             for _, comms in self._dev_comm_map.items():
                 [comm.destroy() for c in comms]
 
             self._barrier_tensor = None
             self._dev_comm_map = None
+            self._dev_streams_map = None
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
@@ -160,13 +163,16 @@ class NCCLGroup(BaseGroup):
         """
         nccl_util.check_collective_input(tensor) 
         devices = nccl_util.get_devices(tensor)
+        key = nccl_util.get_key_from_devices(devices)
         # obtain the communicator
         # obtain the stream: using default stream by now
         # TODO(Hao): implement a simple stream manager here
-        stream = self._get_cuda_stream()
         comms = self._get_nccl_communicator(devices)
         reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
        
+        # First wait for current tensor allocation stream
+        streams = self._dev_streams_map[key]
+        self._sync_streams(devices, streams)
         # for non-blocking calls of all-reduce
         logger.debug(f"{tensor}, {comms}")
         groupStart()
@@ -175,7 +181,7 @@ class NCCLGroup(BaseGroup):
             ptr = nccl_util.get_tensor_ptr(tensor[i])
             n_elems = nccl_util.get_tensor_n_elements(tensor[i])
             # in-place allreduce
-            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
+            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream[i].ptr)
         groupEnd()
 
     def barrier(self, barrier_options=BarrierOptions()):
@@ -216,6 +222,7 @@ class NCCLGroup(BaseGroup):
             _world_size = len(devices) * self.world_size
             comms = []
             
+            nccl_streams = []
             # for non-blocking communicator creation
             groupStart()
             for i in range(len(devices)):
@@ -224,12 +231,29 @@ class NCCLGroup(BaseGroup):
                 with Device(devices[i]):
                     comm = nccl_util.create_nccl_communicator(
                                 _world_size, nccl_uid, _rank)
+                    stream = runtime.streamCreate() 
                 comms.append(comm)
+                nccl_streams.append(stream)
             groupEnd()
 
         # cache the result
+        # FIXME: Consider whether to add a lock here or not, I feel like pytorch
+        # needs to handle this because they are relatively lower level, we shouldnt
+        # need to worry about this. if so,eed to figure out how to add Lock, threading? Asyncio?
         self._dev_comm_map[key] = comms
+        self._dev_streams_map[key] = nccl_streams
         return comms
+    
+    def _sync_streams(self, devices, nccl_streams):
+        """Let Nccl streams wait for current streams for every device."""
+        for i in range(len(devices)):
+            nccl_stream = nccl_streams[i]
+            nccl_event = Event()
+            #FIXME: Not sure cupy still associate stream to a device in nccl sytle.
+            # 90% sure about this.
+            with Device(devices[i]): 
+                nccl_event.record(get_current_stream())
+                nccl_event.synchronize()
 
     @staticmethod
     def _get_cuda_stream():
