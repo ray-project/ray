@@ -461,8 +461,6 @@ matrix:
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
-        # SIGOPT_KEY
-        - secure: "XP07W/LnvHdtUtlp2PHCa/DuZJu3sPvShi+mIsadSwGn5PdDGOyPYwCHVzD7GC10fJJTwBwIRqFLptHtYQpGVCZgwNdmVlOu0uLEqvFU2GxofkuJeCM7WDSTSNCZb5eD+OdzIAd3vdNNXslqGzfKF4P8FQVNl3L/q6BaxRoWjPXTu+mAJs6iGswBlXacKn8tkTdYzZp8dYSsNTvQdqOG6+EwsD/orBvQOv/QlTXhyHi5gbApc5murYHvNny+oJAOIMsINnefED+e4WIK6dbMoaB9XLOCVcOFwMyIaLPl9A2dHl2iTLJCveMGzP9HpAvu/u02vDTxTRCO8C9s9fMgL8DBy4M+BfHPa2cl+ldtHoykKGZ8NHyhKoK3TwUxo3lmlTn44yBROo7IZOXtt7WZsfGUrnc91pNzDBSzyW1vsXdBQyo5LfMrWiiISHV3TLWUqHyK+/ADjJotmCvZ47FiJopGpyzT0jesprcQZ3cV2tzQdQxFfMKQS29fm0Aeot0W5YVD+K/EXsmQi/D073fCYOmXNB6owcGmAwsGsnaieHI3ymttaKp2u/g/HcXbhE/LydRS30hwX6qRl/+OJVrAiu5se5qmILDxYP7JXTRKfcUy3xuzrYaFW/m7DwSrPFCveCqJTZLBsXyGzGPRzNtxbtJEORRMOvJA7tm2RwbAdhE="
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED
       before_script:
