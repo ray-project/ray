@@ -201,7 +201,9 @@ bool NodeResources::operator!=(const NodeResources &other) { return !(*this == o
 std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   buffer << " {\n";
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+  // We only iterate total predefined resources size - 1 because this method will be
+  // displayed to the user console, and we don't want to TPU to users.
+  for (size_t i = 0; i < this->predefined_resources.size() - 1; i++) {
     buffer << "\t";
     switch (i) {
     case CPU:
@@ -213,20 +215,17 @@ std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
     case GPU:
       buffer << "GPU: ";
       break;
-    case TPU:
-      buffer << "TPU: ";
-      break;
     default:
       RAY_CHECK(false) << "This should never happen.";
       break;
     }
-    buffer << "(" << this->predefined_resources[i].total << ":"
-           << this->predefined_resources[i].available << ")\n";
+    buffer << "(total:" << this->predefined_resources[i].total
+           << ", available:" << this->predefined_resources[i].available << ")\n";
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << string_to_in_map.Get(it->first) << ":(" << it->second.total << ":"
-           << it->second.available << ")\n";
+    buffer << "\t" << string_to_in_map.Get(it->first) << ": (total:" << it->second.total
+           << ", available:" << it->second.available << ")\n";
   }
   buffer << "}" << std::endl;
   return buffer.str();

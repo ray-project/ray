@@ -482,6 +482,12 @@ void ClusterResourceScheduler::InitResourceInstances(
   }
 }
 
+std::string ClusterResourceScheduler::GetLocalResourceViewString() const {
+  const auto &node_it = nodes_.find(local_node_id_);
+  RAY_CHECK(node_it != nodes_.end());
+  return node_it->second.GetLocalView().DebugString(string_to_int_map_);
+}
+
 void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_resources) {
   local_resources_.predefined_resources.resize(PredefinedResources_MAX);
 

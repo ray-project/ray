@@ -186,6 +186,8 @@ class ClusterResourceScheduler {
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
 
+  std::string GetLocalResourceViewString() const;
+
   /// Create instances for each resource associated with the local node, given
   /// the node's resources.
   ///

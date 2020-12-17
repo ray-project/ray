@@ -676,6 +676,105 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
+TEST_F(ClusterTaskManagerTest, TestIsResourceDeadlock) {
+  /*
+    Check if the manager can correctly identify resource deadlock.
+   */
+
+  // task1: running
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  // task1: running. Progress is made, and there's no deadlock.
+  ray::Task exemplar;
+  bool any_pending = false;
+  int pending_actor_creations = 0;
+  int pending_tasks = 0;
+  ASSERT_FALSE(task_manager_.IsResourceDeadlock(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+
+  // task1: running, task2: block.
+  Task task2 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply2;
+  std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
+  auto callback2 = [callback_occurred2]() { *callback_occurred2 = true; };
+  task_manager_.QueueTask(task2, &reply2, callback2);
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(callback_occurred2);
+  ASSERT_EQ(leased_workers_.size(), 2);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  // task1: running, task2: block => progress being made.
+  task_manager_.RegisterBlockedTasks(task2.GetTaskSpecification().TaskId());
+  ASSERT_FALSE(task_manager_.IsResourceDeadlock(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+
+  // task1: running, task2: block. task3: pending.
+  Task task3 = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply3;
+  std::shared_ptr<bool> callback_occurred3 = std::make_shared<bool>(false);
+  auto callback3 = [callback_occurred3]() { *callback_occurred3 = true; };
+  task_manager_.QueueTask(task3, &reply3, callback3);
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker3 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker3));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(leased_workers_.size(), 2);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  // task1: running, task2: block. task3: pending. => Progress being made.
+  ASSERT_FALSE(task_manager_.IsResourceDeadlock(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+
+  // task1: blocked, task2: blocked, task3: pending => no progress.
+  task_manager_.RegisterBlockedTasks(task.GetTaskSpecification().TaskId());
+  ASSERT_TRUE(task_manager_.IsResourceDeadlock(&exemplar, &any_pending,
+                                               &pending_actor_creations, &pending_tasks));
+
+  ASSERT_TRUE(any_pending);
+  ASSERT_EQ(pending_tasks, 1);
+  ASSERT_EQ(pending_actor_creations, 0);
+  ASSERT_EQ(exemplar.GetTaskSpecification().TaskId(),
+            task3.GetTaskSpecification().TaskId());
+
+  // task1: done, task2: blocked, task3: running
+  task_manager_.MarkBlockedTasksUnblocked(task.GetTaskSpecification().TaskId());
+  leased_workers_.erase(leased_workers_.find(worker->WorkerId()));
+  task_manager_.HandleTaskFinished(worker);
+  // Now the third task is scheduled properly.
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(callback_occurred3);
+  ASSERT_EQ(leased_workers_.size(), 2);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  // task1: done, task2: blocked, task3: running => no deadlock.
+  ASSERT_FALSE(task_manager_.IsResourceDeadlock(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+
+  any_pending = false;
+  pending_actor_creations = 0;
+  pending_tasks = 0;
+  // task1: done, task2: blocked, task3: blocked => no deadlock because there's no pending
+  // tasks.
+  task_manager_.RegisterBlockedTasks(task3.GetTaskSpecification().TaskId());
+  ASSERT_FALSE(task_manager_.IsResourceDeadlock(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
