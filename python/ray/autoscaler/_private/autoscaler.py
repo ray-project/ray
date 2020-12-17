@@ -544,8 +544,8 @@ class StandardAutoscaler:
                 return
 
         logger.warning("StandardAutoscaler: "
-                       "{}: No heartbeat in {}s, "
-                       "restarting Ray to recover...".format(node_id, delta))
+                       "{}: No recent heartbeat, "
+                       "restarting Ray to recover...".format(node_id))
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],

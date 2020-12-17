@@ -339,7 +339,7 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     demand_report = "\n".join(demand_lines)
 
     formatted_output = f"""{header}
-Node Status
+Node status
 {separator}
 Healthy:
 {available_node_report}
@@ -389,7 +389,7 @@ def format_info_string_no_node_types(lm_summary, time=None):
     demand_report = "\n".join(demand_lines)
 
     formatted_output = f"""{header}
-Node Status
+Node status
 {separator}
 {node_report}
 Resources

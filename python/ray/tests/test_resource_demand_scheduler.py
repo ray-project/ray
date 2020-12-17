@@ -2140,7 +2140,7 @@ def test_info_string():
 
     expected = """
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
-Node Status
+Node status
 --------------------------------------------------------
 Healthy:
  2 p3.2xlarge
@@ -2201,7 +2201,7 @@ def test_info_string_no_node_type():
 
     expected = """
 ======== Autoscaler status: 2020-12-28 01:02:03 ========
-Node Status
+Node status
 --------------------------------------------------------
  1 node(s) with resources: {'CPU': 16}
 Resources
