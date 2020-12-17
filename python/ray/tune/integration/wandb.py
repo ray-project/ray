@@ -139,7 +139,7 @@ def wandb_mixin(func: Callable):
             })
 
     """
-    if func.hasattr("__mixins__"):
+    if hasattr(func, "__mixins__"):
         func.__mixins__ = func.__mixins__ + (WandbTrainableMixin, )
     else:
         func.__mixins__ = (WandbTrainableMixin, )

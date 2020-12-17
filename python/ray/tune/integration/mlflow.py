@@ -283,7 +283,7 @@ def mlflow_mixin(func: Callable):
     if mlflow is None:
         raise RuntimeError("MLFlow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
-    if func.hasattr("__mixins__"):
+    if hasattr(func, "__mixins__"):
         func.__mixins__ = func.__mixins__ + (MLFlowTrainableMixin, )
     else:
         func.__mixins__ = (MLFlowTrainableMixin, )
