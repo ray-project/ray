@@ -116,8 +116,6 @@ extras["rllib"] = extras["tune"] + [
     "scipy",
 ]
 
-extras["streaming"] = []
-
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 # These are the main dependencies for users of ray. This list
