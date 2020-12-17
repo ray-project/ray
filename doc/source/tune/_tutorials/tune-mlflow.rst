@@ -21,7 +21,7 @@ The other one is the :ref:`@mlflow_mixin <tune-mlflow-mixin>` decorator, which c
 used with the function API. It automatically
 initializes the MLFlow API with Tune's training information and creates a run for each Tune trial.
 Then within your training function, you can just use the
-MLflow like you would normally do, e.g. using ``mlflow.log_metrics()`` or even ``mlflow.autolog()``
+MLFlow like you would normally do, e.g. using ``mlflow.log_metrics()`` or even ``mlflow.autolog()``
 to log to your training process.
 
 Please :doc:`see here </tune/examples/mlflow_example>` for a full example on how you can use either the
