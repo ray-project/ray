@@ -243,11 +243,10 @@ def mlflow_mixin(func: Callable):
             experiment. If this is not provided or the experiment with this
             id does not exist, you must provide an``experiment_name``. This
             parameter takes precedence over ``experiment_name``.
-        experiment_name (str): The name of an MLflow experiment. All logs
-            from all trials in ``tune.run`` will be
-            reported to this experiment. If an experiment with this name
-            does not exist, a new experiment will be created with this name. If
-            this is not provided, you must provide a valid ``experiment_id``.
+        experiment_name (str): The name of an already existing MLflow
+            experiment. All logs from all trials in ``tune.run`` will be
+            reported to this experiment. If this is not provided, you must
+            provide a valid ``experiment_id``.
 
     Example:
 
