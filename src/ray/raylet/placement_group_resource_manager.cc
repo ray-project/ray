@@ -159,7 +159,8 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     if (iter->second->state_ == CommitState::COMMITTED) {
       // If the bundle state is already committed, it means that prepare request is just
       // stale.
-      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly. This should only happen when GCS restarts.";
+      RAY_LOG(INFO) << "Duplicate prepare bundle request, skip it directly. This should "
+                       "only happen when GCS restarts.";
       return true;
     } else {
       // If there was a bundle in prepare state, it already locked resources, we will
