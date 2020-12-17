@@ -73,7 +73,7 @@ Take a look at any of the below tutorials to get started with Tune.
 .. customgalleryitem::
     :tooltip: Use MLFlow with Ray Tune.
     :figure: /images/mlflow.png
-    :description: :doc:`Log and track your hyperparameter sweep with Mlflow Tracking & AutoLogging <tune-mlflow>`
+    :description: :doc:`Log and track your hyperparameter sweep with MLFlow Tracking & AutoLogging <tune-mlflow>`
 
 
 .. raw:: html
