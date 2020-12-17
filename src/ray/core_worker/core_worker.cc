@@ -1460,14 +1460,14 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
-                                           int timeout_ms) {
+                                           int timeout_seconds) {
   std::shared_ptr<std::promise<Status>> status_promise =
       std::make_shared<std::promise<Status>>();
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
       placement_group_id,
       [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::milliseconds(timeout_ms)) !=
+  if (status_future.wait_for(std::chrono::seconds(timeout_seconds)) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
