@@ -127,7 +127,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
         return x
 
 
-class PositionalEmbedding(tf.keras.layers.Layer):
+class PositionalEmbedding(tf.keras.layers.Layer if tf else object):
     def __init__(self, out_dim, **kwargs):
         super().__init__(**kwargs)
         self.inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
