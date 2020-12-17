@@ -4,7 +4,6 @@ import logging
 import numpy as np
 import ray
 from ray.util.collective import types
-from ray.util.collective.const import get_nccl_store_name
 
 _MPI_AVAILABLE = False
 _NCCL_AVAILABLE = True
@@ -16,7 +15,6 @@ _NCCL_AVAILABLE = True
 #     _MPI_AVAILABLE = False
 try:
     from ray.util.collective.collective_group import NCCLGroup
-    from ray.util.collective.collective_group import nccl_util
 except ImportError:
     _NCCL_AVAILABLE = False
 

@@ -1,8 +1,7 @@
 """Test the send/recv API."""
-import pytest
 import cupy as cp
+import pytest
 import ray
-import time
 
 from ..util import create_collective_workers
 

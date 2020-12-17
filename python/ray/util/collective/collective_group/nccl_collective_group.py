@@ -1,18 +1,16 @@
-import logging
 import datetime
+import logging
 import time
-from collections import defaultdict
 
-import ray
 import cupy
-
+import ray
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
+from ray.util.collective.const import get_nccl_store_name
 from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions
-from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
 
