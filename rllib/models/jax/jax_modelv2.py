@@ -14,8 +14,10 @@ if flax:
 
 
 @PublicAPI
-class JAXModelV2(ModelV2, nn.Module if nn else object):
+class JAXModelV2(ModelV2):
     """JAX version of ModelV2.
+
+
 
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
@@ -24,9 +26,6 @@ class JAXModelV2(ModelV2, nn.Module if nn else object):
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
         """Initializes a JAXModelV2 instance."""
-
-        nn.Module.__init__(self)
-        self._flax_module_variables = self.variables
 
         ModelV2.__init__(
             self,

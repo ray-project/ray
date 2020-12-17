@@ -21,6 +21,7 @@ jax, _ = try_import_jax()
 torch, _ = try_import_torch()
 
 
+# TODO: (sven) Unify this with `build_tf_policy` as well.
 @DeveloperAPI
 def build_policy_class(
         name: str,
@@ -293,8 +294,9 @@ def build_policy_class(
                                    other_agent_batches=None,
                                    episode=None):
             # Do all post-processing always with no_grad().
-            # Not using this here will introduce a memory leak (issue #6962).
-            with torch.no_grad():
+            # Not using this here will introduce a memory leak
+            # in torch (issue #6962).
+            with self._no_grad_context():
                 # Call super's postprocess_trajectory first.
                 sample_batch = super().postprocess_trajectory(
                     sample_batch, other_agent_batches, episode)
@@ -395,6 +397,7 @@ def build_policy_class(
         .. )
         """
         return build_policy_class(**dict(original_kwargs, **overrides))
+
 
     policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.__name__ = name
