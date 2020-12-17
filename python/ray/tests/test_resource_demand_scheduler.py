@@ -9,13 +9,14 @@ import copy
 
 import ray
 from ray.autoscaler._private.util import \
-    rewrite_legacy_yaml_to_available_node_types
+    rewrite_legacy_yaml_to_available_node_types, format_info_string, \
+    format_info_string_no_node_types
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MockProvider, \
     MockProcessRunner
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
-    AutoscalerSummary, format_info_string, format_info_string_no_node_types
+    AutoscalerSummary
 from ray.autoscaler._private.load_metrics import LoadMetrics, \
     LoadMetricsSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -1966,7 +1967,8 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(node_ip,
                   config["available_node_types"]["def_worker"]["resources"],
                   {}, {})
-        print("============ Should scale down from here =============", node_id)
+        print("============ Should scale down from here =============",
+              node_id)
         autoscaler.update()
         print(self.provider.non_terminated_node_ips({}))
         self.waitForNodes(1)
@@ -2094,6 +2096,16 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
 
 
+def format_pg(pg):
+    strategy = pg["strategy"]
+    bundles = pg["bundles"]
+    shape_strs = []
+    for bundle, count in bundles:
+        shape_strs.append(f"{bundle} * {count}")
+    bundles_str = ", ".join(shape_strs)
+    return f"{bundles_str} ({strategy})"
+
+
 def test_info_string():
     lm_summary = LoadMetricsSummary(
         head_ip="0.0.0.0",
@@ -2127,35 +2139,31 @@ def test_info_string():
         failed_nodes=[("1.2.3.6", "p3.2xlarge")])
 
     expected = """
-========Autoscaler status: 2020-12-28 01:02:03========
+======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node Status
---------------------------------------------------
+--------------------------------------------------------
 Healthy:
-  2 p3.2xlarge
-  20 m4.4xlarge
-
+ 2 p3.2xlarge
+ 20 m4.4xlarge
 Pending:
-  m4.4xlarge, 2 launching
-  1.2.3.4: m4.4xlarge, setting up
-  1.2.3.5: m4.4xlarge, setting up
-
+ m4.4xlarge, 2 launching
+ 1.2.3.4: m4.4xlarge, setting up
+ 1.2.3.5: m4.4xlarge, setting up
 Recent failures:
 
-
 Resources
---------------------------------------------------
+--------------------------------------------------------
 Usage:
-  530/544 CPU
-  2/2 GPU
-  0/2 AcceleratorType:V100
-  0/1583.19 memory
-  0/471.02 object_store_memory
-
+ 530/544 CPU
+ 2/2 GPU
+ 0/2 AcceleratorType:V100
+ 0/1583.19 memory
+ 0/471.02 object_store_memory
 Demands:
-  {'CPU': 1}: 150 pending tasks/actors
-  {'CPU': 4} * 5 (PACK): 420 pending placement groups
-  {'CPU': 16}: 100 from request_resources()
-    """.strip()
+ {'CPU': 1}: 150 pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420 pending placement groups
+ {'CPU': 16}: 100 from request_resources()
+""".strip()
 
     actual = format_info_string(
         lm_summary,
@@ -2192,25 +2200,23 @@ def test_info_string_no_node_type():
         }, 1)])
 
     expected = """
-========Autoscaler status: 2020-12-28 01:02:03========
+======== Autoscaler status: 2020-12-28 01:02:03 ========
 Node Status
---------------------------------------------------
-  1 node(s) with resources: {'CPU': 16}
-
+--------------------------------------------------------
+ 1 node(s) with resources: {'CPU': 16}
 Resources
---------------------------------------------------
+--------------------------------------------------------
 Usage:
-  530/544 CPU
-  2/2 GPU
-  0/2 AcceleratorType:V100
-  0/1583.19 memory
-  0/471.02 object_store_memory
-
+ 530/544 CPU
+ 2/2 GPU
+ 0/2 AcceleratorType:V100
+ 0/1583.19 memory
+ 0/471.02 object_store_memory
 Demands:
-  {'CPU': 1}: 150 pending tasks/actors
-  {'CPU': 4} * 5 (PACK): 420 pending placement groups
-  {'CPU': 16}: 100 from request_resources()
-    """.strip()
+ {'CPU': 1}: 150 pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420 pending placement groups
+ {'CPU': 16}: 100 from request_resources()
+""".strip()
 
     actual = format_info_string_no_node_types(
         lm_summary,

@@ -226,9 +226,9 @@ class LoadMetrics:
             node_types=nodes_summary)
 
     def set_resource_requests(self, requested_resources):
-        if requested_resources:
+        if requested_resources is not None:
             assert isinstance(requested_resources, list), requested_resources
-            self.resource_requests = requested_resources
+        self.resource_requests = requested_resources
 
     def info_string(self):
         return " - " + "\n - ".join(

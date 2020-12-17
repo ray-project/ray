@@ -1,5 +1,4 @@
 from collections import defaultdict, namedtuple, Counter
-from datetime import datetime
 from typing import Any, Optional, Dict, List
 from urllib3.exceptions import MaxRetryError
 import copy
@@ -18,8 +17,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
-    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE, NODE_KIND_HEAD,
-    NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+    STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
+    NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -27,8 +26,8 @@ from ray.autoscaler._private.resource_demand_scheduler import \
     get_bin_pack_residual, ResourceDemandScheduler, NodeType, NodeID, NodeIP, \
     ResourceDict
 from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
-    with_head_node_ip, hash_launch_conf, hash_runtime_conf,\
-    DEBUG_AUTOSCALING_ERROR
+    with_head_node_ip, hash_launch_conf, hash_runtime_conf, \
+    DEBUG_AUTOSCALING_ERROR, format_info_string
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_NUM_FAILURES, AUTOSCALER_MAX_LAUNCH_BATCH, \
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
@@ -58,9 +57,11 @@ class StandardAutoscaler:
     AWS/Cloud roles automatically. See the documentation for a full definition
     of autoscaling behavior:
     https://docs.ray.io/en/master/cluster/autoscaling.html
-
     StandardAutoscaler's `update` method is periodically called in
-    `monitor.py`'s monitoring loop..
+    `monitor.py`'s monitoring loop.
+
+    StandardAutoscaler is also used to bootstrap clusters (by adding workers
+    until the cluster size that can handle the resource demand is met).
     """
 
     def __init__(self,
@@ -171,7 +172,7 @@ class StandardAutoscaler:
         nodes_to_terminate: Dict[NodeID, bool] = []
         node_type_counts = collections.defaultdict(int)
         # Sort based on last used to make sure to keep min_workers that
-        # were most recently used. Otherwise, _keep_min_worker_of_node_type
+        # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(nodes, last_used)
         # Don't terminate nodes needed by request_resources()
@@ -184,27 +185,19 @@ class StandardAutoscaler:
             # Make sure to not kill idle node types if the number of workers
             # of that type is lower/equal to the min_workers of that type
             # or it is needed for request_resources().
-            needed_for_min_workers = self._keep_min_worker_of_node_type(node_id, node_type_counts)
-            needed_for_min_resources = not nodes_allowed_to_terminate.get(
-                        node_id, True)
-            outdated = self.launch_config_ok(node_id)
-
-            # print(f"{node_id}, min_workers: {needed_for_min_workers}, min_resources: {needed_for_min_resources}, outdated: {outdated}")
-            if (needed_for_min_resources or needed_for_min_resources) and not outdated:
+            if (self._keep_min_worker_of_node_type(node_id, node_type_counts)
+                    or not nodes_allowed_to_terminate.get(
+                        node_id, True)) and self.launch_config_ok(node_id):
                 continue
 
-
             node_ip = self.provider.internal_ip(node_id)
-            # print(f"Checking if node {node_ip} should be removed. Horizon: {horizon} last_used: {last_used}")
             if node_ip in last_used and last_used[node_ip] < horizon:
-                logger.debug("StandardAutoscaler: "
-                             "{}: Terminating idle node.".format(node_id))
-                print(f"Terminating {node_id} for being idle.")
+                logger.info("StandardAutoscaler: "
+                            "{}: Terminating idle node.".format(node_id))
                 nodes_to_terminate.append(node_id)
             elif not self.launch_config_ok(node_id):
-                print(f"Terminating {node_id} for being out of date.")
-                logger.debug("StandardAutoscaler: "
-                             "{}: Terminating outdated node.".format(node_id))
+                logger.info("StandardAutoscaler: "
+                            "{}: Terminating outdated node.".format(node_id))
                 nodes_to_terminate.append(node_id)
 
         if nodes_to_terminate:
@@ -217,14 +210,14 @@ class StandardAutoscaler:
         while (len(nodes) -
                len(nodes_to_terminate)) > self.config["max_workers"] and nodes:
             to_terminate = nodes.pop()
-            print(f"Terminating {node_id} to satisfy max_workers")
-            logger.debug("StandardAutoscaler: "
-                         "{}: Terminating unneeded node.".format(to_terminate))
+            logger.info("StandardAutoscaler: "
+                        "{}: Terminating unneeded node.".format(to_terminate))
             nodes_to_terminate.append(to_terminate)
 
         if nodes_to_terminate:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
+
             logger.debug(self.info_string())
 
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
@@ -239,7 +232,6 @@ class StandardAutoscaler:
             self.launch_new_node(count, node_type=node_type)
 
         nodes = self.workers()
-        logger.debug(self.info_string())
 
         # Process any completed updates
         completed = []
@@ -250,11 +242,11 @@ class StandardAutoscaler:
             nodes_to_terminate: List[NodeID] = []
             for node_id in completed:
                 if self.updaters[node_id].exitcode == 0:
-                    ip = self.provider.internal_ip(node_id)
                     self.num_successful_updates[node_id] += 1
                     # Mark the node as active to prevent the node recovery
                     # logic immediately trying to restart Ray on the new node.
-                    self.load_metrics.mark_active(ip)
+                    self.load_metrics.mark_active(
+                        self.provider.internal_ip(node_id))
                 else:
                     logger.error(f"StandardAutoscaler: {node_id}: Terminating "
                                  "failed to setup/initialize node.")
@@ -543,6 +535,7 @@ class StandardAutoscaler:
         if not self.can_update(node_id):
             return
         key = self.provider.internal_ip(node_id)
+
         if key in self.load_metrics.last_heartbeat_time_by_ip:
             last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[
                 key]
@@ -550,16 +543,9 @@ class StandardAutoscaler:
             if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
                 return
 
-        # if key not in self.load_metrics.last_heartbeat_time_by_ip:
-        #     self.load_metrics.last_heartbeat_time_by_ip[key] = now
-        # last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip[key]
-        # delta = now - last_heartbeat_time
-        # if delta < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
-        #     return
-
         logger.warning("StandardAutoscaler: "
-                       "{}: No recent heartbeat, "
-                       "restarting Ray to recover...".format(node_id))
+                       "{}: No heartbeat in {}s, "
+                       "restarting Ray to recover...".format(node_id, delta))
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -670,15 +656,12 @@ class StandardAutoscaler:
             return False
         if self.num_failed_updates.get(node_id, 0) > 0:  # TODO(ekl) retry?
             return False
-
         logger.debug(f"{node_id} is not being updated and "
                      "passes config check (can_update=True).")
         return True
 
     def launch_new_node(self, count: int, node_type: Optional[str]) -> None:
         logger.info(
-            "StandardAutoscaler: Queue {} new nodes for launch".format(count))
-        print(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.pending_launches.inc(node_type, count)
         config = copy.deepcopy(self.config)
@@ -699,16 +682,20 @@ class StandardAutoscaler:
         return self.provider.non_terminated_nodes(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
+    def kill_workers(self):
+        logger.error("StandardAutoscaler: kill_workers triggered")
+        nodes = self.workers()
+        if nodes:
+            self.provider.terminate_nodes(nodes)
+        logger.error("StandardAutoscaler: terminated {} node(s)".format(
+            len(nodes)))
+
     def summary(self):
         """Summarizes the active, pending, and failed node launches.
-
         An active node is a node whose raylet is actively reporting heartbeats.
-
         A pending node is non-active node whose node tag is uninitialized,
         waiting for ssh, syncing files, or setting up.
-
         If a node is not pending or active, it is failed.
-
         Returns:
             (AutoscalerSummary) The summary.
         """
@@ -759,133 +746,3 @@ class StandardAutoscaler:
         lm_summary = self.load_metrics.summary()
         autoscaler_summary = self.summary()
         return "\n" + format_info_string(lm_summary, autoscaler_summary)
-
-    def kill_workers(self):
-        logger.error("StandardAutoscaler: kill_workers triggered")
-        nodes = self.workers()
-        if nodes:
-            self.provider.terminate_nodes(nodes)
-        logger.error("StandardAutoscaler: terminated {} node(s)".format(
-            len(nodes)))
-
-
-def format_pg(pg):
-    strategy = pg["strategy"]
-    bundles = pg["bundles"]
-    shape_strs = []
-    for bundle, count in bundles:
-        shape_strs.append(f"{bundle} * {count}")
-    bundles_str = ", ".join(shape_strs)
-    return f"{bundles_str} ({strategy})"
-
-
-def format_info_string(lm_summary, autoscaler_summary, time=None):
-    if time is None:
-        time = datetime.now()
-    header = "=" * 8 + f"Autoscaler status: {time}" + "=" * 8
-    available_node_report_lines = []
-    for node_type, count in autoscaler_summary.active_nodes.items():
-        line = f"  {count} {node_type}"
-        available_node_report_lines.append(line)
-    available_node_report = "\n".join(available_node_report_lines)
-
-    pending_lines = []
-    for node_type, count in autoscaler_summary.pending_launches.items():
-        line = f"  {node_type}, {count} launching"
-        pending_lines.append(line)
-    for ip, node_type in autoscaler_summary.pending_nodes:
-        line = f"  {ip}: {node_type}, setting up"
-        pending_lines.append(line)
-    pending_report = "\n".join(pending_lines)
-
-    failure_lines = []
-    for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f"  {ip}: {node_type}"
-    failure_report = "\n".join(failure_lines)
-
-    usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
-        line = f"  {used}/{total} {resource}"
-        usage_lines.append(line)
-    usage_report = "\n".join(usage_lines)
-
-    demand_lines = []
-    for bundle, count in lm_summary.resource_demand:
-        line = f"  {bundle}: {count} pending tasks/actors"
-        demand_lines.append(line)
-    for entry in lm_summary.pg_demand:
-        pg, count = entry
-        pg_str = format_pg(pg)
-        line = f"  {pg_str}: {count} pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f"  {bundle}: {count} from request_resources()"
-        demand_lines.append(line)
-    demand_report = "\n".join(demand_lines)
-
-    formatted_output = f"""{header}
-Node Status
---------------------------------------------------
-Healthy:
-{available_node_report}
-
-Pending:
-{pending_report}
-
-Recent failures:
-{failure_report}
-
-Resources
---------------------------------------------------
-Usage:
-{usage_report}
-
-Demands:
-{demand_report}"""
-    return formatted_output
-
-
-def format_info_string_no_node_types(lm_summary, time=None):
-    if time is None:
-        time = datetime.now()
-    header = "=" * 8 + f"Autoscaler status: {time}" + "=" * 8
-
-    node_lines = []
-    for node_type, count in lm_summary.node_types:
-        line = f"  {count} node(s) with resources: {node_type}"
-        node_lines.append(line)
-    node_report = "\n".join(node_lines)
-
-    usage_lines = []
-    for resource, (used, total) in lm_summary.usage.items():
-        line = f"  {used}/{total} {resource}"
-        usage_lines.append(line)
-    usage_report = "\n".join(usage_lines)
-
-    demand_lines = []
-    for bundle, count in lm_summary.resource_demand:
-        line = f"  {bundle}: {count} pending tasks/actors"
-        demand_lines.append(line)
-    for entry in lm_summary.pg_demand:
-        pg, count = entry
-        pg_str = format_pg(pg)
-        line = f"  {pg_str}: {count} pending placement groups"
-        demand_lines.append(line)
-    for bundle, count in lm_summary.request_demand:
-        line = f"  {bundle}: {count} from request_resources()"
-        demand_lines.append(line)
-    demand_report = "\n".join(demand_lines)
-
-    formatted_output = f"""{header}
-Node Status
---------------------------------------------------
-{node_report}
-
-Resources
---------------------------------------------------
-Usage:
-{usage_report}
-
-Demands:
-{demand_report}"""
-    return formatted_output
