@@ -94,7 +94,7 @@ class MLFlowLoggerCallback(LoggerCallback):
             experiment_id = os.environ.get("MLFLOW_EXPERIMENT_ID")
             # Confirm that an experiment with this id exists.
             if experiment_id is None or self.client.get_experiment(
-                        experiment_id) is None:
+                    experiment_id) is None:
                 raise ValueError("No experiment_name passed, "
                                  "MLFLOW_EXPERIMENT_NAME env var is not "
                                  "set, and MLFLOW_EXPERIMENT_ID either "
@@ -132,7 +132,7 @@ class MLFlowLoggerCallback(LoggerCallback):
             except (ValueError, TypeError):
                 logger.debug("Cannot log key {} with value {} since the "
                              "value cannot be converted to float.".format(
-                    key, value))
+                                 key, value))
                 continue
             self.client.log_metric(
                 run_id=run_id, key=key, value=value, step=iteration)
@@ -325,7 +325,7 @@ class MLFlowTrainableMixin:
         # First see if experiment_id is passed in.
         experiment_id = mlflow_config.pop("experiment_id", None)
         if experiment_id is None or self._mlflow.get_experiment(
-            experiment_id) is None:
+                experiment_id) is None:
             logger.debug("Either no experiment_id is passed in, or the "
                          "experiment with the given id does not exist. "
                          "Checking experiment_name")

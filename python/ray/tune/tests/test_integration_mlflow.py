@@ -262,7 +262,7 @@ class MLFlowTest(unittest.TestCase):
         def train_fn(config):
             return 1
 
-        train_fn.__mixins__ = (_MockMLFlowTrainableMixin,)
+        train_fn.__mixins__ = (_MockMLFlowTrainableMixin, )
 
         # No MLFlow config passed in.
         with self.assertRaises(ValueError):
@@ -301,8 +301,6 @@ class MLFlowTest(unittest.TestCase):
         trial_config["mlflow"]["experiment_name"] = "new_experiment"
         with self.assertRaises(ValueError):
             wrapped = wrap_function(train_fn)(trial_config)
-
-
 
 
 if __name__ == "__main__":
