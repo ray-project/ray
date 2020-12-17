@@ -14,10 +14,9 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
-
 # The maximum field value for request_id -- which is also the maximum
 # number of simultaneous in-flight requests.
-INT32_MAX = (2 ** 31) - 1
+INT32_MAX = (2**31) - 1
 
 
 class DataClient:
@@ -61,7 +60,6 @@ class DataClient:
             with self.cv:
                 self.ready_data[response.req_id] = response
                 self.cv.notify_all()
-
 
     def close(self, close_channel: bool = False) -> None:
         if self.request_queue is not None:

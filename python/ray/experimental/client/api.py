@@ -144,7 +144,7 @@ class APIImpl(ABC):
         Attempts to release an object reference.
 
         When client references are destructed, they release their reference,
-        which can opportunistically send a notification through the data channel
+        which can opportunistically send a notification through the datachannel
         to release the reference being held for that object on the server.
 
         Args:
@@ -185,7 +185,8 @@ class ClientAPI(APIImpl):
     def remote(self, *args, **kwargs):
         return self.worker.remote(*args, **kwargs)
 
-    def call_remote(self, instance: "ClientStub", *args, **kwargs) -> ray_client_pb2.RemoteRef:
+    def call_remote(self, instance: "ClientStub", *args,
+                    **kwargs) -> ray_client_pb2.RemoteRef:
         return self.worker.call_remote(instance, *args, **kwargs)
 
     def call_release(self, id: bytes) -> None:

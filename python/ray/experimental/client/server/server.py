@@ -179,7 +179,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         for id in request.object_ids:
             if id not in self.object_refs[request.client_id]:
                 raise Exception(
-                    "Asking for a ref not associated with this client: %s" % str(id))
+                    "Asking for a ref not associated with this client: %s" %
+                    str(id))
             object_refs.append(self.object_refs[request.client_id][id])
         num_returns = request.num_returns
         timeout = request.timeout
@@ -194,14 +195,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         logger.debug("wait: %s %s" % (str(ready_object_refs),
                                       str(remaining_object_refs)))
         ready_object_ids = [
-            make_remote_ref(
-                id=ready_object_ref.binary(),
-            ) for ready_object_ref in ready_object_refs
+            make_remote_ref(id=ready_object_ref.binary(), )
+            for ready_object_ref in ready_object_refs
         ]
         remaining_object_ids = [
-            make_remote_ref(
-                id=remaining_object_ref.binary(),
-            ) for remaining_object_ref in remaining_object_refs
+            make_remote_ref(id=remaining_object_ref.binary(), )
+            for remaining_object_ref in remaining_object_refs
         ]
         return ray_client_pb2.WaitResponse(
             valid=True,
@@ -266,8 +265,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             task: ray_client_pb2.ClientTask,
             context=None,
             prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        remote_func = self.lookup_or_register_func(
-            task.payload_id, task.client_id)
+        remote_func = self.lookup_or_register_func(task.payload_id,
+                                                   task.client_id)
         arglist = self._convert_args(task.args, prepared_args)
         # Prepare call if we're in a test
         with current_func(remote_func):

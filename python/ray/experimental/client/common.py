@@ -1,10 +1,6 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.experimental.client import ray
-from typing import Any
 from typing import Dict
-
-import base64
-import uuid
 
 
 class ClientBaseRef:
@@ -202,8 +198,8 @@ class ClientRemoteMethod(ClientStub):
         return ray.call_remote(self, *args, **kwargs)
 
     def __repr__(self):
-        return "ClientRemoteMethod(%s, %s)" % (
-            self.method_name, self.actor_handle)
+        return "ClientRemoteMethod(%s, %s)" % (self.method_name,
+                                               self.actor_handle)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         task = ray_client_pb2.ClientTask()

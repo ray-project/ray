@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorHandle
+from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientRemoteFunc
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
@@ -17,10 +18,8 @@ if sys.version_info < (3, 8):
 else:
     import pickle  # noqa: F401
 
-
-PickleStub = NamedTuple(
-    "PickleStub",
-    [("type", str), ("client_id", str), ("ref_id", bytes)])
+PickleStub = NamedTuple("PickleStub", [("type", str), ("client_id", str),
+                                       ("ref_id", bytes)])
 
 
 class ClientPickler(cloudpickle.CloudPickler):
@@ -51,8 +50,7 @@ class ClientPickler(cloudpickle.CloudPickler):
             return PickleStub(
                 type="RemoteFunc",
                 client_id=self.client_id,
-                ref_id=obj._ref.id
-            )
+                ref_id=obj._ref.id)
         return None
 
 
@@ -70,13 +68,20 @@ class ServerUnpickler(pickle.Unpickler):
 def dumps_from_client(obj, client_id, protocol=None, buffer_callback=None):
     with io.BytesIO() as file:
         cp = ClientPickler(
-            client_id, file, protocol=protocol, buffer_callback=buffer_callback
-        )
+            client_id,
+            file,
+            protocol=protocol,
+            buffer_callback=buffer_callback)
         cp.dump(obj)
         return file.getvalue()
 
 
-def loads_from_server(data, *, fix_imports=True, encoding="ASCII", errors="strict", buffers=None):
+def loads_from_server(data,
+                      *,
+                      fix_imports=True,
+                      encoding="ASCII",
+                      errors="strict",
+                      buffers=None):
     if isinstance(data, str):
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)

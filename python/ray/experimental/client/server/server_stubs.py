@@ -1,6 +1,4 @@
-from typing import Dict
 from contextlib import contextmanager
-
 
 _current_remote_func = None
 
@@ -24,7 +22,7 @@ class ServerFunctionSentinel:
         global _current_remote_func
         if _current_remote_func is None:
             return (ServerFunctionSentinel, tuple())
-        return (identity, (_current_remote_func,))
+        return (identity, (_current_remote_func, ))
 
 
 def identity(x):

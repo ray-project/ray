@@ -2,6 +2,7 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
+import base64
 import inspect
 import json
 import logging
@@ -112,9 +113,7 @@ class Worker:
         for ref in object_refs:
             assert isinstance(ref, ClientObjectRef)
         data = {
-            "object_ids": [
-                object_ref.id for object_ref in object_refs
-            ],
+            "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
             "timeout": timeout if timeout else -1,
             "client_id": self._client_id,
@@ -147,7 +146,8 @@ class Worker:
             raise TypeError("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
-    def call_remote(self, instance, *args, **kwargs) -> ray_client_pb2.RemoteRef:
+    def call_remote(self, instance, *args,
+                    **kwargs) -> ray_client_pb2.RemoteRef:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)

@@ -8,7 +8,6 @@ from typing import Any
 from ray.experimental.client.client_pickler import PickleStub
 from ray.experimental.client.server.server_stubs import ServerFunctionSentinel
 
-
 if sys.version_info < (3, 8):
     try:
         import pickle5 as pickle  # noqa: F401
@@ -55,13 +54,17 @@ class ClientUnpickler(pickle.Unpickler):
             if len(pid.ref_id) == 0:
                 # This is a recursive func
                 return ServerFunctionSentinel()
-            return self.server.lookup_or_register_func(
-                pid.ref_id, pid.client_id)
+            return self.server.lookup_or_register_func(pid.ref_id,
+                                                       pid.client_id)
         else:
             raise NotImplementedError("Uncovered client data type")
 
 
-def dumps_from_server(obj, client_id, server_instance, protocol=None, buffer_callback=None):
+def dumps_from_server(obj,
+                      client_id,
+                      server_instance,
+                      protocol=None,
+                      buffer_callback=None):
     with io.BytesIO() as file:
         sp = ServerPickler(
             client_id,
@@ -73,8 +76,13 @@ def dumps_from_server(obj, client_id, server_instance, protocol=None, buffer_cal
         return file.getvalue()
 
 
-def loads_from_client(data, server_instance, *,
-                      fix_imports=True, encoding="ASCII", errors="strict", buffers=None):
+def loads_from_client(data,
+                      server_instance,
+                      *,
+                      fix_imports=True,
+                      encoding="ASCII",
+                      errors="strict",
+                      buffers=None):
     if isinstance(data, str):
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)
@@ -89,4 +97,3 @@ def loads_from_client(data, server_instance, *,
 
 def convert_from_arg(pb, server) -> Any:
     return loads_from_client(pb.data, server)
-
