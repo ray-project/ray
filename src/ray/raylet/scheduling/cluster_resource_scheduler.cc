@@ -885,6 +885,12 @@ void ClusterResourceScheduler::FillResourceUsage(
       << "Error: Populating heartbeat failed. Please file a bug report: "
          "https://github.com/ray-project/ray/issues/new.";
 
+  // Initialize if last report resources is empty.
+  if (!last_report_resources_) {
+    NodeResources node_resources = ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}});
+    last_report_resources_.reset(new NodeResources(node_resources));
+  }
+
   if (light_report_resource_usage_enabled) {
     // Reset all local views for remote nodes. This is needed in case tasks that
     // we spilled back to a remote node were not actually scheduled on the
@@ -923,6 +929,9 @@ void ClusterResourceScheduler::FillResourceUsage(
       if (capacity.total != last_capacity.total) {
         (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
       }
+    }
+    if (resources != *last_report_resources_.get()) {
+      last_report_resources_.reset(new NodeResources(resources));
     }
   } else {
     for (int i = 0; i < PredefinedResources_MAX; i++) {

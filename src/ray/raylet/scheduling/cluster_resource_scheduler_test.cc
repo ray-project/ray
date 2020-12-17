@@ -1119,10 +1119,10 @@ TEST_F(ClusterResourceSchedulerTest, TestLightResourceUsageReport) {
   }
 
   // Report resource usage if resource availability has changed.
-  cluster_resources.AddOrUpdateNode("local", {{"CPU", 1.}}, {{"CPU", 0.}});
+  cluster_resources.AddOrUpdateNode("local", {{"CPU", 2.}}, {{"CPU", 0.}});
   data->Clear();
   cluster_resources.FillResourceUsage(true, data);
-  ASSERT_RESOURCES_EQ(data, 0, 1);
+  ASSERT_RESOURCES_EQ(data, 0, 2);
 
   // Don't report resource usage if resource availability hasn't changed.
   for (int i = 0; i < 3; i++) {
