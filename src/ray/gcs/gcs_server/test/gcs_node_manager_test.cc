@@ -44,7 +44,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   {
     rpc::GetAllResourceUsageRequest request;
     rpc::GetAllResourceUsageReply reply;
-    auto send_reply_callback = [](ray::Status status, std::function<void()> f1, std::function<void()> f2){};
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                  std::function<void()> f2) {};
     node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
     ASSERT_EQ(reply.resource_usage_data().batch().size(), 0);
   }
@@ -60,7 +61,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   {
     rpc::GetAllResourceUsageRequest request;
     rpc::GetAllResourceUsageReply reply;
-    auto send_reply_callback = [](ray::Status status, std::function<void()> f1, std::function<void()> f2){};
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                  std::function<void()> f2) {};
     node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
     ASSERT_EQ(reply.resource_usage_data().batch().size(), 1);
   }
@@ -71,7 +73,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   {
     rpc::GetAllResourceUsageRequest request;
     rpc::GetAllResourceUsageReply reply;
-    auto send_reply_callback = [](ray::Status status, std::function<void()> f1, std::function<void()> f2){};
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                  std::function<void()> f2) {};
     node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
     ASSERT_EQ(reply.resource_usage_data().batch().size(), 0);
   }
