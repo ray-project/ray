@@ -1,6 +1,6 @@
 .. _tune-mlflow:
 
-Using MLflow with Tune
+Using MLFlow with Tune
 ======================
 
 `MLflow <https://mlflow.org/>`_ is an open source platform to manage the ML lifecycle, including experimentation,
