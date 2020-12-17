@@ -481,7 +481,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# Commenting out for now because it is not idempotent
 py_test(
  name = "mlflow_example",
  size = "medium",
