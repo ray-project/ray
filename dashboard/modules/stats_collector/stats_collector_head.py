@@ -164,14 +164,6 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="Fetched errors.", errors=node_errors)
 
-    @routes.get("/actors")
-    @dashboard_utils.aiohttp_cache
-    async def get_all_actors(self, req) -> aiohttp.web.Response:
-        return dashboard_utils.rest_response(
-            success=True,
-            message="All actors fetched.",
-            actors=DataSource.actors)
-
     async def _update_actors(self):
         # Subscribe actor channel.
         aioredis_client = self._dashboard_head.aioredis_client
