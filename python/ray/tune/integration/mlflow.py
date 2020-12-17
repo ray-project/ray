@@ -312,7 +312,7 @@ class MLFlowTrainableMixin:
                 "containing at least a `tracking_uri` and either "
                 "`experiment_name` or `experiment_id` specification.") from e
 
-        tracking_uri = mlflow_config.pop("tracking_uri", None)
+        tracking_uri = mlflow_config.pop("tracking_uri")
         if tracking_uri is None:
             raise ValueError("MLFlow mixin specified but no "
                              "tracking_uri has been "
@@ -322,14 +322,14 @@ class MLFlowTrainableMixin:
         self._mlflow.set_tracking_uri(tracking_uri)
 
         # First see if experiment_id is passed in.
-        experiment_id = mlflow_config.pop("experiment_id", None)
+        experiment_id = mlflow_config.pop("experiment_id")
         if experiment_id is None or self._mlflow.get_experiment(
                 experiment_id) is None:
             logger.debug("Either no experiment_id is passed in, or the "
                          "experiment with the given id does not exist. "
                          "Checking experiment_name")
             # Check for name.
-            experiment_name = mlflow_config.pop("experiment_name", None)
+            experiment_name = mlflow_config.pop("experiment_name")
             if experiment_name is None:
                 raise ValueError(
                     "MLFlow mixin specified but no "
@@ -343,8 +343,11 @@ class MLFlowTrainableMixin:
                 # Experiment with this name exists.
                 experiment_id = experiment.experiment_id
             else:
-                raise ValueError("No experiment with the given experiment "
-                                 "name or id currently exists.")
+                raise ValueError("No experiment with the given "
+                                 "name: {} or id: {} currently exists. Make "
+                                 "sure to first start the MLFlow experiment "
+                                 "before calling tune.run.".format(
+                                     experiment_name, experiment_id))
 
         self.experiment_id = experiment_id
 
