@@ -32,11 +32,7 @@ class ClientBaseRef:
     def __del__(self):
         if len(self.id) != 0:
             if ray.is_connected():
-                try:
-                    ray.call_release(self.id)
-                except Exception as e:
-                    print("del exception %s")
-                    raise e
+                ray.call_release(self.id)
 
 
 class ClientObjectRef(ClientBaseRef):

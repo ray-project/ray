@@ -149,14 +149,11 @@ class Worker:
 
     def call_remote(self, instance, *args, **kwargs) -> ray_client_pb2.RemoteRef:
         task = instance._prepare_client_task()
-        i = 0
         for arg in args:
-            print(i, arg)
-            i+=1
             pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
         task.client_id = self._client_id
-        logging.info("Scheduling %s" % task)
+        logger.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)
         return ClientObjectRef.from_remote_ref(ticket.return_ref)
 
@@ -168,12 +165,12 @@ class Worker:
 
     def _release_server(self, id: bytes) -> None:
         if self.data_client is not None:
-            logging.info(f"Releasing {id}")
+            logger.debug(f"Releasing {id}")
             self.data_client.ReleaseObject(
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 
     def call_retain(self, id: bytes) -> None:
-        logging.info(f"Retaining {id}")
+        logger.debug(f"Retaining {id}")
         self.reference_count[id] += 1
 
     def close(self):

@@ -42,6 +42,10 @@ class ClientPickler(cloudpickle.CloudPickler):
                 ref_id=obj._actor_id,
             )
         elif isinstance(obj, ClientRemoteFunc):
+            # TODO(barakmich): This is going to have trouble with mutually
+            # recursive functions that haven't, as yet, been executed. It's
+            # relatively doable (keep track of intermediate refs in progress
+            # with ensure_ref and return appropriately) But punting for now.
             if obj._ref is None:
                 obj._ensure_ref()
             return PickleStub(

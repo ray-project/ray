@@ -31,17 +31,6 @@ class CoreRayAPI(APIImpl):
     """
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
-        if isinstance(vals, list):
-            if isinstance(vals[0], ClientObjectRef):
-                return ray.get(
-                    [val._unpack_ref() for val in vals], timeout=timeout)
-        elif isinstance(vals, ClientObjectRef):
-            print("Getting")
-            try:
-                ret = ray.get(vals._unpack_ref(), timeout=timeout)
-                return ret
-            finally:
-                print("Got")
         return ray.get(vals, timeout=timeout)
 
     def put(self, vals: Any, *args,
