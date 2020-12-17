@@ -201,18 +201,18 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
       if (last_reconnect_address_ == address &&
           (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
               RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
-        RAY_LOG(DEBUG)
+        RAY_LOG(INFO)
             << "Repeated reconnection in "
             << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
             << "milliseconds, return directly.";
         return;
       }
 
-      RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
-                     << address.second;
+      RAY_LOG(INFO) << "Attemptting to reconnect to GCS server: " << address.first << ":"
+                    << address.second;
       if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(DEBUG) << "Reconnected to GCS server: " << address.first << ":"
-                       << address.second;
+        RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                      << address.second;
         break;
       }
     }
