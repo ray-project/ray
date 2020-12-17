@@ -75,13 +75,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def release(self, client_id: str, id: bytes) -> bool:
         if client_id in self.object_refs:
             if id in self.object_refs[client_id]:
-                logger.info(f"Releasing object {id.hex()} for {client_id}")
+                logger.debug(f"Releasing object {id.hex()} for {client_id}")
                 del self.object_refs[client_id][id]
                 return True
 
         if client_id in self.actor_owners:
             if id in self.actor_owners[client_id]:
-                logger.info(f"Releasing actor {id.hex()} for {client_id}")
+                logger.debug(f"Releasing actor {id.hex()} for {client_id}")
                 del self.actor_refs[id]
                 self.actor_owners[client_id].remove(id)
                 return True
@@ -94,21 +94,21 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
 
     def _release_objects(self, client_id):
         if client_id not in self.object_refs:
-            logger.info(f"Releasing client with no references: {client_id}")
+            logger.debug(f"Releasing client with no references: {client_id}")
             return
         count = len(self.object_refs[client_id])
         del self.object_refs[client_id]
-        logger.info(f"Released all {count} objects for client {client_id}")
+        logger.debug(f"Released all {count} objects for client {client_id}")
 
     def _release_actors(self, client_id):
         if client_id not in self.actor_owners:
-            logger.info(f"Releasing client with no actors: {client_id}")
+            logger.debug(f"Releasing client with no actors: {client_id}")
         count = 0
         for id_bytes in self.actor_owners[client_id]:
             count += 1
             del self.actor_refs[id_bytes]
         del self.actor_owners[client_id]
-        logger.info(f"Released all {count} actors for client: {client_id}")
+        logger.debug(f"Released all {count} actors for client: {client_id}")
 
     def Terminate(self, req, context=None):
         if req.WhichOneof("terminate_type") == "task_object":
@@ -140,7 +140,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         if request.id not in self.object_refs[client_id]:
             return ray_client_pb2.GetResponse(valid=False)
         objectref = self.object_refs[client_id][request.id]
-        logger.info("get: %s" % objectref)
+        logger.debug("get: %s" % objectref)
         try:
             item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
@@ -170,9 +170,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         obj = loads_from_client(request.data, self)
         objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
-        logger.info("put: %s" % objectref)
+        logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(
-            ref=make_remote_ref(objectref.binary(), b''))
+            ref=make_remote_ref(objectref.binary()))
 
     def WaitObject(self, request, context=None) -> ray_client_pb2.WaitResponse:
         object_refs = []
@@ -191,18 +191,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         except Exception:
             # TODO(ameer): improve exception messages.
             return ray_client_pb2.WaitResponse(valid=False)
-        logger.info("wait: %s %s" % (str(ready_object_refs),
-                                     str(remaining_object_refs)))
+        logger.debug("wait: %s %s" % (str(ready_object_refs),
+                                      str(remaining_object_refs)))
         ready_object_ids = [
             make_remote_ref(
                 id=ready_object_ref.binary(),
-                handle=b'',
             ) for ready_object_ref in ready_object_refs
         ]
         remaining_object_ids = [
             make_remote_ref(
                 id=remaining_object_ref.binary(),
-                handle=b'',
             ) for remaining_object_ref in remaining_object_refs
         ]
         return ray_client_pb2.WaitResponse(
@@ -240,7 +238,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         output = getattr(actor_handle, task.name).remote(*arglist)
         self.object_refs[task.client_id][output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(output.binary(), b''))
+            return_ref=make_remote_ref(output.binary()))
 
     def _schedule_actor(self,
                         task: ray_client_pb2.ClientTask,
@@ -261,7 +259,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(actor._actor_id.binary(), b''))
+            return_ref=make_remote_ref(actor._actor_id.binary()))
 
     def _schedule_function(
             self,
@@ -278,7 +276,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             raise Exception("already found it")
         self.object_refs[task.client_id][output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(
-            return_ref=make_remote_ref(output.binary(), b''))
+            return_ref=make_remote_ref(output.binary()))
 
     def _convert_args(self, arg_list, prepared_args=None):
         if prepared_args is not None:
@@ -300,12 +298,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return self.function_refs[id]
 
 
-
-def make_remote_ref(id: bytes, handle: bytes) -> ray_client_pb2.RemoteRef:
-    return ray_client_pb2.RemoteRef(
-        id=id,
-        handle=handle,
-    )
+def make_remote_ref(id: bytes) -> ray_client_pb2.RemoteRef:
+    return ray_client_pb2.RemoteRef(id=id)
 
 
 def return_exception_in_context(err, context):

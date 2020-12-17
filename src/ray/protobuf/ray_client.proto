@@ -45,7 +45,6 @@ message ClientTask {
 
 message RemoteRef {
   bytes id = 1;
-  bytes handle = 2;
 }
 
 message ClientTaskTicket {
