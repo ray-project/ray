@@ -1,7 +1,12 @@
-Proximal Policy Optimization (PPO)
-==================================
+#Proximal Policy Optimization (PPO)
 
-Implementations of:
+## Overview 
+
+[PPO](https://arxiv.org/abs/1707.06347) is an model-free on-policy RL algorithm that works well for both discrete and continuous action space environments. PPO utilizes an actor-critic framework, where there are two networks, an actor (policy network) and critic network (value function). 
+
+There are two formulations of PPO, which are both implemented in RLlib. The first formulation of PPO imitates the prior paper [TRPO](https://arxiv.org/abs/1502.05477). In this formulation, for every iteration, an old version of an actor-network is saved and the agent seeks to optimize the RL objective while staying close to the old policy. This makes sure that the agent does not destabilize during training. In the second formulation, To mitigate destructive large policy updates, an issue discovered for vanilla policy gradient methods, PPO introduces the surrogate objective, which clips large action probability ratios between the current and old policy. Clipping has been shown in the paper to significantly improve training stability and speed. 
+
+## Documentation & Implementation:
 
 1) Proximal Policy Optimization (PPO). 
 
