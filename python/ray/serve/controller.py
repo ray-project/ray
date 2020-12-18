@@ -156,7 +156,7 @@ class ActorStateReconciler:
     endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
 
     # NOTE(ilr): These are not checkpointed, but will be recreated by
-    # `_enqueue_kill_actor`.
+    # `_enqueue_pending_scale_changes_loop`.
     currently_starting_replicas: Dict[asyncio.Future, Tuple[
         BackendTag, ReplicaTag, ActorHandle]] = field(default_factory=dict)
     currently_stopping_replicas: Dict[asyncio.Future, Tuple[
@@ -319,59 +319,68 @@ class ActorStateReconciler:
                     kill_actor(replica_name))] = tuple(
                         [backend_tag, replica_tag])
 
-    async def _backend_control_loop(self):
+    async def _check_currently_starting_replicas(self) -> bool:
+        """Returns a boolean specifying if there are more replicas to start"""
+        in_flight = list()
+
+        if self.currently_starting_replicas:
+            done, in_flight = await asyncio.wait(
+                list(self.currently_starting_replicas.keys()), timeout=0)
+            for fut in done:
+                (backend_tag, replica_tag,
+                 replica_handle) = self.currently_starting_replicas.pop(
+                     fut.object_ref)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = replica_handle
+
+                backend = self.backend_replicas_to_start.get(backend_tag)
+                if backend:
+                    try:
+                        backend.remove(replica_tag)
+                    except ValueError:
+                        pass
+                    if len(backend) == 0:
+                        del self.backend_replicas_to_start[backend_tag]
+        return len(in_flight) > 0
+
+    async def _check_currently_stopping_replicas(self) -> bool:
+        """Returns a boolean specifying if there are more replicas to stop"""
+        in_flight = list()
+        if self.currently_stopping_replicas:
+            done_stoppping, in_flight = await asyncio.wait(
+                list(self.currently_stopping_replicas.keys()), timeout=0)
+            for fut in done_stoppping:
+                (backend_tag,
+                 replica_tag) = self.currently_stopping_replicas.pop(
+                     fut.object_ref)
+
+                backend = self.backend_replicas_to_stop.get(backend_tag)
+
+                if backend:
+                    try:
+                        backend.remove(replica_tag)
+                    except ValueError:
+                        pass
+                    if len(backend) == 0:
+                        del self.backend_replicas_to_stop[backend_tag]
+
+        return len(in_flight) > 0
+
+    async def backend_control_loop(self):
         start = time.time()
         prev_warning = start
-        while self.currently_starting_replicas or \
-                self.currently_stopping_replicas:
+        need_to_continue = True
+        while need_to_continue:
             if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
                 prev_warning = time.time()
                 logger.warning("Waited {:.2f}s for replicas to start up. Make "
                                "sure there are enough resources to create the "
                                "replicas.".format(time.time() - start))
 
-            if self.currently_starting_replicas:
-                done, _ = await asyncio.wait(
-                    [
-                        x.as_future()
-                        for x in self.currently_starting_replicas.keys()
-                    ],
-                    timeout=0)
-                for fut in done:
-                    (backend_tag, replica_tag,
-                     replica_handle) = self.currently_starting_replicas.pop(
-                         fut.object_ref)
-                    self.backend_replicas[backend_tag][
-                        replica_tag] = replica_handle
-                    try:
-                        self.backend_replicas_to_start.get(backend_tag).remove(
-                            replica_tag)
-                        if len(self.backend_replicas_to_start[
-                                backend_tag]) == 0:
-                            del self.backend_replicas_to_start[backend_tag]
-                    except Exception:
-                        pass
-            if self.currently_stopping_replicas:
-                done_stoppping, _ = await asyncio.wait(
-                    [
-                        x.as_future()
-                        for x in self.currently_stopping_replicas.keys()
-                    ],
-                    timeout=0)
-                for fut in done_stoppping:
-                    (backend_tag,
-                     replica_tag) = self.currently_stopping_replicas.pop(
-                         fut.object_ref)
-                    try:
-                        self.backend_replicas_to_stop.get(backend_tag).remove(
-                            replica_tag)
-                        if len(self.backend_replicas_to_stop[
-                                backend_tag]) == 0:
-                            del self.backend_replicas_to_stop[backend_tag]
-                    except Exception:
-                        pass
+            need_to_continue = self._check_currently_starting_replicas() or \
+                self._check_currently_stopping_replicas()
 
-                asyncio.sleep(1)
+            asyncio.sleep(1)
 
     def _start_routers_if_needed(self, http_host: str, http_port: str,
                                  http_middlewares: List[Any]) -> None:
@@ -462,7 +471,7 @@ class ActorStateReconciler:
 
         # Start/stop any pending backend replicas.
         await self._enqueue_pending_scale_changes_loop(current_state)
-        await self._backend_control_loop()
+        await self.backend_control_loop()
 
         return autoscaling_policies
 
@@ -960,7 +969,7 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.current_state)
-            await self.actor_reconciler._backend_control_loop()
+            await self.actor_reconciler.backend_control_loop()
 
             self.notify_replica_handles_changed()
 
@@ -1011,7 +1020,7 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.current_state)
-            await self.actor_reconciler._backend_control_loop()
+            await self.actor_reconciler.backend_control_loop()
 
             self.notify_replica_handles_changed()
             return return_uuid
@@ -1053,7 +1062,7 @@ class ServeController:
 
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.current_state)
-            await self.actor_reconciler._backend_control_loop()
+            await self.actor_reconciler.backend_control_loop()
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
