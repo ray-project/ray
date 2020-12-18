@@ -221,10 +221,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     "Unimplemented Schedule task type: %s" %
                     ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
 
-    def _schedule_method(
-            self,
-            task: ray_client_pb2.ClientTask,
-            context=None) -> ray_client_pb2.ClientTaskTicket:
+    def _schedule_method(self, task: ray_client_pb2.ClientTask,
+                         context=None) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
@@ -234,8 +232,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.object_refs[task.client_id][output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
-    def _schedule_actor(self,
-                        task: ray_client_pb2.ClientTask,
+    def _schedule_actor(self, task: ray_client_pb2.ClientTask,
                         context=None) -> ray_client_pb2.ClientTaskTicket:
         remote_class = self.lookup_or_register_actor(task.payload_id,
                                                      task.client_id)
@@ -248,10 +245,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return ray_client_pb2.ClientTaskTicket(
             return_id=actor._actor_id.binary())
 
-    def _schedule_function(
-            self,
-            task: ray_client_pb2.ClientTask,
-            context=None) -> ray_client_pb2.ClientTaskTicket:
+    def _schedule_function(self, task: ray_client_pb2.ClientTask,
+                           context=None) -> ray_client_pb2.ClientTaskTicket:
         remote_func = self.lookup_or_register_func(task.payload_id,
                                                    task.client_id)
         arglist, kwargs = self._convert_args(task.args, task.kwargs)

@@ -1,6 +1,5 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.experimental.client import ray
-from typing import Dict
 
 
 class ClientBaseRef:

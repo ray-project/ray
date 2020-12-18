@@ -627,8 +627,8 @@ def test_random_id_generation(ray_start_regular_shared):
     assert f1._actor_id != f2._actor_id
 
 
-@pytest.mark.skipif(client_test_enabled(),
-                    reason="differing inheritence structure")
+@pytest.mark.skipif(
+    client_test_enabled(), reason="differing inheritence structure")
 def test_actor_inheritance(ray_start_regular_shared):
     class NonActorBase:
         def __init__(self):
@@ -641,8 +641,7 @@ def test_actor_inheritance(ray_start_regular_shared):
             pass
 
     # Test that you can't instantiate an actor class directly.
-    with pytest.raises(
-            Exception, match="cannot be instantiated directly"):
+    with pytest.raises(Exception, match="cannot be instantiated directly"):
         ActorBase()
 
     # Test that you can't inherit from an actor class.

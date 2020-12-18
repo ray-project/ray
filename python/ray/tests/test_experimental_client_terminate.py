@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from ray.tests.test_experimental_client import ray_start_client_server
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.test_utils import wait_for_condition

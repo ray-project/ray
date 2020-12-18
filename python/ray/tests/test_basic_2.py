@@ -22,6 +22,7 @@ else:
 
 logger = logging.getLogger(__name__)
 
+
 @pytest.mark.parametrize(
     "shutdown_only", [{
         "local_mode": True
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
     indirect=True)
 def test_variable_number_of_args(shutdown_only):
     ray.init(num_cpus=1)
+
     @ray.remote
     def varargs_fct1(*a):
         return " ".join(map(str, a))
@@ -38,7 +40,6 @@ def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
-
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
@@ -464,8 +465,8 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
-@pytest.mark.skipif(client_test_enabled(),
-                    reason="internal api and message size")
+@pytest.mark.skipif(
+    client_test_enabled(), reason="internal api and message size")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
