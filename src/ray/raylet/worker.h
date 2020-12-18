@@ -98,12 +98,6 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual void SetOverflowCPUInstances(std::vector<double> &cpu_instances) = 0;
-
-  virtual std::vector<double> &GetOverflowCPUInstances() = 0;
-
-  virtual void ClearOverflowCPUInstances() = 0;
-
   virtual Task &GetAssignedTask() = 0;
 
   virtual void SetAssignedTask(const Task &assigned_task) = 0;
@@ -195,14 +189,6 @@ class Worker : public WorkerInterface {
   };
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
-
-  void SetOverflowCPUInstances(std::vector<double> &cpu_instances) {
-    overflow_cpu_instances_ = cpu_instances;
-  };
-
-  std::vector<double> &GetOverflowCPUInstances() { return overflow_cpu_instances_; };
-
-  void ClearOverflowCPUInstances() { return overflow_cpu_instances_.clear(); };
 
   Task &GetAssignedTask() { return assigned_task_; };
 

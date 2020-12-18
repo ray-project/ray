@@ -161,20 +161,12 @@ class MockWorker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; }
 
-  void SetOverflowCPUInstances(std::vector<double> &cpu_instances) {
-    borrowed_cpu_instances_ = cpu_instances;
-  }
-
   const BundleID &GetBundleId() const {
     RAY_CHECK(false) << "Method unused";
     return bundle_id_;
   }
 
   void SetBundleId(const BundleID &bundle_id) { RAY_CHECK(false) << "Method unused"; }
-
-  std::vector<double> &GetOverflowCPUInstances() { return borrowed_cpu_instances_; }
-
-  void ClearOverflowCPUInstances() { RAY_CHECK(false) << "Method unused"; }
 
   Task &GetAssignedTask() {
     RAY_CHECK(false) << "Method unused";
