@@ -166,7 +166,7 @@ class MockWorker : public WorkerInterface {
     return bundle_id_;
   }
 
-  void SetBundleId(const BundleID &bundle_id) { RAY_CHECK(false) << "Method unused"; }
+  void SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
   Task &GetAssignedTask() {
     RAY_CHECK(false) << "Method unused";

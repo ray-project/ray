@@ -157,7 +157,7 @@ py_test(
 
 py_test(
     name = "test_sample",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -693,6 +693,15 @@ py_test(
     srcs = ["examples/tf_mnist_example.py"],
     deps = [":tune_lib"],
     tags = ["exclusive", "example", "tf"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "tune_basic_example",
+    size = "small",
+    srcs = ["examples/tune_basic_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
     args = ["--smoke-test"]
 )
 

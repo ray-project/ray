@@ -18,6 +18,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
 namespace ray {
 
@@ -44,6 +45,14 @@ struct pair_hash {
   }
 };
 
+struct BundleTransactionState {
+  BundleTransactionState(CommitState state,
+                         std::shared_ptr<TaskResourceInstances> &resources)
+      : state_(state), resources_(resources) {}
+  CommitState state_;
+  std::shared_ptr<TaskResourceInstances> resources_;
+};
+
 /// `PlacementGroupResourceManager` responsible for managing the resources that
 /// about allocated for placement group bundles.
 class PlacementGroupResourceManager {
@@ -68,16 +77,20 @@ class PlacementGroupResourceManager {
   /// Return back all the bundle(which is unused) resource.
   ///
   /// \param bundle_spec: A set of bundles which in use.
-  virtual void ReturnUnusedBundle(
-      const std::unordered_set<BundleID, pair_hash> &in_use_bundles) = 0;
+  void ReturnUnusedBundle(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
   virtual ~PlacementGroupResourceManager() {}
+
+ protected:
+  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
+  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
+      bundle_spec_map_;
 };
 
 /// Associated with old scheduler.
 class OldPlacementGroupResourceManager : public PlacementGroupResourceManager {
  public:
-  /// Create a local placement group manager.
+  /// Create a old placement group resource manager.
   ///
   /// \param local_available_resources_: The resources (IDs specificed) that are currently
   /// available.
@@ -97,8 +110,6 @@ class OldPlacementGroupResourceManager : public PlacementGroupResourceManager {
   void CommitBundle(const BundleSpecification &bundle_spec);
 
   void ReturnBundle(const BundleSpecification &bundle_spec);
-
-  void ReturnUnusedBundle(const std::unordered_set<BundleID, pair_hash> &in_use_bundles);
 
   /// Get all local available resource(IDs specificed).
   const ResourceIdSet &GetAllResourceIdSet() const { return local_available_resources_; };
@@ -121,10 +132,36 @@ class OldPlacementGroupResourceManager : public PlacementGroupResourceManager {
   /// creation.
   absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
       bundle_state_map_;
+};
 
-  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
-      bundle_spec_map_;
+/// Associated with new scheduler.
+class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
+ public:
+  /// Create a new placement group resource manager.
+  ///
+  /// \param cluster_resource_scheduler_: The resource allocator of new scheduler.
+  NewPlacementGroupResourceManager(
+      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_);
+
+  virtual ~NewPlacementGroupResourceManager() = default;
+
+  bool PrepareBundle(const BundleSpecification &bundle_spec);
+
+  void CommitBundle(const BundleSpecification &bundle_spec);
+
+  void ReturnBundle(const BundleSpecification &bundle_spec);
+
+  const std::shared_ptr<ClusterResourceScheduler> GetResourceScheduler() const {
+    return cluster_resource_scheduler_;
+  }
+
+ private:
+  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+
+  /// Tracking placement group bundles and their states. This mapping is the source of
+  /// truth for the new scheduler.
+  std::unordered_map<BundleID, std::shared_ptr<BundleTransactionState>, pair_hash>
+      pg_bundles_;
 };
 
 }  // namespace raylet
