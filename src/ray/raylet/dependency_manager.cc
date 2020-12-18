@@ -4,6 +4,21 @@ namespace ray {
 
 namespace raylet {
 
+bool DependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
+  return local_objects_.count(object_id) == 1;
+}
+
+bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
+                                        rpc::Address *owner_address) const {
+  auto obj = required_objects_.find(object_id);
+  if (obj == required_objects_.end()) {
+    return false;
+  }
+
+  *owner_address = obj->second.owner_address;
+  return !owner_address->worker_id().empty();
+}
+
 void DependencyManager::RemoveObjectIfNotNeeded(
     absl::flat_hash_map<ObjectID, DependencyManager::ObjectDependencies>::iterator
         required_object_it) {
@@ -230,6 +245,16 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
   }
 
   return ready_task_ids;
+}
+
+std::string DependencyManager::DebugString() const {
+  std::stringstream result;
+  result << "TaskDependencyManager:";
+  result << "\n- task deps map size: " << queued_task_requests_.size();
+  result << "\n- get req map size: " << get_requests_.size();
+  result << "\n- wait req map size: " << wait_requests_.size();
+  result << "\n- local objects map size: " << local_objects_.size();
+  return result.str();
 }
 
 }  // namespace raylet

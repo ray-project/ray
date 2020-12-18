@@ -30,6 +30,16 @@ using rpc::TaskLeaseData;
 
 class ReconstructionPolicy;
 
+class TaskDependencyManagerInterface {
+ public:
+  virtual bool AddTaskDependencies(
+      const TaskID &task_id,
+      const std::vector<rpc::ObjectReference> &required_objects) = 0;
+
+  virtual void CancelTaskDependencies(const TaskID &task_id) = 0;
+  virtual ~TaskDependencyManagerInterface(){};
+};
+
 /// \class DependencyManager
 ///
 /// Responsible for managing object dependencies for tasks.  The caller can
@@ -40,7 +50,7 @@ class ReconstructionPolicy;
 /// made available locally, either by object transfer from a remote node or
 /// reconstruction. The task manager will also cancel these objects if they are
 /// no longer needed by any task.
-class DependencyManager {
+class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
   DependencyManager(ObjectManagerInterface2 &object_manager,
@@ -52,6 +62,17 @@ class DependencyManager {
   /// \param object_id The object to check for.
   /// \return Whether the object is local.
   bool CheckObjectLocal(const ObjectID &object_id) const;
+
+  /// Get the address of the owner of this object. An address will only be
+  /// returned if the caller previously specified that this object is required
+  /// on this node, through a call to SubscribeGetDependencies or
+  /// SubscribeWaitDependencies.
+  ///
+  /// \param[in] object_id The object whose owner to get.
+  /// \param[out] owner_address The address of the object's owner, if
+  /// available.
+  /// \return True if we have owner information for the object.
+  bool GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
 
   /// Update the `ray.wait` request. This will start a Pull request for any new
   /// objects that we're not already fetching.
@@ -106,17 +127,6 @@ class DependencyManager {
   ///
   /// \return string.
   std::string DebugString() const;
-
-  /// Get the address of the owner of this object. An address will only be
-  /// returned if the caller previously specified that this object is required
-  /// on this node, through a call to SubscribeGetDependencies or
-  /// SubscribeWaitDependencies.
-  ///
-  /// \param[in] object_id The object whose owner to get.
-  /// \param[out] owner_address The address of the object's owner, if
-  /// available.
-  /// \return True if we have owner information for the object.
-  bool GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
 
  private:
   struct ObjectDependencies {

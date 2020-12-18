@@ -10,13 +10,13 @@ namespace raylet {
 ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-    std::function<bool(const Task &)> fulfills_dependencies_func,
+    TaskDependencyManagerInterface &task_dependency_manager,
     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
     NodeInfoGetter get_node_info,
     std::function<void(const Task &)> announce_infeasible_task)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      fulfills_dependencies_func_(fulfills_dependencies_func),
+      task_dependency_manager_(task_dependency_manager),
       is_owner_alive_(is_owner_alive),
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
@@ -98,7 +98,16 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    bool args_ready = fulfills_dependencies_func_(task);
+    bool args_ready = task_dependency_manager_.AddTaskDependencies(
+        task.GetTaskSpecification().TaskId(), task.GetDependencies());
+    if (args_ready) {
+      // TODO(swang): We should actually cancel the task dependencies later, to
+      // prevent them from getting evicted before the worker gets a ref to the
+      // object values.
+      task_dependency_manager_.CancelTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
+
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
@@ -322,6 +331,8 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
     waiting_tasks_.erase(iter);
+
+    task_dependency_manager_.CancelTaskDependencies(task_id);
     return true;
   }
 

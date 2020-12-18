@@ -4,6 +4,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
@@ -53,7 +54,7 @@ class ClusterTaskManager {
   /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     std::function<bool(const Task &)> fulfills_dependencies_func,
+                     TaskDependencyManagerInterface &task_dependency_manager,
                      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info,
                      std::function<void(const Task &)> announce_infeasible_task);
@@ -130,8 +131,8 @@ class ClusterTaskManager {
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Function to make task dependencies to be local.
-  std::function<bool(const Task &)> fulfills_dependencies_func_;
+  /// Manager to make task dependencies to be local.
+  TaskDependencyManagerInterface &task_dependency_manager_;
   /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.
