@@ -25,7 +25,7 @@ if __name__ == "__main__":
     _options = {
         "group_name": "177",
         "world_size": 2,
-        "rank": i,
+        "rank": [0, 1],
         "backend": "nccl"
     }
     collective.declare_collective_group(workers, _options)

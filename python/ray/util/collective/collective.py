@@ -175,9 +175,13 @@ def declare_collective_group(actors, group_options):
     backend = types.Backend(backend)
     _check_backend_availability(backend)
 
-    name = "info" + group_name
-    if ray.get_actor(name):
+    name = "info_" + group_name
+    try:
+        ray.get_actor(name)
         raise RuntimeError("Trying to initialize a group twice.")
+    except ValueError as v:
+        pass
+
     if len(rank) != len(actors):
         raise RuntimeError("Each actor should correspond to one rank.")
 
