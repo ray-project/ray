@@ -109,9 +109,13 @@ class Worker:
              num_returns: int = 1,
              timeout: float = None
              ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
-        assert isinstance(object_refs, list)
+        if not isinstance(object_refs, list):
+            raise TypeError("wait() expected a list of ClientObjectRef, "
+                            f"got {type(object_refs)}")
         for ref in object_refs:
-            assert isinstance(ref, ClientObjectRef)
+            if not isinstance(ref, ClientObjectRef):
+                raise TypeError("wait() expected a list of ClientObjectRef, "
+                                f"got list containing {type(ref)}")
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,

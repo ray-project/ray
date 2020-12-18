@@ -8,17 +8,20 @@ class ClientBaseRef:
         self.id: bytes = id
         ray.call_retain(id)
 
+    def binary(self):
+        return self.id
+
+    def __eq__(self, other):
+        return self.id == other.id
+
     def __repr__(self):
         return "%s(%s)" % (
             type(self).__name__,
             self.id.hex(),
         )
 
-    def __eq__(self, other):
-        return self.id == other.id
-
-    def binary(self):
-        return self.id
+    def __hash__(self):
+        return hash(self.id)
 
     def __del__(self):
         if ray.is_connected():

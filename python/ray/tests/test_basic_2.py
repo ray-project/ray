@@ -9,14 +9,20 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import client_test_enabled
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
+from ray.exceptions import RayTaskError
+
+if client_test_enabled():
+    from ray.experimental.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
-
+@pytest.mark.skipif(client_test_enabled(), reason="test setup order")
 @pytest.mark.parametrize(
     "shutdown_only", [{
         "local_mode": True
@@ -160,7 +166,7 @@ def test_redefining_remote_functions(shutdown_only):
     def g():
         return nonexistent()
 
-    with pytest.raises(ray.exceptions.RayTaskError, match="nonexistent"):
+    with pytest.raises(RayTaskError, match="nonexistent"):
         ray.get(g.remote())
 
     def nonexistent():
@@ -187,6 +193,7 @@ def test_redefining_remote_functions(shutdown_only):
         assert ray.get(ray.get(h.remote(i))) == i
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
@@ -312,6 +319,7 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -332,6 +340,7 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_system_config_when_connecting(ray_start_cluster):
     config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
@@ -368,7 +377,8 @@ def test_get_multiple(ray_start_regular_shared):
 
 
 def test_get_with_timeout(ray_start_regular_shared):
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor(ray)
+    signal = SignalActor.remote()
 
     # Check that get() returns early if object is ready.
     start = time.time()
@@ -438,6 +448,7 @@ def test_inline_arg_memory_corruption(ray_start_regular_shared):
         ray.get(a.add.remote(f.remote()))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_skip_plasma(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -454,6 +465,8 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
+@pytest.mark.skipif(client_test_enabled(),
+                    reason="internal api and message size")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -524,6 +537,7 @@ def test_actor_recursive(ray_start_regular_shared):
     assert result == [x * 2 for x in range(100)]
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_actor_concurrent(ray_start_regular_shared):
     @ray.remote
     class Batcher:
@@ -626,6 +640,7 @@ def test_duplicate_args(ray_start_regular_shared):
             arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_get_correct_node_ip():
     with patch("ray.worker") as worker_mock:
         node_mock = MagicMock()

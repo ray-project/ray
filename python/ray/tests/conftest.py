@@ -144,9 +144,16 @@ def _ray_start_cluster(**kwargs):
         # We assume driver will connect to the head (first node),
         # so ray init will be invoked if do_init is true
         if len(remote_nodes) == 1 and do_init:
-            ray.init(address=cluster.address)
+            if client_test_enabled():
+                ray_client.ray.init(address=cluster.address)
+            else:
+                ray.init(address=cluster.address)
     yield cluster
     # The code after the yield will run as teardown code.
+    if client_test_enabled():
+        ray_client.ray.disconnect()
+        ray_client._stop_test_server(1)
+        ray_client.reset_api()
     ray.shutdown()
     cluster.shutdown()
 
