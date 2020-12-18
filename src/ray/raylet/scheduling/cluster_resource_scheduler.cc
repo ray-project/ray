@@ -921,11 +921,11 @@ void ClusterResourceScheduler::FillResourceUsage(
       const auto &label = ResourceEnumToString((PredefinedResources)i);
       const auto &capacity = resources.predefined_resources[i];
       const auto &last_capacity = last_report_resources_->predefined_resources[i];
-      if (capacity.available != last_capacity.available) {
+      // Note: available may be negative, but only report positive to GCS.
+      if (capacity.available != last_capacity.available && capacity.available > 0) {
         resources_data->set_resources_available_changed(true);
-        // Note: available may be negative, but only report positive to GCS.
         (*resources_data->mutable_resources_available())[label] =
-            std::max(0.0, capacity.available.Double());
+            capacity.available.Double();
       }
       if (capacity.total != last_capacity.total) {
         (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
@@ -937,11 +937,11 @@ void ClusterResourceScheduler::FillResourceUsage(
       const auto &capacity = it->second;
       const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
       const auto &label = string_to_int_map_.Get(custom_id);
-      if (capacity.available != last_capacity.available) {
+      // Note: available may be negative, but only report positive to GCS.
+      if (capacity.available != last_capacity.available && capacity.available > 0) {
         resources_data->set_resources_available_changed(true);
-        // Note: available may be negative, but only report positive to GCS.
         (*resources_data->mutable_resources_available())[label] =
-            std::max(0.0, capacity.available.Double());
+            capacity.available.Double();
       }
       if (capacity.total != last_capacity.total) {
         (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
