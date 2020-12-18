@@ -279,7 +279,7 @@ class Worker:
         context = self.get_serialization_context()
         return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs, timeout=None, _release_resources=True):
+    def get_objects(self, object_refs, timeout=None):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -305,7 +305,7 @@ class Worker:
 
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, self.current_task_id, timeout_ms, _release_resources)
+            object_refs, self.current_task_id, timeout_ms)
         debugger_breakpoint = b""
         for (data, metadata) in data_metadata_pairs:
             if metadata:
@@ -1311,7 +1311,7 @@ def show_in_dashboard(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
-def get(object_refs, *, timeout=None, _release_resources=True):
+def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ref is
@@ -1366,8 +1366,7 @@ def get(object_refs, *, timeout=None, _release_resources=True):
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(
             object_refs,
-            timeout=timeout,
-            _release_resources=_release_resources)
+            timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()

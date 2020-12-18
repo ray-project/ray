@@ -426,10 +426,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects));
-  {
-    absl::MutexLock lock(&manager.mutex_);
-    ASSERT_TRUE(manager.SpillObjectsOfSize(total_size / 2));
-  }
+  ASSERT_TRUE(manager.SpillObjectsOfSize(total_size / 2));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
@@ -456,10 +453,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
 
   // Make sure providing 0 bytes to SpillObjectsOfSize will spill one object.
   // This is important to cover min_spilling_size_== 0.
-  {
-    absl::MutexLock lock(&manager.mutex_);
-    ASSERT_TRUE(manager.SpillObjectsOfSize(0));
-  }
+  ASSERT_TRUE(manager.SpillObjectsOfSize(0));
   EXPECT_CALL(worker_pool, PushSpillWorker(_));
   const std::string url = BuildURL("url" + std::to_string(object_ids.size()));
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({url}));
@@ -473,10 +467,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
   }
 
   // Since there's no more object to spill, this should fail.
-  {
-    absl::MutexLock lock(&manager.mutex_);
-    ASSERT_FALSE(manager.SpillObjectsOfSize(0));
-  }
+  ASSERT_FALSE(manager.SpillObjectsOfSize(0));
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
@@ -498,20 +489,14 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   objects.push_back(std::move(object));
 
   manager.PinObjects(object_ids, std::move(objects));
-  {
-    absl::MutexLock lock(&manager.mutex_);
-    ASSERT_FALSE(manager.SpillObjectsOfSize(1000));
-  }
+  ASSERT_FALSE(manager.SpillObjectsOfSize(1000));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
   }
 
   // Now object is evictable. Spill should succeed.
   unevictable_objects_.erase(object_id);
-  {
-    absl::MutexLock lock(&manager.mutex_);
-    ASSERT_TRUE(manager.SpillObjectsOfSize(1000));
-  }
+  ASSERT_TRUE(manager.SpillObjectsOfSize(1000));
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
@@ -535,9 +520,11 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
   manager.PinObjects(object_ids, std::move(objects));
 
   // This will spill until 2 workers are occupied.
-  ASSERT_TRUE(manager.SpillObjectUptoMaxThroughput());
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(manager.IsSpillingInProgress());
   // Spilling is still going on, meaning we can make the pace. So it should return true.
-  ASSERT_TRUE(manager.SpillObjectUptoMaxThroughput());
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(manager.IsSpillingInProgress());
   // No object ids are spilled yet.
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -559,8 +546,10 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
   // Now, there's only one object that is current spilling.
   // SpillObjectUptoMaxThroughput will spill one more object (since one worker is
   // availlable).
-  ASSERT_TRUE(manager.SpillObjectUptoMaxThroughput());
-  ASSERT_TRUE(manager.SpillObjectUptoMaxThroughput());
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(manager.IsSpillingInProgress());
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_TRUE(manager.IsSpillingInProgress());
 
   // Spilling is done for all objects.
   for (size_t i = 1; i < object_ids.size(); i++) {
@@ -578,7 +567,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
   }
 
   // We cannot spill anymore as there is no more pinned object.
-  ASSERT_FALSE(manager.SpillObjectUptoMaxThroughput());
+  manager.SpillObjectUptoMaxThroughput();
+  ASSERT_FALSE(manager.IsSpillingInProgress());
 }
 
 TEST_F(LocalObjectManagerTest, TestSpillError) {

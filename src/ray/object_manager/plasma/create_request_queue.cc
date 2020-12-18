@@ -83,6 +83,7 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
   // Return an OOM error to the client if we have hit the maximum number of
   // retries.
+  // TODO(sang): Delete this logic?
   bool evict_if_full = evict_if_full_;
   if (max_retries_ == 0) {
     // If we cannot retry, then always evict on the first attempt.
@@ -99,28 +100,26 @@ Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
     auto create_ok = ProcessRequest(*request_it);
-    auto now = absl::GetCurrentTimeNanos();
     if (create_ok) {
       FinishRequest(request_it);
-      last_success_ns_ = now;
     } else {
       if (trigger_global_gc_) {
         trigger_global_gc_();
       }
+
       if (spill_objects_callback_()) {
-        last_success_ns_ = absl::GetCurrentTimeNanos();
         return Status::TransientObjectStoreFull("Waiting for spilling.");
-      } else if (now - last_success_ns_ < 5e9) {
-        // TODO(ekl) make this threshold a ray config def.
+      } else if (num_retries_ < max_retries_ || max_retries_ == -1) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
+        // If max_retries == -1, we retry infinitely.
         num_retries_ += 1;
-        return Status::TransientObjectStoreFull("Waiting for grace period.");
+        return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
+        // Raise OOM. In this case, the request will be marked as OOM.
+        // We don't return so that we can process the next entry right away.
         FinishRequest(request_it);
-        num_retries_ = 0;
-        return Status::ObjectStoreFull("Object store full.");
       }
     }
   }

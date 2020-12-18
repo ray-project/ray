@@ -176,7 +176,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results,
-                       c_bool plasma_objects_only, c_bool release_resources)
+                       c_bool plasma_objects_only)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,

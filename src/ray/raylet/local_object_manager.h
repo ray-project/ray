@@ -108,6 +108,13 @@ class LocalObjectManager {
   /// invocation.
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
 
+  /// Return True if spilling is in progress.
+  /// This is a narrow interface that is accessed by plasma store.
+  /// We are using the narrow interface here because plasma store is running in a
+  /// different thread, and we'd like to avoid making this component thread-safe,
+  /// which is against the general raylet design.
+  ///
+  /// \return True if spilling is still in progress. False otherwise.
   bool IsSpillingInProgress();
 
  private:

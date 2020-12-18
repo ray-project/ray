@@ -35,6 +35,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   } else {
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
+  object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
   if (warmup) {
@@ -95,7 +96,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   }
 
   while (retry_with_request_id > 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // TODO(sang): Use exponential backoff instead.
+    std::this_thread::sleep_for(std::chrono::milliseconds(object_store_full_delay_ms_));
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
       RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "

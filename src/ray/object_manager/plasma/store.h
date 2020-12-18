@@ -99,9 +99,6 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
-  ///    memory but there may be space soon to create the object.  In this
-  ///    case, the client should not call plasma_release.
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, bool evict_if_full,
@@ -301,10 +298,6 @@ class PlasmaStore {
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
-
-  /// The amount of time to wait before retrying a creation request after a
-  /// transient OOM error.
-  const uint32_t delay_on_transient_oom_ms_ = 10;
 
   /// The amount of time to wait between logging space usage debug messages.
   const uint64_t usage_log_interval_ns_;
