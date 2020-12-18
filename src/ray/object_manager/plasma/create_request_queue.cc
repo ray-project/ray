@@ -93,7 +93,7 @@ bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request)
     evict_if_full = true;
   }
   request->error = request->create_callback(evict_if_full, &request->result);
-  return request->error == PlasmaError::OK;
+  return request->error != PlasmaError::OutOfMemory;
 }
 
 Status CreateRequestQueue::ProcessRequests() {
