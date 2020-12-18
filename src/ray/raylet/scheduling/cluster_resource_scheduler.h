@@ -271,11 +271,13 @@ class ClusterResourceScheduler {
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      bool allow_going_negative = false);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -288,10 +290,12 @@ class ClusterResourceScheduler {
   /// Decrease the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be removed from available cpus.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
+                                                   bool allow_going_negative = false);
 
   /// Increase the available GPU instances of this node.
   ///

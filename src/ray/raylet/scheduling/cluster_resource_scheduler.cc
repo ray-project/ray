@@ -523,15 +523,25 @@ std::vector<FixedPoint> ClusterResourceScheduler::AddAvailableResourceInstances(
 }
 
 std::vector<FixedPoint> ClusterResourceScheduler::SubtractAvailableResourceInstances(
-    std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances) {
+    std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+    bool allow_going_negative) {
   RAY_CHECK(available.size() == resource_instances->available.size());
 
   std::vector<FixedPoint> underflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
-    resource_instances->available[i] = resource_instances->available[i] - available[i];
     if (resource_instances->available[i] < 0) {
-      underflow[i] = -resource_instances->available[i];
-      resource_instances->available[i] = 0;
+      if (allow_going_negative) {
+        resource_instances->available[i] =
+            resource_instances->available[i] - available[i];
+      } else {
+        underflow[i] = available[i];  // No change in the value in this case.
+      }
+    } else {
+      resource_instances->available[i] = resource_instances->available[i] - available[i];
+      if (resource_instances->available[i] < 0 && !allow_going_negative) {
+        underflow[i] = -resource_instances->available[i];
+        resource_instances->available[i] = 0;
+      }
     }
   }
   return underflow;
@@ -735,7 +745,7 @@ std::vector<double> ClusterResourceScheduler::AddCPUResourceInstances(
 }
 
 std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
-    std::vector<double> &cpu_instances) {
+    std::vector<double> &cpu_instances, bool allow_going_negative) {
   std::vector<FixedPoint> cpu_instances_fp =
       VectorDoubleToVectorFixedPoint(cpu_instances);
 
@@ -745,7 +755,8 @@ std::vector<double> ClusterResourceScheduler::SubtractCPUResourceInstances(
   RAY_CHECK(nodes_.find(local_node_id_) != nodes_.end());
 
   auto underflow = SubtractAvailableResourceInstances(
-      cpu_instances_fp, &local_resources_.predefined_resources[CPU]);
+      cpu_instances_fp, &local_resources_.predefined_resources[CPU],
+      allow_going_negative);
   UpdateLocalAvailableResourcesFromResourceInstances();
 
   return VectorFixedPointToVectorDouble(underflow);

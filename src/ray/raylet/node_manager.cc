@@ -2129,9 +2129,9 @@ void NodeManager::HandleDirectCallTaskBlocked(
       cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     }
     if (cpu_instances.size() > 0) {
-      std::vector<double> borrowed_cpu_instances =
+      std::vector<double> overflow_cpu_instances =
           new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
-      worker->SetBorrowedCPUInstances(borrowed_cpu_instances);
+      worker->SetOverflowCPUInstances(overflow_cpu_instances);
       worker->MarkBlocked();
     }
     ScheduleAndDispatch();
@@ -2169,9 +2169,13 @@ void NodeManager::HandleDirectCallTaskUnblocked(
       cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
     }
     if (cpu_instances.size() > 0) {
-      new_resource_scheduler_->SubtractCPUResourceInstances(cpu_instances);
-      new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
-      worker->ClearBorrowedCPUInstances();
+      // Important: we allow going negative here, since otherwise you can use infinite
+      // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
+      // negative, at most one task can "borrow" this worker's resources.
+      new_resource_scheduler_->SubtractCPUResourceInstances(
+          cpu_instances, /*allow_going_negative=*/true);
+      new_resource_scheduler_->AddCPUResourceInstances(worker->GetOverflowCPUInstances());
+      worker->ClearOverflowCPUInstances();
       worker->MarkUnblocked();
     }
     ScheduleAndDispatch();
