@@ -28,6 +28,7 @@ import sys
 
 from typing import NamedTuple
 from typing import Any
+from typing import Dict
 from typing import Optional
 
 from ray.experimental.client import RayAPIStub
@@ -37,6 +38,7 @@ from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientRemoteFunc
 from ray.experimental.client.common import ClientRemoteMethod
+from ray.experimental.client.common import OptionWrapper
 from ray.experimental.client.common import SelfReferenceSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
@@ -126,6 +128,8 @@ class ClientPickler(cloudpickle.CloudPickler):
                 ref_id=obj.actor_handle.actor_ref.id,
                 name=obj.method_name,
             )
+        elif isinstance(obj, OptionWrapper):
+            raise NotImplementedError("Sending a partial option is unimplemented")
         return None
 
 

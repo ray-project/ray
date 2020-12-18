@@ -4,6 +4,7 @@ import grpc
 import base64
 from collections import defaultdict
 
+from typing import Any
 from typing import Dict
 from typing import Set
 
@@ -187,9 +188,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_refs, remaining_object_refs = ray.wait(
                 object_refs,
                 num_returns=num_returns,
-                timeout=timeout if timeout != -1 else None)
-        except Exception:
+                timeout=timeout if timeout != -1 else None,
+            )
+        except Exception as e:
             # TODO(ameer): improve exception messages.
+            logger.error(f"Exception {e}")
             return ray_client_pb2.WaitResponse(valid=False)
         logger.debug("wait: %s %s" % (str(ready_object_refs),
                                       str(remaining_object_refs)))

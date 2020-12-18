@@ -92,7 +92,7 @@ class ClientRemoteFunc(ClientStub):
         task.type = ray_client_pb2.ClientTask.FUNCTION
         task.name = self._name
         task.payload_id = self._ref.id
-        set_task_options(self.options)
+        set_task_options(task, self.options)
         return task
 
 
@@ -144,7 +144,7 @@ class ClientActorClass(ClientStub):
         task.type = ray_client_pb2.ClientTask.ACTOR
         task.name = self._name
         task.payload_id = self._ref.id
-        set_task_options(self.options)
+        set_task_options(task, self.options)
         return task
 
 

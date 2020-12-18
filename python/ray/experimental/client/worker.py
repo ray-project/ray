@@ -108,7 +108,8 @@ class Worker:
              object_refs: List[ClientObjectRef],
              *,
              num_returns: int = 1,
-             timeout: float = None
+             timeout: float = None,
+             fetch_local: bool = True
              ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
         if not isinstance(object_refs, list):
             raise TypeError("wait() expected a list of ClientObjectRef, "
@@ -239,7 +240,7 @@ class Worker:
 
 
 def remote_decorator(options: Optional[Dict[str, Any]]):
-    def decorator(funtion_or_class) -> ClientStub:
+    def decorator(function_or_class) -> ClientStub:
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
             return ClientRemoteFunc(function_or_class, options=options)
