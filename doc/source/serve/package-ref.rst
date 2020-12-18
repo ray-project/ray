@@ -31,3 +31,6 @@ objects instead of Flask requests.
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.accept_batch
+
+Built-in Backends
+.. autoclass:: ray.serve.backends.ImportedBackend
