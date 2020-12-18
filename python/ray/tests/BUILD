@@ -96,6 +96,7 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_experimental_client.py",
     "test_experimental_client_metadata.py",
+    "test_experimental_client_references.py",
     "test_experimental_client_terminate.py",
     "test_job.py",
     "test_memstat.py",
@@ -129,11 +130,10 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_placement_group.py",  # placement groups not implemented
+    "test_placement_group.py",
   ],
   size = "large",
   extra_srcs = SRCS,
-  tags = ["exclusive", "new_scheduler_broken"],
   deps = ["//:ray_lib"],
 )
 
