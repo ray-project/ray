@@ -96,22 +96,19 @@ class SpdLogMessage final {
   explicit SpdLogMessage(const char *file, int line, int loglevel) : loglevel_(loglevel) {
     stream() << ConstBasename(file) << ":" << line << ": ";
   }
-  inline std::shared_ptr<spdlog::logger> get_logger() {
-    auto logger = spdlog::get("ray_log_sink");
-    if (!logger) {
-      logger = spdlog::get("stderr");
-    }
+  inline std::shared_ptr<spdlog::logger> GetDefaultLogger() {
     // We just emit all log informations to stderr when no default logger has been created
     // before starting ray log, which is for glog compatible.
-    if (!logger) {
-      logger = spdlog::stderr_color_mt("stderr");
-      logger->set_pattern(RayLog::GetLogFormatPattern());
-    }
+    static auto logger = spdlog::stderr_color_mt("stderr");
+    logger->set_pattern(RayLog::GetLogFormatPattern());
     return logger;
   }
 
   inline void Flush() {
-    auto logger = get_logger();
+    auto logger = spdlog::get("ray_log_sink");
+    if (!logger) {
+      auto logger = GetDefaultLogger();
+    }
     // To avoid dump duplicated stacktrace with installed failure signal
     // handler, we have to check whether glog failure signal handler is enabled.
     if (!RayLog::IsFailureSignalHandlerEnabled() &&
