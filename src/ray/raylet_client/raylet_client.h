@@ -312,10 +312,8 @@ class RayletClient : public RayletClientInterface {
   /// \param object_ids A list of ObjectsIDs to be deleted.
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
-  /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
-                          bool deleteCreatingTasks);
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set

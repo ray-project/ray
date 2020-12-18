@@ -357,10 +357,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(
-    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-    bool delete_creating_tasks) {
+    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only) {
   std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
-  return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
+  return raylet_client_->FreeObjects(object_id_vector, local_only);
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {

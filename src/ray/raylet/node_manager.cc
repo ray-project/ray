@@ -1203,14 +1203,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
     // Clean up objects from the object store.
     object_manager_.FreeObjects(object_ids, message->local_only());
-    if (message->delete_creating_tasks()) {
-      // Clean up their creating tasks from GCS.
-      std::vector<TaskID> creating_task_ids;
-      for (const auto &object_id : object_ids) {
-        creating_task_ids.push_back(object_id.TaskId());
-      }
-      RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(creating_task_ids, nullptr));
-    }
   } break;
   case protocol::MessageType::SubscribePlasmaReady: {
     ProcessSubscribePlasmaReady(client, message_data);

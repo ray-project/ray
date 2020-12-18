@@ -571,11 +571,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
-  /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects.
   /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
