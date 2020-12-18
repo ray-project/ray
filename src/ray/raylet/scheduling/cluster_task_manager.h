@@ -157,11 +157,11 @@ class ClusterTaskManager {
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
-  /// Tasks move from scheduled -> dispatch.
+  /// Tasks move from scheduled | waiting -> dispatch.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
-  /// Tasks move (back) from waiting -> scheduled.
+  /// Tasks move from waiting -> dispatch.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Queue of lease requests that are infeasible.
