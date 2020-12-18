@@ -3,6 +3,7 @@
 
 def collective_to_envs(collective, envs):
     """A helper method that get information from collective and add to envs.
+    
     Args:
         collective(dict): collective information
         envs(dict): os environment dict
