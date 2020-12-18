@@ -138,6 +138,7 @@ class ZOOptSearch(Searcher):
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
+                 parallel_num: int = 1,
                  **kwargs):
         assert zoopt is not None, "ZOOpt not found - please install zoopt " \
                                   "by `pip install -U zoopt`."
@@ -178,6 +179,8 @@ class ZOOptSearch(Searcher):
 
         self.kwargs = kwargs
 
+        self.parallel_num = parallel_num
+
         super(ZOOptSearch, self).__init__(metric=self._metric, mode=mode)
 
         if self._dim_dict:
@@ -206,7 +209,10 @@ class ZOOptSearch(Searcher):
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
             self.optimizer = SRacosTune(
-                dimension=dim, parameter=par, **self.kwargs)
+                dimension=dim,
+                parameter=par,
+                parallel_num=self.parallel_num,
+                **self.kwargs)
             if init_samples:
                 self.optimizer.init_attribute()
 
