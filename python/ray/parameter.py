@@ -89,7 +89,6 @@ class RayParams:
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
         java_worker_options (list): The command options for Java worker.
-        load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
@@ -142,14 +141,12 @@ class RayParams:
                  include_log_monitor=None,
                  autoscaling_config=None,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  start_initial_python_workers_for_first_job=False,
                  _system_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 lru_evict=False,
-                 code_search_path=None):
+                 lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -186,7 +183,6 @@ class RayParams:
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.java_worker_options = java_worker_options
-        self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.start_initial_python_workers_for_first_job = (
@@ -195,9 +191,6 @@ class RayParams:
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
-        self.code_search_path = code_search_path
-        if code_search_path is None:
-            self.code_search_path = []
 
         # Set the internal config options for LRU eviction.
         if lru_evict:

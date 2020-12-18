@@ -6,6 +6,7 @@ import io.ray.api.id.ActorId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
+import io.ray.runtime.exception.RayException;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.util.List;
 import org.testng.Assert;
@@ -31,8 +32,10 @@ public class PlacementGroupTest extends BaseTest {
   // This test just creates a placement group with one bundle.
   // It's not comprehensive to test all placement group test cases.
   public void testCreateAndCallActor() {
-    PlacementGroup placementGroup = PlacementGroupTestUtils.createSimpleGroup();
-    Assert.assertEquals(((PlacementGroupImpl)placementGroup).getName(),"unnamed_group");
+    PlacementGroupImpl placementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
+        .createSimpleGroup();
+    Assert.assertTrue(placementGroup.wait(10));
+    Assert.assertEquals(placementGroup.getName(),"unnamed_group");
 
     // Test creating an actor from a constructor.
     ActorHandle<Counter> actor = Ray.actor(Counter::new, 1)
@@ -40,7 +43,7 @@ public class PlacementGroupTest extends BaseTest {
     Assert.assertNotEquals(actor.getId(), ActorId.NIL);
 
     // Test calling an actor.
-    Assert.assertEquals(Integer.valueOf(1), actor.task(Counter::getValue).remote().get());
+    Assert.assertEquals(actor.task(Counter::getValue).remote().get(), Integer.valueOf(1));
   }
 
   @Test(groups = {"cluster"})
@@ -52,6 +55,8 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroupImpl secondPlacementGroup = (PlacementGroupImpl)PlacementGroupTestUtils
         .createNameSpecifiedSimpleGroup("CPU", 1, PlacementStrategy.PACK,
         1.0, "second_placement_group");
+    Assert.assertTrue(firstPlacementGroup.wait(10));
+    Assert.assertTrue(secondPlacementGroup.wait(10));
 
     PlacementGroupImpl firstPlacementGroupRes =
         (PlacementGroupImpl)Ray.getPlacementGroup((firstPlacementGroup).getId());
@@ -97,6 +102,15 @@ public class PlacementGroupTest extends BaseTest {
     PlacementGroupImpl removedPlacementGroup =
         (PlacementGroupImpl)Ray.getPlacementGroup((secondPlacementGroup).getId());
     Assert.assertEquals(removedPlacementGroup.getState(), PlacementGroupState.REMOVED);
+
+    // Wait for placement group after it is removed.
+    int exceptionCount = 0;
+    try {
+      removedPlacementGroup.wait(10);
+    } catch (RayException e) {
+      ++exceptionCount;
+    }
+    Assert.assertEquals(exceptionCount, 1);
   }
 
   public void testCheckBundleIndex() {
@@ -108,14 +122,14 @@ public class PlacementGroupTest extends BaseTest {
     } catch (IllegalArgumentException e) {
       ++exceptionCount;
     }
-    Assert.assertEquals(1, exceptionCount);
+    Assert.assertEquals(exceptionCount, 1);
 
     try {
       Ray.actor(Counter::new, 1).setPlacementGroup(placementGroup, -1).remote();
     } catch (IllegalArgumentException e) {
       ++exceptionCount;
     }
-    Assert.assertEquals(2, exceptionCount);
+    Assert.assertEquals(exceptionCount, 2);
   }
 
   @Test (expectedExceptions = { IllegalArgumentException.class })

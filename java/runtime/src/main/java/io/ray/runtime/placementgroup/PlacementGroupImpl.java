@@ -1,5 +1,6 @@
 package io.ray.runtime.placementgroup;
 
+import io.ray.api.Ray;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
@@ -47,6 +48,15 @@ public class PlacementGroupImpl implements PlacementGroup {
 
   public PlacementGroupState getState() {
     return state;
+  }
+
+  /**
+   * Wait for the placement group to be ready within the specified time.
+   * @param timeoutSeconds Timeout in seconds.
+   * @return True if the placement group is created. False otherwise.
+   */
+  public boolean wait(int timeoutSeconds) {
+    return Ray.internal().waitPlacementGroupReady(id, timeoutSeconds);
   }
 
   /**

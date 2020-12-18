@@ -3,46 +3,46 @@ import socket
 from typing import List
 
 import uvicorn
+import starlette.responses
 
 import ray
 from ray.exceptions import RayTaskError
+from ray.serve.constants import LongPollKey
 from ray.serve.context import TaskContext
 from ray.util import metrics
 from ray.serve.utils import _get_logger, get_random_letters
 from ray.serve.http_util import Response
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Router, RequestMetadata
-
-# The maximum number of times to retry a request due to actor failure.
-# TODO(edoakes): this should probably be configurable.
-MAX_ACTOR_DEAD_RETRIES = 10
 
 logger = _get_logger()
 
 
 class HTTPProxy:
-    """
-    This class should be instantiated and ran by ASGI server.
+    """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
     >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
-    # blocks forever
     """
 
-    async def fetch_config_from_controller(self, controller_name):
-        assert ray.is_initialized()
+    def __init__(self, controller_name):
         controller = ray.get_actor(controller_name)
-
-        self.route_table = await controller.get_router_config.remote()
+        self.route_table = {}  # Should be updated via long polling.
+        self.router = Router(controller)
+        self.long_poll_client = LongPollAsyncClient(controller, {
+            LongPollKey.ROUTE_TABLE: self._update_route_table,
+        })
 
         self.request_counter = metrics.Count(
             "num_http_requests",
             description="The number of HTTP requests processed",
             tag_keys=("route", ))
 
-        self.router = Router(controller)
+    async def setup(self):
         await self.router.setup_in_async_loop()
 
-    def set_route_table(self, route_table):
+    async def _update_route_table(self, route_table):
+        logger.debug(f"HTTP Proxy: Get updated route table: {route_table}.")
         self.route_table = route_table
 
     async def receive_http_body(self, scope, receive, send):
@@ -74,8 +74,11 @@ class HTTPProxy:
                 status_code=404).send(scope, receive, send)
 
     async def __call__(self, scope, receive, send):
-        # NOTE: This implements ASGI protocol specified in
-        #       https://asgi.readthedocs.io/en/latest/specs/index.html
+        """Implements the ASGI protocol.
+
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
 
         error_sender = self._make_error_sender(scope, receive, send)
 
@@ -126,6 +129,18 @@ class HTTPProxy:
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
+        elif isinstance(result, starlette.responses.Response):
+            if isinstance(result, starlette.responses.StreamingResponse):
+                raise TypeError("Starlette StreamingResponse returned by "
+                                f"backend for endpoint {endpoint_name}. "
+                                "StreamingResponse is unserializable and not "
+                                "supported by Ray Serve.  Consider using "
+                                "another Starlette response type such as "
+                                "Response, HTMLResponse, PlainTextResponse, "
+                                "or JSONResponse.  If support for "
+                                "StreamingResponse is desired, please let "
+                                "the Ray team know by making a Github issue!")
+            await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
 
@@ -137,12 +152,13 @@ class HTTPProxyActor:
             host,
             port,
             controller_name,
-            http_middlewares: List["starlette.middleware.Middleware"] = []):
+            http_middlewares: List[
+                "starlette.middleware.Middleware"] = []):  # noqa: F821
         self.host = host
         self.port = port
 
-        self.app = HTTPProxy()
-        await self.app.fetch_config_from_controller(controller_name)
+        self.app = HTTPProxy(controller_name)
+        await self.app.setup()
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
@@ -180,12 +196,3 @@ class HTTPProxyActor:
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
         await server.serve(sockets=[sock])
-
-    async def set_route_table(self, route_table):
-        self.app.set_route_table(route_table)
-
-    # ------ Proxy router logic ------ #
-    async def assign_request(self, request_meta, *request_args,
-                             **request_kwargs):
-        return await (await self.app.router.assign_request(
-            request_meta, *request_args, **request_kwargs))

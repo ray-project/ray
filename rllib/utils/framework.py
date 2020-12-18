@@ -15,6 +15,33 @@ TensorType = TensorType
 TensorStructType = TensorStructType
 
 
+def try_import_jax(error=False):
+    """Tries importing JAX and returns the module (or None).
+
+    Args:
+        error (bool): Whether to raise an error if JAX cannot be imported.
+
+    Returns:
+        The jax module.
+
+    Raises:
+        ImportError: If error=True and JAX is not installed.
+    """
+    if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
+        logger.warning("Not importing JAX for test purposes.")
+        return None
+
+    try:
+        import jax
+        import flax
+    except ImportError as e:
+        if error:
+            raise e
+        return None, None
+
+    return jax, flax
+
+
 def try_import_tf(error=False):
     """Tries importing tf and returns the module (or None).
 
@@ -61,6 +88,7 @@ def try_import_tf(error=False):
         tf1_module = tf_module.compat.v1
         if not was_imported:
             tf1_module.disable_v2_behavior()
+            tf1_module.enable_resource_variables()
     # No compat.v1 -> return tf as is.
     except AttributeError:
         tf1_module = tf_module
@@ -225,11 +253,12 @@ def get_variable(value,
 
 
 # TODO: (sven) move to models/utils.py
-def get_activation_fn(name, framework="tf"):
+def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (str): One of "relu" (default), "tanh", "swish", or "linear".
+        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
+            "linear" or None.
         framework (str): One of "tf" or "torch".
 
     Returns:
@@ -250,6 +279,16 @@ def get_activation_fn(name, framework="tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
+    elif framework == "jax":
+        if name in ["linear", None]:
+            return None
+        jax, flax = try_import_jax()
+        if name == "swish":
+            return jax.nn.swish
+        if name == "relu":
+            return jax.nn.relu
+        elif name == "tanh":
+            return jax.nn.hard_tanh
     else:
         if name in ["linear", None]:
             return None

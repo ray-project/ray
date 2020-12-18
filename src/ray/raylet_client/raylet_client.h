@@ -26,7 +26,6 @@
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using ray::ActorCheckpointID;
 using ray::ActorID;
 using ray::JobID;
 using ray::NodeID;
@@ -140,6 +139,14 @@ class DependencyWaiterInterface {
   virtual ~DependencyWaiterInterface(){};
 };
 
+class RayletClientInterface : public PinObjectsInterface,
+                              public WorkerLeaseInterface,
+                              public DependencyWaiterInterface,
+                              public ResourceReserveInterface {
+ public:
+  virtual ~RayletClientInterface(){};
+};
+
 namespace raylet {
 
 class RayletConnection {
@@ -172,10 +179,7 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient : public PinObjectsInterface,
-                     public WorkerLeaseInterface,
-                     public DependencyWaiterInterface,
-                     public ResourceReserveInterface {
+class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -268,7 +272,6 @@ class RayletClient : public PinObjectsInterface,
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param wait_local Whether to wait for objects to appear on this node.
   /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
@@ -276,9 +279,8 @@ class RayletClient : public PinObjectsInterface,
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::vector<rpc::Address> &owner_addresses, int num_returns,
-                   int64_t timeout_milliseconds, bool wait_local,
-                   bool mark_worker_blocked, const TaskID &current_task_id,
-                   WaitResultPair *result);
+                   int64_t timeout_milliseconds, bool mark_worker_blocked,
+                   const TaskID &current_task_id, WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
@@ -315,29 +317,13 @@ class RayletClient : public PinObjectsInterface,
   ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
                           bool deleteCreatingTasks);
 
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return ray::Status.
-  ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return ray::Status.
-  ray::Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id);
-
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set
   /// \param capacity Capacity of the resource
-  /// \param client_Id NodeID where the resource is to be set
+  /// \param node_id NodeID where the resource is to be set
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
-                          const ray::NodeID &client_Id);
+                          const ray::NodeID &node_id);
 
   /// Ask the raylet to spill an object to external storage.
   /// \param object_id The ID of the object to be spilled.

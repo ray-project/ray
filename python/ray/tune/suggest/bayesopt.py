@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import pickle
 import json
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ray.tune import ExperimentAnalysis
 from ray.tune.result import DEFAULT_METRIC
@@ -59,6 +59,11 @@ class BayesOptSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         utility_kwargs (dict): Parameters to define the utility function.
             The default value is a dictionary with three keys:
             - kind: ucb (Upper Confidence Bound)
@@ -112,6 +117,7 @@ class BayesOptSearch(Searcher):
                  space: Optional[Dict] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  utility_kwargs: Optional[Dict] = None,
                  random_state: int = 42,
                  random_search_steps: int = 10,
@@ -121,35 +127,6 @@ class BayesOptSearch(Searcher):
                  analysis: Optional[ExperimentAnalysis] = None,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
-        """Instantiate new BayesOptSearch object.
-
-        Args:
-            space (dict): Continuous search space.
-                Parameters will be sampled from
-                this space which will be used to run trials.
-            metric (str): The training result objective value attribute.
-            mode (str): One of {min, max}. Determines whether objective is
-                minimizing or maximizing the metric attribute.
-            utility_kwargs (dict): Parameters to define the utility function.
-                Must provide values for the keys `kind`, `kappa`, and `xi`.
-            random_state (int): Used to initialize BayesOpt.
-            random_search_steps (int): Number of initial random searches.
-                This is necessary to avoid initial local overfitting
-                of the Bayesian process.
-            patience (int): Must be > 0. If the optimizer suggests a set of
-                hyperparameters more than 'patience' times,
-                then the whole experiment will stop.
-            skip_duplicate (bool): If true, BayesOptSearch will not create
-                a trial with a previously seen set of hyperparameters. By
-                default, floating values will be reduced to a digit precision
-                of 5. You can override this by setting
-                ``searcher.repeat_float_precision``.
-            analysis (ExperimentAnalysis): Optionally, the previous analysis
-                to integrate.
-            verbose (int): Sets verbosity level for BayesOpt packages.
-            max_concurrent: Deprecated.
-            use_early_stopped_trials: Deprecated.
-        """
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
             " the command: `pip install bayesian-optimization`.")
@@ -182,6 +159,8 @@ class BayesOptSearch(Searcher):
             self._metric_op = 1.
         elif mode == "min":
             self._metric_op = -1.
+
+        self._points_to_evaluate = points_to_evaluate
 
         self._live_trial_mapping = {}
         self._buffered_trial_results = []
@@ -269,8 +248,11 @@ class BayesOptSearch(Searcher):
             # we stop the suggestion and return None.
             return None
 
-        # We compute the new point to explore
-        config = self.optimizer.suggest(self.utility)
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+        else:
+            # We compute the new point to explore
+            config = self.optimizer.suggest(self.utility)
 
         config_hash = _dict_hash(config, self.repeat_float_precision)
         # Check if already computed
@@ -369,16 +351,16 @@ class BayesOptSearch(Searcher):
     def save(self, checkpoint_path: str):
         """Storing current optimizer state."""
         with open(checkpoint_path, "wb") as f:
-            pickle.dump(
-                (self.optimizer, self._buffered_trial_results,
-                 self._total_random_search_trials, self._config_counter), f)
+            pickle.dump((self.optimizer, self._buffered_trial_results,
+                         self._total_random_search_trials,
+                         self._config_counter, self._points_to_evaluate), f)
 
     def restore(self, checkpoint_path: str):
         """Restoring current optimizer state."""
         with open(checkpoint_path, "rb") as f:
             (self.optimizer, self._buffered_trial_results,
-             self._total_random_search_trials,
-             self._config_counter) = pickle.load(f)
+             self._total_random_search_trials, self._config_counter,
+             self._points_to_evaluate) = pickle.load(f)
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:
@@ -403,7 +385,7 @@ class BayesOptSearch(Searcher):
                     logger.warning(
                         "BayesOpt does not support specific sampling methods. "
                         "The {} sampler will be dropped.".format(sampler))
-                    return (domain.lower, domain.upper)
+                return (domain.lower, domain.upper)
 
             raise ValueError("BayesOpt does not support parameters of type "
                              "`{}`".format(type(domain).__name__))

@@ -23,19 +23,6 @@ def test_was_current_actor_reconstructed(shutdown_only):
         def get_pid(self):
             return os.getpid()
 
-        # The following methods is to apply the checkpointable interface.
-        def should_checkpoint(self, checkpoint_context):
-            return False
-
-        def save_checkpoint(self, actor_id, checkpoint_id):
-            pass
-
-        def load_checkpoint(self, actor_id, available_checkpoints):
-            pass
-
-        def checkpoint_expired(self, actor_id, checkpoint_id):
-            pass
-
     a = A.remote()
     # `was_reconstructed` should be False when it's called in actor.
     assert ray.get(a.get_was_reconstructed.remote()) is False

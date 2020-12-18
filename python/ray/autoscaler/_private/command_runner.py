@@ -14,7 +14,8 @@ import warnings
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler._private.constants import \
                                      DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,\
-                                     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+                                     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION, \
+                                     NODE_START_WAIT_S
 from ray.autoscaler._private.docker import check_bind_mounts_cmd, \
                                   check_docker_running_cmd, \
                                   check_docker_image, \
@@ -28,15 +29,14 @@ from ray.autoscaler._private.subprocess_output_util import (
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.util.debug import log_once
 
-from ray.autoscaler._private.constants import RAY_HOME
-
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
-NODE_START_WAIT_S = 300
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+MAX_HOME_RETRIES = 3
+HOME_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -114,6 +114,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
         self.node_id = str(node_id)
         self.namespace = namespace
         self.kubectl = ["kubectl", "-n", self.namespace]
+        self._home_cached = None
 
     def run(
             self,
@@ -195,7 +196,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 logger.warning("'rsync_filter' detected but is currently "
                                "unsupported for k8s.")
         if target.startswith("~"):
-            target = RAY_HOME + target[1:]
+            target = self._home + target[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -211,7 +212,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = RAY_HOME + target[1:]
+                target = self._home + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
@@ -219,8 +220,8 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             ])
 
     def run_rsync_down(self, source, target, options=None):
-        if target.startswith("~"):
-            target = RAY_HOME + target[1:]
+        if source.startswith("~"):
+            source = self._home + source[1:]
 
         try:
             flags = "-aqz" if is_rsync_silent() else "-avz"
@@ -236,7 +237,7 @@ class KubernetesCommandRunner(CommandRunnerInterface):
                 "rsync failed: '{}'. Falling back to 'kubectl cp'".format(e),
                 UserWarning)
             if target.startswith("~"):
-                target = RAY_HOME + target[1:]
+                target = self._home + target[1:]
 
             self.process_runner.check_call(self.kubectl + [
                 "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
@@ -244,8 +245,36 @@ class KubernetesCommandRunner(CommandRunnerInterface):
             ])
 
     def remote_shell_command_str(self):
-        return "{} exec -it {} bash".format(" ".join(self.kubectl),
-                                            self.node_id)
+        return "{} exec -it {} -- bash".format(" ".join(self.kubectl),
+                                               self.node_id)
+
+    @property
+    def _home(self):
+        if self._home_cached is not None:
+            return self._home_cached
+        for _ in range(MAX_HOME_RETRIES - 1):
+            try:
+                self._home_cached = self._try_to_get_home()
+                return self._home_cached
+            except Exception:
+                # TODO (Dmitri): Identify the exception we're trying to avoid.
+                logger.info("Error reading container's home directory. "
+                            f"Retrying in {HOME_RETRY_DELAY_S} seconds.")
+                time.sleep(HOME_RETRY_DELAY_S)
+        # Last try
+        self._home_cached = self._try_to_get_home()
+        return self._home_cached
+
+    def _try_to_get_home(self):
+        # TODO (Dmitri): Think about how to use the node's HOME variable
+        # without making an extra kubectl exec call.
+        cmd = self.kubectl + [
+            "exec", "-it", self.node_id, "--", "printenv", "HOME"
+        ]
+        joined_cmd = " ".join(cmd)
+        raw_out = self.process_runner.check_output(joined_cmd, shell=True)
+        home = raw_out.decode().strip("\n\r")
+        return home
 
 
 class SSHOptions:

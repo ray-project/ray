@@ -53,9 +53,9 @@ class NevergradSearch(Searcher):
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
-            you want hyperopt to run first to help the TPE algorithm
-            make better suggestions for future parameters. Needs to be
-            a list of dict of hyperopt-named variables.
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         use_early_stopped_trials: Deprecated.
         max_concurrent: Deprecated.
 
@@ -113,8 +113,8 @@ class NevergradSearch(Searcher):
                  space: Optional[Union[Dict, Parameter]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 max_concurrent: Optional[int] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
+                 max_concurrent: Optional[int] = None,
                  **kwargs):
         assert ng is not None, """Nevergrad must be installed!
             You can install Nevergrad with the command:
@@ -204,6 +204,12 @@ class NevergradSearch(Searcher):
             raise ValueError("len(parameters_names) must match optimizer "
                              "dimension for non-instrumented optimizers")
 
+        if self._points_to_evaluate:
+            # Nevergrad is LIFO, so we add the points to evaluate in reverse
+            # order.
+            for i in range(len(self._points_to_evaluate) - 1, -1, -1):
+                self._nevergrad_opt.suggest(self._points_to_evaluate[i])
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         if self._nevergrad_opt or self._space:
@@ -235,10 +241,6 @@ class NevergradSearch(Searcher):
             if len(self._live_trial_mapping) >= self.max_concurrent:
                 return None
 
-        if self._points_to_evaluate is not None:
-            if len(self._points_to_evaluate) > 0:
-                point_to_evaluate = self._points_to_evaluate.pop(0)
-                self._nevergrad_opt.suggest(point_to_evaluate)
         suggested_config = self._nevergrad_opt.ask()
 
         self._live_trial_mapping[trial_id] = suggested_config
