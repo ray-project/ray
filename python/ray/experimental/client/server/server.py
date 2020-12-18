@@ -236,7 +236,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             raise Exception(
                 "Can't run an actor the server doesn't have a handle for")
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
-        output = getattr(actor_handle, task.name).remote(*arglist, **kwargs)
+        method = getattr(actor_handle, task.name)
+        if task.HasField("options"):
+            opts = decode_options(task.options)
+            method = method.options(**opts)
+        output = method.remote(*arglist, **kwargs)
         self.object_refs[task.client_id][output.binary()] = output
         return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
 
@@ -246,6 +250,9 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                                      task.client_id)
 
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
+        if task.HasField("options"):
+            opts = decode_options(task.options)
+            remote_class = remote_class.options(**opts)
         with current_remote(remote_class):
             actor = remote_class.remote(*arglist, **kwargs)
         self.actor_refs[actor._actor_id.binary()] = actor
@@ -258,6 +265,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         remote_func = self.lookup_or_register_func(task.payload_id,
                                                    task.client_id)
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
+        if task.HasField("options"):
+            remote_func = decode_options(task.options)
         with current_remote(remote_func):
             output = remote_func.remote(*arglist, **kwargs)
         if output.binary() in self.object_refs[task.client_id]:
@@ -307,6 +316,12 @@ def return_exception_in_context(err, context):
 def encode_exception(exception) -> str:
     data = cloudpickle.dumps(exception)
     return base64.standard_b64encode(data).decode()
+
+
+def decode_options(options: ray_client_pb2.TaskOptions) -> Dict[str, Any]:
+    opts = json.loads(options.json_options)
+    assert isinstance(opts, dict)
+    return opts
 
 
 def serve(connection_str, test_mode=False):

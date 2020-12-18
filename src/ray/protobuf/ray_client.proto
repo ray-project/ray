@@ -35,6 +35,18 @@ message Arg {
   Type type = 4;
 }
 
+// A message representing the valid options to modify a task exectution
+//
+// TODO(barakmich): In the longer term, if everything were a client,
+// this message could be the actual standard for which options are
+// allowed in the API. Today, however, it's a bit flexible and defined in the
+// Python code. So for now, it's a stand-in message with a json field, but
+// this is forwards-compatible with deprecating that field and instituting
+// strongly defined and typed fields, without migrating the original ClientTask.
+message TaskOptions {
+  string json_options = 1;
+}
+
 // Represents one unit of work to be executed by the server.
 message ClientTask {
   enum RemoteExecType {
@@ -57,6 +69,11 @@ message ClientTask {
   // The ID of the client namespace associated with the Datapath stream making this
   // request.
   string client_id = 6;
+  // Options for modifying the remote task execution environment.
+  //
+  // TODO(barakmich): As above, if this options struct were instead a singular
+  // field type, it would be more painful to migrate.
+  TaskOptions options = 7;
 }
 
 message ClientTaskTicket {

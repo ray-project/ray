@@ -61,7 +61,7 @@ class ClientRemoteFunc(ClientStub):
         self._func = f
         self._name = f.__name__
         self._ref = None
-        self.options = options
+        self.options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote function cannot be called directly. "
@@ -92,6 +92,7 @@ class ClientRemoteFunc(ClientStub):
         task.type = ray_client_pb2.ClientTask.FUNCTION
         task.name = self._name
         task.payload_id = self._ref.id
+        set_task_options(self.options)
         return task
 
 
@@ -110,7 +111,7 @@ class ClientActorClass(ClientStub):
         self.actor_cls = actor_cls
         self._name = actor_cls.__name__
         self._ref = None
-        self.options = options
+        self.options = validate_options(options)
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote actor cannot be instantiated directly. "
@@ -143,6 +144,7 @@ class ClientActorClass(ClientStub):
         task.type = ray_client_pb2.ClientTask.ACTOR
         task.name = self._name
         task.payload_id = self._ref.id
+        set_task_options(self.options)
         return task
 
 
@@ -194,7 +196,6 @@ class ClientRemoteMethod(ClientStub):
     def __init__(self, actor_handle: ClientActorHandle, method_name: str, options = None):
         self.actor_handle = actor_handle
         self.method_name = method_name
-        self.options = options
 
     def __call__(self, *args, **kwargs):
         raise TypeError(f"Remote method cannot be called directly. "
@@ -236,7 +237,11 @@ _valid_options = [
 ]
 
 
-def validate_options(kwargs_dict: Dict[str, Any], strict: bool = True) -> Dict[str, Any]:
+def validate_options(
+    kwargs_dict: Optional[Dict[str, Any]],
+    strict: bool = True) -> Optional[Dict[str, Any]]:
+    if kwargs_dict is None:
+        return None
     out = {}
     for k, v in kwargs_dict.items():
         if k not in _valid_options:
@@ -249,7 +254,7 @@ def validate_options(kwargs_dict: Dict[str, Any], strict: bool = True) -> Dict[s
 
 
 class OptionWrapper:
-    def __init__(self, stub: ClientStub, options: Dict[str, Any]):
+    def __init__(self, stub: ClientStub, options: Optional[Dict[str, Any]]):
         self.remote_stub = stub
         self.options = validate_options(options)
 
@@ -269,7 +274,7 @@ def set_task_options(
         task.ClearField("options")
         return
     options_str = json.dumps(options)
-    task.options = options_str
+    task.options.json_options = options_str
 
 class DataEncodingSentinel:
     def __repr__(self) -> str:

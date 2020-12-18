@@ -21,12 +21,13 @@ import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.client_pickler import convert_to_arg
-from ray.experimental.client.client_pickler import loads_from_server
 from ray.experimental.client.client_pickler import dumps_from_client
-from ray.experimental.client.common import ClientObjectRef
+from ray.experimental.client.client_pickler import loads_from_server
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientActorHandle
+from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client.common import ClientStub
 from ray.experimental.client.dataclient import DataClient
 
 logger = logging.getLogger(__name__)
@@ -136,17 +137,20 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    def remote(self, function_or_class, *args, **kwargs):
-        # TODO(barakmich): Arguments to ray.remote
-        # get captured here.
-        if (inspect.isfunction(function_or_class)
-                or is_cython(function_or_class)):
-            return ClientRemoteFunc(function_or_class)
-        elif inspect.isclass(function_or_class):
-            return ClientActorClass(function_or_class)
-        else:
-            raise TypeError("The @ray.remote decorator must be applied to "
-                            "either a function or to a class.")
+    def remote(self, *args, **kwargs):
+        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+            # This is the case where the decorator is just @ray.remote.
+            return remote_decorator(options=None)(args[0])
+        error_string = ("The @ray.remote decorator must be applied either "
+                        "with no arguments and no parentheses, for example "
+                        "'@ray.remote', or it must be applied using some of "
+                        "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
+                        "'memory', 'object_store_memory', 'resources', "
+                        "'max_calls', or 'max_restarts', like "
+                        "'@ray.remote(num_returns=2, "
+                        "resources={\"CustomResource\": 1})'.")
+        assert len(args) == 0 and len(kwargs) > 0, error_string
+        return remote_decorator(options=kwargs)
 
     def call_remote(self, instance, *args, **kwargs) -> bytes:
         task = instance._prepare_client_task()
@@ -232,6 +236,19 @@ class Worker:
             return self.get_cluster_info(
                 ray_client_pb2.ClusterInfoType.IS_INITIALIZED)
         return False
+
+
+def remote_decorator(options: Optional[Dict[str, Any]]):
+    def decorator(funtion_or_class) -> ClientStub:
+        if (inspect.isfunction(function_or_class)
+                or is_cython(function_or_class)):
+            return ClientRemoteFunc(function_or_class, options=options)
+        elif inspect.isclass(function_or_class):
+            return ClientActorClass(function_or_class, options=options)
+        else:
+            raise TypeError("The @ray.remote decorator must be applied to "
+                            "either a function or to a class.")
+    return decorator
 
 
 def make_client_id() -> str:
