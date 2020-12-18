@@ -98,11 +98,11 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) = 0;
+  virtual void SetOverflowCPUInstances(std::vector<double> &cpu_instances) = 0;
 
-  virtual std::vector<double> &GetBorrowedCPUInstances() = 0;
+  virtual std::vector<double> &GetOverflowCPUInstances() = 0;
 
-  virtual void ClearBorrowedCPUInstances() = 0;
+  virtual void ClearOverflowCPUInstances() = 0;
 
   virtual Task &GetAssignedTask() = 0;
 
