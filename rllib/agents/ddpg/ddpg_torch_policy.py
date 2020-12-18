@@ -6,10 +6,12 @@ from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
-from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
+from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
+    TorchDirichlet
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.torch_ops import huber_loss, l2_loss
 
 torch, nn = try_import_torch()
@@ -25,7 +27,11 @@ def build_ddpg_models_and_action_dist(policy, obs_space, action_space, config):
     device = (torch.device("cuda")
               if torch.cuda.is_available() else torch.device("cpu"))
     policy.target_model = policy.target_model.to(device)
-    return model, TorchDeterministic
+
+    if isinstance(action_space, Simplex):
+        return model, TorchDirichlet
+    else:
+        return model, TorchDeterministic
 
 
 def ddpg_actor_critic_loss(policy, model, _, train_batch):

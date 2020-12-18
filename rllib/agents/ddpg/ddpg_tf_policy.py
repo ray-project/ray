@@ -13,13 +13,15 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import Deterministic
-from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
+from ray.rllib.models.tf.tf_action_dist import Deterministic, Dirichlet
+from ray.rllib.models.torch.torch_action_dist import TorchDeterministic, \
+    TorchDirichlet
 from ray.rllib.utils.annotations import override
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import get_variable, try_import_tf
+from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
 
 tf1, tf, tfv = try_import_tf()
@@ -91,9 +93,13 @@ def get_distribution_inputs_and_class(policy,
     }, [], None)
     dist_inputs = model.get_policy_output(model_out)
 
-    return dist_inputs, (TorchDeterministic
-                         if policy.config["framework"] == "torch" else
-                         Deterministic), []  # []=state out
+    if isinstance(policy.action_space, Simplex):
+        distr_class = TorchDirichlet if policy.config["framework"] == "torch" \
+            else Dirichlet
+    else:
+        distr_class = TorchDeterministic if \
+            policy.config["framework"] == "torch" else Deterministic
+    return dist_inputs, distr_class, []  # []=state out
 
 
 def ddpg_actor_critic_loss(policy, model, _, train_batch):
