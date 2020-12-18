@@ -259,10 +259,6 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// When a worker is blocked, it tries to add its CPU instances to the scheduler.
-  /// If the scheduler cannot accept that many CPUs, those CPUs go here and we give
-  /// them back later during unblock.
-  std::vector<double> overflow_cpu_instances_;
   /// Task being assigned to this worker.
   Task assigned_task_;
 };
