@@ -107,7 +107,7 @@ class SpdLogMessage final {
   inline void Flush() {
     auto logger = spdlog::get("ray_log_sink");
     if (!logger) {
-      auto logger = GetDefaultLogger();
+      logger = GetDefaultLogger();
     }
     // To avoid dump duplicated stacktrace with installed failure signal
     // handler, we have to check whether glog failure signal handler is enabled.
