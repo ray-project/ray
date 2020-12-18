@@ -69,8 +69,9 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   auto req_id = AddRequest(object_id, client, create_callback);
   if (!ProcessRequests().ok()) {
     // If the request was not immediately fulfillable, finish it.
-    if(!queue_.empty()) {
-      // Some errors such as a transient OOM error doesn't finish the request, so we should finish it here.
+    if (!queue_.empty()) {
+      // Some errors such as a transient OOM error doesn't finish the request, so we
+      // should finish it here.
       FinishRequest(queue_.begin());
     }
   }

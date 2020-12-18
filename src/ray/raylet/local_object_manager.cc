@@ -229,7 +229,7 @@ void LocalObjectManager::SpillObjectsInternal(
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
-              {              
+              {
                 absl::MutexLock lock(&mutex_);
                 num_active_workers_ -= 1;
               }

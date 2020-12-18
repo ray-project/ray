@@ -93,7 +93,8 @@ void GcsObjectManager::HandleAddObjectLocation(
                                          notification.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
-                     << ", node id = " << node_id << ", task id = " << object_id.TaskId() << ", spilled_url = " << spilled_url;
+                     << ", node id = " << node_id << ", task id = " << object_id.TaskId()
+                     << ", spilled_url = " << spilled_url;
     } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()

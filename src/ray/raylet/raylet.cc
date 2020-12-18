@@ -80,7 +80,9 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
           [this]() {
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.
-            main_service_.post([this]() { node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput(); });
+            main_service_.post([this]() {
+              node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
+            });
             return node_manager_.GetLocalObjectManager().IsSpillingInProgress();
           },
           [this]() {
