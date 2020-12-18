@@ -27,7 +27,7 @@ def easy_objective(config):
         time.sleep(0.1)
 
 
-def tune_function(mlflow_tracking_uri):
+def tune_function(mlflow_tracking_uri, finish_fast=False):
     tune.run(
         easy_objective,
         name="mlflow",
@@ -41,6 +41,7 @@ def tune_function(mlflow_tracking_uri):
         config={
             "width": tune.randint(10, 100),
             "height": tune.randint(0, 100),
+            "steps": 5 if finish_fast else 100,
         })
 
 
@@ -59,7 +60,7 @@ def decorated_easy_objective(config):
         time.sleep(0.1)
 
 
-def tune_decorated(mlflow_tracking_uri):
+def tune_decorated(mlflow_tracking_uri, finish_fast=False):
     # Set the experiment, or create a new one if does not exist yet.
     mlflow.set_tracking_uri(mlflow_tracking_uri)
     mlflow.set_experiment(experiment_name="mixin_example")
@@ -70,6 +71,7 @@ def tune_decorated(mlflow_tracking_uri):
         config={
             "width": tune.randint(10, 100),
             "height": tune.randint(0, 100),
+            "steps": 5 if finish_fast else 100,
             "mlflow": {
                 "experiment_name": "mixin_example",
                 "tracking_uri": mlflow.get_tracking_uri()
@@ -90,13 +92,13 @@ if __name__ == "__main__":
     else:
         mlflow_tracking_uri = None
 
-    tune_function(mlflow_tracking_uri)
+    tune_function(mlflow_tracking_uri, finish_fast=args.smoke_test)
     if not args.smoke_test:
         df = mlflow.search_runs(
             [mlflow.get_experiment_by_name("example").experiment_id])
         print(df)
 
-    tune_decorated(mlflow_tracking_uri)
+    tune_decorated(mlflow_tracking_uri, finish_fast=args.smoke_test)
     if not args.smoke_test:
         df = mlflow.search_runs(
             [mlflow.get_experiment_by_name("mixin_example").experiment_id])

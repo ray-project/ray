@@ -1,19 +1,21 @@
 import os
 from typing import Dict, Callable, Optional
+import logging
 
-from ray import logger
 from ray.tune.trainable import Trainable
 from ray.tune.logger import Logger, LoggerCallback
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.trial import Trial
 
-try:
-    import mlflow
-    from mlflow.tracking import MlflowClient
-except ImportError:
-    logger.error("pip install 'mlflow' to use "
-                 "MLFlowLoggerCallback/mlflow_mixin.")
-    mlflow = MlflowClient = None
+logger = logging.getLogger(__name__)
+
+
+def _import_mlflow():
+    try:
+        import mlflow
+    except ImportError:
+        mlflow = None
+    return mlflow
 
 
 class MLFlowLoggerCallback(LoggerCallback):
@@ -66,10 +68,13 @@ class MLFlowLoggerCallback(LoggerCallback):
                  registry_uri: Optional[str] = None,
                  experiment_name: Optional[str] = None,
                  save_artifact: bool = False):
+
+        mlflow = _import_mlflow()
         if mlflow is None:
             raise RuntimeError("MLFlow has not been installed. Please `pip "
                                "install mlflow` to use the MLFlowLogger.")
 
+        from mlflow.tracking import MlflowClient
         self.client = MlflowClient(
             tracking_uri=tracking_uri, registry_uri=registry_uri)
 
@@ -159,6 +164,7 @@ class MLFlowLogger(Logger):
     _experiment_logger_cls = MLFlowLoggerCallback
 
     def _init(self):
+        mlflow = _import_mlflow()
         logger_config = self.config.pop("logger_config", {})
         tracking_uri = logger_config.get("mlflow_tracking_uri")
         registry_uri = logger_config.get("mlflow_registry_uri")
@@ -280,7 +286,7 @@ def mlflow_mixin(func: Callable):
                 }
             })
     """
-    if mlflow is None:
+    if _import_mlflow() is None:
         raise RuntimeError("MLFlow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
     if hasattr(func, "__mixins__"):
@@ -291,9 +297,9 @@ def mlflow_mixin(func: Callable):
 
 
 class MLFlowTrainableMixin:
-    _mlflow = mlflow
-
     def __init__(self, config: Dict, *args, **kwargs):
+        self._mlflow = _import_mlflow()
+
         if not isinstance(self, Trainable):
             raise ValueError(
                 "The `MLFlowTrainableMixin` can only be used as a mixin "
