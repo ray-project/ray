@@ -122,8 +122,8 @@ class ClusterTaskManager {
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
   /// \return True if any progress is any tasks are pending.
-  bool AnyPendingTasks(Task *exemplar, bool *any_pending,
-                       int *num_pending_actor_creation, int *num_pending_tasks) const;
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+                       int *num_pending_tasks) const;
 
   std::string DebugString() const;
 
