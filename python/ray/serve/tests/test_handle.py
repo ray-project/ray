@@ -106,6 +106,36 @@ def test_handle_inject_flask_request(serve_instance):
         assert request_type == "<class 'flask.wrappers.Request'>"
 
 
+def test_handle_option_chaining(serve_instance):
+    # https://github.com/ray-project/ray/issues/12802
+    # https://github.com/ray-project/ray/issues/12798
+
+    client = serve_instance
+
+    class MultiMethod:
+        def method_a(self, _):
+            return "method_a"
+
+        def method_b(self, _):
+            return "method_b"
+
+        def __call__(self, _):
+            return "__call__"
+
+    client.create_backend("m", MultiMethod)
+    client.create_endpoint("m", backend="m")
+
+    # get_handle should give you a clean handle
+    handle1 = client.get_handle("m").options(method_name="method_a")
+    handle2 = client.get_handle("m")
+    # options().options() override should work
+    handle3 = handle1.options(method_name="method_b")
+
+    assert ray.get(handle1.remote()) == "method_a"
+    assert ray.get(handle2.remote()) == "__call__"
+    assert ray.get(handle3.remote()) == "method_b"
+
+
 if __name__ == "__main__":
     import sys
     import pytest
