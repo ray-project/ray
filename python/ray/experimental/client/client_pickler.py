@@ -1,3 +1,27 @@
+"""
+Implements the client side of the client/server pickling protocol.
+
+All ray client client/server data transfer happens through this pickling
+protocol. The model is as follows:
+
+    * All Client objects (eg ClientObjectRef) always live on the client and
+      are never represented in the server
+    * All Ray objects (eg, ray.ObjectRef) always live on the server and are
+      never returned to the client
+    * In order to translate between these two references, PickleStub tuples
+      are generated as persistent ids in the data blobs during the pickling
+      and unpickling of these objects.
+
+The PickleStubs have just enough information to find or generate their
+associated partner object on either side.
+
+This also has the advantage of avoiding predefined pickle behavior for ray
+objects, which may include ray internal reference counting.
+
+ClientPickler dumps things from the client into the appropriate stubs
+ServerUnpickler loads stubs from the server into their client counterparts.
+"""
+
 import cloudpickle
 import io
 import sys
@@ -74,10 +98,7 @@ class ServerUnpickler(pickle.Unpickler):
 
 def dumps_from_client(obj: Any, client_id: str, protocol=None) -> bytes:
     with io.BytesIO() as file:
-        cp = ClientPickler(
-            client_id,
-            file,
-            protocol=protocol)
+        cp = ClientPickler(client_id, file, protocol=protocol)
         cp.dump(obj)
         return file.getvalue()
 
@@ -91,9 +112,7 @@ def loads_from_server(data: bytes,
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)
     return ServerUnpickler(
-        file,
-        fix_imports=fix_imports,
-        encoding=encoding,
+        file, fix_imports=fix_imports, encoding=encoding,
         errors=errors).load()
 
 

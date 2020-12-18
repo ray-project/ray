@@ -14,7 +14,6 @@ from typing import Union
 import logging
 import ray
 
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.experimental.client.api import APIImpl
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientStub
@@ -81,8 +80,7 @@ class RayServerAPI(CoreRayAPI):
     def __init__(self, server_instance):
         self.server = server_instance
 
-    def call_remote(self, instance: ClientStub, *args,
-                    **kwargs) -> bytes:
+    def call_remote(self, instance: ClientStub, *args, **kwargs) -> bytes:
         task = instance._prepare_client_task()
         ticket = self.server.Schedule(task, prepared_args=args)
         return ticket.return_id

@@ -218,5 +218,3 @@ class DataEncodingSentinel:
 
 class SelfReferenceSentinel(DataEncodingSentinel):
     pass
-
-

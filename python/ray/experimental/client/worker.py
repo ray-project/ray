@@ -124,9 +124,11 @@ class Worker:
             # TODO(ameer): improve error/exceptions messages.
             raise Exception("Client Wait request failed. Reference invalid?")
         client_ready_object_ids = [
-            ClientObjectRef(ref) for ref in resp.ready_object_ids]
+            ClientObjectRef(ref) for ref in resp.ready_object_ids
+        ]
         client_remaining_object_ids = [
-            ClientObjectRef(ref) for ref in resp.remaining_object_ids]
+            ClientObjectRef(ref) for ref in resp.remaining_object_ids
+        ]
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
@@ -142,8 +144,7 @@ class Worker:
             raise TypeError("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
 
-    def call_remote(self, instance, *args,
-                    **kwargs) -> bytes:
+    def call_remote(self, instance, *args, **kwargs) -> bytes:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)

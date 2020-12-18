@@ -5,6 +5,7 @@ back to the ray clientserver.
 import logging
 import queue
 import threading
+import grpc
 
 from typing import Any
 from typing import Dict
@@ -20,7 +21,7 @@ INT32_MAX = (2**31) - 1
 
 
 class DataClient:
-    def __init__(self, channel: 'grpc._channel.Channel', client_id: str):
+    def __init__(self, channel: "grpc._channel.Channel", client_id: str):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:

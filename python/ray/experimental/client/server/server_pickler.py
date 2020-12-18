@@ -1,3 +1,17 @@
+"""
+Implements the client side of the client/server pickling protocol.
+
+These picklers are aware of the server internals and can find the
+references held for the client within the server.
+
+More discussion about the client/server pickling protocol can be found in:
+
+  ray/experimental/client/client_pickler.py
+
+ServerPickler dumps ray objects from the server into the appropriate stubs.
+ClientUnpickler loads stubs from the client and finds their associated handle
+in the server instance.
+"""
 import cloudpickle
 import io
 import sys
@@ -23,7 +37,8 @@ else:
 
 
 class ServerPickler(cloudpickle.CloudPickler):
-    def __init__(self, client_id: str, server: "RayletServicer", *args, **kwargs):
+    def __init__(self, client_id: str, server: "RayletServicer", *args,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.client_id = client_id
         self.server = server
@@ -80,11 +95,7 @@ def dumps_from_server(obj: Any,
                       server_instance: "RayletServicer",
                       protocol=None) -> bytes:
     with io.BytesIO() as file:
-        sp = ServerPickler(
-            client_id,
-            server_instance,
-            file,
-            protocol=protocol)
+        sp = ServerPickler(client_id, server_instance, file, protocol=protocol)
         sp.dump(obj)
         return file.getvalue()
 
@@ -99,11 +110,10 @@ def loads_from_client(data: bytes,
         raise TypeError("Can't load pickle from unicode string")
     file = io.BytesIO(data)
     return ClientUnpickler(
-        server_instance,
-        file,
-        fix_imports=fix_imports,
+        server_instance, file, fix_imports=fix_imports,
         encoding=encoding).load()
 
 
-def convert_from_arg(pb: "ray_client_pb2.Arg", server: "RayletServicer") -> Any:
+def convert_from_arg(pb: "ray_client_pb2.Arg",
+                     server: "RayletServicer") -> Any:
     return loads_from_client(pb.data, server)
