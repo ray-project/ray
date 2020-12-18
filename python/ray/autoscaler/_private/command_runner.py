@@ -756,6 +756,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                                 "this node?")
                         except ValueError as e:
                             cli_logger.print(str(e))
+                            is_container_running = False
                         if is_container_running:
                             cli_logger.error(
                                 "Please ray stop & restart cluster to "
@@ -765,7 +766,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "Unable to check if file_mounts specified in the YAML "
                     "differ from those on the running container.")
 
-        if not self._check_container_status():
+        if not is_container_running:
             # Get home directory
             image_env = self.ssh_command_runner.run(
                 "docker inspect -f '{{json .Config.Env}}' " + image,
