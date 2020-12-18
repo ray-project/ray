@@ -3,8 +3,7 @@
 import asyncio
 import logging
 from ray._private.ray_microbenchmark_helpers import timeit
-from ray._private.ray_client_microbenchmark import (main as
-                                                    client_microbenchmark_main)
+from ray._private.ray_client_microbenchmark import main as client_microbenchmark_main
 import numpy as np
 import multiprocessing
 import ray
@@ -23,6 +22,14 @@ class Actor:
     def small_value_batch(self, n):
         ray.get([small_value.remote() for _ in range(n)])
 
+    def large_arg_and_value(self, a, b):
+        return a + b
+
+    def large_arg_and_value_batch(self, n):
+        arr1 = np.ones((10, 1024, 1024))
+        arr2 = np.ones((10, 1024, 1024))
+        ray.get([large_arg_and_value.remote(arr1, arr2) for _ in range(n)])
+
 
 @ray.remote
 class AsyncActor:
@@ -34,6 +41,14 @@ class AsyncActor:
 
     async def small_value_batch(self, n):
         await asyncio.wait([small_value.remote() for _ in range(n)])
+
+    def large_arg_and_value(self, a, b):
+        return a + b
+
+    def large_arg_and_value_batch(self, n):
+        arr1 = np.ones((10, 1024, 1024))
+        arr2 = np.ones((10, 1024, 1024))
+        ray.get([large_arg_and_value.remote(arr1, arr2) for _ in range(n)])
 
 
 @ray.remote(num_cpus=0)
@@ -71,13 +86,15 @@ def small_value_batch(n):
 
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
-        msg = ("WARNING: Unoptimized build! "
-               "To benchmark an optimized build, try:\n"
-               "\tbazel build -c opt //:ray_pkg\n"
-               "You can also make this permanent by adding\n"
-               "\tbuild --compilation_mode=opt\n"
-               "to your user-wide ~/.bazelrc file. "
-               "(Do not add this to the project-level .bazelrc file.)")
+        msg = (
+            "WARNING: Unoptimized build! "
+            "To benchmark an optimized build, try:\n"
+            "\tbazel build -c opt //:ray_pkg\n"
+            "You can also make this permanent by adding\n"
+            "\tbuild --compilation_mode=opt\n"
+            "to your user-wide ~/.bazelrc file. "
+            "(Do not add this to the project-level .bazelrc file.)"
+        )
         logger.warning(msg)
 
 
@@ -157,6 +174,29 @@ def main():
 
     timeit("multi client tasks async", multi_task, n * m)
 
+    arr1 = np.ones((10, 1024, 1024))
+    arr2 = np.ones((10, 1024, 1024))
+
+    def data_intensive_task():
+        ray.get(large_arg_and_value.remote(arr1, arr2))
+
+    timeit("single client data-intensive tasks sync", data_intensive_task)
+
+    def data_intensive_task_async():
+        ray.get([large_arg_and_value.remote(arr1, arr2) for _ in range(10)])
+
+    timeit("single client data-intensive tasks async", data_intensive_task_async)
+
+    n = 10
+    m = 4
+    actors = [Actor.remote() for _ in range(m)]
+
+    def multi_task_data_intensive():
+        submitted = [a.large_arg_and_value_batch.remote(n) for a in actors]
+        ray.get(submitted)
+
+    timeit("multi client data-intensive tasks async", multi_task, n * m)
+
     a = Actor.remote()
 
     def actor_sync():
@@ -207,8 +247,7 @@ def main():
     def actor_multi2_direct_arg():
         ray.get([c.small_value_batch_arg.remote(n) for c in clients])
 
-    timeit("n:n actor calls with arg async", actor_multi2_direct_arg,
-           n * len(clients))
+    timeit("n:n actor calls with arg async", actor_multi2_direct_arg, n * len(clients))
 
     a = AsyncActor.remote()
 
