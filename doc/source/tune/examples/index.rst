@@ -13,7 +13,7 @@ If any example is broken, or if you'd like to add an example to this page, feel 
 General Examples
 ----------------
 
-
+- :doc:`/tune/examples/tune_basic_example`: Simple example for doing a basic random and grid search.
 - :doc:`/tune/examples/async_hyperband_example`: Example of using a simple tuning function with AsyncHyperBandScheduler.
 - :doc:`/tune/examples/hyperband_function_example`: Example of using a Trainable function with HyperBandScheduler.  Also uses the AsyncHyperBandScheduler.
 - :doc:`/tune/examples/pbt_function`: Example of using the function API with a PopulationBasedTraining scheduler.

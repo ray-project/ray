@@ -649,7 +649,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "This command will now block until terminated by a signal.")
             cli_logger.print(
-                "Runing subprocesses are monitored and a message will be "
+                "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
 
         while True:
@@ -1290,7 +1290,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
+    echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.

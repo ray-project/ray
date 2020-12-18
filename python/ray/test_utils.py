@@ -414,7 +414,7 @@ def init_error_pubsub():
     return p
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=5):
+def get_error_message(pub_sub, num, error_type=None, timeout=20):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []

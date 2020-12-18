@@ -1,6 +1,5 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.lang.management.ManagementFactory;

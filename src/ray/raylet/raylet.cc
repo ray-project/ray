@@ -120,12 +120,13 @@ void Raylet::Stop() {
 ray::Status Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
-    RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.node_manager_port() << " object manager at "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.object_manager_port() << ", hostname "
-                   << self_node_info_.node_manager_hostname();
+    RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
+                  << " started. Raylet consists of node_manager and object_manager."
+                  << " node_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.node_manager_port()
+                  << " object_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.object_manager_port()
+                  << " hostname: " << self_node_info_.node_manager_address();
 
     // Add resource information.
     const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
@@ -136,8 +137,8 @@ ray::Status Raylet::RegisterGcs() {
       resource->set_resource_capacity(resource_pair.second);
       resources.emplace(resource_pair.first, resource);
     }
-    RAY_CHECK_OK(
-        gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_,
+                                                                   resources, nullptr));
 
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };

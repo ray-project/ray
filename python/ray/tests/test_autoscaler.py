@@ -695,7 +695,7 @@ class AutoscalingTest(unittest.TestCase):
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_HEAD}, )[0]
         runner = MockProcessRunner()
-
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(11)])
         lm = LoadMetrics()
         lm.local_ip = head_ip
 
@@ -848,6 +848,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -883,6 +884,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1016,6 +1018,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1056,6 +1059,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner(fail_cmds=["setup_cmd"])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1067,14 +1071,18 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
         autoscaler.update()
-        self.waitForNodes(
-            2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+        try:
+            self.waitForNodes(
+                2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+        except AssertionError:
+            # The failed nodes might have been already terminated by autoscaler
+            assert len(self.provider.non_terminated_nodes({})) < 2
 
     def testConfiguresOutdatedNodes(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1181,6 +1189,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         lm = LoadMetrics()
         runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(12)])
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -1239,7 +1248,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
         autoscaler = StandardAutoscaler(
             config_path,
