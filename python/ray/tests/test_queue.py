@@ -191,7 +191,7 @@ def test_custom_resources(ray_start_regular_shared):
     assert current_resources["CPU"] == 1.0
 
     # By default an actor should not reserve any resources.
-    q = Queue()
+    Queue()
     current_resources = ray.available_resources()
     assert current_resources["CPU"] == 1.0
 

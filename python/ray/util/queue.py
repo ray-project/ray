@@ -3,6 +3,7 @@ from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
 
 import ray
+from ray.exceptions import RayActorError
 
 
 class Empty(Exception):
@@ -29,7 +30,8 @@ class Queue:
         maxsize (optional, int): maximum size of the queue. If zero, size is
             unbounded.
         actor_options (optional, Dict): Dictionary of options to pass into
-            the QueueActor during creation. This could be useful if you
+            the QueueActor during creation. These are directly passed into
+            QueueActor.options(...). This could be useful if you
             need to pass in custom resource requirements, for example.
 
     Examples:
@@ -39,6 +41,8 @@ class Queue:
         >>>     q.put(item)
         >>> for item in items:
         >>>     assert item == q.get()
+        >>> # Create Queue with the underlying actor reserving 1 CPU.
+        >>> q = Queue(actor_options={"num_cpus": 1})
     """
 
     def __init__(self, maxsize: int = 0,
@@ -218,13 +222,25 @@ class Queue:
 
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
 
-    def shutdown(self) -> None:
+    def shutdown(self, force: bool = False) -> None:
         """Terminates the underlying QueueActor.
 
         All of the resources reserved by the queue will be released.
+
+        Args:
+            force (bool): If True, forcefully kill the actor, causing an
+            immediate failure. If False, graceful
+            actor termination will be attempted first, before falling back
+            to a forceful kill.
         """
         if self.actor:
-            ray.kill(self.actor)
+            if force:
+                ray.kill(self.actor, no_restart=True)
+            else:
+                try:
+                    ray.get(self.actor.__ray_terminate__.remote())
+                except RayActorError:
+                    ray.kill(self.actor, no_restart=True)
         self.actor = None
 
 
