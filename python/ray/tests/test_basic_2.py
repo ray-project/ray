@@ -22,7 +22,6 @@ else:
 
 logger = logging.getLogger(__name__)
 
-@pytest.mark.skipif(client_test_enabled(), reason="test setup order")
 @pytest.mark.parametrize(
     "shutdown_only", [{
         "local_mode": True
@@ -31,6 +30,7 @@ logger = logging.getLogger(__name__)
     }],
     indirect=True)
 def test_variable_number_of_args(shutdown_only):
+    ray.init(num_cpus=1)
     @ray.remote
     def varargs_fct1(*a):
         return " ".join(map(str, a))
@@ -39,7 +39,6 @@ def test_variable_number_of_args(shutdown_only):
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
 
-    ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
