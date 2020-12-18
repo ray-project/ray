@@ -925,7 +925,7 @@ void ClusterResourceScheduler::FillResourceUsage(
         resources_data->set_resources_available_changed(true);
         // Note: available may be negative, but only report positive to GCS.
         (*resources_data->mutable_resources_available())[label] =
-            std::max(0, capacity.available.Double());
+            std::max(0.0, capacity.available.Double());
       }
       if (capacity.total != last_capacity.total) {
         (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
@@ -941,7 +941,7 @@ void ClusterResourceScheduler::FillResourceUsage(
         resources_data->set_resources_available_changed(true);
         // Note: available may be negative, but only report positive to GCS.
         (*resources_data->mutable_resources_available())[label] =
-            std::max(0, capacity.available.Double());
+            std::max(0.0, capacity.available.Double());
       }
       if (capacity.total != last_capacity.total) {
         (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
