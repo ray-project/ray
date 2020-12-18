@@ -24,6 +24,8 @@
 
 namespace ray {
 
+using PullRequestID = int64_t;
+
 class PullManager {
  public:
   /// PullManager is responsible for managing the policy around when to send pull requests

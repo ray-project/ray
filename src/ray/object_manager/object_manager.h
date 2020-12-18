@@ -43,6 +43,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -93,6 +94,9 @@ class ObjectStoreRunner {
   std::thread store_thread_;
 };
 
+using PullRequestComplete = std::function<void(PullRequestID)>;
+using PullRequestIncomplete = std::function<void(PullRequestID)>;
+
 class ObjectManagerInterface {
  public:
   virtual ray::Status Pull(const ObjectID &object_id,
@@ -101,8 +105,15 @@ class ObjectManagerInterface {
   virtual ~ObjectManagerInterface(){};
 };
 
+class ObjectManagerInterface2 {
+ public:
+  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
+  virtual void CancelPull(uint64_t) = 0;
+};
+
 // TODO(hme): Add success/failure callbacks for push and pull.
 class ObjectManager : public ObjectManagerInterface,
+                      public ObjectManagerInterface2,
                       public rpc::ObjectManagerServiceHandler {
  public:
   using RestoreSpilledObjectCallback = std::function<void(
@@ -243,6 +254,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param object_id The ObjectID.
   /// \return Void.
   void CancelPull(const ObjectID &object_id) override;
+
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) override {
+    return 0;
+  }
+  void CancelPull(uint64_t pull_request_id) override {}
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
