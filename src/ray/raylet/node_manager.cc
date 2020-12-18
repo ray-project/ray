@@ -648,10 +648,6 @@ void NodeManager::HandleReleaseUnusedBundles(
 // debug_dump_period_ milliseconds.
 // See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
-  // Check if any progress is being made on this raylet.
-
-  // The node is full of actors and no progress has been made for some time.
-  // If there are any pending tasks, build a warning.
   ray::Task exemplar;
   bool any_pending = false;
   int pending_actor_creations = 0;
@@ -659,8 +655,19 @@ void NodeManager::WarnResourceDeadlock() {
   std::string available_resources;
 
   if (new_scheduler_enabled_) {
-    if (!cluster_task_manager_->IsResourceDeadlock(
+    // Check if any progress is being made on this raylet.
+    for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
+      if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
+          !worker->IsBlocked()) {
+        // Progress is being made, don't warn.
+        resource_deadlock_warned_ = 0;
+        return;
+      }
+    }
+    // Check if any tasks are blocked on resource acquisition.
+    if (!cluster_task_manager_->AnyPendingTasks(
             &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
+      // No pending tasks, no need to warn.
       resource_deadlock_warned_ = 0;
       return;
     }

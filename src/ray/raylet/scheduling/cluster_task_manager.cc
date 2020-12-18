@@ -502,14 +502,9 @@ void ClusterTaskManager::FillResourceUsage(
   }
 }
 
-bool ClusterTaskManager::IsResourceDeadlock(Task *exemplar, bool *any_pending,
-                                            int *num_pending_actor_creation,
-                                            int *num_pending_tasks) const {
-  //  // If there are running tasks that are unblocked, it means the progress has been
-  //  made. if (num_running_tasks_ > blocked_task_ids_.size()) {
-  //    return false;
-  //  }
-
+bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
+                                         int *num_pending_actor_creation,
+                                         int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
   // call to ScheduleAndDispatch(). Note that tasks that transition to waiting
   // move back to the tasks_to_schedule_ queue after their deps are satisfied.

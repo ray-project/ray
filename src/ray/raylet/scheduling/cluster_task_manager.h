@@ -115,16 +115,15 @@ class ClusterTaskManager {
   void FillResourceUsage(bool light_report_resource_usage_enabled,
                          std::shared_ptr<rpc::ResourcesData> data) const;
 
-  /// Figure out if the progress is being made from the scheduler.
-  /// It is used to detect resource deadlock.
+  /// Return if any tasks are pending resource acquisition.
   ///
   /// \param[in] exemplar An example task that is deadlocking.
   /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
   /// \param[in] num_pending_tasks Number of pending tasks.
   /// \param[in] any_pending True if there's any pending exemplar.
-  /// \return True if any progress is not being made. False if it is not.
-  bool IsResourceDeadlock(Task *exemplar, bool *any_pending,
-                          int *num_pending_actor_creation, int *num_pending_tasks) const;
+  /// \return True if any progress is any tasks are pending.
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending,
+                       int *num_pending_actor_creation, int *num_pending_tasks) const;
 
   std::string DebugString() const;
 
