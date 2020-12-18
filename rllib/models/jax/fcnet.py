@@ -3,7 +3,7 @@ import numpy as np
 import time
 
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
-from ray.rllib.models.jax.modules import FCStack
+from ray.rllib.models.jax.modules.fc_stack import FCStack
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_jax
 
@@ -19,8 +19,6 @@ class FullyConnectedNetwork(JAXModelV2):
                  name):
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
-
-        self.key = jax.random.PRNGKey(int(time.time()))
 
         activation = model_config.get("fcnet_activation")
         hiddens = model_config.get("fcnet_hiddens", [])
@@ -41,23 +39,31 @@ class FullyConnectedNetwork(JAXModelV2):
                 in_features=in_features,
                 layers=hiddens + [num_outputs],
                 activation=activation,
+                prng_key=self.prng_key,
             )
 
         # Finish the layers with the provided sizes (`hiddens`), plus -
         # iff num_outputs > 0 - a last linear layer of size num_outputs.
         else:
+            prev_layer_size = in_features
             if len(hiddens) > 0:
                 self._hidden_layers = FCStack(
-                    in_features=in_features,
+                    in_features=prev_layer_size,
                     layers=hiddens,
-                    activation=activation
+                    activation=activation,
+                    prng_key=self.prng_key,
                 )
+                #TODO
+                import jax.numpy as jnp
+                in_ = jnp.zeros((10, in_features))
+                vars = self._hidden_layers.init(self.prng_key, in_)
                 prev_layer_size = hiddens[-1]
             if num_outputs:
                 self._logits = FCStack(
                     in_features=prev_layer_size,
                     layers=[num_outputs],
                     activation=None,
+                    prng_key=self.prng_key,
                 )
             else:
                 self.num_outputs = (
@@ -70,9 +76,13 @@ class FullyConnectedNetwork(JAXModelV2):
                 in_features=int(np.product(obs_space.shape)),
                 layers=hiddens,
                 activation=activation,
+                prng_key=self.prng_key,
             )
         self._value_branch = FCStack(
-            in_features=prev_layer_size, layers=[1])
+            in_features=prev_layer_size,
+            layers=[1],
+            prng_key=self.prng_key,
+        )
         # Holds the current "base" output (before logits layer).
         self._features = None
         # Holds the last input, in case value branch is separate.

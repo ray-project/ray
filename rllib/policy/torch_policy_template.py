@@ -1,6 +1,7 @@
 import gym
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
+from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
@@ -69,10 +70,11 @@ def build_torch_policy(
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
 ) -> Type[TorchPolicy]:
 
-    deprecation_warning(
-        old="build_torch_policy",
-        new="build_policy_class(framework='torch')",
-        error=False)
+    if log_once("deprecation_warning_build_torch_policy"):
+        deprecation_warning(
+            old="build_torch_policy",
+            new="build_policy_class(framework='torch')",
+            error=False)
     kwargs = locals().copy()
     # Set to torch and call new function.
     kwargs["framework"] = "torch"

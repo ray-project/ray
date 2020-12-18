@@ -1,4 +1,5 @@
 import gym
+import time
 from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -35,6 +36,8 @@ class JAXModelV2(ModelV2):
             model_config,
             name,
             framework="jax")
+
+        self.prng_key = jax.random.PRNGKey(int(time.time()))
 
     @PublicAPI
     @override(ModelV2)

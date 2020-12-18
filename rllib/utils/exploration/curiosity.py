@@ -9,11 +9,12 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchMultiCategorical
+from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
-from ray.rllib.utils.framework import get_activation_fn, try_import_tf, \
+from ray.rllib.utils.framework import try_import_tf, \
     try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.tf_ops import get_placeholder, one_hot as tf_one_hot

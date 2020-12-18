@@ -1,8 +1,10 @@
 import logging
 import numpy as np
 import time
+from typing import Callable, Optional, Union
 
-from ray.rllib.models.jax.misc import get_activation_fn, SlimFC
+from ray.rllib.models.jax.misc import SlimFC
+from ray.rllib.models.utils import get_activation_fn, get_initializer
 from ray.rllib.utils.framework import try_import_jax
 
 jax, flax = try_import_jax()
@@ -14,36 +16,41 @@ logger = logging.getLogger(__name__)
 
 
 class FCStack(nn.Module if nn else object):
-    """Generic fully connected FLAX module."""
+    """Generic fully connected FLAX module.
 
-    def __init__(self, in_features, layers, activation=None, prng_key=None):
-        """Initializes a FCStack instance.
+    Properties:
+        in_features (int): Number of input features (input dim).
+        layers (List[int]): List of Dense layer sizes.
+        activation (Optional[Union[Callable, str]]): An optional activation
+            function or activation function specifier (str), such as
+            "relu". Use None or "linear" for no activation.
+        initializer ():
+    """
 
-        Args:
-            in_features (int): Number of input features (input dim).
-            layers (List[int]): List of Dense layer sizes.
-            activation (Optional[Union[Callable, str]]): An optional activation
-                function or activation function specifier (str), such as
-                "relu". Use None or "linear" for no activation.
-        """
-        super().__init__()
+    in_features: int
+    layers: []
+    activation: Optional[Union[Callable, str]] = None
+    initializer: Optional[Union[Callable, str]] = None
+    use_bias: bool = True
+    prng_key: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(int(time.time()))
 
-        self.prng_key = prng_key or jax.random.PRNGKey(int(time.time()))
-        activation_fn = get_activation_fn(activation, framework="jax")
+    def setup(self):
+        self.initializer = get_initializer(self.initializer, framework="jax")
 
         # Create all layers.
-        self._layers = []
-        prev_layer_size = in_features
-        for size in layers:
-            self._hidden_layers.append(
-                SlimFC(
-                    in_size=prev_layer_size,
-                    out_size=size,
-                    use_bias=self.use_bias,
-                    initializer=self.initializer,
-                    activation_fn=activation_fn,
-                    prng_key=self.prng_key,
-                ))
+        self._hidden_layers = []
+        prev_layer_size = self.in_features
+        for i, size in enumerate(self.layers):
+            slim_fc = SlimFC(
+                in_size=prev_layer_size,
+                out_size=size,
+                use_bias=self.use_bias,
+                initializer=self.initializer,
+                activation=self.activation,
+                prng_key=self.prng_key,
+            )
+            setattr(self, "fc_{}".format(i), slim_fc)
+            self._hidden_layers.append(slim_fc)
             prev_layer_size = size
 
     def __call__(self, inputs):

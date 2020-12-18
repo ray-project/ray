@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Any, Optional
 
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
@@ -251,7 +252,6 @@ def get_variable(value,
     return value
 
 
-# TODO: (sven) move to models/utils.py
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
@@ -267,6 +267,9 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Raises:
         ValueError: If name is an unknown activation function.
     """
+    deprecation_warning("rllib/utils/framework.py::get_activation_fn",
+                        "rllib/models/utils.py::get_activation_fn",
+                        error=False)
     if framework == "torch":
         if name in ["linear", None]:
             return None
@@ -278,16 +281,6 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
-    elif framework == "jax":
-        if name in ["linear", None]:
-            return None
-        jax, _ = try_import_jax()
-        if name == "swish":
-            return jax.nn.swish
-        if name == "relu":
-            return jax.nn.relu
-        elif name == "tanh":
-            return jax.nn.hard_tanh
     else:
         if name in ["linear", None]:
             return None
