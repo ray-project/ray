@@ -14,8 +14,6 @@ import datetime
 import ray
 import ray.test_utils
 import ray.cluster_utils
-import ray.util.collective as collective
-
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle
@@ -238,6 +236,7 @@ def test_actor_import_counter(ray_start_10_cpus):
 
     assert ray.get(g.remote()) == num_remote_functions - 1
 
+
 def test_collective_envs(ray_start_10_cpus):
     @ray.remote
     class Actor:
@@ -263,11 +262,12 @@ def test_collective_envs(ray_start_10_cpus):
         actors.append(actor)
 
     _group_name, _rank, _world_size, _backend =\
-            ray.get(actors[0].f.remote())
+        ray.get(actors[0].f.remote())
     assert _group_name == "177"
     assert _world_size == "2"
     assert _rank == "0"
     assert _backend == "nccl"
+
 
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):

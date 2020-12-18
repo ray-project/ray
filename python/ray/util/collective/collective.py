@@ -179,7 +179,7 @@ def declare_collective_group(actors, group_options):
     try:
         ray.get_actor(name)
         raise RuntimeError("Trying to initialize a group twice.")
-    except ValueError as v:
+    except ValueError:
         pass
 
     if len(rank) != len(actors):
