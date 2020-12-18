@@ -13,10 +13,10 @@ def collective_to_envs(collective, envs):
     """
 
     if envs is not None:
-        assert all([
+        assert not any(k in envs for k in [
             "collective_group_name", "collective_rank",
             "collective_world_size", "collective_backend"
-        ]) not in envs
+        ])
 
     else:
         envs = {}
