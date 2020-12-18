@@ -604,7 +604,7 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
             logger.warning(
                 f"The autoscaler could not find a node type to satisfy the"
                 f"request: {resources}. If this request is related to "
-                f"placementt groups the resource request will resolve itself, "
+                f"placement groups the resource request will resolve itself, "
                 f"otherwise please specify a node type with the necessary "
                 f"resource "
                 f"https://docs.ray.io/en/master/cluster/autoscaling.html#multiple-node-type-autoscaling."  # noqa: E501

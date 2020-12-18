@@ -250,9 +250,10 @@ def hash_runtime_conf(file_mounts,
 
 def add_resources(dict1: Dict[str, float],
                   dict2: Dict[str, float]) -> Dict[str, float]:
-    """Given 2 dictionaries, combine them into a new dictionary. Handle collisions
-    by adding the values.
+    """Add the values in two dictionaries.
 
+    Returns:
+        dict: A new dictionary (inputs remain unmodified).
     """
     new_dict = dict1.copy()
     for k, v in dict2.items():
@@ -263,8 +264,23 @@ def add_resources(dict1: Dict[str, float],
 def freq_of_dicts(dicts: List[Dict],
                   serializer=lambda d: frozenset(d.items()),
                   deserializer=dict):
-    """Summarize a list of dictionaries. This is somewhat annoying because mutable
-    data structures aren't hashable, and set/dict keys must be hashable.
+    """Count a list of dictionaries (or unhashable types).
+
+    This is somewhat annoying because mutable data structures aren't hashable,
+    and set/dict keys must be hashable.
+
+    Args:
+        dicts (List[D]): A list of dictionaries to be counted.
+        serializer (D -> S): A custom serailization function. The output type S
+            must be hashable. The default serializer converts a dictionary into
+            a frozenset of KV pairs.
+        deserializer (S -> U): A custom deserialization function. See the
+            serializer for information about type S. For dictionaries U := D.
+
+    Returns:
+        List[Tuple[U, int]]: Returns a list of tuples. Each entry in the list
+            is a tuple containing a unique entry from `dicts` and its
+            corresponding frequency count.
     """
     freqs = collections.Counter(map(lambda d: serializer(d), dicts))
     as_list = []
@@ -302,7 +318,7 @@ def get_usage_report(lm_summary):
             to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
             used *= to_GiB
             total *= to_GiB
-            line = f"{used:.2f}/{total:.3f} GiB {resource}"
+            line = f" {used:.2f}/{total:.3f} GiB {resource}"
         usage_lines.append(line)
     usage_report = "\n".join(usage_lines)
     return usage_report
@@ -311,15 +327,15 @@ def get_usage_report(lm_summary):
 def get_demand_report(lm_summary):
     demand_lines = []
     for bundle, count in lm_summary.resource_demand:
-        line = f" {bundle}: {count} pending tasks/actors"
+        line = f" {bundle}: {count}+ pending tasks/actors"
         demand_lines.append(line)
     for entry in lm_summary.pg_demand:
         pg, count = entry
         pg_str = format_pg(pg)
-        line = f" {pg_str}: {count} pending placement groups"
+        line = f" {pg_str}: {count}+ pending placement groups"
         demand_lines.append(line)
     for bundle, count in lm_summary.request_demand:
-        line = f" {bundle}: {count} from request_resources()"
+        line = f" {bundle}: {count}+ from request_resources()"
         demand_lines.append(line)
     demand_report = "\n".join(demand_lines)
     return demand_report
@@ -348,7 +364,11 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
         line = f" {ip}: {node_type}"
-    failure_report = "\n".join(failure_lines)
+    failure_report = "Recent failures:\n"
+    if failure_lines:
+        failure_report += "\n".join(failure_lines)
+    else:
+        failure_report += " (no failures)"
 
     usage_report = get_usage_report(lm_summary)
     demand_report = get_demand_report(lm_summary)
@@ -360,12 +380,14 @@ Healthy:
 {available_node_report}
 Pending:
 {pending_report}
-Recent failures:
 {failure_report}
+
 Resources
 {separator}
+
 Usage:
 {usage_report}
+
 Demands:
 {demand_report}"""
     return formatted_output
@@ -390,10 +412,12 @@ def format_info_string_no_node_types(lm_summary, time=None):
 Node status
 {separator}
 {node_report}
+
 Resources
 {separator}
 Usage:
 {usage_report}
+
 Demands:
 {demand_report}"""
     return formatted_output

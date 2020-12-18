@@ -692,12 +692,14 @@ class StandardAutoscaler:
 
     def summary(self):
         """Summarizes the active, pending, and failed node launches.
+
         An active node is a node whose raylet is actively reporting heartbeats.
         A pending node is non-active node whose node tag is uninitialized,
         waiting for ssh, syncing files, or setting up.
         If a node is not pending or active, it is failed.
+
         Returns:
-            (AutoscalerSummary) The summary.
+            AutoscalerSummary: The summary.
         """
         all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
 
@@ -727,6 +729,10 @@ class StandardAutoscaler:
                 if is_pending:
                     pending_nodes.append((ip, node_type))
                 else:
+                    # TODO (Alex): Failed nodes are now immediately killed, so
+                    # this list will almost always be empty. We should ideally
+                    # keep a cache of recently failed nodes and their startup
+                    # logs.
                     failed_nodes.append((ip, node_type))
 
         # The concurrent counter leaves some 0 counts in, so we need to

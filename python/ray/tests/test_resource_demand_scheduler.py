@@ -2136,19 +2136,22 @@ Pending:
  1.2.3.4: m4.4xlarge, setting up
  1.2.3.5: m4.4xlarge, setting up
 Recent failures:
+ (no failures)
 
 Resources
 --------------------------------------------------------
+
 Usage:
  530/544 CPU
  2/2 GPU
  0/2 AcceleratorType:V100
-0.00/77.304 GiB memory
-0.00/22.999 GiB object_store_memory
+ 0.00/77.304 GiB memory
+ 0.00/22.999 GiB object_store_memory
+
 Demands:
- {'CPU': 1}: 150 pending tasks/actors
- {'CPU': 4} * 5 (PACK): 420 pending placement groups
- {'CPU': 16}: 100 from request_resources()
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
 """.strip()
 
     actual = format_info_string(
@@ -2190,18 +2193,20 @@ def test_info_string_no_node_type():
 Node status
 --------------------------------------------------------
  1 node(s) with resources: {'CPU': 16}
+
 Resources
 --------------------------------------------------------
 Usage:
  530/544 CPU
  2/2 GPU
  0/2 AcceleratorType:V100
-0.00/77.304 GiB memory
-0.00/22.999 GiB object_store_memory
+ 0.00/77.304 GiB memory
+ 0.00/22.999 GiB object_store_memory
+
 Demands:
- {'CPU': 1}: 150 pending tasks/actors
- {'CPU': 4} * 5 (PACK): 420 pending placement groups
- {'CPU': 16}: 100 from request_resources()
+ {'CPU': 1}: 150+ pending tasks/actors
+ {'CPU': 4} * 5 (PACK): 420+ pending placement groups
+ {'CPU': 16}: 100+ from request_resources()
 """.strip()
 
     actual = format_info_string_no_node_types(
@@ -2213,4 +2218,3 @@ Demands:
 
 if __name__ == "__main__":
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
