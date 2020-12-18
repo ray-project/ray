@@ -654,16 +654,17 @@ void NodeManager::WarnResourceDeadlock() {
   int pending_tasks = 0;
   std::string available_resources;
 
-  if (new_scheduler_enabled_) {
-    // Check if any progress is being made on this raylet.
-    for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-      if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
-          !worker->IsBlocked()) {
-        // Progress is being made, don't warn.
-        resource_deadlock_warned_ = 0;
-        return;
-      }
+  // Check if any progress is being made on this raylet.
+  for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
+    if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
+        !worker->IsBlocked() && worker->GetActorId().IsNil()) {
+      // Progress is being made in a task, don't warn.
+      resource_deadlock_warned_ = 0;
+      return;
     }
+  }
+
+  if (new_scheduler_enabled_) {
     // Check if any tasks are blocked on resource acquisition.
     if (!cluster_task_manager_->AnyPendingTasks(
             &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
@@ -673,17 +674,6 @@ void NodeManager::WarnResourceDeadlock() {
     }
     available_resources = new_resource_scheduler_->GetLocalResourceViewString();
   } else {
-    // Check if there's any task that is in progress that is unblocked.
-    for (const auto &task : local_queues_.GetTasks(TaskState::RUNNING)) {
-      // Ignore blocked tasks.
-      if (local_queues_.GetBlockedTaskIds().count(task.GetTaskSpecification().TaskId())) {
-        continue;
-      }
-      // Progress is being made, don't warn.
-      resource_deadlock_warned_ = 0;
-      return;
-    }
-
     // See if any tasks are blocked trying to acquire resources.
     for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
       const TaskSpecification &spec = task.GetTaskSpecification();

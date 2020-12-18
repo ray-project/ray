@@ -17,8 +17,7 @@ import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
 from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
-                            get_error_message, Semaphore,
-                            new_scheduler_enabled)
+                            get_error_message, Semaphore)
 
 
 def test_failed_task(ray_start_regular, error_pubsub):
@@ -633,9 +632,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-@pytest.mark.skipif(
-    new_scheduler_enabled(), reason="Supposed to deadlock, but it doesn't")
-def test_warning_for_resource_deadlock_task_and_actors(shutdown_only):
+def test_warning_all_tasks_blocked(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
@@ -659,23 +656,40 @@ def test_warning_for_resource_deadlock_task_and_actors(shutdown_only):
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
 
 
-def test_warning_for_resource_deadlock_tasks(shutdown_only):
+def test_warning_actor_waiting_on_actor(shutdown_only):
     ray.init(
-        num_cpus=2,
-        num_gpus=2,
-        _system_config={"debug_dump_period_milliseconds": 500})
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
     p = init_error_pubsub()
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+    b = Actor.remote()  # noqa
+
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_task_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+
+    @ray.remote(num_cpus=1)
     def f():
-        return
+        print("f running")
+        time.sleep(999)
 
-    @ray.remote(num_gpus=1)
-    def g():
-        ray.get(f.remote())
-
-    # f or g should deadlock.
-    obj_ids = [g.remote() for _ in range(2)]  # noqa
+    ids = [f.remote()]  # noqa
 
     errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 1
