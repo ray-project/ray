@@ -327,10 +327,11 @@ Status ConnectWithRetries(const std::string &address, int port,
       ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      RAY_LOG(FATAL) << RayConfig::instance().redis_db_connect_retries() << " attempts "
-                     << "to connect have all failed. The last error message was: "
-                     << errorMessage;
-      break;
+      std::string fatalError = "";
+      std::ostringstream oss(fatalError);
+      oss << RayConfig::instance().redis_db_connect_retries() << " attempts "
+          << "to connect have all failed. The last error message was: " << errorMessage;
+      return Status::RedisError(fatalError);
     }
     RAY_LOG(WARNING) << errorMessage << " Will retry in "
                      << RayConfig::instance().redis_db_connect_wait_milliseconds()
@@ -341,6 +342,18 @@ Status ConnectWithRetries(const std::string &address, int port,
     status =
         ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
     connection_attempts += 1;
+  }
+  return Status::OK();
+}
+
+template <typename RedisContext, typename RedisConnectFunction>
+Status ConnectOrFail(const std::string &address, int port,
+                     const RedisConnectFunction &connect_function,
+                     RedisContext **context) {
+  std::string errorMessage = "";
+  Status status = ConnectWithRetries(address, port, connect_function, context);
+  if (!status.ok()) {
+    RAY_LOG(FATAL) << status.message();
   }
   return Status::OK();
 }
@@ -357,7 +370,7 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
   RAY_CHECK(!redis_async_context_);
   RAY_CHECK(!async_redis_subscribe_context_);
 
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisConnect, &context_));
+  RAY_CHECK_OK(ConnectOrFail(address, port, redisConnect, &context_));
   RAY_CHECK_OK(AuthenticateRedis(context_, password));
 
   redisReply *reply = reinterpret_cast<redisReply *>(
@@ -367,14 +380,14 @@ Status RedisContext::Connect(const std::string &address, int port, bool sharding
 
   // Connect to async context
   redisAsyncContext *async_context = nullptr;
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &async_context));
+  RAY_CHECK_OK(ConnectOrFail(address, port, redisAsyncConnect, &async_context));
   RAY_CHECK_OK(AuthenticateRedis(async_context, password));
   redis_async_context_.reset(new RedisAsyncContext(async_context));
   SetDisconnectCallback(redis_async_context_.get());
 
   // Connect to subscribe context
   redisAsyncContext *subscribe_context = nullptr;
-  RAY_CHECK_OK(ConnectWithRetries(address, port, redisAsyncConnect, &subscribe_context));
+  RAY_CHECK_OK(ConnectOrFail(address, port, redisAsyncConnect, &subscribe_context));
   RAY_CHECK_OK(AuthenticateRedis(subscribe_context, password));
   async_redis_subscribe_context_.reset(new RedisAsyncContext(subscribe_context));
   SetDisconnectCallback(async_redis_subscribe_context_.get());
