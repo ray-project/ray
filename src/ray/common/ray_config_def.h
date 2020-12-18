@@ -245,7 +245,6 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 /// Can be set to -1 to enable unlimited retries.
 RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
 /// Duration to sleep after failing to put an object in plasma because it is full.
-/// This will be exponentially increased for each retry.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
 /// The amount of time to wait between logging plasma space usage debug messages.
