@@ -149,6 +149,8 @@ class Worker:
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
+        for k, v in kwargs.items():
+            task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
         task.client_id = self._client_id
         logger.debug("Scheduling %s" % task)
         ticket = self.server.Schedule(task, metadata=self.metadata)

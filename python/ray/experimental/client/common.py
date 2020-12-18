@@ -62,8 +62,6 @@ class ClientRemoteFunc(ClientStub):
     def remote(self, *args, **kwargs):
         return ClientObjectRef(ray.call_remote(self, *args, **kwargs))
 
-    def _remote(self, *args, **kwargs):
-        return self.remote(*args, **kwargs)
     def __repr__(self):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self._ref)
 

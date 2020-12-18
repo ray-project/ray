@@ -52,9 +52,10 @@ message ClientTask {
   bytes payload_id = 3;
   // The parameters to pass to this call.
   repeated Arg args = 4;
+  map<string, Arg> kwargs = 5;
   // The ID of the client namespace associated with the Datapath stream making this
   // request.
-  string client_id = 5;
+  string client_id = 6;
 }
 
 message ClientTaskTicket {
