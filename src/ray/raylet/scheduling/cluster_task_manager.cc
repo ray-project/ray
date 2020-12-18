@@ -253,7 +253,6 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
   cluster_resource_scheduler_->FreeLocalTaskResources(
       worker->GetLifetimeAllocatedInstances());
   worker->ClearLifetimeAllocatedInstances();
-  num_running_tasks_--;
 }
 
 void ReplyCancelled(Work &work) {
@@ -503,10 +502,10 @@ void ClusterTaskManager::FillResourceUsage(
 bool ClusterTaskManager::IsResourceDeadlock(Task *exemplar, bool *any_pending,
                                             int *num_pending_actor_creation,
                                             int *num_pending_tasks) const {
-  // If there are running tasks that are unblocked, it means the progress has been made.
-  if (num_running_tasks_ > blocked_task_ids_.size()) {
-    return false;
-  }
+//  // If there are running tasks that are unblocked, it means the progress has been made.
+//  if (num_running_tasks_ > blocked_task_ids_.size()) {
+//    return false;
+//  }
 
   for (const auto &shapes_it : tasks_to_schedule_) {
     auto &work_queue = shapes_it.second;
@@ -528,18 +527,6 @@ bool ClusterTaskManager::IsResourceDeadlock(Task *exemplar, bool *any_pending,
   return *any_pending;
 }
 
-void ClusterTaskManager::RegisterBlockedTasks(const TaskID &task_id) {
-  if (blocked_task_ids_.count(task_id) == 0) {
-    blocked_task_ids_.emplace(task_id);
-  }
-}
-
-void ClusterTaskManager::MarkBlockedTasksUnblocked(const TaskID &task_id) {
-  if (blocked_task_ids_.count(task_id) != 0) {
-    blocked_task_ids_.erase(task_id);
-  }
-}
-
 std::string ClusterTaskManager::DebugString() const {
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
@@ -547,7 +534,6 @@ std::string ClusterTaskManager::DebugString() const {
   buffer << "Dispatch queue length: " << tasks_to_dispatch_.size() << "\n";
   buffer << "Waiting tasks size: " << waiting_tasks_.size() << "\n";
   buffer << "infeasible queue length size: " << infeasible_tasks_.size() << "\n";
-  buffer << "running tasks size: " << num_running_tasks_ << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "==================================================";
@@ -653,7 +639,6 @@ void ClusterTaskManager::Dispatch(
     }
   }
   // Send the result back.
-  num_running_tasks_++;
   send_reply_callback();
 }
 

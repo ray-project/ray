@@ -2194,9 +2194,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(
       new_resource_scheduler_->AddCPUResourceInstances(worker->GetBorrowedCPUInstances());
       worker->ClearBorrowedCPUInstances();
       worker->MarkUnblocked();
-      // Notify that the task is unblocked so that we can use it for checking resource
-      // deadlock.
-      cluster_task_manager_->MarkBlockedTasksUnblocked(worker->GetAssignedTaskId());
     }
     ScheduleAndDispatch();
     return;
@@ -2224,10 +2221,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(
     RAY_LOG(WARNING)
         << "Resources oversubscribed: "
         << cluster_resource_map_[self_node_id_].GetAvailableResources().ToString();
-  }
-  const auto &assigned_worker_task_id = worker->GetAssignedTaskId();
-  if (local_queues_.GetBlockedTaskIds().count(assigned_worker_task_id) != 0) {
-    local_queues_.RemoveBlockedTaskId(assigned_worker_task_id);
   }
   worker->MarkUnblocked();
 }

@@ -126,14 +126,6 @@ class ClusterTaskManager {
   bool IsResourceDeadlock(Task *exemplar, bool *any_pending,
                           int *num_pending_actor_creation, int *num_pending_tasks) const;
 
-  /// Register a given task id as blocked. It is used to detect if there's a resource
-  /// deadlock.
-  void RegisterBlockedTasks(const TaskID &task_id);
-
-  /// Mark a blocked task as unblocked. It is used to detect if there's a resource
-  /// deadlock.
-  void MarkBlockedTasksUnblocked(const TaskID &task_id);
-
   std::string DebugString() const;
 
  private:
@@ -179,14 +171,6 @@ class ClusterTaskManager {
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
   std::unordered_map<SchedulingClass, int> backlog_tracker_;
-
-  /// Set of blocked task ids. Tasks are considered blocked if it calls a blocking call
-  /// such as ray.get or ray.wait.
-  std::unordered_set<TaskID> blocked_task_ids_;
-
-  /// Number of running tasks. It is equivalent to number of tasks that are dispatched and
-  /// not finished.
-  int64_t num_running_tasks_ = 0;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
