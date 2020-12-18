@@ -44,9 +44,11 @@ def stash_api_for_tests(in_test: bool):
     is_server = _is_server
     if in_test:
         _is_server = True
-    yield _server_api
-    if in_test:
-        _is_server = is_server
+    try:
+        yield _server_api
+    finally:
+        if in_test:
+            _is_server = is_server
 
 
 def _set_client_api(val: Optional[APIImpl]):

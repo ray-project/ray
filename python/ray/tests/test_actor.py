@@ -244,6 +244,7 @@ def test_actor_import_counter(ray_start_10_cpus):
     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass
@@ -263,6 +264,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_class_name(ray_start_regular):
     @ray.remote
     class Foo:
@@ -562,6 +564,7 @@ def test_actor_static_attributes(ray_start_regular_shared):
     assert ray.get(t.g.remote()) == 3
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_decorator_args(ray_start_regular_shared):
     # This is an invalid way of using the actor decorator.
     with pytest.raises(Exception):
@@ -624,6 +627,8 @@ def test_random_id_generation(ray_start_regular_shared):
     assert f1._actor_id != f2._actor_id
 
 
+@pytest.mark.skipif(client_test_enabled(),
+                    reason="differing inheritence structure")
 def test_actor_inheritance(ray_start_regular_shared):
     class NonActorBase:
         def __init__(self):
@@ -637,7 +642,7 @@ def test_actor_inheritance(ray_start_regular_shared):
 
     # Test that you can't instantiate an actor class directly.
     with pytest.raises(
-            Exception, match="Actors cannot be instantiated directly."):
+            Exception, match="cannot be instantiated directly"):
         ActorBase()
 
     # Test that you can't inherit from an actor class.
@@ -651,6 +656,7 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -684,6 +690,7 @@ def test_multiple_return_values(ray_start_regular_shared):
     assert ray.get([id3a, id3b, id3c]) == [1, 2, 3]
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_options_num_returns(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -699,6 +706,7 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -775,7 +783,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    SignalActor = create_remote_signal_actor()
+    SignalActor = create_remote_signal_actor(ray)
     signal = SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())

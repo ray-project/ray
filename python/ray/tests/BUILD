@@ -158,6 +158,7 @@ py_test(
 
 py_test_module_list(
   files = [
+    "test_actor.py",
     "test_basic.py",
     "test_basic_2.py",
   ],
