@@ -242,7 +242,7 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
       // Note: we transition tasks back to the scheduling queue instead of directly
-      // to dispatch. This allows IsResourceDeadlock() to simply check the scheduling
+      // to dispatch. This allows AnyPendingTasks() to simply check the scheduling
       // queue to see if any tasks are blocked on resource availability: see #12438
       tasks_to_schedule_[scheduling_key].push_back(work);
       waiting_tasks_.erase(it);
