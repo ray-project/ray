@@ -60,8 +60,7 @@ def bootstrap_kubernetes(config):
 
 
 def fillout_resources_kubernetes(config):
-    """
-    Fills CPU and GPU resources by reading pod spec of each available node
+    """Fills CPU and GPU resources by reading pod spec of each available node
     type.
 
     For each node type and each of CPU/GPU, looks at container's resources
@@ -110,13 +109,18 @@ def get_resource(container_resources, resource_name):
 
 
 def _get_resource(container_resources, resource_name, field_name):
-    """Returns amount of resource rounded up to nearest integer, or
-    float("inf") if the resource is not present.
+    """Returns the resource quantity.
+
+    The amount of resource is rounded up to nearest integer.
+    Returns float("inf") if the resource is not present.
 
     Args:
-        container_resources: Container's resource field.
-        resource_name: 'cpu' or 'gpu'
-        field_name: 'requests' or 'limits'
+        container_resources (dict): Container's resource field.
+        resource_name (str): One of 'cpu' or 'gpu'.
+        field_name (str): One of 'requests' or 'limits'.
+
+    Returns:
+        Union[int, float]: Detected resource quantity.
     """
     if field_name not in container_resources:
         # No limit/resource field.
