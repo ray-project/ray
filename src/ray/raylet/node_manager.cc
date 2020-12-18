@@ -2145,9 +2145,6 @@ void NodeManager::HandleDirectCallTaskBlocked(
           new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
       worker->SetBorrowedCPUInstances(borrowed_cpu_instances);
       worker->MarkBlocked();
-      // Notify that the task is unblocked so that we can refer to it when checking
-      // resource deadlock.
-      cluster_task_manager_->RegisterBlockedTasks(worker->GetAssignedTaskId());
     }
     ScheduleAndDispatch();
     return;
@@ -2160,12 +2157,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   local_available_resources_.Release(cpu_resource_ids);
   cluster_resource_map_[self_node_id_].Release(cpu_resource_ids.ToResourceSet());
 
-  // Block worker and register the information.
   worker->MarkBlocked();
-  const auto &assigned_worker_task_id = worker->GetAssignedTaskId();
-  if (local_queues_.GetBlockedTaskIds().count(assigned_worker_task_id) == 0) {
-    local_queues_.AddBlockedTaskId(assigned_worker_task_id);
-  }
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
