@@ -1365,8 +1365,7 @@ def get(object_refs, *, timeout=None):
         global last_task_error_raise_time
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values, debugger_breakpoint = worker.get_objects(
-            object_refs,
-            timeout=timeout)
+            object_refs, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
