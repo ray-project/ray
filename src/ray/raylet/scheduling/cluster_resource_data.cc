@@ -83,7 +83,8 @@ TaskRequest ResourceMapToTaskRequest(
     } else if (resource.first == ray::kMemory_ResourceLabel) {
       task_request.predefined_resources[MEM].demand = resource.second;
     } else {
-      task_request.custom_resources[i].id = string_to_int_map.Insert(resource.first);
+      string_to_int_map.Insert(resource.first);
+      task_request.custom_resources[i].id = string_to_int_map.Get(resource.first);
       task_request.custom_resources[i].demand = resource.second;
       task_request.custom_resources[i].soft = false;
       i++;
@@ -195,6 +196,8 @@ bool NodeResources::operator==(const NodeResources &other) {
   return true;
 }
 
+bool NodeResources::operator!=(const NodeResources &other) { return !(*this == other); }
+
 std::string NodeResources::DebugString(StringIdMap string_to_in_map) const {
   std::stringstream buffer;
   buffer << " {\n";
@@ -288,8 +291,7 @@ std::string NodeResourceInstances::DebugString(StringIdMap string_to_int_map) co
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << "\t" << string_to_int_map.Get(it->first) << ":("
-           << VectorToString(it->second.total) << ":"
+    buffer << "\t" << it->first << ":(" << VectorToString(it->second.total) << ":"
            << VectorToString(it->second.available) << ")\n";
   }
   buffer << "}" << std::endl;

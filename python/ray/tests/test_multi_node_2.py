@@ -6,8 +6,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor, \
-    new_scheduler_enabled
+from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +117,6 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         "num_cpus": 2,
     }],
     indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="fails")
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -146,7 +144,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(signal.send.remote())
     ray.get(work_handle)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class Actor:
         def work(self, signal):
             wait_signal = signal.wait.remote()
@@ -160,6 +158,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     test_actor = Actor.remote()
     work_handle = test_actor.work.remote(signal)
+    time.sleep(1)  # Time for actor to get placed and the method to start.
 
     verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
 

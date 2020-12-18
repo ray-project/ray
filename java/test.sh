@@ -39,13 +39,13 @@ echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
 
 # Enable multi-worker feature in Java test
-TEST_ARGS=(-Dray.raylet.config.num_workers_per_process_java=10 -Dray.job.num-java-workers-per-process=10)
+TEST_ARGS=(-Dray.job.num-java-workers-per-process=10)
 
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
 # TestNG will exit with code 2. And bazel treats it as test failure.
-# bazel test //java:all_tests --action_env=ENABLE_MULTI_LANGUAGE_TESTS=1 --config=ci || cluster_exit_code=$?
-ENABLE_MULTI_LANGUAGE_TESTS=1 run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
+# bazel test //java:all_tests --config=ci || cluster_exit_code=$?
+run_testng java -cp "$ROOT_DIR"/../bazel-bin/java/all_tests_deploy.jar "${TEST_ARGS[@]}" org.testng.TestNG -d /tmp/ray_java_test_output "$ROOT_DIR"/testng.xml
 
 echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --config=ci || single_exit_code=$?
@@ -57,7 +57,7 @@ case "${OSTYPE}" in
   darwin*) ip=$(ipconfig getifaddr en0);;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
-RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar"
+RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop

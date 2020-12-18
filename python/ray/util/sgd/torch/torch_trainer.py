@@ -300,7 +300,7 @@ class TorchTrainer:
             wrap_ddp=self.wrap_ddp)
 
         worker_args = {
-            "max_workers": num_workers,
+            "max_workers": self.max_replicas,
             "params": params,
             "dist_params": dist_params,
             "initialization_hook": self.initialization_hook,
@@ -713,7 +713,7 @@ class BaseTorchTrainable(Trainable):
                 "removed in "
                 "a future version of Ray. Override Trainable.step instead.")
 
-        train_stats = self.trainer.train(max_retries=10, profile=True)
+        train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats

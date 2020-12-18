@@ -55,8 +55,9 @@ class PlasmaStore {
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(boost::asio::io_service &main_service, std::string directory,
               bool hugepages_enabled, const std::string &socket_name,
-              std::shared_ptr<ExternalStore> external_store,
-              ray::SpillObjectsCallback spill_objects_callback);
+              std::shared_ptr<ExternalStore> external_store, uint32_t delay_on_oom_ms,
+              ray::SpillObjectsCallback spill_objects_callback,
+              std::function<void()> object_store_full_callback);
 
   ~PlasmaStore();
 
@@ -206,8 +207,12 @@ class PlasmaStore {
   void ProcessCreateRequests();
 
  private:
-  Status HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
-                                   const std::vector<uint8_t> &message);
+  PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
+                                        const std::vector<uint8_t> &message,
+                                        bool evict_if_full, PlasmaObject *object);
+
+  void ReplyToCreateClient(const std::shared_ptr<Client> &client,
+                           const ObjectID &object_id, uint64_t req_id);
 
   void PushNotification(ObjectInfoT *object_notification);
 
@@ -283,9 +288,19 @@ class PlasmaStore {
   /// complete.
   ray::SpillObjectsCallback spill_objects_callback_;
 
+  /// The amount of time to wait before retrying a creation request after an
+  /// OOM error.
+  const uint32_t delay_on_oom_ms_;
+
   /// The amount of time to wait before retrying a creation request after a
   /// transient OOM error.
   const uint32_t delay_on_transient_oom_ms_ = 10;
+
+  /// The amount of time to wait between logging space usage debug messages.
+  const uint64_t usage_log_interval_ns_;
+
+  /// The last time space usage was logged.
+  uint64_t last_usage_log_ns_ = 0;
 
   /// A timer that is set when the first request in the queue is not
   /// serviceable because there is not enough memory. The request will be

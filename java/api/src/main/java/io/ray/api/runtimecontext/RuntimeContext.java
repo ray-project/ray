@@ -29,16 +29,6 @@ public interface RuntimeContext {
   boolean wasCurrentActorRestarted();
 
   /**
-   * Get the raylet socket name.
-   */
-  String getRayletSocketName();
-
-  /**
-   * Get the object store socket name.
-   */
-  String getObjectStoreSocketName();
-
-  /**
    * Return true if Ray is running in single-process mode, false if Ray is running in cluster mode.
    */
   boolean isSingleProcess();

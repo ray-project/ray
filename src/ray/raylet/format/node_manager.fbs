@@ -70,12 +70,6 @@ enum MessageType:int {
   PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
-  // Request raylet backend to prepare a checkpoint for an actor.
-  PrepareActorCheckpointRequest,
-  // Reply of `PrepareActorCheckpointRequest`.
-  PrepareActorCheckpointReply,
-  // Notify raylet backend that an actor was resumed from a checkpoint.
-  NotifyActorResumedFromCheckpoint,
   // A node manager requests to connect to another node manager.
   ConnectClient,
   // Set dynamic custom resource.
@@ -214,8 +208,6 @@ table WaitRequest {
   num_ready_objects: int;
   // timeout
   timeout: long;
-  // Whether to wait until objects appear locally.
-  wait_local: bool;
   // False for direct call tasks. Blocking for those tasks is handled via the
   // NotifyDirectCallTaskBlocked/Unblocked IPCs.
   mark_worker_blocked: bool;
@@ -262,23 +254,6 @@ table FreeObjectsRequest {
   object_ids: [string];
 }
 
-table PrepareActorCheckpointRequest {
-  // ID of the actor.
-  actor_id: string;
-}
-
-table PrepareActorCheckpointReply {
-  // ID of the checkpoint.
-  checkpoint_id: string;
-}
-
-table NotifyActorResumedFromCheckpoint {
-  // ID of the actor.
-  actor_id: string;
-  // ID of the checkpoint from which the actor was resumed.
-  checkpoint_id: string;
-}
-
 table ConnectClient {
   // ID of the connecting client.
   client_id: string;
@@ -289,8 +264,8 @@ table SetResourceRequest {
   resource_name: string;
   // Capacity of the resource to be set.
   capacity: double;
-  // Client ID where this resource will be set.
-  client_id: string;
+  // Node ID where this resource will be set.
+  node_id: string;
 }
 
 table SubscribePlasmaReady {

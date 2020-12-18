@@ -100,7 +100,8 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
 }
 
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
-    JNIEnv *env, jclass, jobject objectIds, jint numObjects, jlong timeoutMs) {
+    JNIEnv *env, jclass, jobject objectIds, jint numObjects, jlong timeoutMs,
+    jboolean fetch_local) {
   std::vector<ray::ObjectID> object_ids;
   JavaListToNativeVector<ray::ObjectID>(
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
@@ -108,7 +109,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWai
       });
   std::vector<bool> results;
   auto status = ray::CoreWorkerProcess::GetCoreWorker().Wait(
-      object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
+      object_ids, (int)numObjects, (int64_t)timeoutMs, &results, (bool)fetch_local);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
     jobject java_item =

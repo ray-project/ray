@@ -21,7 +21,7 @@ def increase(x):
     return x + 1
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
+@pytest.mark.skipif(new_scheduler_enabled(), reason="notimpl")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
@@ -36,9 +36,6 @@ def test_gcs_server_restart(ray_start_regular):
     ray.worker._global_node.kill_gcs_server()
     ray.worker._global_node.start_gcs_server()
 
-    result = ray.get(actor1.method.remote(7))
-    assert result == 9
-
     actor2 = Increase.remote()
     result = ray.get(actor2.method.remote(2))
     assert result == 4
@@ -46,8 +43,13 @@ def test_gcs_server_restart(ray_start_regular):
     result = ray.get(increase.remote(1))
     assert result == 2
 
+    # Check whether actor1 is alive or not.
+    # NOTE: We can't execute it immediately after gcs restarts
+    # because it takes time for the worker to exit.
+    result = ray.get(actor1.method.remote(7))
+    assert result == 9
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
+
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(
@@ -71,7 +73,6 @@ def test_gcs_server_restart_during_actor_creation(ray_start_regular):
     assert len(unready) == 0
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -132,7 +133,6 @@ def test_node_failure_detector_when_gcs_server_restart(ray_start_cluster_head):
     wait_for_condition(condition, timeout=10)
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 @pytest.mark.parametrize(
     "ray_start_regular", [
         generate_system_config_map(

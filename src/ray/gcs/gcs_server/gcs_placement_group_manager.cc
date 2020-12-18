@@ -227,6 +227,18 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
         }
         MarkSchedulingDone();
         SchedulePendingPlacementGroups();
+
+        // Invoke all callbacks for all `WaitPlacementGroupUntilReady` requests of this
+        // placement group and remove all of them from
+        // placement_group_to_create_callbacks_.
+        auto pg_to_create_iter =
+            placement_group_to_create_callbacks_.find(placement_group_id);
+        if (pg_to_create_iter != placement_group_to_create_callbacks_.end()) {
+          for (auto &callback : pg_to_create_iter->second) {
+            callback(status);
+          }
+          placement_group_to_create_callbacks_.erase(pg_to_create_iter);
+        }
       }));
 }
 
@@ -301,6 +313,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   }
   auto placement_group = placement_group_it->second;
   registered_placement_groups_.erase(placement_group_it);
+  placement_group_to_create_callbacks_.erase(placement_group_id);
 
   // Destroy all bundles.
   gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
@@ -386,6 +399,64 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
     on_done(std::unordered_map<PlacementGroupID, PlacementGroupTableData>());
   }
   ++counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST];
+}
+
+void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
+    const rpc::WaitPlacementGroupUntilReadyRequest &request,
+    rpc::WaitPlacementGroupUntilReadyReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  PlacementGroupID placement_group_id =
+      PlacementGroupID::FromBinary(request.placement_group_id());
+  RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
+                 << placement_group_id;
+
+  auto callback = [placement_group_id, reply, send_reply_callback](const Status &status) {
+    RAY_LOG(DEBUG)
+        << "Finished waiting for placement group until ready, placement group id = "
+        << placement_group_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
+  // If the placement group does not exist or it has been successfully created, return
+  // directly.
+  const auto &iter = registered_placement_groups_.find(placement_group_id);
+  if (iter == registered_placement_groups_.end()) {
+    // Check whether the placement group does not exist or is removed.
+    auto on_done = [this, placement_group_id, reply, callback, send_reply_callback](
+                       const Status &status,
+                       const boost::optional<PlacementGroupTableData> &result) {
+      if (result) {
+        RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
+                       << placement_group_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                           Status::NotFound("Placement group is removed."));
+      } else {
+        // `wait` is a method of placement group object. Placement group object is
+        // obtained by create placement group api, so it can guarantee the existence of
+        // placement group.
+        // GCS client does not guarantee the order of placement group creation and
+        // wait, so GCS may call wait placement group first and then create placement
+        // group.
+        placement_group_to_create_callbacks_[placement_group_id].emplace_back(
+            std::move(callback));
+      }
+    };
+
+    Status status =
+        gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
+    if (!status.ok()) {
+      on_done(status, boost::none);
+    }
+  } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
+    RAY_LOG(DEBUG) << "Placement group is created, placement group id = "
+                   << placement_group_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  } else {
+    placement_group_to_create_callbacks_[placement_group_id].emplace_back(
+        std::move(callback));
+  }
+
+  ++counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST];
 }
 
 void GcsPlacementGroupManager::RetryCreatingPlacementGroup() {
@@ -509,6 +580,8 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::GET_PLACEMENT_GROUP_REQUEST]
          << ", GetAllPlacementGroup request count: "
          << counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST]
+         << ", WaitPlacementGroupUntilReady request count: "
+         << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
          << ", Registered placement groups count: " << registered_placement_groups_.size()
          << ", Pending placement groups count: " << pending_placement_groups_.size()
          << "}";

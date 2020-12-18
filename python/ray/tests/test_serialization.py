@@ -331,6 +331,36 @@ def test_numpy_subclass_serialization_pickle(ray_start_regular):
     assert repr_orig == repr_ser
 
 
+def test_inspect_serialization(enable_pickle_debug):
+    import threading
+    from ray.cloudpickle import dumps_debug
+
+    lock = threading.Lock()
+
+    with pytest.raises(TypeError):
+        dumps_debug(lock)
+
+    def test_func():
+        print(lock)
+
+    with pytest.raises(TypeError):
+        dumps_debug(test_func)
+
+    class test_class:
+        def test(self):
+            self.lock = lock
+
+    from ray.util.check_serialize import inspect_serializability
+    results = inspect_serializability(lock)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_func)
+    assert list(results[1])[0].obj == lock, results
+
+    results = inspect_serializability(test_class)
+    assert list(results[1])[0].obj == lock, results
+
+
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -566,30 +596,6 @@ def test_buffer_alignment(ray_start_shared_local_modes):
     ys = ray.get(ray.put(xs))
     for y in ys:
         assert y.ctypes.data % 8 == 0
-
-
-def test_pytorch_tensor_zerocopy_serialization(ray_start_shared_local_modes):
-    import torch
-    # test dense tensor
-    tensor = torch.rand(32, 3, 64, 64)
-    ref = ray.put(tensor)
-    tensor_1, tensor_2 = ray.get([ref] * 2)
-    assert tensor_1.data_ptr() == tensor_2.data_ptr()
-
-    # test sparse tensor
-    i = torch.arange(0, 1024 * 1024, 4).view(1, -1)
-    v = torch.rand(1024 * 1024 // 4)
-    k = torch.sparse_coo_tensor(i, v, size=(1024 * 1024, ))
-    ref = ray.put(k)
-    tensor_1, tensor_2 = ray.get([ref] * 2)
-    assert tensor_1._indices().data_ptr() == tensor_2._indices().data_ptr()
-    assert tensor_1._values().data_ptr() == tensor_2._values().data_ptr()
-
-    # test attributes
-    tensor = torch.rand(4).requires_grad_(True)
-    ref = ray.put(tensor)
-    tensor = ray.get(ref)
-    assert tensor.requires_grad
 
 
 if __name__ == "__main__":

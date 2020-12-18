@@ -63,7 +63,6 @@ if os.path.exists(so_path):
 import ray._raylet  # noqa: E402
 
 from ray._raylet import (
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
     NodeID,
@@ -102,7 +101,7 @@ from ray import util  # noqa: E402
 
 # Replaced with the current commit when building the wheels.
 __commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "1.1.0.dev0"
+__version__ = "1.2.0.dev0"
 
 __all__ = [
     "__version__",
@@ -149,7 +148,6 @@ __all__ = [
 
 # ID types
 __all__ += [
-    "ActorCheckpointID",
     "ActorClassID",
     "ActorID",
     "NodeID",

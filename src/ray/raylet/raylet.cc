@@ -60,7 +60,8 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client, int metrics_export_port)
-    : self_node_id_(NodeID::FromRandom()),
+    : main_service_(main_service),
+      self_node_id_(NodeID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(
           RayConfig::instance().ownership_based_object_directory_enabled()
@@ -79,10 +80,14 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                       [this](int64_t num_bytes_to_spill, int64_t min_bytes_to_spill) {
                         return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
                             num_bytes_to_spill, min_bytes_to_spill);
+                      },
+                      [this]() {
+                        // Post on the node manager's event loop since this
+                        // will be called from the plasma store thread.
+                        main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
                       }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
-                    gcs_client_, object_directory_,
-                    plasma::plasma_store_runner->OnSpaceReleased()),
+                    gcs_client_, object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -115,12 +120,13 @@ void Raylet::Stop() {
 ray::Status Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
-    RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.node_manager_port() << " object manager at "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.object_manager_port() << ", hostname "
-                   << self_node_info_.node_manager_hostname();
+    RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
+                  << " started. Raylet consists of node_manager and object_manager."
+                  << " node_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.node_manager_port()
+                  << " object_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.object_manager_port()
+                  << " hostname: " << self_node_info_.node_manager_address();
 
     // Add resource information.
     const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
@@ -131,8 +137,8 @@ ray::Status Raylet::RegisterGcs() {
       resource->set_resource_capacity(resource_pair.second);
       resources.emplace(resource_pair.first, resource);
     }
-    RAY_CHECK_OK(
-        gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(self_node_id_,
+                                                                   resources, nullptr));
 
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };

@@ -81,6 +81,12 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
   client.create_backend("parallel_backend", MyBackend, 12)
 
+
+.. note::
+  Some other libraries may not respect ``OMP_NUM_THREADS`` and have their own way to configure parallelism.
+  For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
+  You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
+
 .. _serve-batching:
 
 Batching to improve performance
@@ -306,12 +312,18 @@ and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
 python versions must be the same in both environments.  To specify
 an environment for a backend to use, simply pass the environment name in to
 :mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-as shown below.  Be sure to run the script in an activated conda environment
-(not required to be ``ray-tf1`` or ``ray-tf2``).
+as shown below.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-Alternatively, you may omit the argument ``env`` and call
-:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-from a script running in the conda environment you want the backend to run in.
+.. warning::
+  The script must be run in an activated conda environment (not required to be
+  ``ray-tf1`` or ``ray-tf2``).  We hope to remove this restriction in the
+  future.
+
+.. note::
+  If the argument ``env`` is omitted, backends will be started in the same
+  conda environment as the caller of
+  :mod:`client.create_backend <ray.serve.api.Client.create_backend>` by
+  default.
 

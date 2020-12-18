@@ -16,12 +16,9 @@ import redis
 import requests
 
 from ray import ray_constants
-from ray.test_utils import (
-    format_web_url,
-    wait_for_condition,
-    wait_until_server_available,
-    run_string_as_driver,
-)
+from ray.test_utils import (format_web_url, wait_for_condition,
+                            wait_until_server_available, run_string_as_driver,
+                            wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
                                           DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
@@ -83,7 +80,7 @@ def test_basic(ray_start_with_dashboard):
         0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [
-        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP
     ]
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -139,6 +136,11 @@ def test_basic(ray_start_with_dashboard):
         agent_proc = _search_agent(raylet_proc.children())
         assert agent_proc.pid == agent_pid
         time.sleep(1)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
 
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
@@ -453,22 +455,17 @@ def test_get_cluster_status(ray_start_with_dashboard):
 
     # Check that the cluster_status endpoint works without the underlying data
     # from the GCS, but returns nothing.
-    last_exception = None
-    for _ in range(5):
-        try:
-            response = requests.get(f"{webui_url}/api/cluster_status")
-            response.raise_for_status()
-            assert response.json()["result"]
-            assert "autoscalingStatus" in response.json()["data"]
-            assert response.json()["data"]["autoscalingStatus"] is None
-            assert "autoscalingError" in response.json()["data"]
-            assert response.json()["data"]["autoscalingError"] is None
-            break
-        except requests.RequestException as e:
-            last_exception = e
-            time.sleep(1)
-    else:
-        raise last_exception
+    def get_cluster_status():
+        response = requests.get(f"{webui_url}/api/cluster_status")
+        response.raise_for_status()
+        assert response.json()["result"]
+        assert "autoscalingStatus" in response.json()["data"]
+        assert response.json()["data"]["autoscalingStatus"] is None
+        assert "autoscalingError" in response.json()["data"]
+        assert response.json()["data"]["autoscalingError"] is None
+
+    wait_until_succeeded_without_exception(get_cluster_status,
+                                           (requests.RequestException, ))
 
     # Populate the GCS field, check that the data is returned from the
     # endpoint.
