@@ -946,9 +946,9 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
     // Reference for object_id exists.
-    if (auto node_id = it->second.pinned_at_raylet_id) {
+    if (const auto node_id = it->second.pinned_at_raylet_id) {
       // The raylet ID to which this reference is pinned is defined.
-      auto object_size = it->second.object_size;
+      const auto object_size = it->second.object_size;
       if (object_size >= 0) {
         // The object size of this reference is known.
         absl::optional<LocalityData> locality_data(

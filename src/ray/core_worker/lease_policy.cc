@@ -28,7 +28,7 @@ rpc::Address LocalityAwareLeasePolicy::GetBestNodeForTask(const TaskSpecificatio
 /// Criteria for "best" node: The node with the most object bytes (from object_ids) local.
 absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
     const TaskSpecification &spec) {
-  auto object_ids = spec.GetDependencyIds();
+  const auto object_ids = spec.GetDependencyIds();
   // Number of object bytes (from object_ids) that a given node has local.
   absl::flat_hash_map<NodeID, uint64_t> bytes_local_table;
   uint64_t max_bytes = 0;
