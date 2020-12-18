@@ -3,7 +3,6 @@ from typing import Optional, Any, List, Dict
 from collections.abc import Iterable
 
 import ray
-from ray.exceptions import RayActorError
 
 
 class Empty(Exception):
