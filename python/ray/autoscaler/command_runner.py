@@ -82,6 +82,7 @@ class CommandRunnerInterface:
         Args:
             as_head (bool): Run as head image or worker.
             file_mounts (dict): Files to copy to the head and worker nodes.
+
         Returns:
             optional (bool): Whether initialization was run.
         """
