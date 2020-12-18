@@ -4,6 +4,7 @@ from typing import Optional, List, Tuple
 from contextlib import contextmanager
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -124,8 +125,32 @@ class RayAPIStub:
         global _client_api
         return _client_api is not None
 
+    def init(self, *args, **kwargs):
+        if _is_client_test_env():
+            global _test_server
+            import ray.experimental.client.server.server as ray_client_server
+            _test_server, address_info = ray_client_server.init_and_serve(
+                "localhost:50051",
+                test_mode=True,
+                *args,
+                **kwargs)
+            self.connect("localhost:50051")
+            return address_info
+        else:
+            raise NotImplementedError("Please call ray.connect() in client mode")
+
 
 ray = RayAPIStub()
+
+_test_server = None
+
+def _stop_test_server(*args):
+    global _test_server
+    _test_server.stop(*args)
+
+def _is_client_test_env() -> bool:
+    return os.environ.get("RAY_TEST_CLIENT_MODE") == "1"
+
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of

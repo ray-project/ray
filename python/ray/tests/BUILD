@@ -153,3 +153,18 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+# TODO(barakmich): py_test will support env in 4.0.0... until then, tags.
+
+py_test_module_list(
+  files = [
+    "test_basic.py",
+    #"test_basic_2.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  name_suffix = "_client_mode",
+  #env = {"RAY_TEST_CLIENT_MODE": "true"},
+  tags = ["exclusive", "client_tests"],
+  deps = ["//:ray_lib"],
+)

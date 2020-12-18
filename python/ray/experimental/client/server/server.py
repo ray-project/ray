@@ -319,6 +319,12 @@ def serve(connection_str, test_mode=False):
     return server
 
 
+def init_and_serve(connection_str, test_mode=False, *args, **kwargs):
+    info = ray.init(*args, **kwargs)
+    server = serve(connection_str, test_mode)
+    return (server, info)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level="INFO")
     # TODO(barakmich): Perhaps wrap ray init

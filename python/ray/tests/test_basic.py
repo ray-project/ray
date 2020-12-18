@@ -8,14 +8,23 @@ import time
 import numpy as np
 import pytest
 
-import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import (
+    client_test_enabled,
+    dicts_equal,
+    wait_for_pid_to_exit,
+)
+
+if client_test_enabled():
+    from ray.experimental.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
+@pytest.mark.skipif(client_test_enabled(), reason="not part of client api")
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
     os.environ["http_proxy"] = "http://example.com"
@@ -29,6 +38,7 @@ def test_ignore_http_proxy(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7263
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -45,12 +55,14 @@ def test_grpc_message_size(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7287
+@pytest.mark.skipif(client_test_enabled(), reason="not part of client api")
 def test_omp_threads_set(shutdown_only):
     ray.init(num_cpus=1)
     # Should have been auto set by ray init.
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
@@ -109,6 +121,7 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_invalid_arguments(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -163,6 +176,7 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal _remote")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -178,7 +192,7 @@ def test_many_fractional_resources(shutdown_only):
         }
         if block:
             ray.get(g.remote())
-        return ray.test_utils.dicts_equal(true_resources, accepted_resources)
+        return dicts_equal(true_resources, accepted_resources)
 
     # Check that the resource are assigned correctly.
     result_ids = []
@@ -230,6 +244,7 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote options")
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -257,9 +272,10 @@ def test_background_tasks_with_max_calls(shutdown_only):
         pid, g_id = nested.pop(0)
         ray.get(g_id)
         del g_id
-        ray.test_utils.wait_for_pid_to_exit(pid)
+        wait_for_pid_to_exit(pid)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="passes with pytest, not in bazel")
 def test_fair_queueing(shutdown_only):
     ray.init(num_cpus=1, _system_config={"fair_queueing_enabled": 1})
 
@@ -310,6 +326,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="passes with pytest, not in bazel")
 @pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
@@ -327,6 +344,7 @@ def test_wait_timing(shutdown_only):
     assert len(not_ready) == 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
@@ -344,6 +362,7 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote options")
 def test_ray_options(shutdown_only):
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
