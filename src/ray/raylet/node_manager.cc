@@ -655,37 +655,47 @@ void NodeManager::HandleReleaseUnusedBundles(
 // debug_dump_period_ milliseconds.
 // See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
-  // Check if any progress is being made on this raylet.
-  for (const auto &task : local_queues_.GetTasks(TaskState::RUNNING)) {
-    // Ignore blocked tasks.
-    if (local_queues_.GetBlockedTaskIds().count(task.GetTaskSpecification().TaskId())) {
-      continue;
-    }
-    // Progress is being made, don't warn.
-    resource_deadlock_warned_ = 0;
-    return;
-  }
-
-  // The node is full of actors and no progress has been made for some time.
-  // If there are any pending tasks, build a warning.
-  std::ostringstream error_message;
   ray::Task exemplar;
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
+  std::string available_resources;
 
-  // See if any tasks are blocked trying to acquire resources.
-  for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
-    const TaskSpecification &spec = task.GetTaskSpecification();
-    if (spec.IsActorCreationTask()) {
-      pending_actor_creations += 1;
-    } else {
-      pending_tasks += 1;
+  // Check if any progress is being made on this raylet.
+  for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
+    if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
+        !worker->IsBlocked() && worker->GetActorId().IsNil()) {
+      // Progress is being made in a task, don't warn.
+      resource_deadlock_warned_ = 0;
+      return;
     }
-    if (!any_pending) {
-      exemplar = task;
-      any_pending = true;
+  }
+
+  if (new_scheduler_enabled_) {
+    // Check if any tasks are blocked on resource acquisition.
+    if (!cluster_task_manager_->AnyPendingTasks(
+            &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
+      // No pending tasks, no need to warn.
+      resource_deadlock_warned_ = 0;
+      return;
     }
+    available_resources = new_resource_scheduler_->GetLocalResourceViewString();
+  } else {
+    // See if any tasks are blocked trying to acquire resources.
+    for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
+      const TaskSpecification &spec = task.GetTaskSpecification();
+      if (spec.IsActorCreationTask()) {
+        pending_actor_creations += 1;
+      } else {
+        pending_tasks += 1;
+      }
+      if (!any_pending) {
+        exemplar = task;
+        any_pending = true;
+      }
+    }
+    SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
+    available_resources = local_resources.GetAvailableResources().ToString();
   }
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
@@ -693,6 +703,7 @@ void NodeManager::WarnResourceDeadlock() {
   // case resource_deadlock_warned_:  0 => first time, don't do anything yet
   // case resource_deadlock_warned_:  1 => second time, print a warning
   // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
+  std::ostringstream error_message;
   if (any_pending && resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
     // Trigger global GC to hopefully free up resource slots.
@@ -703,15 +714,13 @@ void NodeManager::WarnResourceDeadlock() {
       return;
     }
 
-    SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     error_message
         << "The actor or task with ID " << exemplar.GetTaskSpecification().TaskId()
         << " cannot be scheduled right now. It requires "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
-        << " for placement, but this node only has remaining "
-        << local_resources.GetAvailableResources().ToString() << ". In total there are "
-        << pending_tasks << " pending tasks and " << pending_actor_creations
-        << " pending actors on this node. "
+        << " for placement, but this node only has remaining " << available_resources
+        << ". In total there are " << pending_tasks << " pending tasks and "
+        << pending_actor_creations << " pending actors on this node. "
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
@@ -2164,6 +2173,7 @@ void NodeManager::HandleDirectCallTaskBlocked(
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
   local_available_resources_.Release(cpu_resource_ids);
   cluster_resource_map_[self_node_id_].Release(cpu_resource_ids.ToResourceSet());
+
   worker->MarkBlocked();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
