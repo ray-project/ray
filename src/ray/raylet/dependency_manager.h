@@ -53,7 +53,7 @@ class TaskDependencyManagerInterface {
 class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
-  DependencyManager(ObjectManagerInterface2 &object_manager,
+  DependencyManager(ObjectManagerInterface &object_manager,
                     ReconstructionPolicyInterface &reconstruction_policy)
       : object_manager_(object_manager), reconstruction_policy_(reconstruction_policy) {}
 
@@ -74,55 +74,89 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \return True if we have owner information for the object.
   bool GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
 
-  /// Update the `ray.wait` request. This will start a Pull request for any new
-  /// objects that we're not already fetching.
+  /// Start or update a worker's `ray.wait` request. This will attempt to make
+  /// any remote objects local, including previously requested objects. The
+  /// `ray.wait` request will stay active until the objects are made local or
+  /// the request for this worker is canceled, whichever occurs first.
+  ///
+  /// This method may be called multiple times per worker on the same objects.
+  ///
+  /// \param worker_id The ID of the worker that called `ray.wait`.
+  /// \param required_objects The objects required by the worker.
+  /// \return Void.
   void StartOrUpdateWaitRequest(
       const WorkerID &worker_id,
       const std::vector<rpc::ObjectReference> &required_objects);
 
+  /// Cancel a worker's `ray.wait` request. We will no longer attempt to fetch
+  /// any objects that this worker requested previously, if no other task or
+  /// worker requires them.
+  ///
+  /// \param worker_id The ID of the worker whose `ray.wait` request we should
+  /// cancel.
+  /// \return Void.
   void CancelWaitRequest(const WorkerID &worker_id);
 
-  /// Update the `ray.get` request. If any new objects are added, cancel the
-  /// old Pull request and add a new one.
+  /// Start or update a worker's `ray.get` request. This will attempt to make
+  /// any remote objects local, including previously requested objects. The
+  /// `ray.get` request will stay active until the request for this worker is
+  /// canceled.
+  ///
+  /// This method may be called multiple times per worker on the same objects.
+  ///
+  /// \param worker_id The ID of the worker that called `ray.wait`.
+  /// \param required_objects The objects required by the worker.
+  /// \return Void.
   void StartOrUpdateGetRequest(const WorkerID &worker_id,
                                const std::vector<rpc::ObjectReference> &required_objects);
 
+  /// Cancel a worker's `ray.get` request. We will no longer attempt to fetch
+  /// any objects that this worker requested previously, if no other task or
+  /// worker requires them.
+  ///
+  /// \param worker_id The ID of the worker whose `ray.get` request we should
+  /// cancel.
+  /// \return Void.
   void CancelGetRequest(const WorkerID &worker_id);
 
-  /// Request dependencies for a queued task.
+  /// Request dependencies for a queued task. This will attempt to make any
+  /// remote objects local until the caller cancels the task's dependencies.
+  ///
+  /// This method can only be called once per task, until the task has been
+  /// canceled.
+  ///
+  /// \param task_id The task that requires the objects.
+  /// \param required_objects The objects required by the task.
+  /// \return Void.
   bool AddTaskDependencies(const TaskID &task_id,
                            const std::vector<rpc::ObjectReference> &required_objects);
 
+  /// Cancel a task's dependencies. We will no longer attempt to fetch any
+  /// remote dependencies, if no other task or worker requires them.
+  ///
+  /// This method can only be called on a task whose dependencies were added.
+  ///
+  /// \param task_id The task that requires the objects.
+  /// \param required_objects The objects required by the task.
+  /// \return Void.
   void RemoveTaskDependencies(const TaskID &task_id);
 
-  /// Handle an object becoming locally available. If there are any subscribed
-  /// tasks that depend on this object, then the object will be canceled.
+  /// Handle an object becoming locally available.
   ///
   /// \param object_id The object ID of the object to mark as locally
   /// available.
-  /// \return A list of task IDs. This contains all subscribed tasks that now
-  /// have all of their dependencies fulfilled, once this object was made
-  /// local.
+  /// \return A list of task IDs. This contains all added tasks that now have
+  /// all of their dependencies fulfilled.
   std::vector<TaskID> HandleObjectLocal(const ray::ObjectID &object_id);
 
-  /// Handle an object that is no longer locally available. If there are any
-  /// subscribed tasks that depend on this object, then the object will be
-  /// requested.
+  /// Handle an object that is no longer locally available.
   ///
   /// \param object_id The object ID of the object that was previously locally
   /// available.
-  /// \return A list of task IDs. This contains all subscribed tasks that
-  /// previously had all of their dependencies fulfilled, but are now missing
-  /// this object dependency.
+  /// \return A list of task IDs. This contains all added tasks that previously
+  /// had all of their dependencies fulfilled, but are now missing this object
+  /// dependency.
   std::vector<TaskID> HandleObjectMissing(const ray::ObjectID &object_id);
-
-  /// Remove all of the tasks specified. These tasks will no longer be
-  /// considered pending and the objects they depend on will no longer be
-  /// required.
-  ///
-  /// \param task_ids The collection of task IDs. For a given task in this set,
-  /// all tasks that depend on the task must also be included in the set.
-  void RemoveTasksAndRelatedObjects(const std::unordered_set<TaskID> &task_ids);
 
   /// Returns debug string for class.
   ///
@@ -157,7 +191,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// A struct to represent the object dependencies of a task.
   struct TaskDependencies {
     TaskDependencies(const std::vector<rpc::ObjectReference> &deps)
-        : num_missing_get_dependencies(deps.size()) {
+        : num_missing_dependencies(deps.size()) {
       const auto dep_ids = ObjectRefsToIds(deps);
       dependencies.insert(dep_ids.begin(), dep_ids.end());
     }
@@ -168,32 +202,45 @@ class DependencyManager : public TaskDependencyManagerInterface {
     absl::flat_hash_set<ObjectID> dependencies;
     /// The number of object arguments that are not available locally. This
     /// must be zero before the task is ready to execute.
-    size_t num_missing_get_dependencies;
+    size_t num_missing_dependencies;
     /// Used to identify the pull request for the dependencies to the object
     /// manager.
     uint64_t pull_request_id = 0;
   };
 
+  /// Stop tracking this object, if it is no longer needed by any worker or
+  /// queued task.
   void RemoveObjectIfNotNeeded(
       absl::flat_hash_map<ObjectID, ObjectDependencies>::iterator required_object_it);
 
+  /// Start tracking an object that is needed by a worker and/or queued task.
   absl::flat_hash_map<ObjectID, ObjectDependencies>::iterator GetOrInsertRequiredObject(
       const ObjectID &object_id, const rpc::ObjectReference &ref);
 
   /// The object manager, used to fetch required objects from remote nodes.
-  ObjectManagerInterface2 &object_manager_;
+  ObjectManagerInterface &object_manager_;
   /// The reconstruction policy, used to reconstruct required objects that no
   /// longer exist on any live nodes.
+  /// TODO(swang): This class is no longer needed for reconstruction, since the
+  /// object's owner handles reconstruction. We use this class as a timer to
+  /// detect the owner's failure. Remove this class and move the timer logic
+  /// into this class.
   ReconstructionPolicyInterface &reconstruction_policy_;
 
-  /// Task ID -> request ID.
+  /// A map from the ID of a queued task to metadata about whether the task's
+  /// dependencies are all local or not.
   absl::flat_hash_map<TaskID, TaskDependencies> queued_task_requests_;
 
-  /// Worker ID -> required objects.
+  /// A map from worker ID to the set of objects that the worker called
+  /// `ray.get` on and a pull request ID for these objects. The pull request ID
+  /// should be used to cancel the pull request in the object manager once the
+  /// worker cancels the `ray.get` request.
   absl::flat_hash_map<WorkerID, std::pair<absl::flat_hash_set<ObjectID>, uint64_t>>
       get_requests_;
 
-  /// Worker ID -> waiting objects.
+  /// A map from worker ID to the set of objects that the worker called
+  /// `ray.wait` on. Objects are removed from the set once they are made local,
+  /// or the worker cancels the `ray.wait` request.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ObjectID>> wait_requests_;
 
   /// Deduplicated pool of objects required by all queued tasks and workers.
@@ -201,7 +248,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// that require it.
   absl::flat_hash_map<ObjectID, ObjectDependencies> required_objects_;
 
-  /// The set of locally available objects.
+  /// The set of locally available objects. This is used to determine which
+  /// tasks are ready to run and which `ray.wait` requests can be finished.
   std::unordered_set<ray::ObjectID> local_objects_;
 };
 

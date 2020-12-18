@@ -221,11 +221,6 @@ void ObjectManager::CancelPull(uint64_t request_id) {
   }
 }
 
-ray::Status ObjectManager::Pull(const ObjectID &object_id,
-                                const rpc::Address &owner_address) {
-  return Status::OK();
-}
-
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
@@ -431,8 +426,6 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   // Do this regardless of whether it failed or succeeded.
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
 }
-
-void ObjectManager::CancelPull(const ObjectID &object_id) {}
 
 ray::Status ObjectManager::Wait(
     const std::vector<ObjectID> &object_ids,

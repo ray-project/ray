@@ -704,8 +704,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;
-  /// A manager to make waiting tasks's missing object dependencies available.
-  DependencyManager task_dependency_manager_;
+  /// A manager to resolve objects needed by queued tasks and workers that
+  /// called `ray.get` or `ray.wait`.
+  DependencyManager dependency_manager_;
 
   std::unique_ptr<AgentManager> agent_manager_;
 

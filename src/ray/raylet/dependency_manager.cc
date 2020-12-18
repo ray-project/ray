@@ -170,7 +170,7 @@ bool DependencyManager::AddTaskDependencies(
     it->second.dependent_tasks.insert(task_id);
 
     if (local_objects_.count(obj_id)) {
-      task_entry.num_missing_get_dependencies--;
+      task_entry.num_missing_dependencies--;
     }
   }
 
@@ -180,7 +180,7 @@ bool DependencyManager::AddTaskDependencies(
                    << " request: " << task_entry.pull_request_id;
   }
 
-  return task_entry.num_missing_get_dependencies == 0;
+  return task_entry.num_missing_dependencies == 0;
 }
 
 void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
@@ -219,13 +219,13 @@ std::vector<TaskID> DependencyManager::HandleObjectMissing(
       // If the dependent task had all of its arguments ready, it was ready to
       // run but must be switched to waiting since one of its arguments is now
       // missing.
-      if (task_entry.num_missing_get_dependencies == 0) {
+      if (task_entry.num_missing_dependencies == 0) {
         waiting_task_ids.push_back(dependent_task_id);
         // During normal execution we should be able to include the check
         // RAY_CHECK(pending_tasks_.count(dependent_task_id) == 1);
         // However, this invariant will not hold during unit test execution.
       }
-      task_entry.num_missing_get_dependencies++;
+      task_entry.num_missing_dependencies++;
     }
 
     // The object is missing and needed so wait for a possible failure again.
@@ -252,10 +252,10 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
       auto it = queued_task_requests_.find(dependent_task_id);
       RAY_CHECK(it != queued_task_requests_.end());
       auto &task_entry = it->second;
-      task_entry.num_missing_get_dependencies--;
+      task_entry.num_missing_dependencies--;
       // If the dependent task now has all of its arguments ready, it's ready
       // to run.
-      if (task_entry.num_missing_get_dependencies == 0) {
+      if (task_entry.num_missing_dependencies == 0) {
         ready_task_ids.push_back(dependent_task_id);
       }
     }

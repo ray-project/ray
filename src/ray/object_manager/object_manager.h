@@ -99,21 +99,13 @@ using PullRequestIncomplete = std::function<void(PullRequestID)>;
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id,
-                           const rpc::Address &owner_address) = 0;
-  virtual void CancelPull(const ObjectID &object_id) = 0;
-  virtual ~ObjectManagerInterface(){};
-};
-
-class ObjectManagerInterface2 {
- public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  virtual ~ObjectManagerInterface(){};
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
 class ObjectManager : public ObjectManagerInterface,
-                      public ObjectManagerInterface2,
                       public rpc::ObjectManagerServiceHandler {
  public:
   using RestoreSpilledObjectCallback = std::function<void(
@@ -242,20 +234,18 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Void.
   void Push(const ObjectID &object_id, const NodeID &node_id);
 
-  /// Pull an object from NodeID.
+  /// Pull a bundle of objects. This will attempt to make all objects in the
+  /// bundle local until the request is canceled with the returned ID.
   ///
-  /// \param object_id The object's object id.
-  /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
-
-  /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
-  /// method is idempotent.
-  ///
-  /// \param object_id The ObjectID.
-  /// \return Void.
-  void CancelPull(const ObjectID &object_id) override;
-
+  /// \param object_refs The bundle of objects that must be made local.
+  /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) override;
+
+  /// Cancels the pull request with the given ID. This cancels any fetches for
+  /// objects that were passed to the original pull request, if no other pull
+  /// request requires them.
+  ///
+  /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
   /// Callback definition for wait.
