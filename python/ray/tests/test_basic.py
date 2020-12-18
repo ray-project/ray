@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
-@pytest.mark.skipif(client_test_enabled(), reason="not part of client api")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
     os.environ["http_proxy"] = "http://example.com"
@@ -55,7 +55,7 @@ def test_grpc_message_size(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7287
-@pytest.mark.skipif(client_test_enabled(), reason="not part of client api")
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_omp_threads_set(shutdown_only):
     ray.init(num_cpus=1)
     # Should have been auto set by ray init.
@@ -244,7 +244,7 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote options")
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -275,7 +275,6 @@ def test_background_tasks_with_max_calls(shutdown_only):
         wait_for_pid_to_exit(pid)
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="passes with pytest, not in bazel")
 def test_fair_queueing(shutdown_only):
     ray.init(num_cpus=1, _system_config={"fair_queueing_enabled": 1})
 
@@ -326,7 +325,6 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="passes with pytest, not in bazel")
 @pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
@@ -362,7 +360,7 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote options")
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_ray_options(shutdown_only):
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
@@ -457,8 +455,10 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(4)) == 24
     assert ray.get(factorial.remote(5)) == 120
 
-    # Test remote functions that recursively call each other.
 
+@pytest.mark.skipif(client_test_enabled(), reason="mutual recursion is a known issue")
+def test_mutually_recursive_functions(ray_start_shared_local_modes):
+    # Test remote functions that recursively call each other.
     @ray.remote
     def factorial_even(n):
         assert n % 2 == 0

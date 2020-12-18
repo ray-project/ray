@@ -63,7 +63,12 @@ class DataClient:
                     self.ready_data[response.req_id] = response
                     self.cv.notify_all()
         except grpc.RpcError as e:
-            logger.error(f"Got Error from rpc channel -- shutting down: {e}")
+            if grpc.StatusCode.CANCELLED == e.code():
+                # Gracefully shutting down
+                logger.info("Cancelling data channel")
+            else:
+                logger.error(f"Got Error from rpc channel -- shutting down: {e}")
+                raise e
 
     def close(self, close_channel: bool = False) -> None:
         if self.request_queue is not None:
