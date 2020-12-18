@@ -305,7 +305,9 @@ and passed to your trainable as a parameter.
 Stopping Trials
 ---------------
 
-You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
+You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.
+This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class
+as an argument.
 
 If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
@@ -329,7 +331,7 @@ For more flexibility, you can pass in a function instead. If a function is passe
 
     tune.run(my_trainable, stop=stopper)
 
-Finally, you can implement the ``Stopper`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
+Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
@@ -352,7 +354,9 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
     tune.run(my_trainable, stop=stopper)
 
 
-Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete. See the :ref:`tune-stop-ref` documentation.
+Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
+
+Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 .. _tune-logging:
 

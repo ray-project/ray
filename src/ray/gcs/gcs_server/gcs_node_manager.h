@@ -70,21 +70,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle get resource rpc request.
-  void HandleGetResources(const rpc::GetResourcesRequest &request,
-                          rpc::GetResourcesReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle update resource rpc request.
-  void HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                             rpc::UpdateResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle delete resource rpc request.
-  void HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                             rpc::DeleteResourcesReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle set internal config.
   void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                rpc::SetInternalConfigReply *reply,
@@ -94,12 +79,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
                                rpc::GetInternalConfigReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle get available resources of all nodes.
-  void HandleGetAllAvailableResources(
-      const rpc::GetAllAvailableResourcesRequest &request,
-      rpc::GetAllAvailableResourcesReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Update resource usage of given node.
   ///
@@ -127,7 +106,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param node_id The id of the node.
   /// \return the node if it is alive. Optional empty value if it is not alive.
-  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetNode(const NodeID &node_id) const;
+  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+      const NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
@@ -195,8 +175,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
   /// the list.
   std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
-  /// Cluster resources.
-  absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
   /// A buffer containing resource usage received from node managers in the last tick.
@@ -222,15 +200,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     UNREGISTER_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
     REPORT_RESOURCE_USAGE_REQUEST = 3,
-    GET_HEARTBEAT_REQUEST = 4,
-    GET_ALL_RESOURCE_USAGE_REQUEST = 5,
-    GET_RESOURCES_REQUEST = 6,
-    UPDATE_RESOURCES_REQUEST = 7,
-    DELETE_RESOURCES_REQUEST = 8,
-    SET_INTERNAL_CONFIG_REQUEST = 9,
-    GET_INTERNAL_CONFIG_REQUEST = 10,
-    GET_ALL_AVAILABLE_RESOURCES_REQUEST = 11,
-    CountType_MAX = 12,
+    GET_ALL_RESOURCE_USAGE_REQUEST = 4,
+    SET_INTERNAL_CONFIG_REQUEST = 5,
+    GET_INTERNAL_CONFIG_REQUEST = 6,
+    CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

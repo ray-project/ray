@@ -47,7 +47,7 @@ worker_nodes:
 
 setup_commands:
     # This replaces the standard anaconda Ray installation
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - pip install -q tqdm
 
     # Installing this without -U to make sure we don't replace the existing Ray installation

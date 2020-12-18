@@ -154,7 +154,6 @@ class ActorStateReconciler:
     backend_replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
     backends_to_remove: List[BackendTag] = field(default_factory=list)
-    endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
 
     # TODO(edoakes): consider removing this and just using the names.
 
@@ -504,25 +503,11 @@ class ServeController:
         self.inflight_results: Dict[UUID, asyncio.Event] = dict()
         self._serializable_inflight_results: Dict[UUID, FutureResult] = dict()
 
-        # NOTE(edoakes): unfortunately, we can't completely recover from a
-        # checkpoint in the constructor because we block while waiting for
-        # other actors to start up, and those actors fetch soft state from
-        # this actor. Because no other tasks will start executing until after
-        # the constructor finishes, if we were to run this logic in the
-        # constructor it could lead to deadlock between this actor and a child.
-        # However we do need to guarantee that we have fully recovered from a
-        # checkpoint before any other state-changing calls run. We address this
-        # by acquiring the write_lock and then posting the task to recover from
-        # a checkpoint to the event loop. Other state-changing calls acquire
-        # this lock and will be blocked until recovering from the checkpoint
-        # finishes.
         checkpoint = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint is None:
             logger.debug("No checkpoint found")
         else:
-            await self.write_lock.acquire()
-            asyncio.get_event_loop().create_task(
-                self._recover_from_checkpoint(checkpoint))
+            await self._recover_from_checkpoint(checkpoint)
 
         # NOTE(simon): Currently we do all-to-all broadcast. This means
         # any listeners will receive notification for all changes. This
@@ -530,6 +515,10 @@ class ServeController:
         # will send over the entire configs. In the future, we should
         # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
+
+        # The configs pushed out here get updated by
+        # self._recover_from_checkpoint in the failure scenario, so that must
+        # be run before we notify the changes.
         self.notify_backend_configs_changed()
         self.notify_replica_handles_changed()
         self.notify_traffic_policies_changed()
@@ -625,40 +614,51 @@ class ServeController:
     async def _recover_from_checkpoint(self, checkpoint_bytes: bytes) -> None:
         """Recover the instance state from the provided checkpoint.
 
+        This should be called in the constructor to ensure that the internal
+        state is updated before any other operations run. After running this,
+        internal state will be updated and long-poll clients may be notified.
+
         Performs the following operations:
             1) Deserializes the internal state from the checkpoint.
-            2) Pushes the latest configuration to the HTTP proxies
-               in case we crashed before updating them.
-            3) Starts/stops any replicas that are pending creation or
+            2) Starts/stops any replicas that are pending creation or
                deletion.
-
-        NOTE: this requires that self.write_lock is already acquired and will
-        release it before returning.
         """
-        assert self.write_lock.locked()
-
         start = time.time()
         logger.info("Recovering from checkpoint")
 
         restored_checkpoint: Checkpoint = pickle.loads(checkpoint_bytes)
-        # Restore SystemState
         self.current_state = restored_checkpoint.current_state
 
-        # Restore ActorStateReconciler
         self.actor_reconciler = restored_checkpoint.reconciler
 
-        # Recreate self.inflight_requests!
         self._serializable_inflight_results = restored_checkpoint.inflight_reqs
         for uuid, fut_result in self._serializable_inflight_results.items():
             self._create_event_with_result(fut_result.requested_goal, uuid)
 
-        self.autoscaling_policies = await self.actor_reconciler.\
-            _recover_from_checkpoint(self.current_state, self)
+        # NOTE(edoakes): unfortunately, we can't completely recover from a
+        # checkpoint in the constructor because we block while waiting for
+        # other actors to start up, and those actors fetch soft state from
+        # this actor. Because no other tasks will start executing until after
+        # the constructor finishes, if we were to run this logic in the
+        # constructor it could lead to deadlock between this actor and a child.
+        # However, we do need to guarantee that we have fully recovered from a
+        # checkpoint before any other state-changing calls run. We address this
+        # by acquiring the write_lock and then posting the task to recover from
+        # a checkpoint to the event loop. Other state-changing calls acquire
+        # this lock and will be blocked until recovering from the checkpoint
+        # finishes. This can be removed once we move to the async control loop.
 
-        logger.info(
-            "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
+        async def finish_recover_from_checkpoint():
+            assert self.write_lock.locked()
+            self.autoscaling_policies = await self.actor_reconciler.\
+                _recover_from_checkpoint(self.current_state, self)
+            self.write_lock.release()
+            logger.info(
+                "Recovered from checkpoint in {:.3f}s".format(time.time() -
+                                                              start))
 
-        self.write_lock.release()
+        await self.write_lock.acquire()
+        asyncio.get_event_loop().create_task(finish_recover_from_checkpoint())
 
     async def do_autoscale(self) -> None:
         for backend, info in self.current_state.backends.items():
@@ -831,8 +831,6 @@ class ServeController:
             # Remove the traffic policy entry if it exists.
             if endpoint in self.current_state.traffic_policies:
                 del self.current_state.traffic_policies[endpoint]
-
-            self.actor_reconciler.endpoints_to_remove.append(endpoint)
 
             return_uuid = self._create_event_with_result({
                 route_to_delete: None,

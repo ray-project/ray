@@ -1004,7 +1004,7 @@ cdef class CoreWorker:
         return c_object_id.Binary()
 
     def wait(self, object_refs, int num_returns, int64_t timeout_ms,
-             TaskID current_task_id):
+             TaskID current_task_id, c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
@@ -1013,7 +1013,7 @@ cdef class CoreWorker:
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Wait(
-                wait_ids, num_returns, timeout_ms, &results))
+                wait_ids, num_returns, timeout_ms, &results, fetch_local))
 
         assert len(results) == len(object_refs)
 
@@ -1091,16 +1091,18 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
-            with nogil:
-                CCoreWorkerProcess.GetCoreWorker().SubmitTask(
-                    ray_function, args_vector, CTaskOptions(
-                        name, num_returns, c_resources,
-                        c_override_environment_variables),
-                    &return_ids, max_retries,
-                    c_pair[CPlacementGroupID, int64_t](
-                        c_placement_group_id, placement_group_bundle_index),
-                    placement_group_capture_child_tasks,
-                    debugger_breakpoint)
+            # NOTE(edoakes): releasing the GIL while calling this method causes
+            # segfaults. See relevant issue for details:
+            # https://github.com/ray-project/ray/pull/12803
+            CCoreWorkerProcess.GetCoreWorker().SubmitTask(
+                ray_function, args_vector, CTaskOptions(
+                    name, num_returns, c_resources,
+                    c_override_environment_variables),
+                &return_ids, max_retries,
+                c_pair[CPlacementGroupID, int64_t](
+                    c_placement_group_id, placement_group_bundle_index),
+                placement_group_capture_child_tasks,
+                debugger_breakpoint)
 
             return VectorToObjectRefs(return_ids)
 
@@ -1205,14 +1207,17 @@ cdef class CoreWorker:
 
     def wait_placement_group_ready(self,
                                    PlacementGroupID placement_group_id,
-                                   int32_t timeout_ms):
+                                   int32_t timeout_seconds):
         cdef CRayStatus status
         cdef CPlacementGroupID cplacement_group_id = (
             CPlacementGroupID.FromBinary(placement_group_id.binary()))
-        cdef int ctimeout_ms = timeout_ms
+        cdef int ctimeout_seconds = timeout_seconds
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker() \
-                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_ms)
+                .WaitPlacementGroupReady(cplacement_group_id, ctimeout_seconds)
+            if status.IsNotFound():
+                raise Exception("Placement group {} does not exist.".format(
+                    placement_group_id))
         return status.ok()
 
     def submit_actor_task(self,
@@ -1238,12 +1243,14 @@ cdef class CoreWorker:
                 language.lang, function_descriptor.descriptor)
             prepare_args(self, language, args, &args_vector)
 
-            with nogil:
-                CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
-                    c_actor_id,
-                    ray_function,
-                    args_vector, CTaskOptions(name, num_returns, c_resources),
-                    &return_ids)
+            # NOTE(edoakes): releasing the GIL while calling this method causes
+            # segfaults. See relevant issue for details:
+            # https://github.com/ray-project/ray/pull/12803
+            CCoreWorkerProcess.GetCoreWorker().SubmitActorTask(
+                c_actor_id,
+                ray_function,
+                args_vector, CTaskOptions(name, num_returns, c_resources),
+                &return_ids)
 
             return VectorToObjectRefs(return_ids)
 

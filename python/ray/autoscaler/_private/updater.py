@@ -256,8 +256,16 @@ class NodeUpdater:
 
                         retry_str = "(" + str(e) + ")"
                         if hasattr(e, "cmd"):
+                            if isinstance(e.cmd, str):
+                                cmd_ = e.cmd
+                            elif isinstance(e.cmd, list):
+                                cmd_ = " ".join(e.cmd)
+                            else:
+                                logger.debug(f"e.cmd type ({type(e.cmd)}) not "
+                                             "list or str.")
+                                cmd_ = str(e.cmd)
                             retry_str = "(Exit Status {}): {}".format(
-                                e.returncode, " ".join(e.cmd))
+                                e.returncode, cmd_)
 
                         cli_logger.print(
                             "SSH still not available {}, "

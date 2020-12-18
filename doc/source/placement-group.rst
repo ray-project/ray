@@ -124,7 +124,6 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   - "CPU" will correspond with `num_cpus` as used in `ray.remote`
   - "GPU" will correspond with `num_gpus` as used in `ray.remote`
-  - "MEM" will correspond with `memory` as used in `ray.remote`
   - Other resources will correspond with `resources` as used in `ray.remote`.
 
   Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
