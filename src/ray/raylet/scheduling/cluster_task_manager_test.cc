@@ -250,7 +250,9 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /* First task is unblocked now, but resources are no longer available */
   auto id = task.GetTaskSpecification().TaskId();
   std::vector<TaskID> unblocked = {id};
+  dependencies_fulfilled_ = true;
   task_manager_.TasksUnblocked(unblocked);
+  task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   ASSERT_EQ(num_callbacks, 1);
@@ -261,6 +263,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   leased_workers_.clear();
   task_manager_.HandleTaskFinished(worker);
 
+  task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   // Task2 is now done so task can run.
@@ -674,6 +677,46 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   task_manager_.QueueTask(task2, &reply2, callback2);
   task_manager_.SchedulePendingTasks();
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
+}
+
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+  /*
+    Check if the manager can correctly identify pending tasks.
+   */
+
+  // task1: running
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 6}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(*callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  // task1: running. Progress is made, and there's no deadlock.
+  ray::Task exemplar;
+  bool any_pending = false;
+  int pending_actor_creations = 0;
+  int pending_tasks = 0;
+  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
+                                             &pending_actor_creations, &pending_tasks));
+
+  // task1: running, task2: queued.
+  Task task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
+  rpc::RequestWorkerLeaseReply reply2;
+  std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
+  auto callback2 = [callback_occurred2]() { *callback_occurred2 = true; };
+  task_manager_.QueueTask(task2, &reply2, callback2);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_FALSE(*callback_occurred2);
+  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
+                                            &pending_actor_creations, &pending_tasks));
 }
 
 int main(int argc, char **argv) {

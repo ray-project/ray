@@ -297,28 +297,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
 
-  /// Make a placement decision for the resource_map and subtract original resources so
-  /// that the node is ready to commit (create) placement group resources.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  /// \return True is resources were successfully prepared. False otherwise.
-  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                     const BundleSpecification &bundle_spec);
-
-  /// Make a placement decision for the resource_map.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                    const BundleSpecification &bundle_spec);
-
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.

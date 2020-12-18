@@ -202,6 +202,7 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
       dispatched = true;
     }
   } else {
+    worker->SetBundleId(spec.PlacementGroupBundleId());
     worker->SetOwnerAddress(spec.CallerAddress());
     if (spec.IsActorCreationTask()) {
       // The actor belongs to this worker now.
@@ -241,7 +242,10 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      // Note: we transition tasks back to the scheduling queue instead of directly
+      // to dispatch. This allows AnyPendingTasks() to simply check the scheduling
+      // queue to see if any tasks are blocked on resource availability: see #12438
+      tasks_to_schedule_[scheduling_key].push_back(work);
       waiting_tasks_.erase(it);
     }
   }
@@ -497,6 +501,32 @@ void ClusterTaskManager::FillResourceUsage(
       by_shape_entry->set_backlog_size(backlog_it->second);
     }
   }
+}
+
+bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
+                                         int *num_pending_actor_creation,
+                                         int *num_pending_tasks) const {
+  // We are guaranteed that these tasks are blocked waiting for resources after a
+  // call to ScheduleAndDispatch(). Note that tasks that transition to waiting
+  // move back to the tasks_to_schedule_ queue after their deps are satisfied.
+  for (const auto &shapes_it : tasks_to_schedule_) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      const auto &task = std::get<0>(work_it);
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        *num_pending_actor_creation += 1;
+      } else {
+        *num_pending_tasks += 1;
+      }
+
+      if (!*any_pending) {
+        *exemplar = task;
+        *any_pending = true;
+      }
+    }
+  }
+  // If there's any pending task, at this point, there's no progress being made.
+  return *any_pending;
 }
 
 std::string ClusterTaskManager::DebugString() const {
