@@ -35,7 +35,7 @@ public class UniqueIdTest {
 
     // Test `fromByteBuffer()`
     byte[] bytes = DatatypeConverter.parseHexBinary("0123456789ABCDEF0123456789ABCDEF012345670123456789ABCDEF");
-    ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, 0, 20);
+    ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, 0, 28);
     UniqueId id4 = UniqueId.fromByteBuffer(byteBuffer);
     Assert.assertTrue(Arrays.equals(bytes, id4.getBytes()));
     Assert.assertEquals("0123456789abcdef0123456789abcdef012345670123456789abcdef", id4.toString());
