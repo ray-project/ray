@@ -741,26 +741,33 @@ class DockerCommandRunner(CommandRunnerInterface):
                 run_env="host").decode("utf-8").strip()
             try:
                 active_mounts = json.loads(mounts)
-                active_remote_mounts = [
-                    mnt["Destination"] for mnt in active_mounts
-                ]
+                active_remote_mounts = set(
+                    mnt["Destination"] for mnt in active_mounts)
                 # Ignore ray bootstrap files.
-                for remote, local in cleaned_bind_mounts.items():
-                    remote = self._docker_expand_user(remote)
-                    if remote not in active_remote_mounts:
-                        try:
-                            is_container_running = not cli_logger.confirm(
-                                False,
-                                "This Docker Container is already Running, Do "
-                                "you want to restart the Docker container on "
-                                "this node?")
-                        except ValueError as e:
-                            cli_logger.print(str(e))
-                            is_container_running = False
-                        if is_container_running:
-                            cli_logger.error(
-                                "Please ray stop & restart cluster to "
-                                f"allow mount {remote}:{local} to take hold")
+                requested_remote_mounts = set(
+                    self._docker_expand_user(remote)
+                    for remote in cleaned_bind_mounts.keys())
+                unfulfilled_mounts = (
+                    requested_remote_mounts - active_remote_mounts)
+                if unfulfilled_mounts:
+                    try:
+                        is_container_running = not cli_logger.confirm(
+                            False,
+                            "This Docker Container is already Running, Do "
+                            "you want to restart the Docker container on "
+                            "this node?")
+                    except ValueError as e:
+                        cli_logger.print(str(e))
+                        is_container_running = False
+                    if not is_container_running:
+                        self.run(
+                            f"docker stop {self.container_name}",
+                            run_env="host")
+                    else:
+                        cli_logger.error(
+                            "Please ray stop & restart cluster to "
+                            "allow the following mounts to be picked up "
+                            f"[{unfulfilled_mounts}]")
             except json.JSONDecodeError:
                 cli_logger.verbose(
                     "Unable to check if file_mounts specified in the YAML "
