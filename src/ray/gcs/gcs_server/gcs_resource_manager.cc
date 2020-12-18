@@ -155,10 +155,20 @@ void GcsResourceManager::HandleGetAllAvailableResources(
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &nodes = gcs_init_data.Nodes();
-  for (auto &entry : gcs_init_data.ClusterResources()) {
-    const auto &iter = nodes.find(entry.first);
-    if (iter->second.state() == rpc::GcsNodeInfo::ALIVE) {
-//      cluster_resources_[entry.first] = entry.second;
+  for (const auto &entry : nodes) {
+    if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      OnNodeAdd(entry.second);
+    }
+  }
+
+  const auto &cluster_resources = gcs_init_data.ClusterResources();
+  for (const auto &entry : cluster_resources) {
+    const auto &iter = cluster_scheduling_resources_.find(entry.first);
+    if (iter != cluster_scheduling_resources_.end()) {
+      for (const auto &resource : entry.second.items()) {
+        iter->second.UpdateResourceCapacity(resource.first,
+                                            resource.second.resource_capacity());
+      }
     }
   }
 }
@@ -198,8 +208,11 @@ void GcsResourceManager::DeleteResources(
   }
 }
 
-void GcsResourceManager::OnNodeAdd(const NodeID &node_id) {
-
+void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
+  auto node_id = NodeID::FromBinary(node.node_id());
+  if (!cluster_scheduling_resources_.contains(node_id)) {
+    cluster_scheduling_resources_.emplace(node_id, SchedulingResources());
+  }
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
