@@ -428,12 +428,12 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         mounts = [{
-            'Type': 'bind',
-            'Source': '/sys',
-            'Destination': '/sys',
-            'Mode': 'ro',
-            'RW': False,
-            'Propagation': 'rprivate'
+            "Type": "bind",
+            "Source": "/sys",
+            "Destination": "/sys",
+            "Mode": "ro",
+            "RW": False,
+            "Propagation": "rprivate"
         }]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
         # Two initial calls to docker cp, +1 more call during run_init
