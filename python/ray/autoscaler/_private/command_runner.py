@@ -741,12 +741,15 @@ class DockerCommandRunner(CommandRunnerInterface):
                 run_env="host").decode("utf-8").strip()
             try:
                 active_mounts = json.loads(mounts)
-                active_remote_mounts = set(
-                    mnt["Destination"] for mnt in active_mounts)
+                active_remote_mounts = {
+                    mnt["Destination"]
+                    for mnt in active_mounts
+                }
                 # Ignore ray bootstrap files.
-                requested_remote_mounts = set(
+                requested_remote_mounts = {
                     self._docker_expand_user(remote)
-                    for remote in cleaned_bind_mounts.keys())
+                    for remote in cleaned_bind_mounts.keys()
+                }
                 unfulfilled_mounts = (
                     requested_remote_mounts - active_remote_mounts)
                 if unfulfilled_mounts:
