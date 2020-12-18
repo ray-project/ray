@@ -173,10 +173,9 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
-        self.data_client.close()
+        self.data_client.close(close_channel = True)
         self.server = None
         if self.channel:
-            self.channel.close()
             self.channel = None
 
     def terminate_actor(self, actor: ClientActorHandle,

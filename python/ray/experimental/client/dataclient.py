@@ -53,24 +53,27 @@ class DataClient:
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
             metadata=(("client_id", self._client_id), ))
-        for response in resp_stream:
-            if response.req_id == 0:
-                # This is not being waited for.
-                logger.debug(f"Got unawaited response {response}")
-                continue
-            with self.cv:
-                self.ready_data[response.req_id] = response
-                self.cv.notify_all()
+        try:
+            for response in resp_stream:
+                if response.req_id == 0:
+                    # This is not being waited for.
+                    logger.debug(f"Got unawaited response {response}")
+                    continue
+                with self.cv:
+                    self.ready_data[response.req_id] = response
+                    self.cv.notify_all()
+        except grpc.RpcError as e:
+            logger.error(f"Got Error from rpc channel -- shutting down: {e}")
 
     def close(self, close_channel: bool = False) -> None:
         if self.request_queue is not None:
             self.request_queue.put(None)
             self.request_queue = None
+        if close_channel:
+            self.channel.close()
         if self.data_thread is not None:
             self.data_thread.join()
             self.data_thread = None
-        if close_channel:
-            self.channel.close()
 
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:

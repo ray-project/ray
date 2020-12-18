@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
+@pytest.mark.skipif(client_test_enabled(), reason="not part of client api")
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
     os.environ["http_proxy"] = "http://example.com"
