@@ -2131,7 +2131,9 @@ void NodeManager::HandleDirectCallTaskBlocked(
     if (cpu_instances.size() > 0) {
       std::vector<double> overflow_cpu_instances =
           new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
-      worker->SetOverflowCPUInstances(overflow_cpu_instances);
+      for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
+        RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
+      }
       worker->MarkBlocked();
     }
     ScheduleAndDispatch();
@@ -2174,8 +2176,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(
       // negative, at most one task can "borrow" this worker's resources.
       new_resource_scheduler_->SubtractCPUResourceInstances(
           cpu_instances, /*allow_going_negative=*/true);
-      new_resource_scheduler_->AddCPUResourceInstances(worker->GetOverflowCPUInstances());
-      worker->ClearOverflowCPUInstances();
       worker->MarkUnblocked();
     }
     ScheduleAndDispatch();
