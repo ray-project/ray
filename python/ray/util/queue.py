@@ -41,7 +41,8 @@ class Queue:
         >>>     assert item == q.get()
     """
 
-    def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
+    def __init__(self, maxsize: int = 0,
+                 actor_options: Optional[Dict] = None) -> None:
         actor_options = actor_options or {}
         self.maxsize = maxsize
         self.actor = ray.remote(_QueueActor).options(**actor_options).remote(

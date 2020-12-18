@@ -185,6 +185,7 @@ def test_qsize(ray_start_regular_shared):
         size -= 1
         assert q.qsize() == size
 
+
 def test_custom_resources(ray_start_regular_shared):
     current_resources = ray.available_resources()
     assert current_resources["CPU"] == 1.0
@@ -195,10 +196,11 @@ def test_custom_resources(ray_start_regular_shared):
     assert current_resources["CPU"] == 1.0
 
     # Specify resource requirement. The queue should now reserve 1 CPU.
-    q = Queue(actor_options={"num_cpus": 1})
+    Queue(actor_options={"num_cpus": 1})
     time.sleep(1)
     current_resources = ray.available_resources()
     assert "CPU" not in current_resources, current_resources
+
 
 def test_shutdown(ray_start_regular_shared):
     q = Queue()
@@ -207,6 +209,7 @@ def test_shutdown(ray_start_regular_shared):
     assert q.actor is None
     with pytest.raises(RayActorError):
         ray.get(actor.empty.remote())
+
 
 if __name__ == "__main__":
     import sys
