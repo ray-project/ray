@@ -21,7 +21,7 @@ from ray.experimental.client.server.server_pickler import dumps_from_server
 from ray.experimental.client.server.server_pickler import loads_from_client
 from ray.experimental.client.server.core_ray_api import RayServerAPI
 from ray.experimental.client.server.dataservicer import DataServicer
-from ray.experimental.client.server.server_stubs import current_func
+from ray.experimental.client.server.server_stubs import current_remote
 
 logger = logging.getLogger(__name__)
 
@@ -237,18 +237,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _schedule_actor(self,
                         task: ray_client_pb2.ClientTask,
                         context=None) -> ray_client_pb2.ClientTaskTicket:
-        if task.payload_id not in self.registered_actor_classes:
-            actor_class_ref = \
-                    self.object_refs[task.client_id][task.payload_id]
-            actor_class = ray.get(actor_class_ref)
-            if not inspect.isclass(actor_class):
-                raise Exception("Attempting to schedule actor that "
-                                "isn't a class.")
-            reg_class = ray.remote(actor_class)
-            self.registered_actor_classes[task.payload_id] = reg_class
-        remote_class = self.registered_actor_classes[task.payload_id]
+        remote_class = self.lookup_or_register_actor(task.payload_id,
+                                                     task.client_id)
+
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
-        actor = remote_class.remote(*arglist, **kwargs)
+        with current_remote(remote_class):
+            actor = remote_class.remote(*arglist, **kwargs)
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
         return ray_client_pb2.ClientTaskTicket(
@@ -261,8 +255,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         remote_func = self.lookup_or_register_func(task.payload_id,
                                                    task.client_id)
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
-        # Prepare call if we're in a test
-        with current_func(remote_func):
+        with current_remote(remote_func):
             output = remote_func.remote(*arglist, **kwargs)
         if output.binary() in self.object_refs[task.client_id]:
             raise Exception("already found it")
@@ -289,6 +282,17 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                 "isn't a function.")
             self.function_refs[id] = ray.remote(func)
         return self.function_refs[id]
+
+    def lookup_or_register_actor(self, id: bytes, client_id: str):
+        if id not in self.registered_actor_classes:
+            actor_class_ref = self.object_refs[client_id][id]
+            actor_class = ray.get(actor_class_ref)
+            if not inspect.isclass(actor_class):
+                raise Exception("Attempting to schedule actor that "
+                                "isn't a class.")
+            reg_class = ray.remote(actor_class)
+            self.registered_actor_classes[id] = reg_class
+        return self.registered_actor_classes[id]
 
 
 def return_exception_in_context(err, context):

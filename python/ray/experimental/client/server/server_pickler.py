@@ -21,7 +21,7 @@ from typing import Any
 from typing import TYPE_CHECKING
 
 from ray.experimental.client.client_pickler import PickleStub
-from ray.experimental.client.server.server_stubs import ServerFunctionSentinel
+from ray.experimental.client.server.server_stubs import ServerSelfReferenceSentinel
 
 if TYPE_CHECKING:
     from ray.experimental.client.server.server import RayletServicer
@@ -82,10 +82,15 @@ class ClientUnpickler(pickle.Unpickler):
         elif pid.type == "Actor":
             return self.server.actor_refs[pid.ref_id]
         elif pid.type == "RemoteFuncSelfReference":
-            return ServerFunctionSentinel()
+            return ServerSelfReferenceSentinel()
         elif pid.type == "RemoteFunc":
             return self.server.lookup_or_register_func(pid.ref_id,
                                                        pid.client_id)
+        elif pid.type == "RemoteActorSelfReference":
+            return ServerSelfReferenceSentinel()
+        elif pid.type == "RemoteActor":
+            return self.server.lookup_or_register_actor(pid.ref_id,
+                                                        pid.client_id)
         else:
             raise NotImplementedError("Uncovered client data type")
 

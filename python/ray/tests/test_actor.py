@@ -11,15 +11,21 @@ import sys
 import tempfile
 import datetime
 
-import ray
-import ray.test_utils
-import ray.cluster_utils
+from ray.test_utils import client_test_enabled
+from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_pid_to_exit
+from ray.tests.client_test_utils import create_remote_signal_actor
 
+if client_test_enabled():
+    from ray.experimental.client import ray
+else:
+    import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="test setup order")
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -734,13 +740,13 @@ def test_actor_deletion(ray_start_regular_shared):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     a = None
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     actors = [Actor.remote() for _ in range(10)]
     pids = ray.get([a.getpid.remote() for a in actors])
     a = None
     actors = None
-    [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
+    [wait_for_pid_to_exit(pid) for pid in pids]
 
 
 def test_actor_method_deletion(ray_start_regular_shared):
@@ -769,7 +775,8 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor()
+    signal = SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     # Pass the handle to another task that cannot run yet.
@@ -780,7 +787,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())
     assert ray.get(x_id) == 1
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
 
 def test_multiple_actors(ray_start_regular_shared):
@@ -921,7 +928,7 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
     if exit_condition == "ray.kill":
         assert not check_file_written()
     else:
-        ray.test_utils.wait_for_condition(check_file_written)
+        wait_for_condition(check_file_written)
 
 
 if __name__ == "__main__":

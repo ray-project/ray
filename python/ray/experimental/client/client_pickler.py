@@ -32,6 +32,7 @@ from typing import Any
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientActorHandle
 from ray.experimental.client.common import ClientActorRef
+from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientRemoteFunc
 from ray.experimental.client.common import SelfReferenceSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
@@ -80,6 +81,19 @@ class ClientPickler(cloudpickle.CloudPickler):
                     ref_id=b"")
             return PickleStub(
                 type="RemoteFunc",
+                client_id=self.client_id,
+                ref_id=obj._ref.id)
+        elif isinstance(obj, ClientActorClass):
+            # TODO(barakmich): Mutual recursion, as above.
+            if obj._ref is None:
+                obj._ensure_ref()
+            if type(obj._ref) == SelfReferenceSentinel:
+                return PickleStub(
+                    type="RemoteActorSelfReference",
+                    client_id=self.client_id,
+                    ref_id=b"")
+            return PickleStub(
+                type="RemoteActor",
                 client_id=self.client_id,
                 ref_id=obj._ref.id)
         return None

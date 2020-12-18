@@ -110,18 +110,13 @@ class ClientActorClass(ClientStub):
         raise TypeError(f"Remote actor cannot be instantiated directly. "
                         "Use {self._name}.remote() instead")
 
-    def __getstate__(self) -> Dict:
-        state = {
-            "actor_cls": self.actor_cls,
-            "_name": self._name,
-            "_ref": self._ref,
-        }
-        return state
-
-    def __setstate__(self, state: Dict) -> None:
-        self.actor_cls = state["actor_cls"]
-        self._name = state["_name"]
-        self._ref = state["_ref"]
+    def _ensure_ref(self):
+        if self._ref is None:
+            # As before, set the state of the reference to be an
+            # in-progress self reference value, which
+            # the encoding can detect and handle correctly.
+            self._ref = SelfReferenceSentinel()
+            self._ref = ray.put(self.actor_cls)
 
     def remote(self, *args, **kwargs) -> "ClientActorHandle":
         # Actually instantiate the actor
@@ -129,7 +124,7 @@ class ClientActorClass(ClientStub):
         return ClientActorHandle(ClientActorRef(ref_id), self)
 
     def __repr__(self):
-        return "ClientRemoteActor(%s, %s)" % (self._name, self._ref)
+        return "ClientActorClass(%s, %s)" % (self._name, self._ref)
 
     def __getattr__(self, key):
         if key not in self.__dict__:
@@ -137,8 +132,7 @@ class ClientActorClass(ClientStub):
         raise NotImplementedError("static methods")
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
-        if self._ref is None:
-            self._ref = ray.put(self.actor_cls)
+        self._ensure_ref()
         task = ray_client_pb2.ClientTask()
         task.type = ray_client_pb2.ClientTask.ACTOR
         task.name = self._name
