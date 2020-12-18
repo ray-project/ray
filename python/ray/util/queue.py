@@ -222,24 +222,27 @@ class Queue:
 
         return ray.get(self.actor.get_nowait_batch.remote(num_items))
 
-    def shutdown(self, force: bool = False) -> None:
+    def shutdown(self, force: bool = False, grace_period_s: int = 5) -> None:
         """Terminates the underlying QueueActor.
 
         All of the resources reserved by the queue will be released.
 
         Args:
             force (bool): If True, forcefully kill the actor, causing an
-            immediate failure. If False, graceful
-            actor termination will be attempted first, before falling back
-            to a forceful kill.
+                immediate failure. If False, graceful
+                actor termination will be attempted first, before falling back
+                to a forceful kill.
+            grace_period_s (int): If force is False, how long in seconds to
+                wait for graceful termination before falling back to
+                forceful kill.
         """
         if self.actor:
             if force:
                 ray.kill(self.actor, no_restart=True)
             else:
-                try:
-                    ray.get(self.actor.__ray_terminate__.remote())
-                except RayActorError:
+                done_ref = self.actor.__ray_terminate__.remote()
+                done, not_done = ray.wait([done_ref], timeout=grace_period_s)
+                if not_done:
                     ray.kill(self.actor, no_restart=True)
         self.actor = None
 
