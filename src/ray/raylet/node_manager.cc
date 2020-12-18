@@ -1011,7 +1011,7 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
     if (state != TaskState::INFEASIBLE) {
       // Don't unsubscribe for infeasible tasks because we never subscribed in
       // the first place.
-      task_dependency_manager_.CancelTaskDependencies(task_id);
+      task_dependency_manager_.RemoveTaskDependencies(task_id);
     }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
@@ -1881,7 +1881,7 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
         // We have not yet granted the worker lease. Cancel it now.
         removed_task.OnCancellation()();
         if (removed_task_state == TaskState::WAITING) {
-          task_dependency_manager_.CancelTaskDependencies(task_id);
+          task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
       } else {
         // We already granted the worker lease and sent the reply. Re-queue the
@@ -2199,11 +2199,11 @@ void NodeManager::AsyncResolveObjects(
   // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
-    task_dependency_manager_.AddOrUpdateGetRequest(worker->WorkerId(),
-                                                   required_object_refs);
+    task_dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(),
+                                                     required_object_refs);
   } else {
-    task_dependency_manager_.AddOrUpdateWaitRequest(worker->WorkerId(),
-                                                    required_object_refs);
+    task_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
+                                                      required_object_refs);
   }
 }
 
@@ -2644,7 +2644,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
-    task_dependency_manager_.CancelTaskDependencies(spec.TaskId());
+    task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
@@ -2698,7 +2698,8 @@ void NodeManager::ProcessSubscribePlasmaReady(
     //    is local at this time but when the core worker was notified, the object is
     //    is evicted. The core worker should be able to handle evicted object in this
     //    case.
-    task_dependency_manager_.AddOrUpdateWaitRequest(associated_worker->WorkerId(), refs);
+    task_dependency_manager_.StartOrUpdateWaitRequest(associated_worker->WorkerId(),
+                                                      refs);
 
     // Add this worker to the listeners for the object ID.
     {

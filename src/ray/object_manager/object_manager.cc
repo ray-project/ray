@@ -103,8 +103,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
         HandleObjectAdded(object_info);
       });
-  store_notification_->SubscribeObjDeleted(
-      [this](const ObjectID &oid) { NotifyDirectoryObjectDeleted(oid); });
+  store_notification_->SubscribeObjDeleted([this](const ObjectID &oid) {
+    pull_manager_->TryFetch(oid);
+    NotifyDirectoryObjectDeleted(oid);
+  });
 
   // Start object manager rpc server and send & receive request threads
   StartRpcService();
@@ -162,10 +164,6 @@ void ObjectManager::HandleObjectAdded(
     }
     unfulfilled_push_requests_.erase(iter);
   }
-
-  // The object is local, so we no longer need to Pull it from a remote
-  // manager. Cancel any outstanding Pull requests for this object.
-  CancelPull(object_id);
 }
 
 void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
@@ -191,13 +189,9 @@ ray::Status ObjectManager::SubscribeObjDeleted(
   return ray::Status::OK();
 }
 
-ray::Status ObjectManager::Pull(const ObjectID &object_id,
-                                const rpc::Address &owner_address) {
-  if (!pull_manager_->Pull(object_id, owner_address)) {
-    // If we don't need to pull, the object is either already local or this is a duplicate
-    // request.
-    return Status::OK();
-  }
+uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_refs) {
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto request_id = pull_manager_->Pull(object_refs, &objects_to_locate);
 
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
@@ -205,12 +199,31 @@ ray::Status ObjectManager::Pull(const ObjectID &object_id,
     pull_manager_->OnLocationChange(object_id, client_ids, spilled_url);
   };
 
-  // Subscribe to object notifications. A notification will be received every
-  // time the set of node IDs for the object changes. Notifications will also
-  // be received if the list of locations is empty. The set of node IDs has
-  // no ordering guarantee between notifications.
-  return object_directory_->SubscribeObjectLocations(object_directory_pull_callback_id_,
-                                                     object_id, owner_address, callback);
+  for (const auto &ref : objects_to_locate) {
+    // Subscribe to object notifications. A notification will be received every
+    // time the set of node IDs for the object changes. Notifications will also
+    // be received if the list of locations is empty. The set of node IDs has
+    // no ordering guarantee between notifications.
+    auto object_id = ObjectRefToId(ref);
+    RAY_CHECK_OK(object_directory_->SubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback));
+  }
+
+  return request_id;
+}
+
+void ObjectManager::CancelPull(uint64_t request_id) {
+  std::vector<ObjectID> objects_to_cancel;
+  pull_manager_->CancelPull(request_id, &objects_to_cancel);
+  for (const auto &object_id : objects_to_cancel) {
+    RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
+        object_directory_pull_callback_id_, object_id));
+  }
+}
+
+ray::Status ObjectManager::Pull(const ObjectID &object_id,
+                                const rpc::Address &owner_address) {
+  return Status::OK();
 }
 
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
@@ -419,15 +432,7 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id, const ObjectID &obj
   buffer_pool_.ReleaseGetChunk(object_id, chunk_info.chunk_index);
 }
 
-void ObjectManager::CancelPull(const ObjectID &object_id) {
-  if (!pull_manager_->CancelPull(object_id)) {
-    // We weren't tracking a pull request for this object, so there is nothing to cancel.
-    return;
-  }
-
-  RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
-      object_directory_pull_callback_id_, object_id));
-}
+void ObjectManager::CancelPull(const ObjectID &object_id) {}
 
 ray::Status ObjectManager::Wait(
     const std::vector<ObjectID> &object_ids,

@@ -36,7 +36,7 @@ class TaskDependencyManagerInterface {
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
 
-  virtual void CancelTaskDependencies(const TaskID &task_id) = 0;
+  virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
 
@@ -76,15 +76,16 @@ class DependencyManager : public TaskDependencyManagerInterface {
 
   /// Update the `ray.wait` request. This will start a Pull request for any new
   /// objects that we're not already fetching.
-  void AddOrUpdateWaitRequest(const WorkerID &worker_id,
-                              const std::vector<rpc::ObjectReference> &required_objects);
+  void StartOrUpdateWaitRequest(
+      const WorkerID &worker_id,
+      const std::vector<rpc::ObjectReference> &required_objects);
 
   void CancelWaitRequest(const WorkerID &worker_id);
 
   /// Update the `ray.get` request. If any new objects are added, cancel the
   /// old Pull request and add a new one.
-  void AddOrUpdateGetRequest(const WorkerID &worker_id,
-                             const std::vector<rpc::ObjectReference> &required_objects);
+  void StartOrUpdateGetRequest(const WorkerID &worker_id,
+                               const std::vector<rpc::ObjectReference> &required_objects);
 
   void CancelGetRequest(const WorkerID &worker_id);
 
@@ -92,7 +93,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   bool AddTaskDependencies(const TaskID &task_id,
                            const std::vector<rpc::ObjectReference> &required_objects);
 
-  void CancelTaskDependencies(const TaskID &task_id);
+  void RemoveTaskDependencies(const TaskID &task_id);
 
   /// Handle an object becoming locally available. If there are any subscribed
   /// tasks that depend on this object, then the object will be canceled.

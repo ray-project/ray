@@ -51,7 +51,8 @@ class PullManager {
   ///
   /// \return True if a new pull request was necessary. If true, the caller should
   /// subscribe to new locations of the object, and call OnLocationChange when necessary.
-  bool Pull(const ObjectID &object_id, const rpc::Address &owner_address);
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
+                std::vector<rpc::ObjectReference> *objects_to_cancel);
 
   /// Called when the available locations for a given object change.
   ///
@@ -70,7 +71,15 @@ class PullManager {
   ///
   /// \return True if a pull was cancelled. If there was no pending pull request for the
   /// object this method may return false.
-  bool CancelPull(const ObjectID &object_id);
+  void CancelPull(uint64_t request_id, std::vector<ObjectID> *objects_to_cancel);
+
+  /// Try to fetch an object immediately, by restoring the object from external
+  /// storage or by fetching the object from one of its expected client
+  /// locations.
+  ///
+  /// \param object_id The object's object id.
+  /// \return Void.
+  void TryFetch(const ObjectID &object_id);
 
   /// Called when the retry timer fires. If this fires, the pull manager may try to pull
   /// existing objects from other nodes if necessary.
@@ -81,27 +90,17 @@ class PullManager {
 
  private:
   /// A helper structure for tracking information about each ongoing object pull.
-  struct PullRequest {
-    PullRequest(double first_retry_time)
-        : client_locations(), next_pull_time(first_retry_time) {}
+  struct ObjectPullRequest {
+    ObjectPullRequest(double first_retry_time)
+        : client_locations(),
+          spilled_url(),
+          next_pull_time(first_retry_time),
+          bundle_request_ids() {}
     std::vector<NodeID> client_locations;
+    std::string spilled_url;
     double next_pull_time;
+    absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
-
-  /// See the constructor's arguments.
-  NodeID self_node_id_;
-  const std::function<bool(const ObjectID &)> object_is_local_;
-  const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
-  const RestoreSpilledObjectCallback restore_spilled_object_;
-  const std::function<double()> get_time_;
-  int pull_timeout_ms_;
-
-  /// The objects that this object manager is currently trying to fetch from
-  /// remote object managers.
-  std::unordered_map<ObjectID, PullRequest> pull_requests_;
-
-  /// Internally maintained random number generator.
-  std::mt19937_64 gen_;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -113,5 +112,26 @@ class PullManager {
   /// \param object_id The object's object id.
   /// \return Void.
   void TryPull(const ObjectID &object_id);
+
+  /// See the constructor's arguments.
+  NodeID self_node_id_;
+  const std::function<bool(const ObjectID &)> object_is_local_;
+  const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
+  const RestoreSpilledObjectCallback restore_spilled_object_;
+  const std::function<double()> get_time_;
+  int pull_timeout_ms_;
+
+  /// The next ID to assign to a bundle pull request, so that the caller can
+  /// cancel. Start at 1 because 0 means null.
+  uint64_t next_req_id_ = 1;
+
+  std::unordered_map<uint64_t, std::vector<rpc::ObjectReference>> pull_request_bundles_;
+
+  /// The objects that this object manager is currently trying to fetch from
+  /// remote object managers.
+  std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
+
+  /// Internally maintained random number generator.
+  std::mt19937_64 gen_;
 };
 }  // namespace ray

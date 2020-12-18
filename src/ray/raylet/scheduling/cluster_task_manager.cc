@@ -104,7 +104,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
       // TODO(swang): We should actually cancel the task dependencies later, to
       // prevent them from getting evicted before the worker gets a ref to the
       // object values.
-      task_dependency_manager_.CancelTaskDependencies(
+      task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
     }
 
@@ -332,7 +332,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     ReplyCancelled(iter->second);
     waiting_tasks_.erase(iter);
 
-    task_dependency_manager_.CancelTaskDependencies(task_id);
+    task_dependency_manager_.RemoveTaskDependencies(task_id);
     return true;
   }
 

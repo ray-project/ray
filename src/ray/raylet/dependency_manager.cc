@@ -22,8 +22,12 @@ bool DependencyManager::GetOwnerAddress(const ObjectID &object_id,
 void DependencyManager::RemoveObjectIfNotNeeded(
     absl::flat_hash_map<ObjectID, DependencyManager::ObjectDependencies>::iterator
         required_object_it) {
+  const auto &object_id = required_object_it->first;
   if (required_object_it->second.Empty()) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " no longer needed";
     if (required_object_it->second.wait_request_id > 0) {
+      RAY_LOG(DEBUG) << "Canceling pull for wait request of object " << object_id
+                     << " request: " << required_object_it->second.wait_request_id;
       object_manager_.CancelPull(required_object_it->second.wait_request_id);
     }
     reconstruction_policy_.Cancel(required_object_it->first);
@@ -44,9 +48,10 @@ DependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
   return it;
 }
 
-void DependencyManager::AddOrUpdateWaitRequest(
+void DependencyManager::StartOrUpdateWaitRequest(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects) {
+  RAY_LOG(DEBUG) << "Starting wait request for worker " << worker_id;
   auto &wait_request = wait_requests_[worker_id];
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
@@ -56,10 +61,14 @@ void DependencyManager::AddOrUpdateWaitRequest(
     }
 
     if (wait_request.insert(obj_id).second) {
+      RAY_LOG(DEBUG) << "Worker " << worker_id << " called ray.wait on non-local object "
+                     << obj_id;
       auto it = GetOrInsertRequiredObject(obj_id, ref);
       it->second.dependent_wait_requests.insert(worker_id);
       if (it->second.wait_request_id == 0) {
         it->second.wait_request_id = object_manager_.Pull({ref});
+        RAY_LOG(DEBUG) << "Started pull for wait request for object " << obj_id
+                       << " request: " << it->second.wait_request_id;
       }
     }
   }
@@ -71,6 +80,7 @@ void DependencyManager::AddOrUpdateWaitRequest(
 }
 
 void DependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
+  RAY_LOG(DEBUG) << "Canceling wait request for worker " << worker_id;
   auto it = wait_requests_.find(worker_id);
   if (it == wait_requests_.end()) {
     return;
@@ -86,14 +96,16 @@ void DependencyManager::CancelWaitRequest(const WorkerID &worker_id) {
   wait_requests_.erase(it);
 }
 
-void DependencyManager::AddOrUpdateGetRequest(
+void DependencyManager::StartOrUpdateGetRequest(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects) {
+  RAY_LOG(DEBUG) << "Starting get request for worker " << worker_id;
   auto &get_request = get_requests_[worker_id];
   bool modified = false;
   for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
     if (get_request.first.insert(obj_id).second) {
+      RAY_LOG(DEBUG) << "Worker " << worker_id << " called ray.get on object " << obj_id;
       auto it = GetOrInsertRequiredObject(obj_id, ref);
       it->second.dependent_get_requests.insert(worker_id);
       modified = true;
@@ -101,28 +113,35 @@ void DependencyManager::AddOrUpdateGetRequest(
   }
 
   if (modified) {
-    // Pull the new dependencies before canceling the old request, in case some
-    // of the old dependencies are still being fetched.
     std::vector<rpc::ObjectReference> refs;
     for (auto &obj_id : get_request.first) {
       auto it = required_objects_.find(obj_id);
       RAY_CHECK(it != required_objects_.end());
       refs.push_back(ObjectIdToRef(obj_id, it->second.owner_address));
     }
+    // Pull the new dependencies before canceling the old request, in case some
+    // of the old dependencies are still being fetched.
     uint64_t new_request_id = object_manager_.Pull(refs);
     if (get_request.second != 0) {
+      RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+                     << " request: " << get_request.second;
       object_manager_.CancelPull(get_request.second);
     }
     get_request.second = new_request_id;
+    RAY_LOG(DEBUG) << "Started pull for get request from worker " << worker_id
+                   << " request: " << get_request.second;
   }
 }
 
 void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
+  RAY_LOG(DEBUG) << "Canceling get request for worker " << worker_id;
   auto it = get_requests_.find(worker_id);
   if (it == get_requests_.end()) {
     return;
   }
 
+  RAY_LOG(DEBUG) << "Canceling pull for get request from worker " << worker_id
+                 << " request: " << it->second.second;
   object_manager_.CancelPull(it->second.second);
 
   for (const auto &obj_id : it->second.first) {
@@ -138,6 +157,7 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 /// Request dependencies for a queued task.
 bool DependencyManager::AddTaskDependencies(
     const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+  RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id;
   auto inserted = queued_task_requests_.emplace(task_id, required_objects);
   RAY_CHECK(inserted.second);
   auto &task_entry = inserted.first->second;
@@ -154,16 +174,25 @@ bool DependencyManager::AddTaskDependencies(
     }
   }
 
-  task_entry.pull_request_id = object_manager_.Pull(required_objects);
+  if (!required_objects.empty()) {
+    task_entry.pull_request_id = object_manager_.Pull(required_objects);
+    RAY_LOG(DEBUG) << "Started pull for dependencies of task " << task_id
+                   << " request: " << task_entry.pull_request_id;
+  }
 
   return task_entry.num_missing_get_dependencies == 0;
 }
 
-void DependencyManager::CancelTaskDependencies(const TaskID &task_id) {
+void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
+  RAY_LOG(DEBUG) << "Removing dependencies for task " << task_id;
   auto task_entry = queued_task_requests_.find(task_id);
   RAY_CHECK(task_entry != queued_task_requests_.end());
 
-  object_manager_.CancelPull(task_entry->second.pull_request_id);
+  if (task_entry->second.pull_request_id > 0) {
+    RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
+                   << " request: " << task_entry->second.pull_request_id;
+    object_manager_.CancelPull(task_entry->second.pull_request_id);
+  }
 
   for (const auto &obj_id : task_entry->second.dependencies) {
     auto it = required_objects_.find(obj_id);
@@ -171,6 +200,8 @@ void DependencyManager::CancelTaskDependencies(const TaskID &task_id) {
     it->second.dependent_tasks.erase(task_id);
     RemoveObjectIfNotNeeded(it);
   }
+
+  queued_task_requests_.erase(task_entry);
 }
 
 std::vector<TaskID> DependencyManager::HandleObjectMissing(
@@ -238,7 +269,10 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
     // `ray.wait` calls can now return the object as ready.
     object_entry->second.dependent_wait_requests.clear();
     if (object_entry->second.wait_request_id > 0) {
+      RAY_LOG(DEBUG) << "Canceling pull for wait request of object " << object_id
+                     << " request: " << object_entry->second.wait_request_id;
       object_manager_.CancelPull(object_entry->second.wait_request_id);
+      object_entry->second.wait_request_id = 0;
     }
     reconstruction_policy_.Cancel(object_entry->first);
     RemoveObjectIfNotNeeded(object_entry);
