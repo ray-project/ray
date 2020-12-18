@@ -11,8 +11,10 @@
 
 from abc import ABC
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any, Union, Optional
+import ray.core.generated.ray_client_pb2 as ray_client_pb2
 if TYPE_CHECKING:
+    from ray.experimental.client.common import ClientActorHandle
     from ray.experimental.client.common import ClientStub
     from ray.experimental.client.common import ClientObjectRef
     from ray._raylet import ObjectRef
@@ -29,13 +31,13 @@ class APIImpl(ABC):
     """
 
     @abstractmethod
-    def get(self, *args, **kwargs) -> Any:
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         """
         get is the hook stub passed on to replace `ray.get`
 
         Args:
-            args: opaque arguments
-            kwargs: opaque keyword arguments
+            vals: [Client]ObjectRef or list of these refs to retrieve.
+            timeout: Optional timeout in milliseconds
         """
         pass
 
@@ -103,6 +105,64 @@ class APIImpl(ABC):
         """
         pass
 
+    @abstractmethod
+    def kill(self, actor, *, no_restart=True):
+        """
+        kill forcibly stops an actor running in the cluster
+
+        Args:
+            no_restart: Whether this actor should be restarted if it's a
+              restartable actor.
+        """
+        pass
+
+    @abstractmethod
+    def cancel(self, obj, *, force=False, recursive=True):
+        """
+        Cancels a task on the cluster.
+
+        If the specified task is pending execution, it will not be executed. If
+        the task is currently executing, the behavior depends on the ``force``
+        flag, as per `ray.cancel()`
+
+        Only non-actor tasks can be canceled. Canceled tasks will not be
+        retried (max_retries will not be respected).
+
+        Args:
+            object_ref (ObjectRef): ObjectRef returned by the task
+                that should be canceled.
+            force (boolean): Whether to force-kill a running task by killing
+                the worker that is running the task.
+            recursive (boolean): Whether to try to cancel tasks submitted by
+                the task specified.
+        """
+        pass
+
+    @abstractmethod
+    def call_release(self, id: bytes) -> None:
+        """
+        Attempts to release an object reference.
+
+        When client references are destructed, they release their reference,
+        which can opportunistically send a notification through the datachannel
+        to release the reference being held for that object on the server.
+
+        Args:
+            id: The id of the reference to release on the server side.
+        """
+
+    @abstractmethod
+    def call_retain(self, id: bytes) -> None:
+        """
+        Attempts to retain a client object reference.
+
+        Increments the reference count on the client side, to prevent
+        the client worker from attempting to release the server reference.
+
+        Args:
+            id: The id of the reference to retain on the client side.
+        """
+
 
 class ClientAPI(APIImpl):
     """
@@ -113,8 +173,8 @@ class ClientAPI(APIImpl):
     def __init__(self, worker):
         self.worker = worker
 
-    def get(self, *args, **kwargs):
-        return self.worker.get(*args, **kwargs)
+    def get(self, vals, *, timeout=None):
+        return self.worker.get(vals, timeout=timeout)
 
     def put(self, *args, **kwargs):
         return self.worker.put(*args, **kwargs)
@@ -128,8 +188,67 @@ class ClientAPI(APIImpl):
     def call_remote(self, instance: "ClientStub", *args, **kwargs):
         return self.worker.call_remote(instance, *args, **kwargs)
 
+    def call_release(self, id: bytes) -> None:
+        return self.worker.call_release(id)
+
+    def call_retain(self, id: bytes) -> None:
+        return self.worker.call_retain(id)
+
     def close(self) -> None:
         return self.worker.close()
+
+    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
+        return self.worker.terminate_actor(actor, no_restart)
+
+    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
+        return self.worker.terminate_task(obj, force, recursive)
+
+    # Various metadata methods for the client that are defined in the protocol.
+    def is_initialized(self) -> bool:
+        """ True if our client is connected, and if the server is initialized.
+
+        Returns:
+            A boolean determining if the client is connected and
+            server initialized.
+        """
+        return self.worker.is_initialized()
+
+    def nodes(self):
+        """Get a list of the nodes in the cluster (for debugging only).
+
+        Returns:
+            Information about the Ray clients in the cluster.
+        """
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.NODES)
+
+    def cluster_resources(self):
+        """Get the current total cluster resources.
+
+        Note that this information can grow stale as nodes are added to or
+        removed from the cluster.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
+
+    def available_resources(self):
+        """Get the current available cluster resources.
+
+        This is different from `cluster_resources` in that this will return
+        idle (available) resources rather than total resources.
+
+        Note that this information can grow stale as tasks start and finish.
+
+        Returns:
+            A dictionary mapping resource name to the total quantity of that
+                resource in the cluster.
+        """
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):

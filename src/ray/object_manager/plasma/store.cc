@@ -133,6 +133,8 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
+      usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
+                             1e9),
       create_request_queue_(
           RayConfig::instance().object_store_full_max_retries(),
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
@@ -222,7 +224,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // make room.
     if (space_needed > 0) {
       if (spill_objects_callback_) {
-        // If the space needed is too small, we'd like to bump up to the minimum spilling
+        // If the space needed is too small, we'd like to bump up to the minimum
         // size. Cap the max size to be lower than the plasma store limit.
         int64_t byte_to_spill =
             std::min(PlasmaAllocator::GetFootprintLimit(),
@@ -257,6 +259,13 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     GetMallocMapinfo(pointer, fd, map_size, offset);
     RAY_CHECK(*fd != INVALID_FD);
     *error = PlasmaError::OK;
+  }
+
+  auto now = absl::GetCurrentTimeNanos();
+  if (now - last_usage_log_ns_ > usage_log_interval_ns_) {
+    RAY_LOG(INFO) << "Object store current usage " << (PlasmaAllocator::Allocated() / 1e9)
+                  << " / " << (PlasmaAllocator::GetFootprintLimit() / 1e9) << " GB.";
+    last_usage_log_ns_ = now;
   }
   return pointer;
 }
