@@ -154,7 +154,6 @@ class ActorStateReconciler:
     backend_replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
     backends_to_remove: List[BackendTag] = field(default_factory=list)
-    endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
 
     # TODO(edoakes): consider removing this and just using the names.
 
@@ -832,8 +831,6 @@ class ServeController:
             # Remove the traffic policy entry if it exists.
             if endpoint in self.current_state.traffic_policies:
                 del self.current_state.traffic_policies[endpoint]
-
-            self.actor_reconciler.endpoints_to_remove.append(endpoint)
 
             return_uuid = self._create_event_with_result({
                 route_to_delete: None,

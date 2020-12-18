@@ -115,7 +115,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Process a new client connection.
   ///
@@ -296,28 +296,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
-
-  /// Make a placement decision for the resource_map and subtract original resources so
-  /// that the node is ready to commit (create) placement group resources.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  /// \return True is resources were successfully prepared. False otherwise.
-  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                     const BundleSpecification &bundle_spec);
-
-  /// Make a placement decision for the resource_map.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                    const BundleSpecification &bundle_spec);
 
   /// Handle a task whose return value(s) must be reconstructed.
   ///
