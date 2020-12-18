@@ -245,35 +245,36 @@ std::string NodeResources::DictString(StringIdMap string_to_in_map) const {
   bool first = true;
   buffer << "{";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    if (this->predefined_resources[i].total <= 0) {
+      continue;
+    }
     if (first) {
       first = false;
     } else {
       buffer << ", ";
     }
-    if (this->predefined_resources[i].total > 0) {
-      std::string name = "";
-      switch (i) {
-      case CPU:
-        name = "CPU";
-        break;
-      case MEM:
-        name = "memory";
-        break;
-      case GPU:
-        name = "GPU";
-        break;
-      case TPU:
-        name = "TPU";
-        break;
-      default:
-        RAY_CHECK(false) << "This should never happen.";
-        break;
-      }
-      buffer << format_resource(name, this->predefined_resources[i].available.Double())
-             << "/";
-      buffer << format_resource(name, this->predefined_resources[i].total.Double());
-      buffer << " " << name;
+    std::string name = "";
+    switch (i) {
+    case CPU:
+      name = "CPU";
+      break;
+    case MEM:
+      name = "memory";
+      break;
+    case GPU:
+      name = "GPU";
+      break;
+    case TPU:
+      name = "TPU";
+      break;
+    default:
+      RAY_CHECK(false) << "This should never happen.";
+      break;
     }
+    buffer << format_resource(name, this->predefined_resources[i].available.Double())
+           << "/";
+    buffer << format_resource(name, this->predefined_resources[i].total.Double());
+    buffer << " " << name;
   }
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
