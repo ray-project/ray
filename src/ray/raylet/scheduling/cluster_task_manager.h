@@ -115,6 +115,16 @@ class ClusterTaskManager {
   void FillResourceUsage(bool light_report_resource_usage_enabled,
                          std::shared_ptr<rpc::ResourcesData> data) const;
 
+  /// Return if any tasks are pending resource acquisition.
+  ///
+  /// \param[in] exemplar An example task that is deadlocking.
+  /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
+  /// \param[in] num_pending_tasks Number of pending tasks.
+  /// \param[in] any_pending True if there's any pending exemplar.
+  /// \return True if any progress is any tasks are pending.
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+                       int *num_pending_tasks) const;
+
   std::string DebugString() const;
 
  private:
@@ -147,11 +157,11 @@ class ClusterTaskManager {
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
-  /// Tasks move from scheduled | waiting -> dispatch.
+  /// Tasks move from scheduled -> dispatch.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
-  /// Tasks move from waiting -> dispatch.
+  /// Tasks move (back) from waiting -> scheduled.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Queue of lease requests that are infeasible.

@@ -91,15 +91,22 @@ def _get_client_api() -> APIImpl:
     return api
 
 
+def _get_server_instance():
+    """Used inside tests to inspect the running server.
+    """
+    global _server_api
+    if _server_api is not None:
+        return _server_api.server
+
+
 class RayAPIStub:
     def connect(self,
                 conn_str: str,
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None,
-                stub=None):
+                stub=None) -> None:
         from ray.experimental.client.worker import Worker
-        _client_worker = Worker(
-            conn_str, secure=secure, metadata=metadata, stub=stub)
+        _client_worker = Worker(conn_str, secure=secure, metadata=metadata)
         _set_client_api(ClientAPI(_client_worker))
 
     def disconnect(self):
@@ -112,6 +119,10 @@ class RayAPIStub:
         global _get_client_api
         api = _get_client_api()
         return getattr(api, key)
+
+    def is_connected(self) -> bool:
+        global _client_api
+        return _client_api is not None
 
 
 ray = RayAPIStub()

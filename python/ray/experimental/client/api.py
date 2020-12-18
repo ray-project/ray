@@ -138,6 +138,31 @@ class APIImpl(ABC):
         """
         pass
 
+    @abstractmethod
+    def call_release(self, id: bytes) -> None:
+        """
+        Attempts to release an object reference.
+
+        When client references are destructed, they release their reference,
+        which can opportunistically send a notification through the datachannel
+        to release the reference being held for that object on the server.
+
+        Args:
+            id: The id of the reference to release on the server side.
+        """
+
+    @abstractmethod
+    def call_retain(self, id: bytes) -> None:
+        """
+        Attempts to retain a client object reference.
+
+        Increments the reference count on the client side, to prevent
+        the client worker from attempting to release the server reference.
+
+        Args:
+            id: The id of the reference to retain on the client side.
+        """
+
 
 class ClientAPI(APIImpl):
     """
@@ -162,6 +187,12 @@ class ClientAPI(APIImpl):
 
     def call_remote(self, instance: "ClientStub", *args, **kwargs):
         return self.worker.call_remote(instance, *args, **kwargs)
+
+    def call_release(self, id: bytes) -> None:
+        return self.worker.call_release(id)
+
+    def call_retain(self, id: bytes) -> None:
+        return self.worker.call_retain(id)
 
     def close(self) -> None:
         return self.worker.close()
