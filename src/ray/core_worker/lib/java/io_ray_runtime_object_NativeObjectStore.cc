@@ -126,7 +126,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
-  auto status = ray::CoreWorkerProcess::GetCoreWorker().Delete(object_ids, (bool)localOnly);
+  auto status =
+      ray::CoreWorkerProcess::GetCoreWorker().Delete(object_ids, (bool)localOnly);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

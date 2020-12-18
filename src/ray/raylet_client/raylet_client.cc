@@ -276,8 +276,8 @@ Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_e
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
                                          bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateFreeObjectsRequest(
-      fbb, local_only, to_flatbuf(fbb, object_ids));
+  auto message =
+      protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
