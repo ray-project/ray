@@ -45,13 +45,15 @@ message ClientTask {
   }
   // Which type of work this request represents.
   RemoteExecType type = 1;
-  // A name parameter, if the payload can be called in more than one way (like a method on a payload object).
+  // A name parameter, if the payload can be called in more than one way (like a method on
+  // a payload object).
   string name = 2;
   // A reference to the payload.
   bytes payload_id = 3;
   // The parameters to pass to this call.
   repeated Arg args = 4;
-  // The ID of the client namespace associated with the Datapath stream making this request.
+  // The ID of the client namespace associated with the Datapath stream making this
+  // request.
   string client_id = 5;
 }
 
@@ -170,7 +172,7 @@ service RayletDriver {
 
 message ReleaseRequest {
   // The IDs to release from the server; the client connected on this stream no
-  //longer holds a reference to them.
+  // longer holds a reference to them.
   repeated bytes ids = 1;
 }
 
