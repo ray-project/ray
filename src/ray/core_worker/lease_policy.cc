@@ -54,8 +54,8 @@ absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
 }
 
 rpc::Address LocalLeasePolicy::GetBestNodeForTask(const TaskSpecification &spec) {
-  // Always return the fallback (local) node.
-  return fallback_rpc_address_;
+  // Always return the local node.
+  return local_node_rpc_address_;
 }
 
 }  // namespace ray

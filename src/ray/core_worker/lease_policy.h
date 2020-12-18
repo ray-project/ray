@@ -82,17 +82,17 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
 /// a worker node for a lease request. This class is not thread-safe.
 class LocalLeasePolicy : public LeasePolicyInterface {
  public:
-  LocalLeasePolicy(const rpc::Address fallback_rpc_address)
-      : fallback_rpc_address_(fallback_rpc_address) {}
+  LocalLeasePolicy(const rpc::Address local_node_rpc_address)
+      : local_node_rpc_address_(local_node_rpc_address) {}
 
   ~LocalLeasePolicy() {}
 
-  /// Get the address of the best worker node for a lease request for the provided task.
+  /// Get the address of the local node for a lease request for the provided task.
   rpc::Address GetBestNodeForTask(const TaskSpecification &spec);
 
  private:
-  /// RPC address of fallback node (usually the local node).
-  const rpc::Address fallback_rpc_address_;
+  /// RPC address of the local node.
+  const rpc::Address local_node_rpc_address_;
 };
 
 }  // namespace ray
