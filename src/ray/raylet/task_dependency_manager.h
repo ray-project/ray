@@ -17,7 +17,7 @@
 // clang-format off
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
 // clang-format on

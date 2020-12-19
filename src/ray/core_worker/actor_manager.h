@@ -18,7 +18,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
 
