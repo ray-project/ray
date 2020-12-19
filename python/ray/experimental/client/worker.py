@@ -25,6 +25,7 @@ from ray.experimental.client.client_pickler import dumps_from_client
 from ray.experimental.client.client_pickler import loads_from_server
 from ray.experimental.client.common import ClientActorClass
 from ray.experimental.client.common import ClientActorHandle
+from ray.experimental.client.common import ClientActorRef
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
 from ray.experimental.client.common import ClientStub
@@ -169,8 +170,12 @@ class Worker:
             task.args.append(pb_arg)
         for k, v in kwargs.items():
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
-        task.client_id = self._client_id
+        return self._call_schedule_for_task(task)
+
+    def _call_schedule_for_task(
+            self, task: ray_client_pb2.ClientTask) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
+        task.client_id = self._client_id
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
@@ -200,6 +205,14 @@ class Worker:
         self.server = None
         if self.channel:
             self.channel = None
+
+    def get_actor(self, name: str) -> ClientActorHandle:
+        task = ray_client_pb2.ClientTask()
+        task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
+        task.name = name
+        ids = self._call_schedule_for_task(task)
+        assert len(ids) == 1
+        return ClientActorHandle(ClientActorRef(ids[0]))
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
