@@ -316,8 +316,7 @@ class ActorStateReconciler:
                     ray.kill(replica, no_restart=True)
 
                 self.currently_stopping_replicas[asyncio.ensure_future(
-                    kill_actor(replica_name))] = tuple(
-                        [backend_tag, replica_tag])
+                    kill_actor(replica_name))] = (backend_tag, replica_tag)
 
     async def _check_currently_starting_replicas(self) -> bool:
         """Returns a boolean specifying if there are more replicas to start"""
@@ -328,8 +327,7 @@ class ActorStateReconciler:
                 list(self.currently_starting_replicas.keys()), timeout=0)
             for fut in done:
                 (backend_tag, replica_tag,
-                 replica_handle) = self.currently_starting_replicas.pop(
-                     fut.object_ref)
+                 replica_handle) = self.currently_starting_replicas.pop(fut)
                 self.backend_replicas[backend_tag][
                     replica_tag] = replica_handle
 
@@ -351,8 +349,7 @@ class ActorStateReconciler:
                 list(self.currently_stopping_replicas.keys()), timeout=0)
             for fut in done_stoppping:
                 (backend_tag,
-                 replica_tag) = self.currently_stopping_replicas.pop(
-                     fut.object_ref)
+                 replica_tag) = self.currently_stopping_replicas.pop(fut)
 
                 backend = self.backend_replicas_to_stop.get(backend_tag)
 
@@ -377,8 +374,9 @@ class ActorStateReconciler:
                                "sure there are enough resources to create the "
                                "replicas.".format(time.time() - start))
 
-            need_to_continue = self._check_currently_starting_replicas() or \
-                self._check_currently_stopping_replicas()
+            need_to_continue = (
+                await self._check_currently_starting_replicas()
+                or await self._check_currently_stopping_replicas())
 
             asyncio.sleep(1)
 
