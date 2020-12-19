@@ -185,6 +185,7 @@ def test_qsize(ray_start_regular_shared):
         size -= 1
         assert q.qsize() == size
 
+
 def test_shutdown(ray_start_regular_shared):
     q = Queue()
     actor = q.actor
@@ -192,6 +193,7 @@ def test_shutdown(ray_start_regular_shared):
     assert q.actor is None
     with pytest.raises(RayActorError):
         ray.get(actor.empty.remote())
+
 
 def test_custom_resources(ray_start_regular_shared):
     current_resources = ray.available_resources()
