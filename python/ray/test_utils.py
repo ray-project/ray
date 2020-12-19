@@ -442,4 +442,4 @@ def format_web_url(url):
 
 
 def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") == "1"
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") != "0"
