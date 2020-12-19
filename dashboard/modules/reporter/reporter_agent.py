@@ -192,6 +192,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     def _get_raylet_stats(self):
         curr_proc = psutil.Process()
+        # Here, parent is always raylet because the
+        # dashboard agent is a child of the raylet process.
         parent = curr_proc.parent()
         if parent is None or parent.pid == 1:
             return []
