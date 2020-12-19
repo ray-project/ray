@@ -400,8 +400,9 @@ class HyperOptSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     if quantize:
-                        return hpo.hp.qloguniform(par, domain.lower,
-                                                  domain.upper, quantize)
+                        return hpo.hp.qloguniform(par, np.log(domain.lower),
+                                                  np.log(domain.upper),
+                                                  quantize)
                     return hpo.hp.loguniform(par, np.log(domain.lower),
                                              np.log(domain.upper))
                 elif isinstance(sampler, Uniform):
