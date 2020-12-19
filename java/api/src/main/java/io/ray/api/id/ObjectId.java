@@ -10,7 +10,7 @@ import java.util.Random;
  */
 public class ObjectId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 28;
+  public static final int LENGTH = 20;
 
   /**
    * Create an ObjectId from a ByteBuffer.
