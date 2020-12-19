@@ -59,8 +59,10 @@ message ClientTask {
 }
 
 message ClientTaskTicket {
+  bool valid = 1;
   // A reference to the returned value from the execution.
-  bytes return_id = 1;
+  bytes return_id = 2;
+  bytes error = 3;
 }
 
 // Delivers data to the server

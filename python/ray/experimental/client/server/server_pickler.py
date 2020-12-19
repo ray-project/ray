@@ -55,6 +55,7 @@ class ServerPickler(cloudpickle.CloudPickler):
                 type="Object",
                 client_id=self.client_id,
                 ref_id=obj_id,
+                name=None,
             )
         elif isinstance(obj, ray.actor.ActorHandle):
             actor_id = obj._actor_id.binary()
@@ -67,6 +68,7 @@ class ServerPickler(cloudpickle.CloudPickler):
                 type="Actor",
                 client_id=self.client_id,
                 ref_id=obj._actor_id.binary(),
+                name=None,
             )
         return None
 
@@ -78,7 +80,9 @@ class ClientUnpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         assert isinstance(pid, PickleStub)
-        if pid.type == "Object":
+        if pid.type == "Ray":
+            return ray
+        elif pid.type == "Object":
             return self.server.object_refs[pid.client_id][pid.ref_id]
         elif pid.type == "Actor":
             return self.server.actor_refs[pid.ref_id]
@@ -92,6 +96,9 @@ class ClientUnpickler(pickle.Unpickler):
         elif pid.type == "RemoteActor":
             return self.server.lookup_or_register_actor(
                 pid.ref_id, pid.client_id)
+        elif pid.type == "RemoteMethod":
+            actor = self.server.actor_refs[pid.ref_id]
+            return getattr(actor, pid.name)
         else:
             raise NotImplementedError("Uncovered client data type")
 

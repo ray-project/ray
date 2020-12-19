@@ -388,6 +388,7 @@ def test_ray_options(shutdown_only):
     assert without_options != with_options
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -730,6 +731,7 @@ def test_args_stars_after(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.

@@ -210,16 +210,25 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     (task.name,
                      ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
         with stash_api_for_tests(self._test_mode):
-            if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                return self._schedule_function(task, context)
-            elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                return self._schedule_actor(task, context)
-            elif task.type == ray_client_pb2.ClientTask.METHOD:
-                return self._schedule_method(task, context)
-            else:
-                raise NotImplementedError(
-                    "Unimplemented Schedule task type: %s" %
-                    ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
+            try:
+                if task.type == ray_client_pb2.ClientTask.FUNCTION:
+                    result = self._schedule_function(task, context)
+                elif task.type == ray_client_pb2.ClientTask.ACTOR:
+                    result = self._schedule_actor(task, context)
+                elif task.type == ray_client_pb2.ClientTask.METHOD:
+                    result = self._schedule_method(task, context)
+                else:
+                    raise NotImplementedError(
+                        "Unimplemented Schedule task type: %s" %
+                        ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
+                result.valid = True
+                return result
+            except Exception as e:
+                logger.error(f"Caught schedule exception {e}")
+                return ray_client_pb2.ClientTaskTicket(
+                    valid=False, error=cloudpickle.dumps(e))
+
+
 
     def _schedule_method(self, task: ray_client_pb2.ClientTask,
                          context=None) -> ray_client_pb2.ClientTaskTicket:

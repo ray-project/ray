@@ -157,7 +157,12 @@ class Worker:
             task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
         task.client_id = self._client_id
         logger.debug("Scheduling %s" % task)
-        ticket = self.server.Schedule(task, metadata=self.metadata)
+        try:
+            ticket = self.server.Schedule(task, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise e.details()
+        if not ticket.valid:
+            raise cloudpickle.loads(ticket.error)
         return ticket.return_id
 
     def call_release(self, id: bytes) -> None:

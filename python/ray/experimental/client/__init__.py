@@ -80,18 +80,7 @@ def reset_api():
 
 def _get_client_api() -> APIImpl:
     global _client_api
-    global _server_api
-    global _is_server
-    api = None
-    if _is_server:
-        api = _server_api
-    else:
-        api = _client_api
-    if api is None:
-        # We're inside a raylet worker
-        from ray.experimental.client.server.core_ray_api import CoreRayAPI
-        return CoreRayAPI()
-    return api
+    return _client_api
 
 
 def _get_server_instance():
