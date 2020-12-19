@@ -312,12 +312,26 @@ and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
 python versions must be the same in both environments.  To specify
 an environment for a backend to use, simply pass the environment name in to
 :mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-as shown below.  Be sure to run the script in an activated conda environment
-(not required to be ``ray-tf1`` or ``ray-tf2``).
+as shown below.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-Alternatively, you may omit the argument ``env`` and call
-:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
-from a script running in the conda environment you want the backend to run in.
+.. warning::
+  The script must be run in an activated conda environment (not required to be
+  ``ray-tf1`` or ``ray-tf2``).  We hope to remove this restriction in the
+  future.
 
+.. note::
+  If the argument ``env`` is omitted, backends will be started in the same
+  conda environment as the caller of
+  :mod:`client.create_backend <ray.serve.api.Client.create_backend>` by
+  default.
+
+The dependencies required in the backend may be different than
+the dependencies installed in the driver program (the one running Serve API
+calls). In this case, you can use an
+:mod:`ImportedBackend <ray.serve.backends.ImportedBackend>` to specify a
+backend based on a class that is installed in the Python environment that
+the workers will run in. Example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py

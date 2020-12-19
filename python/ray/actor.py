@@ -1,6 +1,7 @@
 import inspect
 import logging
 import weakref
+import _thread
 
 import ray.ray_constants as ray_constants
 import ray._raylet
@@ -1006,6 +1007,7 @@ def exit_actor():
     """Intentionally exit the current actor.
 
     This function is used to disconnect an actor and exit the worker.
+    Any ``atexit`` handlers installed in the actor will be run.
 
     Raises:
         Exception: An exception is raised if this is a driver or this
@@ -1018,6 +1020,14 @@ def exit_actor():
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
+
+        # In asyncio actor mode, we can't raise SystemExit because it will just
+        # quit the asycnio event loop thread, not the main thread. Instead, we
+        # raise an interrupt signal to the main thread to tell it to exit.
+        if worker.core_worker.current_actor_is_asyncio():
+            _thread.interrupt_main()
+            return
+
         # Set a flag to indicate this is an intentional actor exit. This
         # reduces log verbosity.
         exit = SystemExit(0)

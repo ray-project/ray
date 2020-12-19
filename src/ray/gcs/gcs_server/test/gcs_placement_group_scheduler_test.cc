@@ -35,21 +35,20 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     }));
 
     for (int index = 0; index < 3; ++index) {
-      raylet_clients_.push_back(
-          std::make_shared<GcsServerMocker::MockRayletResourceClient>());
+      raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>();
-    gcs_node_manager_ =
-        std::make_shared<gcs::GcsNodeManager>(io_service_, io_service_, gcs_pub_sub_,
-                                              gcs_table_storage_, gcs_resource_manager_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
+        io_service_, gcs_pub_sub_, gcs_table_storage_, gcs_resource_manager_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
-        /*lease_client_fplacement_groupy=*/
-        [this](const rpc::Address &address) { return raylet_clients_[address.port()]; });
+        raylet_client_pool_);
   }
 
   void TearDown() override {
@@ -99,11 +98,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node, int cpu_num = 10) {
     gcs_node_manager_->AddNode(node);
-    rpc::HeartbeatTableData heartbeat;
-    heartbeat.set_node_id(node->node_id());
-    (*heartbeat.mutable_resources_available())["CPU"] = cpu_num;
+    rpc::ResourcesData resource;
+    resource.set_node_id(node->node_id());
+    (*resource.mutable_resources_available())["CPU"] = cpu_num;
     gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
-                                                   heartbeat);
+                                                   resource);
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
@@ -204,7 +203,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   boost::asio::io_service io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
 
-  std::vector<std::shared_ptr<GcsServerMocker::MockRayletResourceClient>> raylet_clients_;
+  std::vector<std::shared_ptr<GcsServerMocker::MockRayletClient>> raylet_clients_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsPlacementGroupScheduler> scheduler_;
@@ -215,6 +214,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
 };
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestSpreadScheduleFailedWithZeroNode) {
