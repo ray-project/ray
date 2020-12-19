@@ -91,9 +91,10 @@ class TestObjectManagerBase : public ::testing::Test {
     push_timeout_ms = 1500;
 
     // start first server
+    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
                                          /*is_test_client=*/true);
-    gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
+    gcs_client_1 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = socket_name_1;
@@ -105,7 +106,7 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
+    gcs_client_2 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = socket_name_2;
@@ -134,6 +135,10 @@ class TestObjectManagerBase : public ::testing::Test {
 
     TestSetupUtil::StopObjectStore(socket_name_1);
     TestSetupUtil::StopObjectStore(socket_name_2);
+
+    if (!gcs_server_socket_name_.empty()) {
+      TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
+    }
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -171,6 +176,7 @@ class TestObjectManagerBase : public ::testing::Test {
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
 
+  std::string gcs_server_socket_name_;
   std::string socket_name_1;
   std::string socket_name_2;
 
