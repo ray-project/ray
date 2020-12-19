@@ -12,7 +12,6 @@ import hashlib
 import cython
 import inspect
 import uuid
-import ray.ray_constants as ray_constants
 
 
 ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)
@@ -189,8 +188,7 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         function_name = function.__name__
         class_name = ""
 
-        pickled_function_hash = hashlib.shake_128(pickled_function).hexdigest(
-          ray_constants.ID_SIZE)
+        pickled_function_hash = hashlib.sha1(pickled_function).hexdigest()
 
         return cls(module_name, function_name, class_name,
                    pickled_function_hash)
@@ -210,10 +208,7 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         module_name = target_class.__module__
         class_name = target_class.__name__
         # Use a random uuid as function hash to solve actor name conflict.
-        return cls(
-          module_name, "__init__", class_name,
-          hashlib.shake_128(
-            uuid.uuid4().bytes).hexdigest(ray_constants.ID_SIZE))
+        return cls(module_name, "__init__", class_name, str(uuid.uuid4()))
 
     @property
     def module_name(self):
@@ -273,14 +268,14 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         Returns:
             ray.ObjectRef to represent the function descriptor.
         """
-        function_id_hash = hashlib.shake_128()
+        function_id_hash = hashlib.sha1()
         # Include the function module and name in the hash.
         function_id_hash.update(self.typed_descriptor.ModuleName())
         function_id_hash.update(self.typed_descriptor.FunctionName())
         function_id_hash.update(self.typed_descriptor.ClassName())
         function_id_hash.update(self.typed_descriptor.FunctionHash())
         # Compute the function ID.
-        function_id = function_id_hash.digest(ray_constants.ID_SIZE)
+        function_id = function_id_hash.digest()
         return ray.FunctionID(function_id)
 
     def is_actor_method(self):
