@@ -42,7 +42,7 @@ class ActorHandle {
   ActorHandle(const std::string &serialized);
 
   /// Constructs an ActorHandle from a gcs::ActorTableData message.
-  ActorHandle(const gcs::ActorTableData &actor_table_data);
+  ActorHandle(const rpc::ActorTableData &actor_table_data);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 

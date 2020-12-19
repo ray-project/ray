@@ -43,6 +43,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
