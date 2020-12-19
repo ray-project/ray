@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def one_worker_100MiB(request):
     config = {
-        "object_store_full_max_retries": 2,
         "task_retry_delay_ms": 0,
     }
     yield ray.init(

@@ -94,10 +94,10 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
 
   {
     absl::MutexLock lock(&store_runner_mutex_);
-    store_.reset(new PlasmaStore(
-        main_service_, plasma_directory_, hugepages_enabled_, socket_name_,
-        external_store, RayConfig::instance().object_store_full_initial_delay_ms(),
-        spill_objects_callback, object_store_full_callback));
+    store_.reset(new PlasmaStore(main_service_, plasma_directory_, hugepages_enabled_,
+                                 socket_name_, external_store,
+                                 RayConfig::instance().object_store_full_delay_ms(),
+                                 spill_objects_callback, object_store_full_callback));
     plasma_config = store_->GetPlasmaStoreInfo();
 
     // We are using a single memory-mapped file by mallocing and freeing a single
@@ -132,6 +132,10 @@ void PlasmaStoreRunner::Shutdown() {
     store_->Stop();
     store_ = nullptr;
   }
+}
+
+bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
+  return store_->IsObjectSpillable(object_id);
 }
 
 std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
