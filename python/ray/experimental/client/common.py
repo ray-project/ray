@@ -1,5 +1,6 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.experimental.client import ray
+from ray.experimental.client.options import validate_options
 
 import json
 from typing import Any
@@ -143,7 +144,7 @@ class ClientActorClass(ClientStub):
         return ClientActorHandle(ClientActorRef(ref_ids[0]), self)
 
     def options(self, **kwargs):
-        return OptionWrapper(self, kwargs)
+        return ActorOptionWrapper(self, kwargs)
 
     def _remote(self, args=[], kwargs={}, **option_args):
         return self.options(**option_args).remote(*args, **kwargs)
@@ -241,50 +242,13 @@ class ClientRemoteMethod(ClientStub):
         return task
 
 
-_valid_options = [
-    "num_cpus",
-    "num_returns",
-    "num_gpus",
-    "resources",
-    "accelerator_type",
-    "max_calls",
-    "max_restarts",
-    "max_task_retries",
-    "max_retries",
-    "max_concurrency",
-    "name",
-    "lifetime",
-    "memory",
-    "object_store_memory",
-    "placement_group",
-    "placement_group_bundle_index",
-    "placement_group_capture_child_tasks",
-    "override_environment_variables",
-]
-
-
-def validate_options(
-    kwargs_dict: Optional[Dict[str, Any]],
-    strict: bool = True) -> Optional[Dict[str, Any]]:
-    if kwargs_dict is None:
-        return None
-    if len(kwargs_dict) == 0:
-        return None
-    out = {}
-    for k, v in kwargs_dict.items():
-        if k not in _valid_options:
-            if strict:
-                raise TypeError(f"Invalid option passed to remote(): {k}")
-            else:
-                continue
-        out[k] = v
-    return out
-
-
 class OptionWrapper:
     def __init__(self, stub: ClientStub, options: Optional[Dict[str, Any]]):
         self.remote_stub = stub
         self.options = validate_options(options)
+
+    def remote(self, *args, **kwargs):
+        return return_refs(ray.call_remote(self, *args, **kwargs))
 
     def __getattr__(self, key):
         return getattr(self.remote_stub, key)
@@ -293,6 +257,13 @@ class OptionWrapper:
         task = self.remote_stub._prepare_client_task()
         set_task_options(task, self.options)
         return task
+
+
+class ActorOptionWrapper(OptionWrapper):
+    def remote(self, *args, **kwargs):
+        ref_ids = ray.call_remote(self, *args, **kwargs)
+        assert len(ref_ids) == 1
+        return ClientActorHandle(ClientActorRef(ref_ids[0]), self)
 
 
 def set_task_options(

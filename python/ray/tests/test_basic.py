@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
+@pytest.mark.skipif(client_test_enabled(), reason="interferes with grpc")
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
     os.environ["http_proxy"] = "http://example.com"
@@ -55,7 +55,6 @@ def test_grpc_message_size(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7287
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_omp_threads_set(shutdown_only):
     ray.init(num_cpus=1)
     # Should have been auto set by ray init.
@@ -120,7 +119,6 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_invalid_arguments(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -175,7 +173,6 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -358,8 +355,8 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_ray_options(shutdown_only):
+    ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo():
@@ -368,7 +365,6 @@ def test_ray_options(shutdown_only):
         time.sleep(0.1)
         return ray.available_resources()
 
-    ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
 
     without_options = ray.get(foo.remote())
     with_options = ray.get(
