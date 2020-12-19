@@ -44,7 +44,7 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
   }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
+                                       const rpc::ActorTableData &actor_data) {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;

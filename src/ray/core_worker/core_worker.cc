@@ -464,7 +464,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                               TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
                               GetCallerId(), rpc_address_);
 
-    std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
+    std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     if (!options_.is_local_mode) {
       RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
@@ -1640,7 +1640,7 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
       std::make_shared<std::promise<void>>(std::promise<void>());
   RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
       name, [this, &actor_id, name, ready_promise](
-                Status status, const boost::optional<gcs::ActorTableData> &result) {
+                Status status, const boost::optional<rpc::ActorTableData> &result) {
         if (status.ok() && result) {
           auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
           actor_id = actor_handle->GetActorID();

@@ -773,7 +773,6 @@ cc_test(
     copts = COPTS,
     deps = [
         ":core_worker_lib",
-        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1021,7 +1020,6 @@ cc_test(
 cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
-        "src/ray/gcs/test/accessor_test_base.h",
         "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
