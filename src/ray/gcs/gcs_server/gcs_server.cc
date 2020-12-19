@@ -44,7 +44,7 @@ GcsServer::~GcsServer() { Stop(); }
 void GcsServer::Start() {
   // Init backend client.
   RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
-                                           config_.redis_password, config_.is_test);
+                                          config_.redis_password, config_.is_test);
   redis_client_ = std::make_shared<RedisClient>(redis_client_options);
   auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
@@ -58,8 +58,7 @@ void GcsServer::Start() {
   gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
   // Init gcs table storage.
-  gcs_table_storage_ =
-      std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
 
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
