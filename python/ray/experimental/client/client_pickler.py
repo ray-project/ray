@@ -54,7 +54,8 @@ else:
 # the data for an exectuion, with no arguments. Combine the two?
 PickleStub = NamedTuple("PickleStub",
                         [("type", str), ("client_id", str), ("ref_id", bytes),
-                         ("name", Optional[str]), ("baseline_options", Optional[Dict])])
+                         ("name", Optional[str]),
+                         ("baseline_options", Optional[Dict])])
 
 
 class ClientPickler(cloudpickle.CloudPickler):
@@ -137,7 +138,8 @@ class ClientPickler(cloudpickle.CloudPickler):
                 baseline_options=None,
             )
         elif isinstance(obj, OptionWrapper):
-            raise NotImplementedError("Sending a partial option is unimplemented")
+            raise NotImplementedError(
+                "Sending a partial option is unimplemented")
         return None
 
 

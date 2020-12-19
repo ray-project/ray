@@ -210,9 +210,10 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             remaining_object_ids=remaining_object_ids)
 
     def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
-        logger.debug("schedule: %s %s" %
-                    (task.name,
-                     ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
+        logger.debug(
+            "schedule: %s %s" % (task.name,
+                                 ray_client_pb2.ClientTask.RemoteExecType.Name(
+                                     task.type)))
         with stash_api_for_tests(self._test_mode):
             try:
                 if task.type == ray_client_pb2.ClientTask.FUNCTION:
@@ -252,10 +253,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _schedule_actor(self, task: ray_client_pb2.ClientTask,
                         context=None) -> ray_client_pb2.ClientTaskTicket:
         remote_class = self.lookup_or_register_actor(
-            task.payload_id,
-            task.client_id,
-            decode_options(task.baseline_options)
-        )
+            task.payload_id, task.client_id,
+            decode_options(task.baseline_options))
 
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
@@ -271,10 +270,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def _schedule_function(self, task: ray_client_pb2.ClientTask,
                            context=None) -> ray_client_pb2.ClientTaskTicket:
         remote_func = self.lookup_or_register_func(
-            task.payload_id,
-            task.client_id,
-            decode_options(task.baseline_options)
-        )
+            task.payload_id, task.client_id,
+            decode_options(task.baseline_options))
         arglist, kwargs = self._convert_args(task.args, task.kwargs)
         opts = decode_options(task.options)
         if opts is not None:
@@ -295,7 +292,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         return argout, kwargout
 
     def lookup_or_register_func(
-        self, id: bytes, client_id: str, options: Optional[Dict]) -> ray.remote_function.RemoteFunction:
+            self, id: bytes, client_id: str,
+            options: Optional[Dict]) -> ray.remote_function.RemoteFunction:
         if id not in self.function_refs:
             funcref = self.object_refs[client_id][id]
             func = ray.get(funcref)
@@ -308,8 +306,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 self.function_refs[id] = ray.remote(**options)(func)
         return self.function_refs[id]
 
-    def lookup_or_register_actor(
-        self, id: bytes, client_id: str, options: Optional[Dict]):
+    def lookup_or_register_actor(self, id: bytes, client_id: str,
+                                 options: Optional[Dict]):
         if id not in self.registered_actor_classes:
             actor_class_ref = self.object_refs[client_id][id]
             actor_class = ray.get(actor_class_ref)
@@ -349,7 +347,8 @@ def encode_exception(exception) -> str:
     return base64.standard_b64encode(data).decode()
 
 
-def decode_options(options: ray_client_pb2.TaskOptions) -> Optional[Dict[str, Any]]:
+def decode_options(
+        options: ray_client_pb2.TaskOptions) -> Optional[Dict[str, Any]]:
     if options.json_options == "":
         return None
     opts = json.loads(options.json_options)

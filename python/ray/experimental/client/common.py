@@ -64,7 +64,7 @@ class ClientRemoteFunc(ClientStub):
         _ref: The ClientObjectRef of the pickled code of the function, _func
     """
 
-    def __init__(self, f, options = None):
+    def __init__(self, f, options=None):
         self._lock = threading.Lock()
         self._func = f
         self._name = f.__name__
@@ -98,8 +98,8 @@ class ClientRemoteFunc(ClientStub):
                 # So we set the state of the reference to be an
                 # in-progress self reference value, which
                 # the encoding can detect and handle correctly.
-                    self._ref = SelfReferenceSentinel()
-                    self._ref = ray.put(self._func)
+                self._ref = SelfReferenceSentinel()
+                self._ref = ray.put(self._func)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()
@@ -269,10 +269,9 @@ class ActorOptionWrapper(OptionWrapper):
         return ClientActorHandle(ClientActorRef(ref_ids[0]), self)
 
 
-def set_task_options(
-    task: ray_client_pb2.ClientTask,
-    options: Optional[Dict[str, Any]],
-    field: str = "options") -> None:
+def set_task_options(task: ray_client_pb2.ClientTask,
+                     options: Optional[Dict[str, Any]],
+                     field: str = "options") -> None:
     if options is None:
         task.ClearField(field)
         return
@@ -280,13 +279,14 @@ def set_task_options(
     getattr(task, field).json_options = options_str
 
 
-def return_refs(
-    ids: List[bytes]) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
+def return_refs(ids: List[bytes]
+                ) -> Union[None, ClientObjectRef, List[ClientObjectRef]]:
     if len(ids) == 1:
         return ClientObjectRef(ids[0])
     if len(ids) == 0:
         return None
     return [ClientObjectRef(id) for id in ids]
+
 
 class DataEncodingSentinel:
     def __repr__(self) -> str:

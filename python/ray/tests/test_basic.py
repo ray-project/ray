@@ -357,6 +357,7 @@ def test_function_descriptor():
 
 def test_ray_options(shutdown_only):
     ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
+
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo():
@@ -364,7 +365,6 @@ def test_ray_options(shutdown_only):
         # Sleep for a heartbeat period to ensure resources changing reported.
         time.sleep(0.1)
         return ray.available_resources()
-
 
     without_options = ray.get(foo.remote())
     with_options = ray.get(

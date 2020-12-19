@@ -25,8 +25,9 @@ else:
 import setproctitle  # noqa
 
 
-@pytest.mark.skipif(client_test_enabled(),
-                    reason="defining early, no ray package injection yet")
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="defining early, no ray package injection yet")
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 

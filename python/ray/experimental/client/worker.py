@@ -258,6 +258,7 @@ def remote_decorator(options: Optional[Dict[str, Any]]):
         else:
             raise TypeError("The @ray.remote decorator must be applied to "
                             "either a function or to a class.")
+
     return decorator
 
 
