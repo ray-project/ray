@@ -10,6 +10,7 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
+#    "test_dynres.py",  # dyn res not implemented
     "test_async.py",
     "test_actor.py",
     "test_actor_advanced.py",
@@ -37,16 +38,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_dynres.py",  # dyn res not implemented
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "new_scheduler_broken"],
   deps = ["//:ray_lib"],
 )
 
