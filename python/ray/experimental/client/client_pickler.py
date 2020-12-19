@@ -50,13 +50,9 @@ else:
 
 # NOTE(barakmich): These PickleStubs are really close to
 # the data for an exectuion, with no arguments. Combine the two?
-PickleStub = NamedTuple(
-    "PickleStub", [
-        ("type", str),
-        ("client_id", str),
-        ("ref_id", bytes),
-        ("name", Optional[str])
-    ])
+PickleStub = NamedTuple("PickleStub",
+                        [("type", str), ("client_id", str), ("ref_id", bytes),
+                         ("name", Optional[str])])
 
 
 class ClientPickler(cloudpickle.CloudPickler):
@@ -127,7 +123,7 @@ class ClientPickler(cloudpickle.CloudPickler):
             return PickleStub(
                 type="RemoteMethod",
                 client_id=self.client_id,
-                ref_id = obj.actor_handle.actor_ref.id,
+                ref_id=obj.actor_handle.actor_ref.id,
                 name=obj.method_name,
             )
         return None

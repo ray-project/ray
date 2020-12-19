@@ -154,7 +154,6 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
-# TODO(barakmich): py_test will support env in 4.0.0... until then, tags.
 
 py_test_module_list(
   files = [
@@ -165,6 +164,8 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   name_suffix = "_client_mode",
+  # TODO(barakmich): py_test will support env in Bazel 4.0.0... 
+  # Until then, we can use tags.
   #env = {"RAY_TEST_CLIENT_MODE": "true"},
   tags = ["exclusive", "client_tests"],
   deps = ["//:ray_lib"],

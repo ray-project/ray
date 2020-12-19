@@ -50,8 +50,9 @@ message ClientTask {
   string name = 2;
   // A reference to the payload.
   bytes payload_id = 3;
-  // The parameters to pass to this call.
+  // Positional parameters to pass to this call.
   repeated Arg args = 4;
+  // Keyword parameters to pass to this call.
   map<string, Arg> kwargs = 5;
   // The ID of the client namespace associated with the Datapath stream making this
   // request.
@@ -59,9 +60,11 @@ message ClientTask {
 }
 
 message ClientTaskTicket {
+  // Was the task successful?
   bool valid = 1;
   // A reference to the returned value from the execution.
   bytes return_id = 2;
+  // If unsuccessful, an encoding of the error.
   bytes error = 3;
 }
 
