@@ -207,6 +207,8 @@ class TrainTFMultiGPU:
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
                         for k, v in batch_fetches[LEARNER_STATS_KEY].items():
+                            TODO: multi-GPU optimizer here does not collect td_error (which is stored outside LEARNER_STATS_KEY)
+                            that's why it doesn't show up in the returned fetches.
                             iter_extra_fetches[k].append(v)
                     if logger.getEffectiveLevel() <= logging.DEBUG:
                         avg = averaged(iter_extra_fetches)

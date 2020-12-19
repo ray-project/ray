@@ -51,7 +51,7 @@ class TestDQN(unittest.TestCase):
             check_compute_single_action(trainer)
             trainer.stop()
 
-    def test_ppo_fake_multi_gpu_learning(self):
+    def test_dqn_fake_multi_gpu_learning(self):
         """Test whether PPOTrainer can learn CartPole w/ faked multi-GPU."""
         config = copy.deepcopy(dqn.DEFAULT_CONFIG)
         # Fake GPU setup.
