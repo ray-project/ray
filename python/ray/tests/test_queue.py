@@ -185,6 +185,13 @@ def test_qsize(ray_start_regular_shared):
         size -= 1
         assert q.qsize() == size
 
+def test_shutdown(ray_start_regular_shared):
+    q = Queue()
+    actor = q.actor
+    q.shutdown()
+    assert q.actor is None
+    with pytest.raises(RayActorError):
+        ray.get(actor.empty.remote())
 
 def test_custom_resources(ray_start_regular_shared):
     current_resources = ray.available_resources()
@@ -200,15 +207,6 @@ def test_custom_resources(ray_start_regular_shared):
     time.sleep(1)
     current_resources = ray.available_resources()
     assert "CPU" not in current_resources, current_resources
-
-
-def test_shutdown(ray_start_regular_shared):
-    q = Queue()
-    actor = q.actor
-    q.shutdown()
-    assert q.actor is None
-    with pytest.raises(RayActorError):
-        ray.get(actor.empty.remote())
 
 
 if __name__ == "__main__":
