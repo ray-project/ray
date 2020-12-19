@@ -142,8 +142,7 @@ class WorkerCrashedError(RayError):
     """Indicates that the worker died unexpectedly while executing a task."""
 
     def __str__(self):
-        return ("The worker died unexpectedly while executing this task. "
-                "Check python-core-worker-*.log files for more information.")
+        return "The worker died unexpectedly while executing this task."
 
 
 class RayActorError(RayError):
@@ -154,8 +153,7 @@ class RayActorError(RayError):
     """
 
     def __str__(self):
-        return ("The actor died unexpectedly before finishing this task. "
-                "Check python-core-worker-*.log files for more information.")
+        return "The actor died unexpectedly before finishing this task."
 
 
 class RaySystemError(RayError):
