@@ -62,7 +62,6 @@ def test_omp_threads_set(shutdown_only):
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
@@ -244,7 +243,6 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 

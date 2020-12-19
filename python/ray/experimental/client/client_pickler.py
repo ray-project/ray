@@ -54,7 +54,7 @@ else:
 # the data for an exectuion, with no arguments. Combine the two?
 PickleStub = NamedTuple("PickleStub",
                         [("type", str), ("client_id", str), ("ref_id", bytes),
-                         ("name", Optional[str])])
+                         ("name", Optional[str]), ("baseline_options", Optional[Dict])])
 
 
 class ClientPickler(cloudpickle.CloudPickler):
@@ -69,6 +69,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 client_id=self.client_id,
                 ref_id=b"",
                 name=None,
+                baseline_options=None,
             )
         elif isinstance(obj, ClientObjectRef):
             return PickleStub(
@@ -76,6 +77,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 client_id=self.client_id,
                 ref_id=obj.id,
                 name=None,
+                baseline_options=None,
             )
         elif isinstance(obj, ClientActorHandle):
             return PickleStub(
@@ -83,6 +85,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 client_id=self.client_id,
                 ref_id=obj._actor_id,
                 name=None,
+                baseline_options=None,
             )
         elif isinstance(obj, ClientRemoteFunc):
             # TODO(barakmich): This is going to have trouble with mutually
@@ -97,12 +100,14 @@ class ClientPickler(cloudpickle.CloudPickler):
                     client_id=self.client_id,
                     ref_id=b"",
                     name=None,
+                    baseline_options=None,
                 )
             return PickleStub(
                 type="RemoteFunc",
                 client_id=self.client_id,
                 ref_id=obj._ref.id,
                 name=None,
+                baseline_options=obj._options,
             )
         elif isinstance(obj, ClientActorClass):
             # TODO(barakmich): Mutual recursion, as above.
@@ -114,12 +119,14 @@ class ClientPickler(cloudpickle.CloudPickler):
                     client_id=self.client_id,
                     ref_id=b"",
                     name=None,
+                    baseline_options=None,
                 )
             return PickleStub(
                 type="RemoteActor",
                 client_id=self.client_id,
                 ref_id=obj._ref.id,
                 name=None,
+                baseline_options=obj._options,
             )
         elif isinstance(obj, ClientRemoteMethod):
             return PickleStub(
@@ -127,6 +134,7 @@ class ClientPickler(cloudpickle.CloudPickler):
                 client_id=self.client_id,
                 ref_id=obj.actor_handle.actor_ref.id,
                 name=obj.method_name,
+                baseline_options=None,
             )
         elif isinstance(obj, OptionWrapper):
             raise NotImplementedError("Sending a partial option is unimplemented")

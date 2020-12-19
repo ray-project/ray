@@ -81,7 +81,9 @@ class Worker:
         except grpc.RpcError as e:
             raise e.details()
         if not data.valid:
-            raise cloudpickle.loads(data.error)
+            err = cloudpickle.loads(data.error)
+            logger.error(err)
+            raise err
         return loads_from_server(data.data)
 
     def put(self, vals):
@@ -153,7 +155,7 @@ class Worker:
         assert len(args) == 0 and len(kwargs) > 0, error_string
         return remote_decorator(options=kwargs)
 
-    def call_remote(self, instance, *args, **kwargs) -> bytes:
+    def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
@@ -165,10 +167,10 @@ class Worker:
         try:
             ticket = self.server.Schedule(task, metadata=self.metadata)
         except grpc.RpcError as e:
-            raise e.details()
+            raise decode_exception(e.details)
         if not ticket.valid:
             raise cloudpickle.loads(ticket.error)
-        return ticket.return_id
+        return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
         self.reference_count[id] -= 1

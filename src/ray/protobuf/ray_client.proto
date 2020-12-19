@@ -57,8 +57,8 @@ message ClientTask {
   }
   // Which type of work this request represents.
   RemoteExecType type = 1;
-  // A name parameter, if the payload can be called in more than one way (like a method on
-  // a payload object).
+  // A name parameter, if the payload can be called in more than one way
+  // (like a method on a payload object).
   string name = 2;
   // A reference to the payload.
   bytes payload_id = 3;
@@ -66,21 +66,20 @@ message ClientTask {
   repeated Arg args = 4;
   // Keyword parameters to pass to this call.
   map<string, Arg> kwargs = 5;
-  // The ID of the client namespace associated with the Datapath stream making this
-  // request.
+  // The ID of the client namespace associated with the Datapath stream
+  // making this request.
   string client_id = 6;
   // Options for modifying the remote task execution environment.
-  //
-  // TODO(barakmich): As above, if this options struct were instead a singular
-  // field type, it would be more painful to migrate.
   TaskOptions options = 7;
+  // Options passed to create the default remote task excution environment.
+  TaskOptions baseline_options = 8;
 }
 
 message ClientTaskTicket {
   // Was the task successful?
   bool valid = 1;
-  // A reference to the returned value from the execution.
-  bytes return_id = 2;
+  // A reference to the returned values from the execution.
+  repeated bytes return_ids = 2;
   // If unsuccessful, an encoding of the error.
   bytes error = 3;
 }
