@@ -8,6 +8,9 @@
 namespace ray {
 namespace raylet {
 
+// The max number of pending actors to report in node stats.
+const int kMaxPendingActorsToReport = 20;
+
 ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
@@ -328,6 +331,39 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   }
 
   return false;
+}
+
+void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
+  // Report infeasible actors.
+  int num_reported = 0;
+  for (const auto &shapes_it : infeasible_tasks_) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      Task task = std::get<0>(work_it);
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        if (num_reported++ > kMaxPendingActorsToReport) {
+          break;  // Protect the raylet from reporting too much data.
+        }
+        auto infeasible_task = reply->add_infeasible_tasks();
+        infeasible_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+      }
+    }
+  }
+  // Report actors blocked on resources.
+  num_reported = 0;
+  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      Task task = std::get<0>(work_it);
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        if (num_reported++ > kMaxPendingActorsToReport) {
+          break;  // Protect the raylet from reporting too much data.
+        }
+        auto ready_task = reply->add_infeasible_tasks();
+        ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+      }
+    }
+  }
 }
 
 void ClusterTaskManager::FillResourceUsage(
