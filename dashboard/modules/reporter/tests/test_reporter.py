@@ -7,12 +7,9 @@ import time
 import pytest
 import ray
 from ray.new_dashboard.tests.conftest import *  # noqa
-from ray.test_utils import (
-    format_web_url,
-    RayTestTimeoutException,
-    wait_until_server_available,
-    wait_for_condition,
-)
+from ray.test_utils import (format_web_url, RayTestTimeoutException,
+                            wait_until_server_available, wait_for_condition,
+                            fetch_prometheus)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +91,24 @@ def test_node_physical_stats(enable_test_module, shutdown_only):
             return False
 
     wait_for_condition(_check_workers, timeout=10)
+
+
+def test_prometheus_physical_stats_record(enable_test_module, shutdown_only):
+    addresses = ray.init(include_dashboard=True, num_cpus=1)
+    metrics_export_port = addresses["metrics_export_port"]
+    addr = addresses["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{metrics_export_port}"]
+
+    def test_case():
+        components_dict, metric_names, metric_samples = fetch_prometheus(
+            prom_addresses)
+        print(metric_names)
+        return all([
+            "ray_node_cpu" in metric_names, "ray_node_mem" in metric_names,
+            "ray_raylet_cpu" in metric_names, "ray_raylet_mem" in metric_names
+        ])
+
+    wait_for_condition(test_case, retry_interval_ms=1000)
 
 
 if __name__ == "__main__":
