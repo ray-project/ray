@@ -26,7 +26,9 @@ class SearchSpaceTest(unittest.TestCase):
             "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
             "choice": tune.choice([2, 3, 4]),
             "randint": tune.randint(-9, 15),
+            "lograndint": tune.lograndint(1, 10),
             "qrandint": tune.qrandint(-21, 12, 3),
+            "qlograndint": tune.qlograndint(2, 20, 2),
             "randn": tune.randn(10, 2),
             "qrandn": tune.qrandn(10, 2, 0.2),
         }
@@ -59,9 +61,16 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertGreaterEqual(out["randint"], -9)
             self.assertLess(out["randint"], 15)
 
+            self.assertGreaterEqual(out["lograndint"], 1)
+            self.assertLess(out["lograndint"], 10)
+
             self.assertGreaterEqual(out["qrandint"], -21)
             self.assertLessEqual(out["qrandint"], 12)
             self.assertEqual(out["qrandint"] % 3, 0)
+
+            self.assertGreaterEqual(out["qlograndint"], 2)
+            self.assertLessEqual(out["qlograndint"], 20)
+            self.assertEqual(out["qlograndint"] % 2, 0)
 
             # Very improbable
             self.assertGreater(out["randn"], 0)
