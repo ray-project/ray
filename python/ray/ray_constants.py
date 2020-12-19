@@ -19,7 +19,7 @@ def env_bool(key, default):
     return default
 
 
-ID_SIZE = 20
+ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
