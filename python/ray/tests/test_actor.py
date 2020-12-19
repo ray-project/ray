@@ -22,7 +22,7 @@ else:
     import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
-import setproctitle
+import setproctitle  # noqa
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="test setup order")
