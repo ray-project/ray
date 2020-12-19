@@ -3,6 +3,7 @@ from ray.experimental.client import ray
 from ray.experimental.client.options import validate_options
 
 import json
+import threading
 from typing import Any
 from typing import List
 from typing import Dict
@@ -64,6 +65,7 @@ class ClientRemoteFunc(ClientStub):
     """
 
     def __init__(self, f, options = None):
+        self._lock = threading.Lock()
         self._func = f
         self._name = f.__name__
         self._ref = None
@@ -86,17 +88,18 @@ class ClientRemoteFunc(ClientStub):
         return "ClientRemoteFunc(%s, %s)" % (self._name, self._ref)
 
     def _ensure_ref(self):
-        if self._ref is None:
-            # While calling ray.put() on our function, if
-            # our function is recursive, it will attempt to
-            # encode the ClientRemoteFunc -- itself -- and
-            # infinitely recurse on _ensure_ref.
-            #
-            # So we set the state of the reference to be an
-            # in-progress self reference value, which
-            # the encoding can detect and handle correctly.
-            self._ref = SelfReferenceSentinel()
-            self._ref = ray.put(self._func)
+        with self._lock:
+            if self._ref is None:
+                # While calling ray.put() on our function, if
+                # our function is recursive, it will attempt to
+                # encode the ClientRemoteFunc -- itself -- and
+                # infinitely recurse on _ensure_ref.
+                #
+                # So we set the state of the reference to be an
+                # in-progress self reference value, which
+                # the encoding can detect and handle correctly.
+                    self._ref = SelfReferenceSentinel()
+                    self._ref = ray.put(self._func)
 
     def _prepare_client_task(self) -> ray_client_pb2.ClientTask:
         self._ensure_ref()

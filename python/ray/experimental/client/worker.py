@@ -101,6 +101,13 @@ class Worker:
         return out
 
     def _put(self, val):
+        if isinstance(val, ClientObjectRef):
+            raise TypeError(
+                "Calling 'put' on an ObjectRef is not allowed "
+                "(similarly, returning an ObjectRef from a remote "
+                "function is not allowed). If you really want to "
+                "do this, you can wrap the ObjectRef in a list and "
+                "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.data_client.PutObject(req)
