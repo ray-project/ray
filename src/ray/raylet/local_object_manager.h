@@ -33,13 +33,15 @@ namespace raylet {
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
  public:
-  LocalObjectManager(boost::asio::io_service &io_context, size_t free_objects_batch_size,
-                     int64_t free_objects_period_ms,
-                     IOWorkerPoolInterface &io_worker_pool,
-                     gcs::ObjectInfoAccessor &object_info_accessor,
-                     rpc::CoreWorkerClientPool &owner_client_pool,
-                     bool object_pinning_enabled, bool automatic_object_deletion_enabled,
-                     std::function<void(const std::vector<ObjectID> &)> on_objects_freed)
+  LocalObjectManager(
+      boost::asio::io_service &io_context, size_t free_objects_batch_size,
+      int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
+      gcs::ObjectInfoAccessor &object_info_accessor,
+      rpc::CoreWorkerClientPool &owner_client_pool, bool object_pinning_enabled,
+      bool automatic_object_deletion_enabled, int max_io_workers,
+      int64_t min_spilling_size,
+      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
+      std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
       : free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
@@ -48,7 +50,11 @@ class LocalObjectManager {
         object_pinning_enabled_(object_pinning_enabled),
         automatic_object_deletion_enabled_(automatic_object_deletion_enabled),
         on_objects_freed_(on_objects_freed),
-        last_free_objects_at_ms_(current_time_ms()) {}
+        last_free_objects_at_ms_(current_time_ms()),
+        min_spilling_size_(min_spilling_size),
+        num_active_workers_(0),
+        max_active_workers_(max_io_workers),
+        is_plasma_object_spillable_(is_plasma_object_spillable) {}
 
   /// Pin objects.
   ///
@@ -67,22 +73,10 @@ class LocalObjectManager {
   void WaitForObjectFree(const rpc::Address &owner_address,
                          const std::vector<ObjectID> &object_ids);
 
-  /// Asynchronously spill objects when space is needed.
-  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
-  /// the amount of space needed after the spilling is complete.
-  /// The returned value is calculated based off of min_bytes_to_spill. That says,
-  /// although it fails to spill num_bytes_to_spill, as long as it spills more than
-  /// min_bytes_to_spill, it will return the value that is less than 0 (meaning we
-  /// don't need any more additional space).
+  /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
-  /// \param num_bytes_to_spill The total number of bytes to spill. The method tries to
-  /// spill bytes as much as this value.
-  /// \param min_bytes_to_spill The minimum bytes that
-  /// need to be spilled.
-  /// \return The number of bytes of space still required after the
-  /// spill is complete. This return the value is less than 0 if it satifies the
-  /// min_bytes_to_spill.
-  int64_t SpillObjectsOfSize(int64_t num_bytes_to_spill, int64_t min_bytes_to_spill);
+  /// \return True if spilling is in progress.
+  void SpillObjectUptoMaxThroughput();
 
   /// Spill objects to external storage.
   ///
@@ -114,11 +108,33 @@ class LocalObjectManager {
   /// invocation.
   void ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size);
 
+  /// Return True if spilling is in progress.
+  /// This is a narrow interface that is accessed by plasma store.
+  /// We are using the narrow interface here because plasma store is running in a
+  /// different thread, and we'd like to avoid making this component thread-safe,
+  /// which is against the general raylet design.
+  ///
+  /// \return True if spilling is still in progress. False otherwise.
+  bool IsSpillingInProgress();
+
  private:
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
+  FRIEND_TEST(LocalObjectManagerTest,
+              TestSpillObjectsOfSizeNumBytesToSpillHigherThanMinBytesToSpill);
+  FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectNotEvictable);
+
+  /// Asynchronously spill objects when space is needed.
+  /// The callback tries to spill objects as much as num_bytes_to_spill and returns
+  /// true if we could spill the corresponding bytes.
+  /// NOTE(sang): If 0 is given, this method spills a single object.
+  ///
+  /// \param num_bytes_to_spill The total number of bytes to spill.
+  /// \return True if it can spill num_bytes_to_spill. False otherwise.
+  bool SpillObjectsOfSize(int64_t num_bytes_to_spill);
+
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
-                            std::function<void(const ray::Status &)> callback)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+                            std::function<void(const ray::Status &)> callback);
 
   /// Release an object that has been freed by its owner.
   void ReleaseFreedObject(const ObjectID &object_id);
@@ -164,14 +180,12 @@ class LocalObjectManager {
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
   // Objects that are pinned on this node.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
   // Objects that were pinned on this node but that are being spilled.
   // These objects will be released once spilling is complete and the URL is
   // written to the object directory.
-  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_
-      GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
   /// objects that have gone out of scope in the application.
@@ -185,7 +199,7 @@ class LocalObjectManager {
 
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
-  size_t num_bytes_pending_spill_ GUARDED_BY(mutex_) = 0;
+  size_t num_bytes_pending_spill_;
 
   /// This class is accessed by both the raylet and plasma store threads. The
   /// mutex protects private members that relate to object spilling.
@@ -198,16 +212,63 @@ class LocalObjectManager {
   /// A list of object id and url pairs that need to be deleted.
   /// We don't instantly delete objects when it goes out of scope from external storages
   /// because those objects could be still in progress of spilling.
-  std::queue<ObjectID> spilled_object_pending_delete_ GUARDED_BY(mutex_);
+  std::queue<ObjectID> spilled_object_pending_delete_;
 
   /// Mapping from object id to url_with_offsets. We cannot reuse pinned_objects_ because
   /// pinned_objects_ entries are deleted when spilling happens.
-  absl::flat_hash_map<ObjectID, std::string> spilled_objects_url_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<ObjectID, std::string> spilled_objects_url_;
 
   /// Base URL -> ref_count. It is used because there could be multiple objects
   /// within a single spilled file. We need to ref count to avoid deleting the file
   /// before all objects within that file are out of scope.
-  absl::flat_hash_map<std::string, uint64_t> url_ref_count_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, uint64_t> url_ref_count_;
+
+  /// Minimum bytes to spill to a single IO spill worker.
+  int64_t min_spilling_size_;
+
+  /// The current number of active spill workers.
+  int64_t num_active_workers_ GUARDED_BY(mutex_);
+
+  /// The max number of active spill workers.
+  const int64_t max_active_workers_;
+
+  /// Callback to check if a plasma object is pinned in workers.
+  /// Return true if unpinned, meaning we can safely spill the object. False otherwise.
+  std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable_;
+
+  ///
+  /// Stats
+  ///
+
+  /// The last time a spill operation finished.
+  int64_t last_spill_finish_ns_ = 0;
+
+  /// The total wall time in seconds spent in spilling.
+  double spill_time_total_s_ = 0;
+
+  /// The total number of bytes spilled.
+  int64_t spilled_bytes_total_ = 0;
+
+  /// The total number of objects spilled.
+  int64_t spilled_objects_total_ = 0;
+
+  /// The last time a restore operation finished.
+  int64_t last_restore_finish_ns_ = 0;
+
+  /// The total wall time in seconds spent in restoring.
+  double restore_time_total_s_ = 0;
+
+  /// The total number of bytes restored.
+  int64_t restored_bytes_total_ = 0;
+
+  /// The total number of objects restored.
+  int64_t restored_objects_total_ = 0;
+
+  /// The last time a spill log finished.
+  int64_t last_spill_log_ns_ = 0;
+
+  /// The last time a restore log finished.
+  int64_t last_restore_log_ns_ = 0;
 };
 
 };  // namespace raylet
