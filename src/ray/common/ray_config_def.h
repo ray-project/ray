@@ -243,18 +243,16 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
+RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
 /// Duration to sleep after failing to put an object in plasma because it is full.
-RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
+/// This will be exponentially increased for each retry.
+RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
 
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
-
-/// The min amount of time between local GCs (whether auto or mem pressure triggered).
-RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)

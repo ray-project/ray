@@ -206,13 +206,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// signals from Raylet.
   void Stop();
 
-  /// This methods call the plasma store which runs in a separate thread.
-  /// Check if the given object id is evictable by directly calling plasma store.
-  /// Plasma store will return true if the object is spillable, meaning it is only
-  /// pinned by the raylet, so we can comfotable evict after spilling the object from
-  /// local object manager. False otherwise.
-  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
-
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///

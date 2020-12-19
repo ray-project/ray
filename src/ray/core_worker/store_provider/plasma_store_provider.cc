@@ -35,7 +35,6 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   } else {
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
-  object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
   if (warmup) {
@@ -96,8 +95,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   }
 
   while (retry_with_request_id > 0) {
-    // TODO(sang): Use exponential backoff instead.
-    std::this_thread::sleep_for(std::chrono::milliseconds(object_store_full_delay_ms_));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
       RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
@@ -226,7 +224,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception, bool release_resources) {
+    bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -277,7 +275,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(release_resources));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -334,9 +332,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      // SANG-TODO Implement wait
-      RAY_RETURN_NOT_OK(
-          raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(

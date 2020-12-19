@@ -104,10 +104,6 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
-  // The number if max io workers.
-  int max_io_workers;
-  // The minimum object size that can be spilled by each spill operation.
-  int64_t min_spilling_size;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -119,8 +115,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
-              std::function<bool(const ObjectID &)> is_plasma_object_spillable);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Process a new client connection.
   ///
@@ -380,8 +375,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
-                                   bool release_resources);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -442,13 +436,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
-
-  /// Process client message of NotifyDirectCallTaskBlocked
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
-                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -758,15 +745,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The last time local gc was run.
+  /// The last time local GC was triggered.
   int64_t last_local_gc_ns_ = 0;
 
   /// The interval in nanoseconds between local GC automatic triggers.
-  const int64_t local_gc_interval_ns_;
-
-  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
-  /// triggered).
-  const int64_t local_gc_min_interval_ns_;
+  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

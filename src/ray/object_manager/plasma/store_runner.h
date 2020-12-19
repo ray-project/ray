@@ -22,7 +22,6 @@ class PlasmaStoreRunner {
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     store_->SetNotificationListener(notification_listener);
   }
-  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
  private:
   void Shutdown();
