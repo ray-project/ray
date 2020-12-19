@@ -17,8 +17,7 @@ import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
 from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
-                            get_error_message, Semaphore,
-                            new_scheduler_enabled)
+                            get_error_message, Semaphore)
 
 
 def test_failed_task(ray_start_regular, error_pubsub):
@@ -633,8 +632,6 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-@pytest.mark.skipif(
-    new_scheduler_enabled(), reason="Supposed to deadlock, but it doesn't")
 def test_warning_all_tasks_blocked(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
