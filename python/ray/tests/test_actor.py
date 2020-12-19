@@ -25,7 +25,8 @@ else:
 import setproctitle  # noqa
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="test setup order")
+@pytest.mark.skipif(client_test_enabled(),
+                    reason="defining early, no ray package injection yet")
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -564,7 +565,6 @@ def test_actor_static_attributes(ray_start_regular_shared):
     assert ray.get(t.g.remote()) == 3
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_decorator_args(ray_start_regular_shared):
     # This is an invalid way of using the actor decorator.
     with pytest.raises(Exception):
@@ -655,7 +655,7 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
+@pytest.mark.skipif(client_test_enabled(), reason="ray.method unimplemented")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -689,7 +689,6 @@ def test_multiple_return_values(ray_start_regular_shared):
     assert ray.get([id3a, id3b, id3c]) == [1, 2, 3]
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_options_num_returns(ray_start_regular_shared):
     @ray.remote
     class Foo:
