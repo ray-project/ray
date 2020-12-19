@@ -311,6 +311,11 @@ class NevergradSearch(Searcher):
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
             if isinstance(domain, Integer):
+                if isinstance(sampler, LogUniform):
+                    return ng.p.Log(
+                        lower=domain.lower,
+                        upper=domain.upper,
+                        exponent=sampler.base).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,
                     upper=domain.upper).set_integer_casting()
