@@ -144,7 +144,7 @@ class SkOptSearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer: Optional[sko.optimizer.Optimizer] = None,
+                 optimizer: Optional["sko.optimizer.Optimizer"] = None,
                  space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
@@ -152,9 +152,9 @@ class SkOptSearch(Searcher):
                  evaluated_rewards: Optional[List] = None,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
-        assert sko is not None, """skopt must be installed!
-            You can install Skopt with the command:
-            `pip install scikit-optimize`."""
+        assert sko is not None, ("skopt must be installed! "
+                                 "You can install Skopt with the command: "
+                                 "`pip install scikit-optimize`.")
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
