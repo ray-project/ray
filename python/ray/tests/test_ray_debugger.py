@@ -44,6 +44,7 @@ def test_ray_debugger_commands(shutdown_only):
 
     @ray.remote
     def f():
+        """We support unicode too: 🐛"""
         ray.util.pdb.set_trace()
 
     result1 = f.remote()
