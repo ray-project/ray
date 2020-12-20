@@ -1,7 +1,9 @@
+import time
+
 import pytest
 
 import ray
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.util.queue import Queue, Empty, Full
 
 
@@ -182,6 +184,31 @@ def test_qsize(ray_start_regular_shared):
         assert q.get() == item
         size -= 1
         assert q.qsize() == size
+
+
+def test_shutdown(ray_start_regular_shared):
+    q = Queue()
+    actor = q.actor
+    q.shutdown()
+    assert q.actor is None
+    with pytest.raises(RayActorError):
+        ray.get(actor.empty.remote())
+
+
+def test_custom_resources(ray_start_regular_shared):
+    current_resources = ray.available_resources()
+    assert current_resources["CPU"] == 1.0
+
+    # By default an actor should not reserve any resources.
+    Queue()
+    current_resources = ray.available_resources()
+    assert current_resources["CPU"] == 1.0
+
+    # Specify resource requirement. The queue should now reserve 1 CPU.
+    Queue(actor_options={"num_cpus": 1})
+    time.sleep(1)
+    current_resources = ray.available_resources()
+    assert "CPU" not in current_resources, current_resources
 
 
 if __name__ == "__main__":

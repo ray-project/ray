@@ -1,11 +1,15 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <google/protobuf/map.h>
+#include <boost/range/join.hpp>
 
 #include "ray/util/logging.h"
 
 namespace ray {
 namespace raylet {
+
+// The max number of pending actors to report in node stats.
+const int kMaxPendingActorsToReport = 20;
 
 ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
@@ -242,10 +246,7 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
-      // Note: we transition tasks back to the scheduling queue instead of directly
-      // to dispatch. This allows AnyPendingTasks() to simply check the scheduling
-      // queue to see if any tasks are blocked on resource availability: see #12438
-      tasks_to_schedule_[scheduling_key].push_back(work);
+      tasks_to_dispatch_[scheduling_key].push_back(work);
       waiting_tasks_.erase(it);
     }
   }
@@ -330,6 +331,39 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
   }
 
   return false;
+}
+
+void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
+  // Report infeasible actors.
+  int num_reported = 0;
+  for (const auto &shapes_it : infeasible_tasks_) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      Task task = std::get<0>(work_it);
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        if (num_reported++ > kMaxPendingActorsToReport) {
+          break;  // Protect the raylet from reporting too much data.
+        }
+        auto infeasible_task = reply->add_infeasible_tasks();
+        infeasible_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+      }
+    }
+  }
+  // Report actors blocked on resources.
+  num_reported = 0;
+  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
+    auto &work_queue = shapes_it.second;
+    for (const auto &work_it : work_queue) {
+      Task task = std::get<0>(work_it);
+      if (task.GetTaskSpecification().IsActorCreationTask()) {
+        if (num_reported++ > kMaxPendingActorsToReport) {
+          break;  // Protect the raylet from reporting too much data.
+        }
+        auto ready_task = reply->add_infeasible_tasks();
+        ready_task->CopyFrom(task.GetTaskSpecification().GetMessage());
+      }
+    }
+  }
 }
 
 void ClusterTaskManager::FillResourceUsage(
@@ -507,9 +541,9 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
                                          int *num_pending_actor_creation,
                                          int *num_pending_tasks) const {
   // We are guaranteed that these tasks are blocked waiting for resources after a
-  // call to ScheduleAndDispatch(). Note that tasks that transition to waiting
-  // move back to the tasks_to_schedule_ queue after their deps are satisfied.
-  for (const auto &shapes_it : tasks_to_schedule_) {
+  // call to ScheduleAndDispatch(). They may be waiting for workers as well, but
+  // this should be a transient condition only.
+  for (const auto &shapes_it : boost::join(tasks_to_dispatch_, tasks_to_schedule_)) {
     auto &work_queue = shapes_it.second;
     for (const auto &work_it : work_queue) {
       const auto &task = std::get<0>(work_it);

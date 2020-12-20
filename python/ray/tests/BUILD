@@ -10,6 +10,7 @@ SRCS = [] + select({
 
 py_test_module_list(
   files = [
+#    "test_dynres.py",  # dyn res not implemented
     "test_async.py",
     "test_actor.py",
     "test_actor_advanced.py",
@@ -37,16 +38,6 @@ py_test_module_list(
   size = "medium",
   extra_srcs = SRCS,
   tags = ["exclusive", "medium_size_python_tests_a_to_j"],
-  deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-  files = [
-    "test_dynres.py",  # dyn res not implemented
-  ],
-  size = "medium",
-  extra_srcs = SRCS,
-  tags = ["exclusive", "medium_size_python_tests_a_to_j", "new_scheduler_broken"],
   deps = ["//:ray_lib"],
 )
 
@@ -161,4 +152,21 @@ py_test(
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+)
+
+
+py_test_module_list(
+  files = [
+    "test_actor.py",
+    "test_basic.py",
+    "test_basic_2.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  name_suffix = "_client_mode",
+  # TODO(barakmich): py_test will support env in Bazel 4.0.0... 
+  # Until then, we can use tags.
+  #env = {"RAY_TEST_CLIENT_MODE": "true"},
+  tags = ["exclusive", "client_tests"],
+  deps = ["//:ray_lib"],
 )
