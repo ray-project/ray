@@ -35,7 +35,7 @@ def test_actor_groups(ray_start_with_dashboard):
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
+    timeout_seconds = 10
     start_time = time.time()
     last_ex = None
     while True:

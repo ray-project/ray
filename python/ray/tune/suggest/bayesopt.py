@@ -169,9 +169,7 @@ class BayesOptSearch(Searcher):
 
         self.utility = byo.UtilityFunction(**utility_kwargs)
 
-        # Registering the provided analysis, if given
-        if analysis is not None:
-            self.register_analysis(analysis)
+        self._analysis = analysis
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -199,6 +197,10 @@ class BayesOptSearch(Searcher):
             pbounds=self._space,
             verbose=self._verbose,
             random_state=self._random_state)
+
+        # Registering the provided analysis, if given
+        if self._analysis is not None:
+            self.register_analysis(self._analysis)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
