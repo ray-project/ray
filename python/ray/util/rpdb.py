@@ -244,7 +244,7 @@ def connect_pdb_client(host, port):
     while True:
         # Get the list of sockets which are readable.
         read_sockets, write_sockets, error_sockets = select.select(
-            [sys.stdin, s] , [], [])
+            [sys.stdin, s], [], [])
 
         for sock in read_sockets:
             if sock == s:
