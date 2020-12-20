@@ -136,8 +136,7 @@ class ResourceSet {
   ///
   /// \param other: The other resource set to add.
   /// \param total_resources: Total resource set which sets upper limits on capacity for
-  /// each label. \return True if the resource set was added successfully. False
-  /// otherwise.
+  /// each label.
   void AddResourcesCapacityConstrained(const ResourceSet &other,
                                        const ResourceSet &total_resources);
 
