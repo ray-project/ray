@@ -5,7 +5,7 @@ from datetime import datetime
 import copy
 import logging
 import os
-import pickle
+import ray.cloudpickle as pickle
 import platform
 
 from ray.tune.utils.trainable import TrainableUtil

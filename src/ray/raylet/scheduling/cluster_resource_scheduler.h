@@ -164,6 +164,11 @@ class ClusterResourceScheduler {
   /// \param resource_total: New capacity of the resource.
   void AddLocalResource(const std::string &resource_name, double resource_total);
 
+  /// Check whether the available resources are empty.
+  ///
+  /// \param resource_name: Resource which we want to check.
+  bool IsAvailableResourceEmpty(const std::string &resource_name);
+
   /// Update total capacity of a given resource of a given node.
   ///
   /// \param node_name: Node whose resource we want to update.
@@ -185,6 +190,9 @@ class ClusterResourceScheduler {
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
+
+  /// Return local resources in human-readable string form.
+  std::string GetLocalResourceViewString() const;
 
   /// Create instances for each resource associated with the local node, given
   /// the node's resources.
@@ -271,11 +279,13 @@ class ClusterResourceScheduler {
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      bool allow_going_negative = false);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -288,10 +298,12 @@ class ClusterResourceScheduler {
   /// Decrease the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be removed from available cpus.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
+                                                   bool allow_going_negative = false);
 
   /// Increase the available GPU instances of this node.
   ///
@@ -359,6 +371,13 @@ class ClusterResourceScheduler {
   /// fields used.
   void FillResourceUsage(bool light_report_resource_usage_enabled,
                          std::shared_ptr<rpc::ResourcesData> resources_data);
+
+  /// Update last report resources local cache from gcs cache,
+  /// this is needed when gcs fo.
+  ///
+  /// \param gcs_resources: The remote cache from gcs.
+  void UpdateLastReportResourcesFromGcs(
+      std::shared_ptr<SchedulingResources> gcs_resources);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

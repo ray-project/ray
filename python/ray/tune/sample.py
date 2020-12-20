@@ -53,6 +53,14 @@ class Domain:
     def is_function(self):
         return False
 
+    def is_valid(self, value: Any):
+        """Returns True if `value` is a valid value in this domain."""
+        raise NotImplementedError
+
+    @property
+    def domain_str(self):
+        return "(unknown)"
+
 
 class Sampler:
     def sample(self,
@@ -203,6 +211,13 @@ class Float(Domain):
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
 
+    def is_valid(self, value: float):
+        return self.lower <= value <= self.upper
+
+    @property
+    def domain_str(self):
+        return f"({self.lower}, {self.upper})"
+
 
 class Integer(Domain):
     class _Uniform(Uniform):
@@ -231,6 +246,13 @@ class Integer(Domain):
         new = copy(self)
         new.set_sampler(self._Uniform())
         return new
+
+    def is_valid(self, value: int):
+        return self.lower <= value <= self.upper
+
+    @property
+    def domain_str(self):
+        return f"({self.lower}, {self.upper})"
 
 
 class Categorical(Domain):
@@ -264,6 +286,13 @@ class Categorical(Domain):
     def __getitem__(self, item):
         return self.categories[item]
 
+    def is_valid(self, value: Any):
+        return value in self.categories
+
+    @property
+    def domain_str(self):
+        return f"{self.categories}"
+
 
 class Function(Domain):
     class _CallSampler(BaseSampler):
@@ -294,6 +323,13 @@ class Function(Domain):
 
     def is_function(self):
         return True
+
+    def is_valid(self, value: Any):
+        return True  # This is user-defined, so lets not assume anything
+
+    @property
+    def domain_str(self):
+        return f"{self.func}()"
 
 
 class Quantized(Sampler):

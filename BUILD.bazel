@@ -880,7 +880,7 @@ cc_test(
 )
 
 cc_test(
-    name = "local_placement_group_manager_test",
+    name = "placement_group_resource_manager_test",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     copts = COPTS,
     deps = [
