@@ -2,23 +2,10 @@ import pytest
 import time
 import sys
 import logging
-from contextlib import contextmanager
 
-import ray.experimental.client.server.server as ray_client_server
-from ray.experimental.client import ray, reset_api
+from ray.experimental.client import ray
 from ray.experimental.client.common import ClientObjectRef
-
-
-@contextmanager
-def ray_start_client_server():
-    server = ray_client_server.serve("localhost:50051", test_mode=True)
-    ray.connect("localhost:50051")
-    try:
-        yield ray
-    finally:
-        ray.disconnect()
-        server.stop(0)
-        reset_api()
+from ray._private.ray_client_helpers import ray_start_client_server
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
