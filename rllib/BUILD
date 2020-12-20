@@ -1075,13 +1075,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_attention_nets",
-    tags = ["models"],
-    size = "small",
-    srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
     name = "test_convtranspose2d_stack",
     tags = ["models"],
     size = "small",
@@ -1089,13 +1082,12 @@ py_test(
     srcs = ["models/tests/test_convtranspose2d_stack.py"]
 )
 
-# Failing after the following PR: https://github.com/ray-project/ray/pull/12760.
-#py_test(
-#    name = "test_distributions",
-#    tags = ["models"],
-#    size = "medium",
-#    srcs = ["models/tests/test_distributions.py"]
-#)
+py_test(
+    name = "test_distributions",
+    tags = ["models"],
+    size = "medium",
+    srcs = ["models/tests/test_distributions.py"]
+)
 
 # --------------------------------------------------------------------
 # Evaluation components

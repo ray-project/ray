@@ -160,7 +160,8 @@ class GTrXLNet(RecurrentNetwork):
         >>     num_transformer_units=1,
         >>     attn_dim=32,
         >>     num_heads=2,
-        >>     memory_tau=50,
+        >>     memory_inference=100,
+        >>     memory_training=50,
         >>     etc..
         >> }
     """

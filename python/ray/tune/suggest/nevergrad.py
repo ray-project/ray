@@ -148,7 +148,7 @@ class NevergradSearch(Searcher):
                 space = self.convert_search_space(space)
 
         if isinstance(optimizer, Optimizer):
-            if space is not None or isinstance(space, list):
+            if space is not None and not isinstance(space, list):
                 raise ValueError(
                     "If you pass a configured optimizer to Nevergrad, either "
                     "pass a list of parameter names or None as the `space` "

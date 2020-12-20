@@ -1131,10 +1131,10 @@ TEST_F(ClusterResourceSchedulerTest, TestLightResourceUsageReport) {
   }
 
   // Report resource usage if resource availability has changed.
-  cluster_resources.AddOrUpdateNode("local", {{"CPU", 1.}}, {{"CPU", 0.}});
+  cluster_resources.AddOrUpdateNode("local", {{"CPU", 2.}}, {{"CPU", 0.}});
   data->Clear();
   cluster_resources.FillResourceUsage(true, data);
-  ASSERT_RESOURCES_EQ(data, 0, 1);
+  ASSERT_RESOURCES_EQ(data, 0, 2);
 
   // Don't report resource usage if resource availability hasn't changed.
   for (int i = 0; i < 3; i++) {
@@ -1222,6 +1222,17 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   result =
       cluster_resources.GetBestSchedulableNode(task_request, false, &t, &is_infeasible);
   ASSERT_TRUE(result.empty());
+}
+
+TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
+  ClusterResourceScheduler cluster_resources("local", {{"custom123", 5}});
+  std::shared_ptr<TaskResourceInstances> resource_instances =
+      std::make_shared<TaskResourceInstances>();
+  std::unordered_map<std::string, double> task_request = {{"custom123", 5}};
+  bool allocated =
+      cluster_resources.AllocateLocalTaskResources(task_request, resource_instances);
+  ASSERT_TRUE(allocated);
+  ASSERT_TRUE(cluster_resources.IsAvailableResourceEmpty("custom123"));
 }
 
 }  // namespace ray

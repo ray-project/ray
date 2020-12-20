@@ -761,7 +761,7 @@ class Policy(metaclass=ABCMeta):
                     "max_seq_len", 1),
                 space=space)
             view_reqs["state_out_{}".format(i)] = ViewRequirement(
-                space=space, used_for_training=False)
+                space=space, used_for_training=True)
 
 
 def clip_action(action, action_space):

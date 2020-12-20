@@ -258,6 +258,11 @@ class TFPolicy(Policy):
                 (name, tf1.placeholders) needed for calculating the loss.
         """
         self._loss_input_dict = dict(loss_inputs)
+        self._loss_input_dict_no_rnn = {
+            k: v
+            for k, v in self._loss_input_dict.items()
+            if (v not in self._state_inputs and v != self._seq_lens)
+        }
         for i, ph in enumerate(self._state_inputs):
             self._loss_input_dict["state_in_{}".format(i)] = ph
 

@@ -235,7 +235,7 @@ def chop_into_sequences(*,
         [2, 3, 1]
     """
 
-    if seq_lens is None:
+    if seq_lens is None or len(seq_lens) == 0:
         prev_id = None
         seq_lens = []
         seq_len = 0
