@@ -54,10 +54,10 @@ class _AgentCollector:
         # episode starts. This is used for 0-buffering of e.g. prev-actions,
         # or internal state inputs.
         self.shift_before = -min(
-            [(int(vr.shift.split(":")[0])
+            (int(vr.shift.split(":")[0])
               if isinstance(vr.shift, str) else vr.shift) +
              (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0)
-             for k, vr in view_reqs.items()])
+             for k, vr in view_reqs.items())
         # The actual data buffers (lists holding each timestep's data).
         self.buffers: Dict[str, List] = {}
         # The episode ID for the agent for which we collect data.
