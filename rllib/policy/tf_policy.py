@@ -810,11 +810,6 @@ class TFPolicy(Policy):
             shuffle=shuffle,
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
-            ## Cannot use `self._loss_input_dict_no_rnn` here b/c some Policies
-            ## directly inherit from TFPolicy, which doesn't have this dict.
-            #feature_keys=[
-            #    k for k in self._loss_input_dict.keys() if k != "seq_lens" and not k.startswith("state_in_")
-            #],
             feature_keys=[k for k in self._loss_input_dict_no_rnn.keys()],
             view_requirements=self.view_requirements,
         )
