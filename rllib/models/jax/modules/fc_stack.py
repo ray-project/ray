@@ -38,23 +38,22 @@ class FCStack(nn.Module if nn else object):
         self.initializer = get_initializer(self.initializer, framework="jax")
 
         # Create all layers.
-        self._hidden_layers = []
+        hidden_layers = []
         prev_layer_size = self.in_features
         for i, size in enumerate(self.layers):
-            slim_fc = SlimFC(
+            #setattr(self, "fc_{}".format(i), slim_fc)
+            hidden_layers.append(SlimFC(
                 in_size=prev_layer_size,
                 out_size=size,
                 use_bias=self.use_bias,
                 initializer=self.initializer,
                 activation=self.activation,
-                prng_key=self.prng_key,
-            )
-            setattr(self, "fc_{}".format(i), slim_fc)
-            self._hidden_layers.append(slim_fc)
+            ))
             prev_layer_size = size
+        self.hidden_layers = hidden_layers
 
     def __call__(self, inputs):
         x = inputs
-        for layer in self._hidden_layers:
+        for layer in self.hidden_layers:
             x = layer(x)
         return x

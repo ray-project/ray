@@ -9,9 +9,9 @@ from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 
 jax, flax = try_import_jax()
-nn = None
+fd = None
 if flax:
-    import flax.linen as nn
+    from flax.core.frozen_dict import FrozenDict as fd
 
 
 @PublicAPI
@@ -43,7 +43,13 @@ class JAXModelV2(ModelV2):
     @override(ModelV2)
     def variables(self, as_dict: bool = False
                   ) -> Union[List[TensorType], Dict[str, TensorType]]:
-        return self.variables
+        params = fd({
+            k: v["params"] for k, v in self.__dict__.items() if
+            isinstance(v, fd) and "params" in v
+        })
+        if as_dict:
+            return params
+        return list(params.values())
 
     @PublicAPI
     @override(ModelV2)

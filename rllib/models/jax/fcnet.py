@@ -1,13 +1,18 @@
 import logging
 import numpy as np
 import time
+from typing import Dict, List, Union
 
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.jax.modules.fc_stack import FCStack
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_jax
+from ray.rllib.utils.typing import TensorType
 
 jax, flax = try_import_jax()
+jnp = None
+if jax:
+    import jax.numpy as jnp
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,7 @@ class FullyConnectedNetwork(JAXModelV2):
             raise ValueError("`free_log_std` not supported for JAX yet!")
 
         self._logits = None
+        self._logits_params = None
 
         # The last layer is adjusted to be of size num_outputs, but it's a
         # layer with activation.
@@ -53,10 +59,6 @@ class FullyConnectedNetwork(JAXModelV2):
                     activation=activation,
                     prng_key=self.prng_key,
                 )
-                #TODO
-                import jax.numpy as jnp
-                in_ = jnp.zeros((10, in_features))
-                vars = self._hidden_layers.init(self.prng_key, in_)
                 prev_layer_size = hiddens[-1]
             if num_outputs:
                 self._logits = FCStack(
@@ -65,9 +67,14 @@ class FullyConnectedNetwork(JAXModelV2):
                     activation=None,
                     prng_key=self.prng_key,
                 )
+                self._logits_params = self._logits.init(self.prng_key, jnp.zeros((1, prev_layer_size)))
             else:
                 self.num_outputs = (
                     [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
+
+        # Init hidden layers.
+        in_ = jnp.zeros((1, in_features))
+        self._hidden_layers_params = self._hidden_layers.init(self.prng_key, in_)
 
         self._value_branch_separate = None
         if not self.vf_share_layers:
@@ -91,8 +98,8 @@ class FullyConnectedNetwork(JAXModelV2):
     @override(JAXModelV2)
     def forward(self, input_dict, state, seq_lens):
         self._last_flat_in = input_dict["obs_flat"]
-        self._features = self._hidden_layers(self._last_flat_in)
-        logits = self._logits(self._features) if self._logits else \
+        self._features = self._hidden_layers.apply(self._hidden_layers_params, self._last_flat_in)
+        logits = self._logits.apply(self._logits_params, self._features) if self._logits else \
             self._features
         return logits, state
 

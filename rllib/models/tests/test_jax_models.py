@@ -2,6 +2,8 @@ from gym.spaces import Box, Discrete
 import unittest
 
 from ray.rllib.models.jax.fcnet import FullyConnectedNetwork
+from ray.rllib.models.jax.misc import SlimFC
+from ray.rllib.models.jax.modules.fc_stack import FCStack
 from ray.rllib.utils.framework import try_import_jax
 
 
@@ -12,6 +14,18 @@ if jax:
 
 
 class TestJAXModels(unittest.TestCase):
+
+    def test_jax_slimfc(self):
+        slimfc = SlimFC(5, 2)
+        prng = jax.random.PRNGKey(0)
+        params = slimfc.init(prng, jnp.zeros((1, 5)))
+        assert params
+
+    def test_jax_fcstack(self):
+        fc_stack = FCStack(5, [2, 2], "relu")
+        prng = jax.random.PRNGKey(0)
+        params = fc_stack.init(prng, jnp.zeros((1, 5)))
+        assert params
 
     def test_jax_fcnet(self):
         """Tests the JAX FCNet class."""
@@ -30,6 +44,7 @@ class TestJAXModels(unittest.TestCase):
         )
         inputs = jnp.array([obs_space.sample()])
         print(fc_net({"obs": inputs}))
+        fc_net.variables()
 
 
 if __name__ == "__main__":
