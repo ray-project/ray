@@ -537,7 +537,6 @@ def test_actor_recursive(ray_start_regular_shared):
     assert result == [x * 2 for x in range(100)]
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_actor_concurrent(ray_start_regular_shared):
     @ray.remote
     class Batcher:

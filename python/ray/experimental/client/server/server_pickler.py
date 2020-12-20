@@ -56,6 +56,7 @@ class ServerPickler(cloudpickle.CloudPickler):
                 client_id=self.client_id,
                 ref_id=obj_id,
                 name=None,
+                baseline_options=None,
             )
         elif isinstance(obj, ray.actor.ActorHandle):
             actor_id = obj._actor_id.binary()
@@ -69,6 +70,7 @@ class ServerPickler(cloudpickle.CloudPickler):
                 client_id=self.client_id,
                 ref_id=obj._actor_id.binary(),
                 name=None,
+                baseline_options=None,
             )
         return None
 
@@ -89,13 +91,13 @@ class ClientUnpickler(pickle.Unpickler):
         elif pid.type == "RemoteFuncSelfReference":
             return ServerSelfReferenceSentinel()
         elif pid.type == "RemoteFunc":
-            return self.server.lookup_or_register_func(pid.ref_id,
-                                                       pid.client_id)
+            return self.server.lookup_or_register_func(
+                pid.ref_id, pid.client_id, pid.baseline_options)
         elif pid.type == "RemoteActorSelfReference":
             return ServerSelfReferenceSentinel()
         elif pid.type == "RemoteActor":
             return self.server.lookup_or_register_actor(
-                pid.ref_id, pid.client_id)
+                pid.ref_id, pid.client_id, pid.baseline_options)
         elif pid.type == "RemoteMethod":
             actor = self.server.actor_refs[pid.ref_id]
             return getattr(actor, pid.name)
