@@ -3,7 +3,6 @@ import time
 import sys
 import logging
 
-from ray.experimental.client import ray
 from ray.experimental.client.common import ClientObjectRef
 from ray._private.ray_client_helpers import ray_start_client_server
 

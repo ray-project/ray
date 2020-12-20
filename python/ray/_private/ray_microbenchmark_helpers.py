@@ -5,7 +5,6 @@ import numpy as np
 
 from contextlib import contextmanager
 
-
 # Only run tests matching this filter pattern.
 filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 

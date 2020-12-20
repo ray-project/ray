@@ -14,5 +14,3 @@ def ray_start_client_server():
         ray.disconnect()
         server.stop(0)
         reset_api()
-
-
