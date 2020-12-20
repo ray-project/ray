@@ -810,7 +810,7 @@ class TFPolicy(Policy):
             shuffle=shuffle,
             max_seq_len=self._max_seq_len,
             batch_divisibility_req=self._batch_divisibility_req,
-            feature_keys=[k for k in self._loss_input_dict_no_rnn.keys()],
+            feature_keys=list(k for k in self._loss_input_dict_no_rnn.keys()),
             view_requirements=self.view_requirements,
         )
 
