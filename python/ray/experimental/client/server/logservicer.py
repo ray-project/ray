@@ -10,7 +10,6 @@ import grpc
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
-
 logger = logging.getLogger(__name__)
 
 

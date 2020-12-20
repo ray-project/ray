@@ -242,6 +242,7 @@ def test_basic_log_stream(ray_start_regular_shared):
 
         def test_log(level, msg):
             log_msgs.append(msg)
+
         ray.worker.log_client.log = test_log
         ray.worker.log_client.set_logstream_level(logging.DEBUG)
         # Allow some time to propogate
@@ -249,11 +250,10 @@ def test_basic_log_stream(ray_start_regular_shared):
         x = ray.put("Foo")
         assert ray.get(x) == "Foo"
         time.sleep(1)
-        logs_with_id = [
-            msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
+        logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
         assert len(logs_with_id) >= 2
-        assert any([msg.find("get") >= 0 for msg in logs_with_id])
-        assert any([msg.find("put") >= 0 for msg in logs_with_id])
+        assert any((msg.find("get") >= 0 for msg in logs_with_id))
+        assert any((msg.find("put") >= 0 for msg in logs_with_id))
 
 
 if __name__ == "__main__":
