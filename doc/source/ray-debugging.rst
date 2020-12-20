@@ -116,16 +116,84 @@ following recursive function as an example:
 
 After running the program by executing the Python file and calling
 ``ray debug``, you can select the breakpoint by pressing ``0`` and
-enter. The cursor is on the line ``result = fact.remote(5)``. You
-can jump into the call with the ``remote`` command in Ray's debugger.
-Inside the function, print the value of `n` with ``p(n)``, it should
-give you the value 5. Now step into the next remote call again with
+enter. This will result in the following output:
+
+.. code-block:: python
+
+    Enter breakpoint index or press enter to refresh: 0
+    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    -> result_ref = fact.remote(5)
+    (Pdb) 
+
+You can jump into the call with the ``remote`` command in Ray's debugger.
+Inside the function, print the value of `n` with ``p(n)``, resulting in
+the following output:
+
+.. code-block:: python
+
+    -> result_ref = fact.remote(5)
+    (Pdb) remote
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Call--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    -> @ray.remote
+    (Pdb) ll
+      5  ->	@ray.remote
+      6  	def fact(n):
+      7  	    if n == 1:
+      8  	        return n
+      9  	    else:
+     10  	        n_id = fact.remote(n - 1)
+     11  	        return n * ray.get(n_id)
+    (Pdb) p(n)
+    5
+    (Pdb) 
+
+Now step into the next remote call again with
 ``remote`` and print `n`. You an now either continue recursing into
 the function by calling ``remote`` a few more times, or you can jump
 to the location where ``ray.get`` is called on the result by using the
 ``get`` debugger comand. Use ``get`` again to jump back to the original
-call site and use ``p(result)`` to print the result, which should be
-120.
+call site and use ``p(result)`` to print the result:
+
+.. code-block:: python
+
+    Enter breakpoint index or press enter to refresh: 0
+    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    -> result_ref = fact.remote(5)
+    (Pdb) remote
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Call--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    -> @ray.remote
+    (Pdb) p(n)
+    5
+    (Pdb) remote
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Call--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    -> @ray.remote
+    (Pdb) p(n)
+    4
+    (Pdb) get
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Return--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()->120
+    -> @ray.remote
+    (Pdb) get
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Return--
+    > /Users/pcmoritz/tmp/stepping.py(14)<module>()->None
+    -> result_ref = fact.remote(5)
+    (Pdb) p(result)
+    120
+    (Pdb) 
+
 
 Post Mortem Debugging
 ---------------------
