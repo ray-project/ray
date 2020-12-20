@@ -974,8 +974,9 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
   auto it = cluster_resource_map_.find(node_id);
   if (it == cluster_resource_map_.end()) {
     // Haven't received the node registration for this node yet, skip this message.
-    RAY_LOG(INFO) << "[ResourceUsageAdded]: received resource usage from unknown node id "
-                  << node_id;
+    RAY_LOG(DEBUG)
+        << "[ResourceUsageAdded]: received resource usage from unknown node id "
+        << node_id;
     return;
   }
   // Trigger local GC at the next heartbeat interval.
@@ -1392,8 +1393,8 @@ void NodeManager::ProcessDisconnectClientMessage(
       // The client is a driver.
       is_driver = true;
     } else {
-      RAY_LOG(INFO) << "Ignoring client disconnect because the client has already "
-                    << "been disconnected.";
+      RAY_LOG(DEBUG) << "Ignoring client disconnect because the client has already "
+                     << "been disconnected.";
       return;
     }
   }

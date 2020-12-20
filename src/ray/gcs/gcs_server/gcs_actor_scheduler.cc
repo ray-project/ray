@@ -80,10 +80,10 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorScheduler::Reschedule(std::shared_ptr<GcsActor> actor) {
   if (!actor->GetWorkerID().IsNil()) {
-    RAY_LOG(INFO) << "Actor " << actor->GetActorID()
-                  << " is already tied to a leased worker. Create actor directly on "
-                     "worker. Job id = "
-                  << actor->GetActorID().JobId();
+    RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
+                   << " is already tied to a leased worker. Create actor directly on "
+                      "worker. Job id = "
+                   << actor->GetActorID().JobId();
     auto leased_worker = std::make_shared<GcsLeasedWorker>(
         actor->GetAddress(),
         VectorFromProtobuf(actor->GetMutableActorTableData()->resource_mapping()),
@@ -236,7 +236,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
           auto actor_iter = iter->second.find(actor->GetActorID());
           if (actor_iter == iter->second.end()) {
             // if actor is not in leasing state, it means it is cancelled.
-            RAY_LOG(INFO)
+            RAY_LOG(DEBUG)
                 << "Raylet granted a lease request, but the outstanding lease "
                    "request for "
                 << actor->GetActorID()

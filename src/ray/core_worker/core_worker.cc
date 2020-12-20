@@ -1435,7 +1435,7 @@ Status CoreWorker::CreatePlacementGroup(
       worker_context_.CurrentActorDetached());
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
-  RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
+  RAY_LOG(DEBUG) << "Submitting Placement Group creation to GCS: " << placement_group_id;
   RAY_CHECK_OK(
       gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(placement_group_spec));
   return Status::OK();
@@ -1792,7 +1792,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
+    RAY_LOG(INFO) << "Creating an actor request: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
@@ -2038,14 +2038,15 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
   if (HandleWrongRecipient(WorkerID::FromBinary(request.owner_worker_id()),
                            send_reply_callback)) {
     RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by a previous worker "
-                     "with the same address";
+                     "with the same address. The request will be ignored. Object id: "
+                  << object_id;
     return;
   }
 
-  ObjectID object_id = ObjectID::FromBinary(request.object_id());
   RAY_LOG(DEBUG) << "Received GetObjectStatus " << object_id;
   // Acquire a reference to the object. This prevents the object from being
   // evicted out from under us while we check the object status and start the
@@ -2204,13 +2205,14 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Try non-force kill
   if (success && !request.force_kill()) {
-    RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Interrupting a running task of id: " << main_thread_task_id_
+                  << ". The task will be cancelled.";
     success = options_.kill_main();
   }
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
     if (recursive_cancel.ok()) {
-      RAY_LOG(INFO) << "Recursive cancel failed!";
+      RAY_LOG(DEBUG) << "Recursive cancel failed!";
     }
   }
 
@@ -2219,7 +2221,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
 
   // Do force kill after reply callback sent
   if (success && request.force_kill()) {
-    RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
+    RAY_LOG(INFO) << "Force killing a worker running a task of task id:"
+                  << main_thread_task_id_;
     Disconnect();
     if (options_.enable_logging) {
       RayLog::ShutDownRayLog();
@@ -2247,7 +2250,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
   }
 
   if (request.force_kill()) {
-    RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+    RAY_LOG(INFO) << "Got a KillActor request, exiting immediately...";
     if (request.no_restart()) {
       Disconnect();
     }

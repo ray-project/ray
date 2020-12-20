@@ -131,7 +131,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   if (num_restarts < queue->second.num_restarts) {
     // This message is about an old version of the actor and the actor has
     // already restarted since then. Skip the connection.
-    RAY_LOG(INFO) << "Skip actor that has already been restarted, actor_id=" << actor_id;
+    RAY_LOG(DEBUG) << "Skip actor that has already been restarted, actor_id=" << actor_id;
     return;
   }
 
@@ -230,7 +230,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Check if there is a pending force kill. If there is, send it and disconnect the
   // client.
   if (client_queue.pending_force_kill) {
-    RAY_LOG(INFO) << "Sending KillActor request to actor " << actor_id;
+    RAY_LOG(INFO) << "Sending KillActor request to actor id:" << actor_id;
     // It's okay if this fails because this means the worker is already dead.
     client_queue.rpc_client->KillActor(*client_queue.pending_force_kill, nullptr);
     client_queue.pending_force_kill.reset();
@@ -375,9 +375,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   if (task_spec.IsActorCreationTask() &&
       worker_context_.GetCurrentActorID() == task_spec.ActorCreationId()) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
-    RAY_LOG(INFO) << "Ignoring duplicate actor creation task for actor "
-                  << task_spec.ActorCreationId()
-                  << ". This is likely due to a GCS server restart.";
+    RAY_LOG(DEBUG) << "Ignoring duplicate actor creation task for actor "
+                   << task_spec.ActorCreationId()
+                   << ". This is likely due to a GCS server restart.";
     return;
   }
 

@@ -395,9 +395,10 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   // `CreateActor` request.
   // After GCS restarts, the state of the actor may not be `DEPENDENCIES_UNREADY`.
   if (iter->second->GetState() != rpc::ActorTableData::DEPENDENCIES_UNREADY) {
-    RAY_LOG(INFO) << "Actor " << actor_id
-                  << " is already in the process of creation. Skip it directly, job id = "
-                  << actor_id.JobId();
+    RAY_LOG(DEBUG)
+        << "Actor " << actor_id
+        << " is already in the process of creation. Skip it directly, job id = "
+        << actor_id.JobId();
     return Status::OK();
   }
 
@@ -894,7 +895,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       // We should not reschedule actors in state of `ALIVE`.
       // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
       // dependencies of them may not have been resolved yet.
-      RAY_LOG(INFO) << "Rescheduling a non-alive actor, actor id = "
+      RAY_LOG(INFO) << "Rescheduling an actor that needs to be recreated, actor id = "
                     << actor->GetActorID() << ", state = " << actor->GetState()
                     << ", job id = " << actor->GetActorID().JobId();
       gcs_actor_scheduler_->Reschedule(actor);

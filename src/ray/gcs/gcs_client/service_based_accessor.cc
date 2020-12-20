@@ -383,7 +383,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   NodeID node_id = NodeID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Unregistering a local node from GCS, node id: " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   client_impl_->GetGcsRpcClient().UnregisterNode(
@@ -393,8 +393,8 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
-        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
-                      << ", node id = " << node_id;
+        RAY_LOG(INFO) << "Finished unregistering a local node from GCS, status: "
+                      << status << ", node id = " << node_id;
       });
   return Status::OK();
 }
@@ -544,7 +544,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportResourceUsage(
 void ServiceBasedNodeInfoAccessor::AsyncReReportResourceUsage() {
   absl::MutexLock lock(&mutex_);
   if (cached_resource_usage_.has_resources()) {
-    RAY_LOG(INFO) << "Rereport resource usage.";
+    RAY_LOG(DEBUG) << "Rereport resource usage.";
     FillResourceUsageRequest(cached_resource_usage_);
     client_impl_->GetGcsRpcClient().ReportResourceUsage(
         cached_resource_usage_,
@@ -638,8 +638,8 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
     // and then node-A alive message. So we use `RAY_LOG` instead of `RAY_CHECK ` as a
     // workaround.
     if (!was_alive && is_alive) {
-      RAY_LOG(INFO) << "Notification for addition of a node that was already removed:"
-                    << node_id;
+      RAY_LOG(DEBUG) << "Notification for addition of a node that was already removed:"
+                     << node_id;
       return;
     }
   }

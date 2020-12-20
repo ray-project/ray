@@ -187,7 +187,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
     if (current_queue.empty()) {
-      RAY_LOG(INFO) << "Task queue empty, canceling lease request";
+      RAY_LOG(DEBUG) << "Task queue empty, canceling lease request";
       CancelWorkerLeaseIfNeeded(scheduling_key);
     }
   }
@@ -409,7 +409,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill, bool recursive) {
-  RAY_LOG(INFO) << "Killing task: " << task_spec.TaskId();
+  RAY_LOG(INFO) << "Killing task of a task id:" << task_spec.TaskId();
   const SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(), task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());

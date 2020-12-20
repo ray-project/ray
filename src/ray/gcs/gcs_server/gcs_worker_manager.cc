@@ -27,7 +27,8 @@ void GcsWorkerManager::HandleReportWorkerFailure(
   std::stringstream log_stream;
   log_stream << "Reporting worker failure, worker id = " << worker_id
              << ", node id = " << node_id
-             << ", address = " << worker_address.ip_address();
+             << ", address = " << worker_address.ip_address() ", is_intentional = "
+             << request.worker_failure().intentional_disconnect();
   if (request.worker_failure().intentional_disconnect()) {
     RAY_LOG(INFO) << log_stream.str();
   } else {

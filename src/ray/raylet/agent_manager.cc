@@ -29,15 +29,16 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
   agent_ip_address_ = request.agent_ip_address();
   agent_port_ = request.agent_port();
   agent_pid_ = request.agent_pid();
-  RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << agent_ip_address_
-                << ", port: " << agent_port_ << ", pid: " << agent_pid_;
+  RAY_LOG(DEBUG) << "HandleRegisterAgent, ip: " << agent_ip_address_
+                 << ", port: " << agent_port_ << ", pid: " << agent_pid_;
   reply->set_status(rpc::AGENT_RPC_STATUS_OK);
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
-    RAY_LOG(INFO) << "Not starting agent, the agent command is empty.";
+    RAY_LOG(INFO) << "Not starting agent, the agent command is empty. This means the "
+                     "dashboard agent is probably not created to the cluster.";
     return;
   }
 
@@ -72,7 +73,7 @@ void AgentManager::StartAgent() {
   }
 
   std::thread monitor_thread([this, child]() mutable {
-    RAY_LOG(INFO) << "Monitor agent process with pid " << child.GetId()
+    RAY_LOG(INFO) << "Monitor the agent process with pid " << child.GetId()
                   << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";
     auto timer = delay_executor_(

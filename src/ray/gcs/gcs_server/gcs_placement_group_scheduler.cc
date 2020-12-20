@@ -249,17 +249,17 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto bundles = placement_group->GetUnplacedBundles();
   auto strategy = placement_group->GetStrategy();
 
-  RAY_LOG(INFO) << "Scheduling placement group " << placement_group->GetName()
-                << ", id: " << placement_group->GetPlacementGroupID()
-                << ", bundles size = " << bundles.size();
+  RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()
+                 << ", id: " << placement_group->GetPlacementGroupID()
+                 << ", bundles size = " << bundles.size();
   auto selected_nodes = scheduler_strategies_[strategy]->Schedule(
       bundles, GetScheduleContext(placement_group->GetPlacementGroupID()));
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
-    RAY_LOG(INFO) << "Failed to schedule placement group " << placement_group->GetName()
-                  << ", id: " << placement_group->GetPlacementGroupID()
-                  << ", because no nodes are available.";
+    RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
+                   << ", id: " << placement_group->GetPlacementGroupID()
+                   << ", because no nodes are available.";
     failure_callback(placement_group);
     return;
   }
@@ -371,9 +371,9 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
     const std::shared_ptr<BundleSpecification> &bundle_spec,
     const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node) {
   if (!node.has_value()) {
-    RAY_LOG(INFO) << "Node for a placement group id " << bundle_spec->PlacementGroupId()
-                  << " and a bundle index, " << bundle_spec->Index()
-                  << " has already removed. Cancellation request will be ignored.";
+    RAY_LOG(DEBUG) << "Node for a placement group id " << bundle_spec->PlacementGroupId()
+                   << " and a bundle index, " << bundle_spec->Index()
+                   << " has already removed. Cancellation request will be ignored.";
     return;
   }
   auto node_id = NodeID::FromBinary(node.value()->node_id());

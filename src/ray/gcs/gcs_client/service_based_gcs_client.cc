@@ -202,10 +202,11 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
       if (last_reconnect_address_ == address &&
           (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
               RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
-        RAY_LOG(INFO)
+        RAY_LOG(WARNING)
             << "Repeated reconnection in "
             << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
-            << "milliseconds, return directly.";
+            << "milliseconds. Stop reconnecting for a short time to throttle the "
+               "reconnect request since it can increase the load to the GCS server.";
         return;
       }
 
