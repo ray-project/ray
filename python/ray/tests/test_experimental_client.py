@@ -81,11 +81,11 @@ def test_wait(ray_start_regular_shared):
         with pytest.raises(Exception):
             # Reference not in the object store.
             ray.wait([ClientObjectRef("blabla")])
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait("blabla")
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait(ClientObjectRef("blabla"))
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait(["blabla"])
 
 

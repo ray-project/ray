@@ -8,14 +8,23 @@ import time
 import numpy as np
 import pytest
 
-import ray
 import ray.cluster_utils
-import ray.test_utils
+from ray.test_utils import (
+    client_test_enabled,
+    dicts_equal,
+    wait_for_pid_to_exit,
+)
+
+if client_test_enabled():
+    from ray.experimental.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
 
 # https://github.com/ray-project/ray/issues/6662
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
     os.environ["http_proxy"] = "http://example.com"
@@ -29,6 +38,7 @@ def test_ignore_http_proxy(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7263
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_grpc_message_size(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -45,12 +55,14 @@ def test_grpc_message_size(shutdown_only):
 
 
 # https://github.com/ray-project/ray/issues/7287
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_omp_threads_set(shutdown_only):
     ray.init(num_cpus=1)
     # Should have been auto set by ray init.
     assert os.environ["OMP_NUM_THREADS"] == "1"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
@@ -109,6 +121,7 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_invalid_arguments(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -163,6 +176,7 @@ def test_invalid_arguments(shutdown_only):
                 x = 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -178,7 +192,7 @@ def test_many_fractional_resources(shutdown_only):
         }
         if block:
             ray.get(g.remote())
-        return ray.test_utils.dicts_equal(true_resources, accepted_resources)
+        return dicts_equal(true_resources, accepted_resources)
 
     # Check that the resource are assigned correctly.
     result_ids = []
@@ -230,6 +244,7 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -257,7 +272,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
         pid, g_id = nested.pop(0)
         ray.get(g_id)
         del g_id
-        ray.test_utils.wait_for_pid_to_exit(pid)
+        wait_for_pid_to_exit(pid)
 
 
 def test_fair_queueing(shutdown_only):
@@ -327,6 +342,7 @@ def test_wait_timing(shutdown_only):
     assert len(not_ready) == 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal _raylet")
 def test_function_descriptor():
     python_descriptor = ray._raylet.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
@@ -344,6 +360,7 @@ def test_function_descriptor():
     assert d.get(python_descriptor2) == 123
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_ray_options(shutdown_only):
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
@@ -371,6 +388,7 @@ def test_ray_options(shutdown_only):
     assert without_options != with_options
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -438,8 +456,11 @@ def test_nested_functions(ray_start_shared_local_modes):
     assert ray.get(factorial.remote(4)) == 24
     assert ray.get(factorial.remote(5)) == 120
 
-    # Test remote functions that recursively call each other.
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="mutual recursion is a known issue")
+def test_mutually_recursive_functions(ray_start_shared_local_modes):
+    # Test remote functions that recursively call each other.
     @ray.remote
     def factorial_even(n):
         assert n % 2 == 0
@@ -710,6 +731,7 @@ def test_args_stars_after(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_object_id_backward_compatibility(ray_start_shared_local_modes):
     # We've renamed Python's `ObjectID` to `ObjectRef`, and added a type
     # alias for backward compatibility.

@@ -109,9 +109,13 @@ class Worker:
              num_returns: int = 1,
              timeout: float = None
              ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
-        assert isinstance(object_refs, list)
+        if not isinstance(object_refs, list):
+            raise TypeError("wait() expected a list of ClientObjectRef, "
+                            f"got {type(object_refs)}")
         for ref in object_refs:
-            assert isinstance(ref, ClientObjectRef)
+            if not isinstance(ref, ClientObjectRef):
+                raise TypeError("wait() expected a list of ClientObjectRef, "
+                                f"got list containing {type(ref)}")
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
@@ -149,9 +153,16 @@ class Worker:
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
+        for k, v in kwargs.items():
+            task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
         task.client_id = self._client_id
         logger.debug("Scheduling %s" % task)
-        ticket = self.server.Schedule(task, metadata=self.metadata)
+        try:
+            ticket = self.server.Schedule(task, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise e.details()
+        if not ticket.valid:
+            raise cloudpickle.loads(ticket.error)
         return ticket.return_id
 
     def call_release(self, id: bytes) -> None:
@@ -171,10 +182,9 @@ class Worker:
         self.reference_count[id] += 1
 
     def close(self):
-        self.data_client.close()
+        self.data_client.close(close_channel=True)
         self.server = None
         if self.channel:
-            self.channel.close()
             self.channel = None
 
     def terminate_actor(self, actor: ClientActorHandle,
