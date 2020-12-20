@@ -44,16 +44,16 @@ void GcsResourceManager::HandleUpdateResources(
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-  std::unordered_map<std::string, double> changed_resources;
-  for (auto &entry : request.resources()) {
-    changed_resources.emplace(entry.first, entry.second.resource_capacity());
+  auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
+  for (const auto &entry : request.resources()) {
+    changed_resources->emplace(entry.first, entry.second.resource_capacity());
   }
 
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
     SchedulingResources &scheduling_resources = iter->second;
-    for (const auto &entry : changed_resources) {
+    for (const auto &entry : *changed_resources) {
       scheduling_resources.UpdateResourceCapacity(entry.first, entry.second);
     }
 
@@ -62,7 +62,7 @@ void GcsResourceManager::HandleUpdateResources(
     for (const auto &entry : iter->second.GetTotalResources().GetResourceMap()) {
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
-    for (const auto &entry : changed_resources) {
+    for (const auto &entry : *changed_resources) {
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
@@ -71,8 +71,8 @@ void GcsResourceManager::HandleUpdateResources(
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
-      node_resource_change.mutable_updated_resources()->insert(changed_resources.begin(),
-                                                               changed_resources.end());
+      node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
+                                                               changed_resources->end());
       RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
                                          node_resource_change.SerializeAsString(),
                                          nullptr));
@@ -100,14 +100,14 @@ void GcsResourceManager::HandleDeleteResources(
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     // Update `cluster_scheduling_resources_`.
-    for (auto &resource_name : resource_names) {
+    for (const auto &resource_name : resource_names) {
       iter->second.DeleteResource(resource_name);
     }
 
     // Update gcs storage.
     rpc::ResourceMap resource_map;
     auto resources = iter->second.GetTotalResources().GetResourceMap();
-    for (auto &resource_name : resource_names) {
+    for (const auto &resource_name : resource_names) {
       resources.erase(resource_name);
     }
     for (const auto &entry : resources) {
@@ -202,7 +202,7 @@ void GcsResourceManager::DeleteResources(
     const NodeID &node_id, const std::vector<std::string> &deleted_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
-    for (auto &resource_name : deleted_resources) {
+    for (const auto &resource_name : deleted_resources) {
       iter->second.DeleteResource(resource_name);
     }
   }
