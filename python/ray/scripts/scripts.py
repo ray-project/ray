@@ -6,7 +6,6 @@ import logging
 import os
 import subprocess
 import sys
-from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse
