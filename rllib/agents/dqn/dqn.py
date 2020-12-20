@@ -233,12 +233,9 @@ def execution_plan(workers: WorkerSet,
         if config.get("prioritized_replay"):
             prio_dict = {}
             for policy_id, info in info_dict.items():
-                # TODO(sven): This is currently structured differently for
-                #  torch/tf. Clean up these results/info dicts across
-                #  policies (note: fixing this in torch_policy.py will
-                #  break e.g. DDPPO!).
-                td_error = info.get("td_error",
-                                    info[LEARNER_STATS_KEY].get("td_error"))
+                #TODO: check, whether correct now and resolve below disambiguation
+                td_error = info.get("td_error")
+                                    #info[LEARNER_STATS_KEY].get("td_error"))
                 prio_dict[policy_id] = (samples.policy_batches[policy_id]
                                         .data.get("batch_indexes"), td_error)
             local_replay_buffer.update_priorities(prio_dict)

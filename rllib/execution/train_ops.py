@@ -2,6 +2,7 @@ from collections import defaultdict
 import logging
 import numpy as np
 import math
+import tree
 from typing import List, Tuple, Any
 
 import ray
@@ -206,14 +207,30 @@ class TrainTFMultiGPU:
                         batch_fetches = optimizer.optimize(
                             self.sess, permutation[batch_index] *
                             self.per_device_batch_size)
-                        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
-                            TODO: multi-GPU optimizer here does not collect td_error (which is stored outside LEARNER_STATS_KEY)
-                            that's why it doesn't show up in the returned fetches.
-                            iter_extra_fetches[k].append(v)
+
+                        #def mapping_fn(*s):
+                        #    s
+
+                        iter_extra_fetches = tree.map_structure(
+                            lambda *s: np.array(s),
+                            *(batch_fetches["tower_{}".format(i)] for i in range(len(self.devices))))
+                        
+                        #for k, v in batch_fetches.items():
+                        #    if k == LEARNER_STATS_KEY:
+                        #        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
+                        #    #TODO: multi-GPU optimizer here does not collect td_error (which is stored outside LEARNER_STATS_KEY)
+                        #    #that's why it doesn't show up in the returned fetches.
+                        #            iter_extra_fetches[k].append(v)
+                        #    elif k == "train_op":
+                        #        continue
+                        #    else:
+                        #        iter_extra_fetches[k].append(v)
                     if logger.getEffectiveLevel() <= logging.DEBUG:
-                        avg = averaged(iter_extra_fetches)
+                        avg = tree.map_structure_with_path(lambda p, s: np.nanmean(s, axis=0) if p[0] != "td_error" else np.concatenate(s, axis=0), iter_extra_fetches)
                         logger.debug("{} {}".format(i, avg))
-                fetches[policy_id] = averaged(iter_extra_fetches, axis=0)
+                fetches[policy_id] = tree.map_structure_with_path(lambda p, s: np.nanmean(s, axis=0) if p[0] != "td_error" else np.concatenate(s, axis=0), iter_extra_fetches)
+                #fetches[policy_id] = tree.map_structure(lambda s: np.nanmean(s, axis=0), iter_extra_fetches)#averaged(iter_extra_fetches, axis=0)
+                #fetches[policy_id] = tree.unflatten_as()
 
         load_timer.push_units_processed(samples.count)
         learn_timer.push_units_processed(samples.count)

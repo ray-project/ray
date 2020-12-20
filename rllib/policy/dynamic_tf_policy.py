@@ -370,7 +370,7 @@ class DynamicTFPolicy(TFPolicy):
             self.action_space,
             self.config,
             existing_inputs=input_dict,
-            existing_model=[self.model, ("target_q_model", getattr(self, "target_q_model"))])
+            existing_model=[self.model, ("target_q_model", getattr(self, "target_q_model", None))])
 
         instance._loss_input_dict = input_dict
         loss = instance._do_loss_init(input_dict)

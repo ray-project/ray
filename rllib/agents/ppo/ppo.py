@@ -20,7 +20,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
     StandardizeFields, SelectExperiences
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import LEARNER_STATS_KEY, Policy
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -174,12 +174,14 @@ class UpdateKL:
 
     def __call__(self, fetches):
         def update(pi, pi_id):
-            assert "kl" not in fetches, (
-                "kl should be nested under policy id key", fetches)
+            assert LEARNER_STATS_KEY not in fetches, \
+                ("{} should be nested under policy id key".format(
+                    LEARNER_STATS_KEY), fetches)
             if pi_id in fetches:
-                assert "kl" in fetches[pi_id], (fetches, pi_id)
+                kl = fetches[pi_id].get(LEARNER_STATS_KEY, {}).get("kl")
+                assert kl is not None, (fetches, pi_id)
                 # Make the actual `Policy.update_kl()` call.
-                pi.update_kl(fetches[pi_id]["kl"])
+                pi.update_kl(kl)
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
