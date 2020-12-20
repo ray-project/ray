@@ -45,6 +45,9 @@ Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
   RAY_CHECK_OK(DoPut(index_table_key, key, nullptr));
 
   // Write data to Redis.
+  // The operation of redis client is executed in order, and it can ensure that index is
+  // written first and then data is written. The index and data are decoupled, so we don't
+  // need to write data in the callback function of index writing.
   const auto &status = DoPut(GenRedisKey(table_name, key), data, callback);
   if (!status.ok()) {
     // Run callback if failed.
