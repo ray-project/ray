@@ -139,7 +139,7 @@ struct CoreWorkerOptions {
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
   /// Application-language callback to restore objects from external storage.
-  std::function<void(const std::vector<ObjectID> &, const std::vector<std::string> &)>
+  std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
   /// Application-language callback to delete objects from external storage.
   std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
@@ -564,7 +564,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
-              const int64_t timeout_ms, std::vector<bool> *results);
+              const int64_t timeout_ms, std::vector<bool> *results, bool fetch_local);
 
   /// Delete a list of objects from the plasma object store.
   ///
