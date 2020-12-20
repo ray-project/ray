@@ -228,3 +228,27 @@ service RayletDataStreamer {
   rpc Datapath(stream DataRequest) returns (stream DataResponse) {
   }
 }
+
+// A request to change the quantity or type of the logs
+// currently being streamed. Initially, all logs are disabled.
+message LogSettingsRequest {
+  // Set to recieve logs.
+  bool enabled = 1;
+  // At what loglevel should logs be forwarded on the stream.
+  int32 loglevel = 2;
+  // TODO(barakmich): More log filtering options.
+}
+
+message LogData {
+  // The message data in the log
+  string msg = 1;
+  // The loglevel at which this log should be displayed.
+  int32 level = 2;
+  // The name of the logger that generated this message.
+  string name = 3;
+}
+
+service RayletLogStreamer {
+  rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {
+  }
+}

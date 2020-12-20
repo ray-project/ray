@@ -48,7 +48,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                 resp.req_id = req.req_id
                 yield resp
         except grpc.RpcError as e:
-            logger.debug(f"Closing channel: {e}")
+            logger.debug(f"Closing data channel: {e}")
         finally:
             logger.info(f"Lost data connection from client {client_id}")
             self.basic_service.release_all(client_id)

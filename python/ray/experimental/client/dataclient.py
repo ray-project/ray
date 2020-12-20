@@ -26,6 +26,7 @@ class DataClient:
 
         Args:
             channel: connected gRPC channel
+            client_id: the generated ID representing this client
         """
         self.channel = channel
         self.request_queue = queue.Queue()
@@ -68,18 +69,14 @@ class DataClient:
                 logger.info("Cancelling data channel")
             else:
                 logger.error(
-                    f"Got Error from rpc channel -- shutting down: {e}")
+                    f"Got Error from data channel -- shutting down: {e}")
                 raise e
 
-    def close(self, close_channel: bool = False) -> None:
+    def close(self) -> None:
         if self.request_queue is not None:
             self.request_queue.put(None)
-            self.request_queue = None
-        if close_channel:
-            self.channel.close()
         if self.data_thread is not None:
             self.data_thread.join()
-            self.data_thread = None
 
     def _blocking_send(self, req: ray_client_pb2.DataRequest
                        ) -> ray_client_pb2.DataResponse:

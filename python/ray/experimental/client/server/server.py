@@ -23,6 +23,7 @@ from ray.experimental.client.server.server_pickler import dumps_from_server
 from ray.experimental.client.server.server_pickler import loads_from_client
 from ray.experimental.client.server.core_ray_api import RayServerAPI
 from ray.experimental.client.server.dataservicer import DataServicer
+from ray.experimental.client.server.logservicer import LogstreamServicer
 from ray.experimental.client.server.server_stubs import current_remote
 
 logger = logging.getLogger(__name__)
@@ -360,11 +361,14 @@ def serve(connection_str, test_mode=False):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer(test_mode=test_mode)
     data_servicer = DataServicer(task_servicer)
+    logs_servicer = LogstreamServicer()
     _set_server_api(RayServerAPI(task_servicer))
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(
         data_servicer, server)
+    ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
+        logs_servicer, server)
     server.add_insecure_port(connection_str)
     server.start()
     return server

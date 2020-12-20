@@ -29,6 +29,7 @@ from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientRemoteFunc
 from ray.experimental.client.common import ClientStub
 from ray.experimental.client.dataclient import DataClient
+from ray.experimental.client.logsclient import LogstreamClient
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,12 @@ class Worker:
         else:
             self.channel = grpc.insecure_channel(conn_str)
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
+
         self.data_client = DataClient(self.channel, self._client_id)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
+
+        self.log_client = LogstreamClient(self.channel)
+        self.log_client.set_logstream_level(logging.INFO)
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -192,14 +197,16 @@ class Worker:
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 
     def call_retain(self, id: bytes) -> None:
-        logger.debug(f"Retaining {id}")
+        logger.debug(f"Retaining {id.hex()}")
         self.reference_count[id] += 1
 
     def close(self):
-        self.data_client.close(close_channel=True)
-        self.server = None
+        self.log_client.close()
+        self.data_client.close()
         if self.channel:
+            self.channel.close()
             self.channel = None
+        self.server = None
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:

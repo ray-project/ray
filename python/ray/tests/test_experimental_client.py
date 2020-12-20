@@ -1,4 +1,6 @@
 import pytest
+import time
+import logging
 from contextlib import contextmanager
 
 import ray.experimental.client.server.server as ray_client_server
@@ -232,6 +234,26 @@ def test_pass_handles(ray_start_regular_shared):
         test_actor_obj["f"] = fact
         assert ray.get(sneaky_actor_exec.remote(test_actor_obj,
                                                 4)) == local_fact(4)
+
+
+def test_basic_log_stream(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        log_msgs = []
+
+        def test_log(level, msg):
+            log_msgs.append(msg)
+        ray.worker.log_client.log = test_log
+        ray.worker.log_client.set_logstream_level(logging.DEBUG)
+        # Allow some time to propogate
+        time.sleep(1)
+        x = ray.put("Foo")
+        assert ray.get(x) == "Foo"
+        time.sleep(1)
+        logs_with_id = [
+            msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
+        assert len(logs_with_id) >= 2
+        assert any([msg.find("get") >= 0 for msg in logs_with_id])
+        assert any([msg.find("put") >= 0 for msg in logs_with_id])
 
 
 if __name__ == "__main__":
