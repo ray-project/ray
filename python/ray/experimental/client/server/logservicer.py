@@ -46,8 +46,7 @@ class StdStreamHandler:
         self.queue.put(logdata)
 
     def register_global(self):
-        global_worker_stdstream_dispatcher.add_handler(
-            self.id, self.handle)
+        global_worker_stdstream_dispatcher.add_handler(self.id, self.handle)
 
     def unregister_global(self):
         global_worker_stdstream_dispatcher.remove_handler(self.id)
