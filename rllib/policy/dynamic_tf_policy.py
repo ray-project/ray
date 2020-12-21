@@ -183,11 +183,12 @@ class DynamicTFPolicy(TFPolicy):
         else:
             if self.config["_use_trajectory_view_api"]:
                 self._state_inputs = [
-                    tf1.placeholder(
-                        shape=(None, ) + vr.space.shape, dtype=vr.space.dtype)
-                    for k, vr in
+                    get_placeholder(
+                        space=vr.space,
+                        time_axis=not isinstance(vr.shift, int),
+                    ) for k, vr in
                     self.model.inference_view_requirements.items()
-                    if k[:9] == "state_in_"
+                    if k.startswith("state_in_")
                 ]
             else:
                 self._state_inputs = [
@@ -423,9 +424,14 @@ class DynamicTFPolicy(TFPolicy):
                 input_dict[view_col] = existing_inputs[view_col]
             # All others.
             else:
+                time_axis = not isinstance(view_req.shift, int)
                 if view_req.used_for_training:
+                    # Create a +time-axis placeholder if the shift is not an
+                    # int (range or list of ints).
                     input_dict[view_col] = get_placeholder(
-                        space=view_req.space, name=view_col)
+                        space=view_req.space,
+                        name=view_col,
+                        time_axis=time_axis)
         dummy_batch = self._get_dummy_batch_from_view_requirements(
             batch_size=32)
 
@@ -490,10 +496,10 @@ class DynamicTFPolicy(TFPolicy):
                 dummy_batch["seq_lens"] = np.array([1], dtype=np.int32)
             for k, v in self.extra_compute_action_fetches().items():
                 dummy_batch[k] = fake_array(v)
+            dummy_batch = SampleBatch(dummy_batch)
 
-        sb = SampleBatch(dummy_batch)
-        batch_for_postproc = UsageTrackingDict(sb)
-        batch_for_postproc.count = sb.count
+        batch_for_postproc = UsageTrackingDict(dummy_batch)
+        batch_for_postproc.count = dummy_batch.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
         self.exploration.postprocess_trajectory(self, batch_for_postproc,
                                                 self._sess)
@@ -519,6 +525,7 @@ class DynamicTFPolicy(TFPolicy):
                 train_batch.update({
                     SampleBatch.PREV_ACTIONS: self._prev_action_input,
                     SampleBatch.PREV_REWARDS: self._prev_reward_input,
+                    SampleBatch.CUR_OBS: self._obs_input,
                 })
 
             for k, v in postprocessed_batch.items():
@@ -578,7 +585,8 @@ class DynamicTFPolicy(TFPolicy):
             for key in batch_for_postproc.accessed_keys:
                 if key not in train_batch.accessed_keys and \
                         key not in self.model.inference_view_requirements:
-                    self.view_requirements[key].used_for_training = False
+                    if key in self.view_requirements:
+                        self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Remove those not needed at all (leave those that are needed

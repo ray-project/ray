@@ -3,7 +3,7 @@ import pytest
 import cupy as cp
 import ray
 
-from .util import create_collective_workers
+from ray.util.collective.tests.util import create_collective_workers
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])

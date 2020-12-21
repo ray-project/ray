@@ -47,16 +47,19 @@ class ResourceDemandScheduler:
                  provider: NodeProvider,
                  node_types: Dict[NodeType, NodeTypeConfigDict],
                  max_workers: int,
+                 head_node_type: NodeType,
                  upscaling_speed: float = 1) -> None:
         self.provider = provider
         self.node_types = copy.deepcopy(node_types)
         self.max_workers = max_workers
+        self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
 
     def reset_config(self,
                      provider: NodeProvider,
                      node_types: Dict[NodeType, NodeTypeConfigDict],
                      max_workers: int,
+                     head_node_type: NodeType,
                      upscaling_speed: float = 1) -> None:
         """Updates the class state variables.
 
@@ -89,6 +92,7 @@ class ResourceDemandScheduler:
         self.provider = provider
         self.node_types = copy.deepcopy(final_node_types)
         self.max_workers = max_workers
+        self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
 
     def is_legacy_yaml(self,
@@ -153,7 +157,7 @@ class ResourceDemandScheduler:
          adjusted_min_workers) = \
             _add_min_workers_nodes(
                 node_resources, node_type_counts, self.node_types,
-                self.max_workers, ensure_min_cluster_size)
+                self.max_workers, self.head_node_type, ensure_min_cluster_size)
 
         # Step 3: add nodes for strict spread groups
         logger.info(f"Placement group demands: {pending_placement_groups}")
@@ -188,7 +192,8 @@ class ResourceDemandScheduler:
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
         nodes_to_add_based_on_demand = get_nodes_for(
-            self.node_types, node_type_counts, max_to_add, unfulfilled)
+            self.node_types, node_type_counts, self.head_node_type, max_to_add,
+            unfulfilled)
         # Merge nodes to add based on demand and nodes to add based on
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
@@ -443,6 +448,7 @@ class ResourceDemandScheduler:
             to_launch = get_nodes_for(
                 self.node_types,
                 node_type_counts,
+                self.head_node_type,
                 max_to_add,
                 unfulfilled,
                 strict_spread=True)
@@ -490,7 +496,7 @@ def _add_min_workers_nodes(
         node_resources: List[ResourceDict],
         node_type_counts: Dict[NodeType, int],
         node_types: Dict[NodeType, NodeTypeConfigDict], max_workers: int,
-        ensure_min_cluster_size: List[ResourceDict]
+        head_node_type: NodeType, ensure_min_cluster_size: List[ResourceDict]
 ) -> (List[ResourceDict], Dict[NodeType, int], Dict[NodeType, int]):
     """Updates resource demands to respect the min_workers and
     request_resources() constraints.
@@ -515,6 +521,9 @@ def _add_min_workers_nodes(
         existing = node_type_counts.get(node_type, 0)
         target = min(
             config.get("min_workers", 0), config.get("max_workers", 0))
+        if node_type == head_node_type:
+            # Add 1 to account for head node.
+            target = target + 1
         if existing < target:
             total_nodes_to_add_dict[node_type] = target - existing
             node_type_counts[node_type] = target
@@ -537,7 +546,7 @@ def _add_min_workers_nodes(
             max_node_resources, ensure_min_cluster_size)
         # Get the nodes to meet the unfulfilled.
         nodes_to_add_request_resources = get_nodes_for(
-            node_types, node_type_counts, max_to_add,
+            node_types, node_type_counts, head_node_type, max_to_add,
             resource_requests_unfulfilled)
         # Update the resources, counts and total nodes to add.
         for node_type in nodes_to_add_request_resources:
@@ -558,6 +567,7 @@ def _add_min_workers_nodes(
 
 def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
                   existing_nodes: Dict[NodeType, int],
+                  head_node_type: NodeType,
                   max_to_add: int,
                   resources: List[ResourceDict],
                   strict_spread: bool = False) -> Dict[NodeType, int]:
@@ -581,9 +591,13 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
     while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
         for node_type in node_types:
+            max_workers_of_node_type = node_types[node_type].get(
+                "max_workers", 0)
+            if head_node_type == node_type:
+                # Add 1 to account for head node.
+                max_workers_of_node_type = max_workers_of_node_type + 1
             if (existing_nodes.get(node_type, 0) + nodes_to_add.get(
-                    node_type, 0) >= node_types[node_type].get(
-                        "max_workers", 0)):
+                    node_type, 0) >= max_workers_of_node_type):
                 continue
             node_resources = node_types[node_type]["resources"]
             if strict_spread:

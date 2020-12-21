@@ -72,7 +72,9 @@ void GcsObjectManager::HandleAddObjectLocation(
     AddObjectLocationInCache(object_id, node_id);
   } else {
     absl::MutexLock lock(&mutex_);
-    object_to_locations_[object_id].spilled_url = request.spilled_url();
+    RAY_CHECK(!request.spilled_url().empty());
+    spilled_url = request.spilled_url();
+    object_to_locations_[object_id].spilled_url = spilled_url;
     RAY_LOG(DEBUG) << "Adding object spilled location, object id = " << object_id;
   }
 
@@ -91,7 +93,8 @@ void GcsObjectManager::HandleAddObjectLocation(
                                          notification.SerializeAsString(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding object location, job id = "
                      << object_id.TaskId().JobId() << ", object id = " << object_id
-                     << ", node id = " << node_id << ", task id = " << object_id.TaskId();
+                     << ", node id = " << node_id << ", task id = " << object_id.TaskId()
+                     << ", spilled_url = " << spilled_url;
     } else {
       RAY_LOG(ERROR) << "Failed to add object location: " << status.ToString()
                      << ", job id = " << object_id.TaskId().JobId()

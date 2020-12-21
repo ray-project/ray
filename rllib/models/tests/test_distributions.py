@@ -87,14 +87,15 @@ class TestDistributions(unittest.TestCase):
         batch_size = 10000
         num_categories = 4
         # Create categorical distribution with n categories.
-        inputs_space = Box(-1.0, 2.0, shape=(batch_size, num_categories))
+        inputs_space = Box(
+            -1.0, 2.0, shape=(batch_size, num_categories), dtype=np.float32)
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
 
         inputs = inputs_space.sample()
 
         for fw, sess in framework_iterator(
-                session=True, frameworks=("jax", "tf", "tf2", "torch")):
+                session=True, frameworks=("tf", "tf2", "torch")):
             # Create the correct distribution object.
             cls = JAXCategorical if fw == "jax" else Categorical if \
                 fw != "torch" else TorchCategorical

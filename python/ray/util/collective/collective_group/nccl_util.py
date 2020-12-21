@@ -57,8 +57,7 @@ def get_nccl_unique_id():
 
 
 def create_nccl_communicator(world_size, nccl_unique_id, rank):
-    """
-    Create an NCCL communicator using NCCL APIs.
+    """Create an NCCL communicator using NCCL APIs.
 
     Args:
         world_size (int): the number of processes of this communcator group.
@@ -74,8 +73,7 @@ def create_nccl_communicator(world_size, nccl_unique_id, rank):
 
 
 def get_nccl_reduce_op(reduce_op):
-    """
-    Map the reduce op to NCCL reduce op type.
+    """Map the reduce op to NCCL reduce op type.
 
     Args:
         reduce_op (ReduceOp): ReduceOp Enum (SUM/PRODUCT/MIN/MAX).
@@ -95,8 +93,9 @@ def get_nccl_tensor_dtype(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return TORCH_NCCL_DTYPE_MAP[tensor.dtype]
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "GPU tensor types are: torch.Tensor, "
+                     "cupy.ndarray.".format(type(tensor)))
 
 
 def get_cupy_tensor_dtype(tensor):
@@ -106,8 +105,9 @@ def get_cupy_tensor_dtype(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return TORCH_NUMPY_DTYPE_MAP[tensor.dtype]
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "GPU tensor types are: torch.Tensor, "
+                     "cupy.ndarray.".format(type(tensor)))
 
 
 def get_tensor_ptr(tensor):
@@ -121,8 +121,9 @@ def get_tensor_ptr(tensor):
             if not tensor.is_cuda:
                 raise RuntimeError("torch tensor must be on gpu.")
             return tensor.data_ptr()
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "GPU tensor types are: torch.Tensor, "
+                     "cupy.ndarray.".format(type(tensor)))
 
 
 def get_tensor_n_elements(tensor):
@@ -132,8 +133,9 @@ def get_tensor_n_elements(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return torch.numel(tensor)
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "GPU tensor types are: torch.Tensor, "
+                     "cupy.ndarray.".format(type(tensor)))
 
 
 def get_tensor_shape(tensor):
@@ -143,8 +145,9 @@ def get_tensor_shape(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return list(tensor.size())
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "GPU tensor types are: torch.Tensor, "
+                     "cupy.ndarray.".format(type(tensor)))
 
 
 def get_tensor_strides(tensor):
@@ -156,40 +159,42 @@ def get_tensor_strides(tensor):
     if torch_available():
         if isinstance(tensor, torch.Tensor):
             return list(tensor.stride())
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {}.".format(type(tensor)))
+    raise ValueError("Unsupported tensor type. Got: {}. Supported "
+                     "GPU tensor types are: torch.Tensor, "
+                     "cupy.ndarray.".format(type(tensor)))
 
 
 def copy_tensor(dst_tensor, src_tensor):
-    """
-    Copy the content from src_tensor to dst_tensor.
+    """Copy the content from src_tensor to dst_tensor.
 
     Args:
-        dst_tensor:
-        src_tensor:
+        dst_tensor: the tensor to copy from.
+        src_tensor: the tensor to copy to.
 
     Returns:
         None
     """
+    copied = True
     if isinstance(dst_tensor, cupy.ndarray) \
             and isinstance(src_tensor, cupy.ndarray):
         cupy.copyto(dst_tensor, src_tensor)
-        return
-    if torch_available():
+    elif torch_available():
         if isinstance(dst_tensor, torch.Tensor) and isinstance(
                 src_tensor, torch.Tensor):
             dst_tensor.copy_(src_tensor)
-            return
-        if isinstance(dst_tensor, torch.Tensor) and isinstance(
+        elif isinstance(dst_tensor, torch.Tensor) and isinstance(
                 src_tensor, cupy.ndarray):
             t = torch.utils.dlpack.from_dlpack(src_tensor.toDlpack())
             dst_tensor.copy_(t)
-            return
-        if isinstance(dst_tensor, cupy.ndarray) and isinstance(
+        elif isinstance(dst_tensor, cupy.ndarray) and isinstance(
                 src_tensor, torch.Tensor):
             t = cupy.fromDlpack(torch.utils.dlpack.to_dlpack(src_tensor))
             cupy.copyto(dst_tensor, t)
-            return
-    raise ValueError("Unsupported tensor type. "
-                     "Got: {} and {}.".format(
-                         type(dst_tensor), type(src_tensor)))
+        else:
+            copied = False
+    else:
+        copied = False
+    if not copied:
+        raise ValueError("Unsupported tensor type. Got: {} and {}. Supported "
+                         "GPU tensor types are: torch.Tensor, cupy.ndarray."
+                         .format(type(dst_tensor), type(src_tensor)))

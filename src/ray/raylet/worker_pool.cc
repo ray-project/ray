@@ -956,8 +956,8 @@ const std::vector<std::shared_ptr<WorkerInterface>> WorkerPool::GetAllRegistered
 }
 
 void WorkerPool::WarnAboutSize() {
-  for (const auto &entry : states_by_lang_) {
-    auto state = entry.second;
+  for (auto &entry : states_by_lang_) {
+    auto &state = entry.second;
     int64_t num_workers_started_or_registered = 0;
     num_workers_started_or_registered +=
         static_cast<int64_t>(state.registered_workers.size());

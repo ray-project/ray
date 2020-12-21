@@ -1,9 +1,10 @@
-import datetime
 import logging
+import datetime
 import time
 
-import cupy
 import ray
+import cupy
+
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
@@ -21,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class Rendezvous:
-    """
-    A rendezvous class for different actor/task processes to meet.
+    """A rendezvous class for different actor/task processes to meet.
 
     To initialize an NCCL collective communication group, different
     actors/tasks spawned in Ray in a collective group needs to meet
@@ -42,8 +42,7 @@ class Rendezvous:
         self._store = None
 
     def meet(self, timeout_s=180):
-        """
-        Meet at the named actor store.
+        """Meet at the named actor store.
 
         Args:
             timeout_s: timeout in seconds.
@@ -80,8 +79,7 @@ class Rendezvous:
         return self._store
 
     def get_nccl_id(self, timeout_s=180):
-        """
-        Get the NCCLUniqueID from the store through Ray.
+        """Get the NCCLUniqueID from the store through Ray.
 
         Args:
             timeout_s: timeout in seconds.
@@ -126,10 +124,7 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = cupy.array([1])
 
     def destroy_group(self):
-        """
-        Destroy the group and release the NCCL communicators safely.
-
-        """
+        """Destroy the group and release NCCL communicators."""
         if self._collective_comm_cache:
             self.barrier()
             # We also need a barrier call here.
@@ -160,8 +155,7 @@ class NCCLGroup(BaseGroup):
         return Backend.NCCL
 
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
-        """
-        AllReduce the tensor across the collective group following options.
+        """AllReduce the tensor across the collective group following options.
 
         Args:
             tensor: the tensor to be reduced, each tensor locates on a GPU
@@ -184,8 +178,7 @@ class NCCLGroup(BaseGroup):
         comm.allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
 
     def barrier(self, barrier_options=BarrierOptions()):
-        """
-        Blocks until all processes reach this barrier.
+        """Blocks until all processes reach this barrier.
 
         Args:
             barrier_options:
@@ -195,8 +188,7 @@ class NCCLGroup(BaseGroup):
         self.allreduce(self._barrier_tensor)
 
     def reduce(self, tensor, reduce_options=ReduceOptions()):
-        """
-        Reduce tensor to a destination process following options.
+        """Reduce tensor to a destination process following options.
 
         Args:
             tensor: the tensor to be reduced.
@@ -218,8 +210,7 @@ class NCCLGroup(BaseGroup):
                     reduce_options.root_rank, stream.ptr)
 
     def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
-        """
-        Broadcast tensor to all other processes following options.
+        """Broadcast tensor to all other processes following options.
 
         Args:
             tensor: the tensor to be broadcasted.
@@ -242,8 +233,7 @@ class NCCLGroup(BaseGroup):
                   tensor_list,
                   tensor,
                   allgather_options=AllGatherOptions()):
-        """
-        Allgather tensors across the group into a list of  tensors.
+        """Allgather tensors across the group into a list of tensors.
 
         Args:
             tensor_list: the tensor list to store the results.
@@ -255,7 +245,7 @@ class NCCLGroup(BaseGroup):
         """
 
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-        comm = self._get_nccl_collective_communicator()
+        comm = self._get_nccl_communicator()
         stream = self._get_cuda_stream()
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
@@ -271,8 +261,7 @@ class NCCLGroup(BaseGroup):
                       tensor,
                       tensor_list,
                       reducescatter_options=ReduceScatterOptions()):
-        """
-        Reducescatter a list of tensors across the group.
+        """Reducescatter a list of tensors across the group.
 
         Args:
             tensor: the output after reducescatter (could be unspecified).
@@ -299,8 +288,7 @@ class NCCLGroup(BaseGroup):
                            stream.ptr)
 
     def send(self, tensor, dst_rank):
-        """
-        Send tensor to a destination process in the group.
+        """Send tensor to a destination process in the group.
 
         Args:
             tensor: the tensor to send.
@@ -326,12 +314,11 @@ class NCCLGroup(BaseGroup):
         comm.send(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
 
     def recv(self, tensor, src_rank):
-        """
-        Receive tensor from a source process in the group.
+        """Receive tensor from a source process in the group.
 
         Args:
             tensor: the received tensor.
-            src_rank:
+            src_rank: the rank of the source process.
 
         Returns:
             None
@@ -350,8 +337,7 @@ class NCCLGroup(BaseGroup):
         comm.recv(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
 
     def _get_nccl_collective_communicator(self):
-        """
-        Create or retrieve a cached NCCL communicator for the collective task.
+        """Create or retrieve a cached NCCL communicator.
 
         Returns:
             communicator
@@ -372,8 +358,7 @@ class NCCLGroup(BaseGroup):
         return self._collective_comm_cache
 
     def _get_nccl_p2p_communicator(self, src_rank, dst_rank):
-        """
-        Create or retrieve an NCCL communicator for p2p tasks.
+        """Create or retrieve an NCCL communicator for p2p tasks.
 
         Args:
             src_rank (int): source rank.
@@ -414,14 +399,13 @@ class NCCLGroup(BaseGroup):
         ray.kill(store)
 
     def _generate_nccl_uid(self, name):
-        """
-        Generate an NCCL UID by calling NCCL API.
+        """Generate an NCCL UID by calling the NCCL API.
 
         Args:
-            name:
+            name: the name of the collective group.
 
         Returns:
-            str: NCCL UID
+            str: NCCL uid.
         """
         group_uid = nccl_util.get_nccl_unique_id()
         store_name = get_nccl_store_name(name)
@@ -443,10 +427,8 @@ class NCCLGroup(BaseGroup):
     #     """Private method to encapsulate all collective calls"""
     #     pass
 
-
 def _flatten_for_scatter_gather(tensor_list, copy=False):
-    """
-    Flatten the tensor for gather/scatter operations.
+    """Flatten the tensor for gather/scatter operations.
 
     Args:
         tensor_list: the list of tensors to be scattered/gathered.
@@ -456,7 +438,7 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
         The flattened tensor buffer.
     """
     if not tensor_list:
-        raise RuntimeError("Receved an empty list.")
+        raise RuntimeError("Received an empty list.")
     t = tensor_list[0]
     # note we need a cupy dtype here.
     dtype = nccl_util.get_cupy_tensor_dtype(t)

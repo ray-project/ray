@@ -247,19 +247,6 @@ Status RedisTaskInfoAccessor::AsyncGet(
   return task_table.Lookup(task_id.JobId(), task_id, on_success, on_failure);
 }
 
-Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                          const StatusCallback &callback) {
-  raylet::TaskTable &task_table = client_impl_->raylet_task_table();
-  JobID job_id = task_ids.empty() ? JobID::Nil() : task_ids[0].JobId();
-  task_table.Delete(job_id, task_ids);
-  if (callback) {
-    callback(Status::OK());
-  }
-  // TODO(micafan) Always return OK here.
-  // Confirm if we need to handle the deletion failure and how to handle it.
-  return Status::OK();
-}
-
 Status RedisTaskInfoAccessor::AsyncSubscribe(
     const TaskID &task_id, const SubscribeCallback<TaskID, TaskTableData> &subscribe,
     const StatusCallback &done) {
