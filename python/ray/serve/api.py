@@ -488,15 +488,18 @@ class Client:
 
         if asyncio.get_event_loop().is_running() and sync:
             logger.warning(
-                "You are retrieving a sync ServeHandle inside an asyncio loop. "
+                "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
-                "performance.")
+                "performance. Learn more at https://docs.ray.io/en/master/"
+                "serve/advanced.html#sync-and-async-handles")
+
         if not asyncio.get_event_loop().is_running() and not sync:
             logger.warning(
-                "You are retrieving an async ServHandle outside an asyncio loop. "
-                "You should make sure client.get_handle is called inside a running loop. "
-                "Or call client.get_handle(.., sync=True) to create synchrounous "
-                "handle.")
+                "You are retrieving an async handle outside an asyncio loop. "
+                "You should make sure client.get_handle is called inside a "
+                "running event loop. Or call client.get_handle(.., sync=True) "
+                "to create sync handle. Learn more at https://docs.ray.io/en/"
+                "master/serve/advanced.html#sync-and-async-handles")
 
         if sync:
             handle = RayServeSyncHandle(

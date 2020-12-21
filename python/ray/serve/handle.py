@@ -1,29 +1,23 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import Any, Coroutine, Dict, Optional, Type, TypeVar, Union
-
-import ray
-from ray.serve.context import TaskContext
-from ray.serve.router import RequestMetadata, Router
-from ray.serve.utils import get_random_letters
-from ray.serve.exceptions import RayServeException
+from typing import Any, Dict, Optional, Union
+from enum import Enum
 
 
-@dataclass
+@dataclass(frozen=True)
 class HandleOptions:
+    """Options for each ServeHandle instances. These fields are immutable."""
     method_name: str = "__call__"
     shard_key: Optional[str] = None
     http_method: str = "GET"
     http_headers: Dict[str, str] = field(default_factory=dict)
 
 
-# Use a global singleton
-class Default(object):
-    pass
-
-
-DEFAULT_VALUE = Default()
+# Use a global singleton enum to emulate default options. We cannot use None
+# for those option because None is a valid new value.
+class DEFAULT(Enum):
+    VALUE = 1
 
 
 class RayServeHandle:
@@ -54,10 +48,10 @@ class RayServeHandle:
 
     def options(self,
                 *,
-                method_name: Union[str, Default] = DEFAULT_VALUE,
-                shard_key: Union[str, Default] = DEFAULT_VALUE,
-                http_method: Union[str, Default] = DEFAULT_VALUE,
-                http_headers: Union[Dict[str, str], Default] = DEFAULT_VALUE):
+                method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+                shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
+                http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
+                http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE):
         """Set options for this handle.
 
         Args:
@@ -72,7 +66,7 @@ class RayServeHandle:
             for key, value in
             zip(["method_name", "shard_key", "http_method", "http_headers"],
                 [method_name, shard_key, http_method, http_headers])
-            if value is not DEFAULT_VALUE
+            if value != DEFAULT.VALUE
         }
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
@@ -85,7 +79,7 @@ class RayServeHandle:
         """Issue an asynchrounous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
-        using ray.wait or ray.get, respectively.
+        using ray.wait or ray.get (or ``await object_ref``), respectively.
 
         Returns:
             ray.ObjectRef
@@ -109,7 +103,7 @@ class RayServeSyncHandle(RayServeHandle):
         """Issue an asynchrounous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
-        using ray.wait or ray.get, respectively.
+        using ray.wait or ray.get (or ``await object_ref``), respectively.
 
         Returns:
             ray.ObjectRef
