@@ -3,10 +3,8 @@ package io.ray.runtime.gcs;
 import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ActorId;
-import io.ray.api.id.BaseId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.PlacementGroupId;
-import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
@@ -14,12 +12,10 @@ import io.ray.runtime.generated.Gcs;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.TablePrefix;
 import io.ray.runtime.placementgroup.PlacementGroupUtils;
-import io.ray.runtime.util.IdUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,25 +27,10 @@ public class GcsClient {
   private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
   private RedisClient primary;
 
-  private List<RedisClient> shards;
   private GlobalStateAccessor globalStateAccessor;
 
   public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
-    int numShards = 0;
-    try {
-      numShards = Integer.valueOf(primary.get("NumRedisShards", null));
-      Preconditions.checkState(numShards > 0,
-          String.format("Expected at least one Redis shards, found %d.", numShards));
-    } catch (NumberFormatException e) {
-      throw new RuntimeException("Failed to get number of redis shards.", e);
-    }
-
-    List<byte[]> shardAddresses = primary.lrange("RedisShards".getBytes(), 0, -1);
-    Preconditions.checkState(shardAddresses.size() == numShards);
-    shards = shardAddresses.stream().map((byte[] address) -> {
-      return new RedisClient(new String(address), redisPassword);
-    }).collect(Collectors.toList());
     globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
   }
 
@@ -163,16 +144,6 @@ public class GcsClient {
     return actorTableData.getNumRestarts() != 0;
   }
 
-  /**
-   * Query whether the raylet task exists in Gcs.
-   */
-  public boolean rayletTaskExistsInGcs(TaskId taskId) {
-    byte[] key = ArrayUtils.addAll(TablePrefix.RAYLET_TASK.toString().getBytes(),
-        taskId.getBytes());
-    RedisClient client = getShardClient(taskId);
-    return client.exists(key);
-  }
-
   public JobId nextJobId() {
     int jobCounter = (int) primary.incr("JobCounter".getBytes());
     return JobId.fromInt(jobCounter);
@@ -186,10 +157,4 @@ public class GcsClient {
     LOGGER.debug("Destroying global state accessor.");
     GlobalStateAccessor.destroyInstance();
   }
-
-  private RedisClient getShardClient(BaseId key) {
-    return shards.get((int) Long.remainderUnsigned(IdUtil.murmurHashCode(key),
-        shards.size()));
-  }
-
 }

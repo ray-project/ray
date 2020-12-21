@@ -97,6 +97,10 @@ class GcsRpcClient {
         new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
     node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
         new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    node_resource_info_grpc_client_ =
+        std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>>(
+            new GrpcClient<NodeResourceInfoGcsService>(address, port,
+                                                       client_call_manager));
     heartbeat_info_grpc_client_ = std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>>(
         new GrpcClient<HeartbeatInfoGcsService>(address, port, client_call_manager));
     object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
@@ -165,17 +169,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
                              node_info_grpc_client_, )
 
-  /// Get node's resources from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, node_info_grpc_client_, )
-
-  /// Update resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources,
-                             node_info_grpc_client_, )
-
-  /// Delete resources of a node in GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources,
-                             node_info_grpc_client_, )
-
   /// Set internal config of the cluster in the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
                              node_info_grpc_client_, )
@@ -184,9 +177,21 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetInternalConfig,
                              node_info_grpc_client_, )
 
+  /// Get node's resources from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Update resources of a node in GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, UpdateResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Delete resources of a node in GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, DeleteResources,
+                             node_resource_info_grpc_client_, )
+
   /// Get available resources of all nodes from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllAvailableResources,
-                             node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
+                             node_resource_info_grpc_client_, )
 
   /// Report heartbeat of a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, ReportHeartbeat,
@@ -213,9 +218,6 @@ class GcsRpcClient {
 
   /// Get task information from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, task_info_grpc_client_, )
-
-  /// Delete tasks from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, task_info_grpc_client_, )
 
   /// Add a task lease to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
@@ -275,6 +277,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
   std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;

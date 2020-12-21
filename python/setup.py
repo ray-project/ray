@@ -97,7 +97,7 @@ ray_files += [
 extras = {
     "serve": [
         "uvicorn", "flask", "requests", "pydantic<1.7",
-        "dataclasses; python_version < '3.7'"
+        "dataclasses; python_version < '3.7'", "starlette"
     ],
     "tune": [
         "dataclasses; python_version < '3.7'", "pandas", "tabulate",
@@ -449,8 +449,10 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
-            "ray-operator=ray.operator:main"
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator.operator:main",
+            "serve=ray.serve.scripts:cli",
         ]
     },
     include_package_data=True,

@@ -120,92 +120,6 @@ void GcsNodeManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsNodeManager::HandleGetResources(const rpc::GetResourcesRequest &request,
-                                        rpc::GetResourcesReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_id());
-  auto iter = cluster_resources_.find(node_id);
-  if (iter != cluster_resources_.end()) {
-    for (auto &resource : iter->second.items()) {
-      (*reply->mutable_resources())[resource.first] = resource.second;
-    }
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_RESOURCES_REQUEST];
-}
-
-void GcsNodeManager::HandleUpdateResources(const rpc::UpdateResourcesRequest &request,
-                                           rpc::UpdateResourcesReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
-  auto iter = cluster_resources_.find(node_id);
-  auto to_be_updated_resources = request.resources();
-  if (iter != cluster_resources_.end()) {
-    for (auto &entry : to_be_updated_resources) {
-      (*iter->second.mutable_items())[entry.first] = entry.second;
-    }
-    auto on_done = [this, node_id, to_be_updated_resources, reply,
-                    send_reply_callback](const Status &status) {
-      RAY_CHECK_OK(status);
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      for (auto &it : to_be_updated_resources) {
-        (*node_resource_change.mutable_updated_resources())[it.first] =
-            it.second.resource_capacity();
-      }
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
-                                         nullptr));
-
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-      RAY_LOG(DEBUG) << "Finished updating resources, node id = " << node_id;
-    };
-
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeResourceTable().Put(node_id, iter->second, on_done));
-  } else {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::Invalid("Node is not exist."));
-    RAY_LOG(ERROR) << "Failed to update resources as node " << node_id
-                   << " is not registered.";
-  }
-  ++counts_[CountType::UPDATE_RESOURCES_REQUEST];
-}
-
-void GcsNodeManager::HandleDeleteResources(const rpc::DeleteResourcesRequest &request,
-                                           rpc::DeleteResourcesReply *reply,
-                                           rpc::SendReplyCallback send_reply_callback) {
-  NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
-  auto resource_names = VectorFromProtobuf(request.resource_name_list());
-  auto iter = cluster_resources_.find(node_id);
-  if (iter != cluster_resources_.end()) {
-    for (auto &resource_name : resource_names) {
-      RAY_IGNORE_EXPR(iter->second.mutable_items()->erase(resource_name));
-    }
-    auto on_done = [this, node_id, resource_names, reply,
-                    send_reply_callback](const Status &status) {
-      RAY_CHECK_OK(status);
-      rpc::NodeResourceChange node_resource_change;
-      node_resource_change.set_node_id(node_id.Binary());
-      for (const auto &resource_name : resource_names) {
-        node_resource_change.add_deleted_resources(resource_name);
-      }
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                         node_resource_change.SerializeAsString(),
-                                         nullptr));
-
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-    };
-    RAY_CHECK_OK(
-        gcs_table_storage_->NodeResourceTable().Put(node_id, iter->second, on_done));
-  } else {
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-    RAY_LOG(DEBUG) << "Finished deleting node resources, node id = " << node_id;
-  }
-  ++counts_[CountType::DELETE_RESOURCES_REQUEST];
-}
-
 void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
                                              rpc::SetInternalConfigReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
@@ -232,22 +146,6 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
   RAY_CHECK_OK(
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
   ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
-}
-
-void GcsNodeManager::HandleGetAllAvailableResources(
-    const rpc::GetAllAvailableResourcesRequest &request,
-    rpc::GetAllAvailableResourcesReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &iter : gcs_resource_manager_->GetClusterResources()) {
-    rpc::AvailableResources resource;
-    resource.set_node_id(iter.first.Binary());
-    for (const auto &res : iter.second.GetResourceAmountMap()) {
-      (*resource.mutable_resources_available())[res.first] = res.second.ToDouble();
-    }
-    reply->add_resources_list()->CopyFrom(resource);
-  }
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
 void GcsNodeManager::HandleGetAllResourceUsage(
@@ -322,7 +220,7 @@ void GcsNodeManager::UpdateNodeResourceUsage(
   }
 }
 
-absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetNode(
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
@@ -337,13 +235,12 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
-    // Add an empty resources for this node.
-    RAY_CHECK(cluster_resources_.emplace(node_id, rpc::ResourceMap()).second);
 
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
       listener(node);
     }
+    gcs_resource_manager_->OnNodeAdd(*node);
   }
 }
 
@@ -359,8 +256,9 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     // Remove from cluster resources.
-    cluster_resources_.erase(node_id);
+    gcs_resource_manager_->OnNodeDead(node_id);
     resources_buffer_.erase(node_id);
+    node_resource_usages_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -413,12 +311,6 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   sorted_dead_node_list_.sort(
       [](const std::pair<NodeID, int64_t> &left,
          const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
-
-  for (auto &entry : gcs_init_data.ClusterResources()) {
-    if (alive_nodes_.count(entry.first)) {
-      cluster_resources_[entry.first] = entry.second;
-    }
-  }
 }
 
 void GcsNodeManager::UpdateNodeRealtimeResources(
@@ -426,7 +318,7 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
   if (!light_report_resource_usage_enabled_ ||
       gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
       resource_data.resources_available_changed()) {
-    gcs_resource_manager_->UpdateResources(
+    gcs_resource_manager_->SetAvailableResources(
         node_id, ResourceSet(MapFromProtobuf(resource_data.resources_available())));
   }
 }
@@ -486,14 +378,8 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
          << ", ReportResourceUsage request count: "
          << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
-         << ", GetHeartbeat request count: " << counts_[CountType::GET_HEARTBEAT_REQUEST]
          << ", GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST]
-         << ", GetResources request count: " << counts_[CountType::GET_RESOURCES_REQUEST]
-         << ", UpdateResources request count: "
-         << counts_[CountType::UPDATE_RESOURCES_REQUEST]
-         << ", DeleteResources request count: "
-         << counts_[CountType::DELETE_RESOURCES_REQUEST]
          << ", SetInternalConfig request count: "
          << counts_[CountType::SET_INTERNAL_CONFIG_REQUEST]
          << ", GetInternalConfig request count: "

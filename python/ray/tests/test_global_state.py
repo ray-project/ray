@@ -8,7 +8,6 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
-from ray.test_utils import new_scheduler_enabled
 
 from ray._raylet import GlobalStateAccessor
 
@@ -144,7 +143,6 @@ def test_global_state_actor_entry(ray_start_regular):
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_load_report(shutdown_only, max_shapes):
     resource1 = "A"
     resource2 = "B"
@@ -196,6 +194,8 @@ def test_load_report(shutdown_only, max_shapes):
     if max_shapes != -1:
         assert len(checker.report) <= max_shapes
 
+    print(checker.report)
+
     if max_shapes > 0:
         # Check that we always include the 1-CPU resource shape.
         one_cpu_shape = {"CPU": 1}
@@ -216,7 +216,6 @@ def test_load_report(shutdown_only, max_shapes):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.
@@ -285,7 +284,6 @@ def test_placement_group_load_report(ray_start_cluster):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="broken")
 def test_backlog_report(shutdown_only):
     cluster = ray.init(
         num_cpus=1, _system_config={

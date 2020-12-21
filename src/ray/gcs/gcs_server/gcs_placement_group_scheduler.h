@@ -89,9 +89,10 @@ class GcsPlacementGroupSchedulerInterface {
 /// ScheduleContext provides information that are needed for bundle scheduling decision.
 class ScheduleContext {
  public:
-  ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
-                  const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources)
+  ScheduleContext(
+      std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
+      const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
+      const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources)
       : node_to_bundles_(std::move(node_to_bundles)),
         bundle_locations_(bundle_locations),
         cluster_resources_(cluster_resources) {}
@@ -101,7 +102,7 @@ class ScheduleContext {
   // The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
   // The available resources of all nodes.
-  const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources_;
+  const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources_;
 };
 
 class GcsScheduleStrategy {

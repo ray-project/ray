@@ -1,9 +1,9 @@
 ax-platform
-gpytorch==1.2
 bayesian-optimization
 ConfigSpace==0.4.10
 dragonfly-opt
 gluoncv
+gorilla # Need this because bug in mlflow. Should be fixed in v1.12.2
 gym[atari]
 GPy
 h5py

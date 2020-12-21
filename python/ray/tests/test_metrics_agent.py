@@ -2,6 +2,7 @@ import json
 import pathlib
 import platform
 from pprint import pformat
+import time
 from unittest.mock import MagicMock
 
 import requests
@@ -291,6 +292,33 @@ def test_custom_metrics_edge_cases(metric_mock):
     # The tag keys must be a tuple type.
     with pytest.raises(ValueError):
         Count("name", tag_keys=("a"))
+
+
+def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
+    # https://github.com/ray-project/ray/issues/12859
+
+    @ray.remote
+    def override():
+        a = Count("num_count", description="")
+        b = Count("num_count", description="")
+        a.record(1)
+        b.record(1)
+
+    ray.get(override.remote())
+
+    # Check the stderr from the worker.
+    start = time.time()
+    while True:
+        if (time.time() - start) > 5:
+            break
+        msg = log_pubsub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+
+        log_lines = json.loads(ray.utils.decode(msg["data"]))["lines"]
+        for line in log_lines:
+            assert "Attempt to register measure" not in line
 
 
 if __name__ == "__main__":

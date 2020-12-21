@@ -32,14 +32,14 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 
 /// The duration that a single handler on the event loop can take before a
 /// warning is logged that the handler is taking too long.
-RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
+RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
-RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 1000)
+RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
-RAY_CONFIG(int64_t, num_heartbeats_timeout, 30)
+RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
 /// For a raylet, if the last heartbeat was sent more than this many
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
@@ -113,7 +113,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
 RAY_CONFIG(bool, new_scheduler_enabled,
-           getenv("RAY_ENABLE_NEW_SCHEDULER") != nullptr &&
+           getenv("RAY_ENABLE_NEW_SCHEDULER") == nullptr ||
                getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
@@ -179,6 +179,10 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
 /// ObjectManager.
+RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
+
+/// Timeout, in milliseconds, to wait before retrying a failed pull in the
+/// ObjectManager.
 RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 
 /// Timeout, in milliseconds, to wait until the Push request fails.
@@ -239,10 +243,18 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
+RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
 /// Duration to sleep after failing to put an object in plasma because it is full.
-/// This will be exponentially increased for each retry.
-RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
+
+/// The amount of time to wait between logging plasma space usage debug messages.
+RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
+
+/// The amount of time between automatic local Python GC triggers.
+RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+
+/// The min amount of time between local GCs (whether auto or mem pressure triggered).
+RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
@@ -255,6 +267,9 @@ RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
+
+/// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
 
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)

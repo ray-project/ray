@@ -40,6 +40,7 @@
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
 #include "ray/common/bundle_spec.h"
+#include "ray/raylet/placement_group_resource_manager.h"
 // clang-format on
 
 namespace ray {
@@ -103,27 +104,10 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
-};
-
-struct pair_hash {
-  template <class T1, class T2>
-  std::size_t operator()(const std::pair<T1, T2> &pair) const {
-    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
-  }
-};
-
-enum CommitState {
-  /// Resources are prepared.
-  PREPARED,
-  /// Resources are COMMITTED.
-  COMMITTED
-};
-
-struct BundleState {
-  /// Leasing state for 2PC protocol.
-  CommitState state;
-  /// Resources that are acquired at preparation stage.
-  ResourceIdSet acquired_resources;
+  // The number if max io workers.
+  int max_io_workers;
+  // The minimum object size that can be spilled by each spill operation.
+  int64_t min_spilling_size;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -135,7 +119,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory_);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              std::function<bool(const ObjectID &)> is_plasma_object_spillable);
 
   /// Process a new client connection.
   ///
@@ -317,28 +302,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
 
-  /// Make a placement decision for the resource_map and subtract original resources so
-  /// that the node is ready to commit (create) placement group resources.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  /// \return True is resources were successfully prepared. False otherwise.
-  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                     const BundleSpecification &bundle_spec);
-
-  /// Make a placement decision for the resource_map.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                    const BundleSpecification &bundle_spec);
-
   /// Handle a task whose return value(s) must be reconstructed.
   ///
   /// \param task_id The relevant task ID.
@@ -417,7 +380,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
+                                   bool release_resources);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -478,6 +442,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  /// Process client message of NotifyDirectCallTaskBlocked
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -669,6 +640,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Whether the resource is returned successfully.
   bool ReturnBundleResources(const BundleSpecification &bundle_spec);
 
+  /// Publish the infeasible task error to GCS so that drivers can subscribe to it and
+  /// print.
+  ///
+  /// \param task Task that is infeasible
+  void PublishInfeasibleTaskError(const Task &task) const;
+
   /// ID of this node.
   NodeID self_node_id_;
   boost::asio::io_service &io_service_;
@@ -695,8 +672,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   bool fair_queueing_enabled_;
   /// Whether to enable pinning for plasma objects.
   bool object_pinning_enabled_;
-  /// Whether we have printed out a resource deadlock warning.
-  bool resource_deadlock_warned_ = false;
+  /// Incremented each time we encounter a potential resource deadlock condition.
+  /// This is reset to zero when the condition is cleared.
+  int resource_deadlock_warned_ = 0;
   /// Whether we have recorded any metrics yet.
   bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
@@ -717,6 +695,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Initial node manager configuration.
   const NodeManagerConfig initial_config_;
   /// The resources (and specific resource IDs) that are currently available.
+  /// These two resource container is shared with `PlacementGroupResourceManager`.
   ResourceIdSet local_available_resources_;
   std::unordered_map<NodeID, SchedulingResources> cluster_resource_map_;
 
@@ -779,6 +758,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
+  /// The last time local gc was run.
+  int64_t last_local_gc_ns_ = 0;
+
+  /// The interval in nanoseconds between local GC automatic triggers.
+  const int64_t local_gc_interval_ns_;
+
+  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
+  /// triggered).
+  const int64_t local_gc_min_interval_ns_;
+
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterTaskManager is responsible for queuing, spilling back, and
@@ -801,15 +790,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<std::shared_ptr<WorkerInterface>>>
       async_plasma_objects_notification_ GUARDED_BY(plasma_object_notification_lock_);
 
-  /// This map represents the commit state of 2PC protocol for atomic placement group
-  /// creation.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleState>, pair_hash>
-      bundle_state_map_;
-
-  /// Save `BundleSpecification` for cleaning leaked bundles after GCS restart.
-  absl::flat_hash_map<BundleID, std::shared_ptr<BundleSpecification>, pair_hash>
-      bundle_spec_map_;
-
   /// Fields that are used to report metrics.
   /// The period between debug state dumps.
   int64_t record_metrics_period_;
@@ -825,6 +805,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Number of tasks that are spilled back to other nodes.
   uint64_t metrics_num_task_spilled_back_;
+
+  /// Managers all bundle-related operations.
+  std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
 };
 
 }  // namespace raylet

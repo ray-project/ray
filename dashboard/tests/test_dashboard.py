@@ -80,7 +80,7 @@ def test_basic(ray_start_with_dashboard):
         0]
     dashboard_proc = psutil.Process(dashboard_proc_info.process.pid)
     assert dashboard_proc.status() in [
-        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING
+        psutil.STATUS_RUNNING, psutil.STATUS_SLEEPING, psutil.STATUS_DISK_SLEEP
     ]
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -136,6 +136,11 @@ def test_basic(ray_start_with_dashboard):
         agent_proc = _search_agent(raylet_proc.children())
         assert agent_proc.pid == agent_pid
         time.sleep(1)
+
+    # The agent should be dead if raylet exits.
+    raylet_proc.kill()
+    raylet_proc.wait()
+    agent_proc.wait(5)
 
     # Check redis keys are set.
     logger.info("Check redis keys are set.")

@@ -244,7 +244,7 @@ class ValueNetworkMixin:
         # When not doing GAE, we do not require the value function's output.
         else:
 
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return 0.0
 
         self._value = value

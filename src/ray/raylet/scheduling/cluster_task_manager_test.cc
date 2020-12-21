@@ -101,6 +101,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
         dependencies_fulfilled_(true),
         is_owner_alive_(true),
         node_info_calls_(0),
+        announce_infeasible_task_calls_(0),
         task_manager_(id_, scheduler_,
                       [this](const Task &_task) {
                         fulfills_dependencies_calls_++;
@@ -112,7 +113,8 @@ class ClusterTaskManagerTest : public ::testing::Test {
                       [this](const NodeID &node_id) {
                         node_info_calls_++;
                         return node_info_[node_id];
-                      }) {}
+                      },
+                      [this](const Task &task) { announce_infeasible_task_calls_++; }) {}
 
   void SetUp() {}
 
@@ -141,6 +143,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   bool is_owner_alive_;
 
   int node_info_calls_;
+  int announce_infeasible_task_calls_;
   std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
 
   ClusterTaskManager task_manager_;
@@ -247,7 +250,9 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /* First task is unblocked now, but resources are no longer available */
   auto id = task.GetTaskSpecification().TaskId();
   std::vector<TaskID> unblocked = {id};
+  dependencies_fulfilled_ = true;
   task_manager_.TasksUnblocked(unblocked);
+  task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   ASSERT_EQ(num_callbacks, 1);
@@ -258,6 +263,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   leased_workers_.clear();
   task_manager_.HandleTaskFinished(worker);
 
+  task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
 
   // Task2 is now done so task can run.
@@ -371,6 +377,43 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_EQ(leased_workers_.size(), 1);
 }
 
+TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
+  /* Make sure cancelTask works for infeasible tasks */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+
+  bool callback_called = false;
+  bool *callback_called_ptr = &callback_called;
+  auto callback = [callback_called_ptr]() { *callback_called_ptr = true; };
+
+  task_manager_.QueueTask(task, &reply, callback);
+
+  // Task is now queued so cancellation works.
+  ASSERT_TRUE(task_manager_.CancelTask(task.GetTaskSpecification().TaskId()));
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Task will not execute.
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // Althoug the feasible node is added, task shouldn't be executed because it is
+  // cancelled.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 12);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(callback_called);
+  ASSERT_TRUE(reply.canceled());
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+}
+
 TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -480,6 +523,63 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
   }
 }
 
+TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
+  /*
+    Test basic scheduler functionality:
+    1. Queue and attempt to schedule/dispatch atest with no workers available
+    2. A worker becomes available, dispatch again.
+   */
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr]() { *callback_occurred_ptr = true; };
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  std::vector<TaskID> to_cancel;
+
+  for (int i = 0; i < 10; i++) {
+    Task task = CreateTask({{ray::kCPU_ResourceLabel, 100}});
+    task.SetBacklogSize(i);
+    task_manager_.QueueTask(task, &reply, callback);
+    to_cancel.push_back(task.GetTaskSpecification().TaskId());
+  }
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  ASSERT_EQ(fulfills_dependencies_calls_, 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  auto data = std::make_shared<rpc::ResourcesData>();
+  task_manager_.FillResourceUsage(false, data);
+
+  auto resource_load_by_shape = data->resource_load_by_shape();
+  auto shape1 = resource_load_by_shape.resource_demands()[0];
+
+  ASSERT_EQ(shape1.backlog_size(), 45);
+  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 10);
+  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+
+  for (auto &task_id : to_cancel) {
+    ASSERT_TRUE(task_manager_.CancelTask(task_id));
+  }
+
+  data = std::make_shared<rpc::ResourcesData>();
+  task_manager_.FillResourceUsage(false, data);
+
+  resource_load_by_shape = data->resource_load_by_shape();
+  shape1 = resource_load_by_shape.resource_demands()[0];
+
+  ASSERT_EQ(shape1.backlog_size(), 0);
+  ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
+  ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+}
+
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   /*
     Test the race condition in which the owner of a task dies while the task is pending.
@@ -511,6 +611,112 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
+}
+
+TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
+  /*
+    Test if infeasible tasks warnings are printed.
+   */
+  // Create an infeasible task.
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+
+  // Infeasible warning shouldn't be reprinted when the previous task is still infeasible
+  // after adding a new node.
+  AddNode(NodeID::FromRandom(), 8);
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  // Task shouldn't be scheduled yet.
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+  ASSERT_FALSE(*callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  // Now we have a node that is feasible to schedule the task. Make sure the infeasible
+  // task is spillbacked properly.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 12);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  // Make sure nothing happens locally.
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+  ASSERT_TRUE(*callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 1);
+  // Make sure the spillback callback is called.
+  ASSERT_EQ(reply.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+}
+
+TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
+  /*
+    Test infeasible warning is printed only once when the same shape is queued again.
+   */
+
+  // Make sure the first infeasible task announces warning.
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+
+  // Make sure the same shape infeasible task won't be announced.
+  Task task2 = CreateTask({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply2;
+  std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
+  auto callback2 = [callback_occurred2]() { *callback_occurred2 = true; };
+  task_manager_.QueueTask(task2, &reply2, callback2);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_EQ(announce_infeasible_task_calls_, 1);
+}
+
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+  /*
+    Check if the manager can correctly identify pending tasks.
+   */
+
+  // task1: running
+  Task task = CreateTask({{ray::kCPU_ResourceLabel, 6}});
+  rpc::RequestWorkerLeaseReply reply;
+  std::shared_ptr<bool> callback_occurred = std::make_shared<bool>(false);
+  auto callback = [callback_occurred]() { *callback_occurred = true; };
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(*callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  // task1: running. Progress is made, and there's no deadlock.
+  ray::Task exemplar;
+  bool any_pending = false;
+  int pending_actor_creations = 0;
+  int pending_tasks = 0;
+  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
+                                             &pending_actor_creations, &pending_tasks));
+
+  // task1: running, task2: queued.
+  Task task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
+  rpc::RequestWorkerLeaseReply reply2;
+  std::shared_ptr<bool> callback_occurred2 = std::make_shared<bool>(false);
+  auto callback2 = [callback_occurred2]() { *callback_occurred2 = true; };
+  task_manager_.QueueTask(task2, &reply2, callback2);
+  task_manager_.SchedulePendingTasks();
+  ASSERT_FALSE(*callback_occurred2);
+  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
+                                            &pending_actor_creations, &pending_tasks));
 }
 
 int main(int argc, char **argv) {

@@ -13,7 +13,8 @@ from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, \
+    TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -238,14 +239,14 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        train_batch["is_training"] = is_training
+        input_dict = train_batch.copy()
+        input_dict["is_training"] = is_training
         states = []
         i = 0
-        while "state_in_{}".format(i) in train_batch:
-            states.append(train_batch["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        ret = self.__call__(train_batch, states, train_batch.get("seq_lens"))
-        del train_batch["is_training"]
+        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
         return ret
 
     def import_from_h5(self, h5_file: str) -> None:
@@ -316,21 +317,57 @@ class ModelV2:
 
     # TODO: (sven) Experimental method.
     def get_input_dict(self, sample_batch,
-                       index: int = -1) -> Dict[str, TensorType]:
-        if index < 0:
-            index = sample_batch.count - 1
+                       index: Union[int, str] = "last") -> ModelInputDict:
+        """Creates single ts input-dict at given index from a SampleBatch.
+
+        Args:
+            sample_batch (SampleBatch): A single-trajectory SampleBatch object
+                to generate the compute_actions input dict from.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
+
+        Returns:
+            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
 
         input_dict = {}
         for view_col, view_req in self.inference_view_requirements.items():
             # Create batches of size 1 (single-agent input-dict).
-
-            # Index range.
-            if isinstance(index, tuple):
-                data = sample_batch[view_col][index[0]:index[1] + 1]
-                input_dict[view_col] = np.array([data])
-            # Single index.
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                if view_req.shift_from is not None:
+                    data = sample_batch[view_col][-1]
+                    traj_len = len(sample_batch[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    input_dict[view_col] = np.array([
+                        np.concatenate([
+                            data, sample_batch[data_col][-missing_at_end:]
+                        ])[view_req.shift_from:view_req.shift_to +
+                           1 if view_req.shift_to != -1 else None]
+                    ])
+                else:
+                    data = sample_batch[data_col][-1]
+                    input_dict[view_col] = np.array([data])
             else:
-                input_dict[view_col] = sample_batch[view_col][index:index + 1]
+                # Index range.
+                if isinstance(index, tuple):
+                    data = sample_batch[data_col][index[0]:index[1] + 1
+                                                  if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = sample_batch[data_col][
+                        index:index + 1 if index != -1 else None]
 
         # Add valid `seq_lens`, just in case RNNs need it.
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)
