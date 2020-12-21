@@ -359,7 +359,8 @@ def test_basic_named_actor(ray_start_regular_shared):
 
         del actor
 
-        actor = Accumulator.options(name="test_acc2", lifetime="detached").remote()
+        actor = Accumulator.options(
+            name="test_acc2", lifetime="detached").remote()
         actor.inc.remote()
         del actor
 
@@ -368,7 +369,6 @@ def test_basic_named_actor(ray_start_regular_shared):
             detatched_actor.inc.remote()
 
         assert ray.get(detatched_actor.get.remote()) == 6
-
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
