@@ -6,7 +6,6 @@ import logging
 import os
 import subprocess
 import sys
-from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse
@@ -172,8 +171,7 @@ def continue_debug_session():
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
-                    with Telnet(host, int(port)) as tn:
-                        tn.interact()
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
                     continue_debug_session()
                     return
@@ -215,8 +213,7 @@ def debug(address):
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            with Telnet(host, int(port)) as tn:
-                tn.interact()
+            ray.util.rpdb.connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -390,24 +387,11 @@ def debug(address):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--code-search-path",
-    default=None,
-    hidden=True,
-    type=str,
-    help="A list of directories or jar files separated by colon that specify "
-    "the search path for user code. This will be used as `CLASSPATH` in "
-    "Java and `PYTHONPATH` in Python.")
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
     type=json.loads,
     help="Override system configuration defaults.")
-@click.option(
-    "--load-code-from-local",
-    is_flag=True,
-    default=False,
-    help="Specify whether load code from local file or GCS serialization.")
 @click.option(
     "--lru-evict",
     is_flag=True,
@@ -436,8 +420,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           head, include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, java_worker_options, load_code_from_local,
-          code_search_path, system_config, lru_evict,
+          temp_dir, java_worker_options, system_config, lru_evict,
           enable_object_reconstruction, metrics_export_port, log_style,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
@@ -496,8 +479,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
-        load_code_from_local=load_code_from_local,
-        code_search_path=code_search_path,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -665,7 +646,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "This command will now block until terminated by a signal.")
             cli_logger.print(
-                "Runing subprocesses are monitored and a message will be "
+                "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
 
         while True:
@@ -1306,7 +1287,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
+    echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.

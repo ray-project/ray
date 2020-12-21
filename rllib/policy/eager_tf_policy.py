@@ -314,12 +314,16 @@ def build_eager_tf_policy(name,
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=postprocessed_batch)
 
-            # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
+            self._is_training = True
+            postprocessed_batch["is_training"] = True
             return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
@@ -332,12 +336,14 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def compute_gradients(self, samples):
-            # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
                 batch_divisibility_req=self.batch_divisibility_req)
+
+            self._is_training = True
+            samples["is_training"] = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -369,7 +375,7 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
-            self._state_in = state_batches
+            self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -393,7 +399,7 @@ def build_eager_tf_policy(name,
                 if action_sampler_fn:
                     dist_inputs = None
                     state_out = []
-                    actions, logp = self.action_sampler_fn(
+                    actions, logp = action_sampler_fn(
                         self,
                         self.model,
                         input_dict[SampleBatch.CUR_OBS],
@@ -591,17 +597,7 @@ def build_eager_tf_policy(name,
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
 
-            self._is_training = True
-
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
-                # TODO: set seq len and state-in properly
-                state_in = []
-                for i in range(self.num_state_tensors()):
-                    state_in.append(samples["state_in_{}".format(i)])
-                self._state_in = state_in
-
-                model_out, _ = self.model(samples, self._state_in,
-                                          samples.get("seq_lens"))
                 loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()

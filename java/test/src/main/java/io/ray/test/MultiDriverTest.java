@@ -15,8 +15,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
@@ -26,16 +24,6 @@ public class MultiDriverTest extends BaseTest {
   private static final int NORMAL_TASK_COUNT_PER_DRIVER = 100;
   private static final int ACTOR_COUNT_PER_DRIVER = 10;
   private static final String PID_LIST_PREFIX = "PID: ";
-
-  @BeforeClass
-  public void setUpClass() {
-    System.setProperty("ray.raylet.config.enable_multi_tenancy", "true");
-  }
-
-  @AfterClass
-  public void tearDownClass() {
-    System.clearProperty("ray.raylet.config.enable_multi_tenancy");
-  }
 
   static int getPid() {
     return SystemUtil.pid();

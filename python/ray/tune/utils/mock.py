@@ -102,11 +102,11 @@ class FailureInjectorCallback(Callback):
     """Adds random failure injection to the TrialExecutor."""
 
     def __init__(self,
-                 config_path="/home/ubuntu/ray_bootstrap_config.yaml",
+                 config_path="~/ray_bootstrap_config.yaml",
                  probability=0.1,
                  disable=False):
         self.probability = probability
-        self.config_path = config_path
+        self.config_path = os.path.expanduser(config_path)
         self.disable = disable
 
     def on_step_begin(self, **info):

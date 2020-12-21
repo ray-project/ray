@@ -1,5 +1,6 @@
 import argparse
 import logging
+import sys
 import time
 
 import ray
@@ -65,7 +66,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     titles_file = str(args.titles_file)
 
-    ray.init(_load_code_from_local=True)
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
 
     ctx = StreamingContext.Builder() \
         .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \

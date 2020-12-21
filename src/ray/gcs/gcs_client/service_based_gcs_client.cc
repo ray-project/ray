@@ -25,7 +25,9 @@ namespace ray {
 namespace gcs {
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
-    : GcsClient(options) {}
+    : GcsClient(options),
+      last_reconnect_timestamp_ms_(0),
+      last_reconnect_address_(std::make_pair("", -1)) {}
 
 Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -57,6 +59,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     job_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     actor_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     node_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
+    node_resource_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     task_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     object_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
     worker_accessor_->AsyncResubscribe(is_pubsub_server_restarted);
@@ -70,6 +73,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
+  node_resource_accessor_.reset(new ServiceBasedNodeResourceInfoAccessor(this));
   task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
   object_accessor_.reset(new ServiceBasedObjectInfoAccessor(this));
   stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
@@ -173,10 +177,10 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
     ReconnectGcsServer();
     // NOTE(ffbin): Currently we don't support the case where the pub-sub server restarts,
     // because we use the same Redis server for both GCS storage and pub-sub. So the
-    // following flag is alway false.
+    // following flag is always false.
     resubscribe_func_(false);
-    // Resend heartbeat after reconnected, needed by resource view in GCS.
-    node_accessor_->AsyncReReportHeartbeat();
+    // Resend resource usage after reconnected, needed by resource view in GCS.
+    node_accessor_->AsyncReReportResourceUsage();
     break;
   default:
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;
@@ -189,11 +193,31 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
     if (get_server_address_func_(&address)) {
+      // After GCS is restarted, the gcs client will reestablish the connection. At
+      // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to
+      // avoid repeated connections in a short period of time, we add a protection
+      // mechanism: if the address does not change (meaning gcs server doesn't restart),
+      // the connection can be made at most once in
+      // `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
+      if (last_reconnect_address_ == address &&
+          (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
+              RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
+        RAY_LOG(INFO)
+            << "Repeated reconnection in "
+            << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
+            << "milliseconds, return directly.";
+        return;
+      }
+
       RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
       if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(DEBUG) << "Reconnected to GCS server: " << address.first << ":"
-                       << address.second;
+        // If `last_reconnect_address_` port is -1, it means that this is the first
+        // connection and no log will be printed.
+        if (last_reconnect_address_.second != -1) {
+          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                        << address.second;
+        }
         break;
       }
     }
@@ -203,6 +227,8 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
 
   if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
+    last_reconnect_address_ = address;
+    last_reconnect_timestamp_ms_ = current_sys_time_ms();
   } else {
     RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
                       "server address was "

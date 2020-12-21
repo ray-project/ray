@@ -1,9 +1,11 @@
 import json
 import os
+import platform
 import sys
 from telnetlib import Telnet
 
 import pexpect
+import pytest
 import ray
 
 
@@ -35,6 +37,40 @@ def test_ray_debugger_breakpoint(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_ray_debugger_commands(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def f():
+        """We support unicode too: 🐛"""
+        ray.util.pdb.set_trace()
+
+    result1 = f.remote()
+    result2 = f.remote()
+
+    # Make sure that calling "continue" in the debugger
+    # gives back control to the debugger loop:
+    p = pexpect.spawn("ray debug")
+    p.expect("Enter breakpoint index or press enter to refresh: ")
+    p.sendline("0")
+    p.expect("-> ray.util.pdb.set_trace()")
+    p.sendline("ll")
+    # Cannot use the 🐛 symbol here because pexpect doesn't support
+    # unicode, but this test also does nicely:
+    p.expect("unicode")
+    p.sendline("c")
+    p.expect("Enter breakpoint index or press enter to refresh: ")
+    p.sendline("0")
+    p.expect("-> ray.util.pdb.set_trace()")
+    p.sendline("c")
+
+    ray.get([result1, result2])
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -64,6 +100,8 @@ def test_ray_debugger_stepping(shutdown_only):
     ray.get(result)
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
     ray.init(num_cpus=1)
 

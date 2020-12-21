@@ -95,7 +95,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
-  /// \param num_workers The number of workers to start, per language.
   /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_initial_python_workers_for_first_job The number of initial Python
   /// workers for the first job.
@@ -113,8 +112,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param raylet_config The raylet config list of this node.
   /// \param starting_worker_timeout_callback The callback that will be triggered once
   /// it times out to start a worker.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int num_workers_soft_limit, int num_initial_python_workers_for_first_job,
+  WorkerPool(boost::asio::io_service &io_service, int num_workers_soft_limit,
+             int num_initial_python_workers_for_first_job,
              int maximum_startup_concurrency, int min_worker_port, int max_worker_port,
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
@@ -251,7 +250,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
-  /// then it means it takes a long time to scale up when multi-tenancy is on.
+  /// then it means it takes a long time to scale up.
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
@@ -306,7 +305,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register num_workers_per_process workers, then add them to the pool.
+  /// register N workers, then add them to the pool.
   /// Failure to start the worker process is a fatal error. If too many workers
   /// are already being started, then this function will return without starting
   /// any workers.
@@ -354,8 +353,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
-    /// The number of workers per process.
-    int num_workers_per_process;
     /// The pool of dedicated workers for actor creation tasks
     /// with prefix or suffix worker command.
     std::unordered_map<TaskID, std::shared_ptr<WorkerInterface>> idle_dedicated_workers;
@@ -392,12 +389,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
-  /// Force-start at least num_workers workers for this language. Used for internal and
-  /// test purpose only.
-  ///
-  /// \param num_workers The number of workers to start, per language.
-  void Start(int num_workers);
-
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
