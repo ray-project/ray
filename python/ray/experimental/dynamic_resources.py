@@ -1,6 +1,3 @@
-import ray
-
-
 def set_resource(resource_name, capacity, node_id=None):
     raise DeprecationWarning(
         "Dynamic custom resources are deprecated. Consider using placement "
