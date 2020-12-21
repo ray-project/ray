@@ -72,9 +72,8 @@ public interface RayRuntime {
    *
    * @param objectRefs The object references to free.
    * @param localOnly Whether only free objects for local object store or not.
-   * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks);
+  void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
 
   /**
    * Set the resource for the specific node.
