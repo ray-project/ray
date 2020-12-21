@@ -34,6 +34,14 @@ GcsHeartbeatManager::GcsHeartbeatManager(
   }));
 }
 
+void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &item : gcs_init_data.Nodes()) {
+    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      heartbeats_.emplace(item.first, num_heartbeats_timeout_);
+    }
+  }
+}
+
 void GcsHeartbeatManager::Start() {
   io_service_.post([this] {
     if (!is_started_) {
@@ -61,9 +69,9 @@ void GcsHeartbeatManager::HandleReportHeartbeat(
   NodeID node_id = NodeID::FromBinary(request.heartbeat().node_id());
   auto iter = heartbeats_.find(node_id);
   if (iter == heartbeats_.end()) {
-    // Ignore this heartbeat as the node is not registered.
-    // TODO(Shanly): Maybe we should reply the raylet with an error. So the raylet can
-    // crash itself as soon as possible.
+    // Reply the raylet with an error so the raylet can crash itself.
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                       Status::Disconnected("Node has been dead"));
     return;
   }
 

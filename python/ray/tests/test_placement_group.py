@@ -1256,5 +1256,37 @@ def test_create_placement_group_during_gcs_server_restart(
         ray.get(placement_groups[i].ready())
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_placement_group_wait_api(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Create placement group 1 successfully.
+    placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group1.wait(10)
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Create placement group 2 successfully.
+    placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group2.wait(10)
+
+    # Remove placement group 1.
+    ray.util.remove_placement_group(placement_group1)
+
+    # Wait for placement group 1 after it is removed.
+    with pytest.raises(Exception):
+        placement_group1.wait(10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

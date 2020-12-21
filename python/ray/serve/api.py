@@ -1,4 +1,6 @@
+import asyncio
 import atexit
+import time
 from functools import wraps
 import os
 from uuid import UUID
@@ -81,9 +83,25 @@ class Client:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        if not self._shutdown:
+        if (not self._shutdown) and ray.is_initialized():
             ray.get(self._controller.shutdown.remote())
             ray.kill(self._controller, no_restart=True)
+
+            # Wait for the named actor entry gets removed as well.
+            started = time.time()
+            while True:
+                try:
+                    ray.get_actor(self._controller_name)
+                    if time.time() - started > 5:
+                        logger.warning(
+                            "Waited 5s for Serve to shutdown gracefully but "
+                            "the controller is still not cleaned up. "
+                            "You can ignore this warning if you are shutting "
+                            "down the Ray cluster.")
+                        break
+                except ValueError:  # actor name is removed
+                    break
+
             self._shutdown = True
 
     @_ensure_connected
@@ -255,7 +273,8 @@ class Client:
         Args:
             backend_tag (str): a unique tag assign to identify this backend.
             func_or_class (callable, class): a function or a class implementing
-                __call__.
+                __call__, returning a JSON-serializable object or a
+                Starlette Response object.
             actor_init_args (optional): the arguments to pass to the class.
                 initialization method.
             ray_actor_options (optional): options to be passed into the
@@ -393,13 +412,17 @@ class Client:
     @_ensure_connected
     def get_handle(self,
                    endpoint_name: str,
-                   missing_ok: Optional[bool] = False) -> RayServeHandle:
+                   missing_ok: Optional[bool] = False,
+                   sync: bool = True) -> RayServeHandle:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
             endpoint_name (str): A registered service endpoint.
             missing_ok (bool): If true, then Serve won't check the endpoint is
                 registered. False by default.
+            sync (bool): If true, then Serve will return a ServeHandle that
+                works everywhere. Otherwise, Serve will return a ServeHandle
+                that's only usable in asyncio loop.
 
         Returns:
             RayServeHandle
@@ -408,8 +431,14 @@ class Client:
                 self._controller.get_all_endpoints.remote()):
             raise KeyError(f"Endpoint '{endpoint_name}' does not exist.")
 
+        if asyncio.get_event_loop().is_running() and sync:
+            logger.warning(
+                "You are retrieving a ServeHandle inside an asyncio loop. "
+                "Try getting client.get_handle(.., sync=False) to get better "
+                "performance.")
+
         if endpoint_name not in self._handle_cache:
-            handle = RayServeHandle(self._controller, endpoint_name, sync=True)
+            handle = RayServeHandle(self._controller, endpoint_name, sync=sync)
             self._handle_cache[endpoint_name] = handle
         return self._handle_cache[endpoint_name]
 

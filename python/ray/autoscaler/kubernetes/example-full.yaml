@@ -142,7 +142,7 @@ head_node:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          image: rayproject/ray
+          image: rayproject/ray:nightly
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -215,7 +215,7 @@ worker_nodes:
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
-          image: rayproject/ray
+          image: rayproject/ray:nightly
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -250,9 +250,11 @@ worker_nodes:
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
-#    "/path1/on/remote/machine": "/path1/on/local/machine",
-#    "/path2/on/remote/machine": "/path2/on/local/machine",
+#    "~/path1/on/remote/machine": "/path1/on/local/machine",
+#    "~/path2/on/remote/machine": "/path2/on/local/machine",
 }
+# Note that the container images in this example have a non-root user.
+# To avoid permissions issues, we recommend mounting into a subdirectory of home (~).
 
 # Files or directories to copy from the head node to the worker nodes. The format is a
 # list of paths. The same path on the head node will be copied to the worker node.

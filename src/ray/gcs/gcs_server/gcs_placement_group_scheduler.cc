@@ -66,7 +66,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   // Filter candidate nodes.
   std::vector<std::pair<int64_t, NodeID>> candidate_nodes;
   for (auto &node : context->cluster_resources_) {
-    if (required_resources.IsSubset(node.second)) {
+    if (required_resources.IsSubset(node.second.GetAvailableResources())) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
     }
   }
@@ -99,7 +99,8 @@ ScheduleMap GcsPackStrategy::Schedule(
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
     for (const auto &node : context->cluster_resources_) {
-      if (IsAvailableResourceSufficient(node.second, allocated_resources[node.first],
+      if (IsAvailableResourceSufficient(node.second.GetAvailableResources(),
+                                        allocated_resources[node.first],
                                         required_resources)) {
         schedule_map[bundle->BundleId()] = node.first;
         allocated_resources[node.first].AddResources(required_resources);
@@ -135,7 +136,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
     // that meets the resource requirements. `iter_begin` is the next node of the last
     // selected node.
     for (; iter != candidate_nodes.end(); ++iter) {
-      if (IsAvailableResourceSufficient(iter->second, allocated_resources[iter->first],
+      if (IsAvailableResourceSufficient(iter->second.GetAvailableResources(),
+                                        allocated_resources[iter->first],
                                         required_resources)) {
         schedule_map[bundle->BundleId()] = iter->first;
         allocated_resources[iter->first].AddResources(required_resources);
@@ -153,8 +155,9 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       if (iter_begin != candidate_nodes.begin()) {
         // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
         for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
-          if (IsAvailableResourceSufficient(
-                  iter->second, allocated_resources[iter->first], required_resources)) {
+          if (IsAvailableResourceSufficient(iter->second.GetAvailableResources(),
+                                            allocated_resources[iter->first],
+                                            required_resources)) {
             schedule_map[bundle->BundleId()] = iter->first;
             allocated_resources[iter->first].AddResources(required_resources);
             break;
@@ -207,7 +210,8 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     auto iter = candidate_nodes.begin();
     for (; iter != candidate_nodes.end(); ++iter) {
       if (!allocated_resources.contains(iter->first) &&
-          IsAvailableResourceSufficient(iter->second, allocated_resources[iter->first],
+          IsAvailableResourceSufficient(iter->second.GetAvailableResources(),
+                                        allocated_resources[iter->first],
                                         required_resources)) {
         schedule_map[bundle->BundleId()] = iter->first;
         allocated_resources[iter->first].AddResources(required_resources);

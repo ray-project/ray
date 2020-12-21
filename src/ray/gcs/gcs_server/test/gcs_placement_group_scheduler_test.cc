@@ -101,6 +101,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     rpc::ResourcesData resource;
     resource.set_node_id(node->node_id());
     (*resource.mutable_resources_available())["CPU"] = cpu_num;
+    resource.set_resources_available_changed(true);
     gcs_node_manager_->UpdateNodeRealtimeResources(NodeID::FromBinary(node->node_id()),
                                                    resource);
   }

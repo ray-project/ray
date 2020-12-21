@@ -811,11 +811,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   all_ids.push_back(non_existent_id);
 
   std::vector<bool> wait_results;
-  RAY_CHECK_OK(core_worker.Wait(all_ids, 2, -1, &wait_results));
+  RAY_CHECK_OK(core_worker.Wait(all_ids, 2, -1, &wait_results, true));
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  RAY_CHECK_OK(core_worker.Wait(all_ids, 3, 100, &wait_results));
+  RAY_CHECK_OK(core_worker.Wait(all_ids, 3, 100, &wait_results, true));
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
