@@ -93,7 +93,7 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
-  int pull_timeout_ms_;
+  uint8_t pull_timeout_ms_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
