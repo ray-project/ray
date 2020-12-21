@@ -701,7 +701,55 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         return string
 
-    def run_init(self, *, as_head, file_mounts):
+    def _check_if_container_restart_is_needed(
+            self, image: str, cleaned_bind_mounts: Dict[str, str]) -> bool:
+        re_init_required = False
+        running_image = self.run(
+            check_docker_image(self.container_name),
+            with_output=True,
+            run_env="host").decode("utf-8").strip()
+        if running_image != image:
+            logger.error(f"A container with name {self.container_name} " +
+                         f"is running image {running_image} instead " +
+                         f"of {image} (which was provided in the YAML")
+        mounts = self.run(
+            check_bind_mounts_cmd(self.container_name),
+            with_output=True,
+            run_env="host").decode("utf-8").strip()
+        try:
+            active_mounts = json.loads(mounts)
+            active_remote_mounts = {
+                mnt["Destination"]
+                for mnt in active_mounts
+            }
+            # Ignore ray bootstrap files.
+            requested_remote_mounts = {
+                self._docker_expand_user(remote)
+                for remote in cleaned_bind_mounts.keys()
+            }
+            unfulfilled_mounts = (
+                requested_remote_mounts - active_remote_mounts)
+            if unfulfilled_mounts:
+                try:
+                    re_init_required = cli_logger.confirm(
+                        False, "This Docker Container is already Running, Do "
+                        "you want to restart the Docker container on "
+                        "this node?")
+                except ValueError as e:
+                    cli_logger.print(str(e))
+                    re_init_required = True
+                if not re_init_required:
+                    cli_logger.error(
+                        "Please ray stop & restart cluster to "
+                        "allow the following mounts to be picked up "
+                        f"[{unfulfilled_mounts}]")
+        except json.JSONDecodeError:
+            cli_logger.verbose(
+                "Unable to check if file_mounts specified in the YAML "
+                "differ from those on the running container.")
+        return re_init_required
+
+    def run_init(self, *, as_head, file_mounts, runtime_hash_matched=False):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -725,58 +773,15 @@ class DockerCommandRunner(CommandRunnerInterface):
 
         docker_run_executed = False
 
-        is_container_running = self._check_container_status()
-        if is_container_running:
-            running_image = self.run(
-                check_docker_image(self.container_name),
-                with_output=True,
-                run_env="host").decode("utf-8").strip()
-            if running_image != image:
-                logger.error(f"A container with name {self.container_name} " +
-                             f"is running image {running_image} instead " +
-                             f"of {image} (which was provided in the YAML")
-            mounts = self.run(
-                check_bind_mounts_cmd(self.container_name),
-                with_output=True,
-                run_env="host").decode("utf-8").strip()
-            try:
-                active_mounts = json.loads(mounts)
-                active_remote_mounts = {
-                    mnt["Destination"]
-                    for mnt in active_mounts
-                }
-                # Ignore ray bootstrap files.
-                requested_remote_mounts = {
-                    self._docker_expand_user(remote)
-                    for remote in cleaned_bind_mounts.keys()
-                }
-                unfulfilled_mounts = (
-                    requested_remote_mounts - active_remote_mounts)
-                if unfulfilled_mounts:
-                    try:
-                        is_container_running = not cli_logger.confirm(
-                            False,
-                            "This Docker Container is already Running, Do "
-                            "you want to restart the Docker container on "
-                            "this node?")
-                    except ValueError as e:
-                        cli_logger.print(str(e))
-                        is_container_running = False
-                    if not is_container_running:
-                        self.run(
-                            f"docker stop {self.container_name}",
-                            run_env="host")
-                    else:
-                        cli_logger.error(
-                            "Please ray stop & restart cluster to "
-                            "allow the following mounts to be picked up "
-                            f"[{unfulfilled_mounts}]")
-            except json.JSONDecodeError:
-                cli_logger.verbose(
-                    "Unable to check if file_mounts specified in the YAML "
-                    "differ from those on the running container.")
+        container_running = self._check_container_status()
+        requires_re_init = False
+        if container_running:
+            requires_re_init = self._check_if_container_restart_is_needed(
+                image, cleaned_bind_mounts)
+            if requires_re_init:
+                self.run(f"docker stop {self.container_name}", run_env="host")
 
-        if not is_container_running:
+        if (not container_running) or requires_re_init:
             # Get home directory
             image_env = self.ssh_command_runner.run(
                 "docker inspect -f '{{json .Config.Env}}' " + image,
@@ -801,6 +806,11 @@ class DockerCommandRunner(CommandRunnerInterface):
         # Explicitly copy in ray bootstrap files.
         for mount in BOOTSTRAP_MOUNTS:
             if mount in file_mounts:
+                if runtime_hash_matched:
+                    # NOTE(ilr) This rsync is needed because when starting from
+                    #  a stopped instance,  /tmp may be deleted and `run_init`
+                    # is called before the first `file_sync` happens
+                    self.run_rsync_up(file_mounts[mount], mount)
                 self.ssh_command_runner.run(
                     "docker cp {src} {container}:{dst}".format(
                         src=os.path.join(

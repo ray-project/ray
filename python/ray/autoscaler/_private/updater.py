@@ -285,7 +285,9 @@ class NodeUpdater:
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
             init_required = self.cmd_runner.run_init(
-                as_head=self.is_head_node, file_mounts=self.file_mounts)
+                as_head=self.is_head_node,
+                file_mounts=self.file_mounts,
+                runtime_hash_matched=True)
             if init_required:
                 node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
