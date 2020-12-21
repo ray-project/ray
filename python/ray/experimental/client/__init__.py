@@ -1,5 +1,4 @@
-from typing import Optional, List, Tuple
-from contextlib import contextmanager
+from typing import List, Tuple
 
 import logging
 import os
@@ -11,10 +10,11 @@ class RayAPIStub:
     """
     This class stands in as the replacement API for the `import ray` module.
 
-    Much like the ray module, this mostly delegates the work to the _client_worker.
-    As parts of the ray API are covered, they are piped through here or on the
-    client worker API.
+    Much like the ray module, this mostly delegates the work to the
+    _client_worker. As parts of the ray API are covered, they are piped through
+    here or on the client worker API.
     """
+
     def __init__(self):
         from ray.experimental.client.api import ClientAPI
         self.api = ClientAPI()
@@ -65,8 +65,8 @@ class RayAPIStub:
 
     def __getattr__(self, key: str):
         if not self.is_connected():
-            raise Exception(
-                "Ray Client is not connected. Please connect by calling `ray.connect`.")
+            raise Exception("Ray Client is not connected. "
+                            "Please connect by calling `ray.connect`.")
         return getattr(self.api, key)
 
     def is_connected(self) -> bool:

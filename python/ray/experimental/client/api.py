@@ -5,9 +5,9 @@ and the overall ray module API.
 from typing import TYPE_CHECKING
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 if TYPE_CHECKING:
-    from ray.experimental.client.common import ClientActorClass
     from ray.experimental.client.common import ClientStub
-    from ray.experimental.client.common import ClientRemoteFunc
+    from ray.experimental.client.common import ClientActorHandle
+    from ray.experimental.client.common import ClientObjectRef
 
 
 class ClientAPI:

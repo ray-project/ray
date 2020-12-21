@@ -225,8 +225,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             else:
                 raise NotImplementedError(
                     "Unimplemented Schedule task type: %s" %
-                    ray_client_pb2.ClientTask.RemoteExecType.Name(
-                        task.type))
+                    ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
             result.valid = True
             return result
         except Exception as e:
