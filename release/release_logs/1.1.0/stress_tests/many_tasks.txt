@@ -1,0 +1,1290 @@
+(base) Alexs-MacBook-Pro:release-troubles alex$ ray submit stress_test_autoscaler.yaml test_many_tasks.py 
+Loaded cached provider configuration
+If you experience issues with the cloud provider, try re-running the command with --no-config-cache.
+Fetched IP: 54.219.41.169
+Fetched IP: 54.219.41.169
+2020-12-19 03:01:35,944	INFO worker.py:655 -- Connecting to existing Ray cluster at address: 10.0.0.242:6379
+INFO:__main__:Waiting for nodes 101/101
+INFO:__main__:Nodes have all joined. There are {'CPU': 264.0, 'memory': 14107.0, 'node:10.0.0.233': 1.0, 'object_store_memory': 4164.0, 'GPU': 10000.0, 'node:10.0.0.111': 1.0, 'node:10.0.0.112': 1.0, 'node:10.0.0.177': 1.0, 'node:10.0.0.55': 1.0, 'node:10.0.0.56': 1.0, 'node:10.0.0.114': 1.0, 'node:10.0.0.68': 1.0, 'node:10.0.0.226': 1.0, 'node:10.0.0.197': 1.0, 'node:10.0.0.218': 1.0, 'node:10.0.0.247': 1.0, 'node:10.0.0.82': 1.0, 'node:10.0.0.210': 1.0, 'node:10.0.0.207': 1.0, 'node:10.0.0.175': 1.0, 'node:10.0.0.220': 1.0, 'node:10.0.0.44': 1.0, 'node:10.0.0.173': 1.0, 'node:10.0.0.170': 1.0, 'node:10.0.0.185': 1.0, 'node:10.0.0.32': 1.0, 'node:10.0.0.84': 1.0, 'node:10.0.0.186': 1.0, 'node:10.0.0.109': 1.0, 'node:10.0.0.73': 1.0, 'node:10.0.0.76': 1.0, 'node:10.0.0.107': 1.0, 'node:10.0.0.60': 1.0, 'node:10.0.0.216': 1.0, 'node:10.0.0.80': 1.0, 'node:10.0.0.232': 1.0, 'node:10.0.0.145': 1.0, 'node:10.0.0.202': 1.0, 'node:10.0.0.225': 1.0, 'node:10.0.0.87': 1.0, 'node:10.0.0.96': 1.0, 'node:10.0.0.108': 1.0, 'node:10.0.0.100': 1.0, 'node:10.0.0.243': 1.0, 'node:10.0.0.201': 1.0, 'node:10.0.0.165': 1.0, 'node:10.0.0.16': 1.0, 'node:10.0.0.90': 1.0, 'node:10.0.0.41': 1.0, 'node:10.0.0.143': 1.0, 'node:10.0.0.203': 1.0, 'node:10.0.0.63': 1.0, 'node:10.0.0.105': 1.0, 'node:10.0.0.242': 1.0, 'node:10.0.0.8': 1.0, 'node:10.0.0.181': 1.0, 'node:10.0.0.129': 1.0, 'node:10.0.0.213': 1.0, 'node:10.0.0.214': 1.0, 'node:10.0.0.224': 1.0, 'node:10.0.0.49': 1.0, 'node:10.0.0.57': 1.0, 'node:10.0.0.128': 1.0, 'node:10.0.0.103': 1.0, 'node:10.0.0.79': 1.0, 'node:10.0.0.18': 1.0, 'node:10.0.0.40': 1.0, 'node:10.0.0.174': 1.0, 'node:10.0.0.34': 1.0, 'node:10.0.0.222': 1.0, 'node:10.0.0.36': 1.0, 'node:10.0.0.71': 1.0, 'node:10.0.0.162': 1.0, 'node:10.0.0.161': 1.0, 'node:10.0.0.180': 1.0, 'node:10.0.0.115': 1.0, 'node:10.0.0.33': 1.0, 'node:10.0.0.77': 1.0, 'node:10.0.0.209': 1.0, 'node:10.0.0.166': 1.0, 'node:10.0.0.135': 1.0, 'node:10.0.0.235': 1.0, 'node:10.0.0.212': 1.0, 'node:10.0.0.65': 1.0, 'node:10.0.0.158': 1.0, 'node:10.0.0.58': 1.0, 'node:10.0.0.217': 1.0, 'node:10.0.0.171': 1.0, 'node:10.0.0.29': 1.0, 'node:10.0.0.28': 1.0, 'node:10.0.0.35': 1.0, 'node:10.0.0.95': 1.0, 'node:10.0.0.184': 1.0, 'node:10.0.0.167': 1.0, 'node:10.0.0.6': 1.0, 'node:10.0.0.10': 1.0, 'node:10.0.0.26': 1.0, 'node:10.0.0.248': 1.0, 'node:10.0.0.241': 1.0, 'node:10.0.0.246': 1.0, 'node:10.0.0.141': 1.0, 'node:10.0.0.187': 1.0, 'node:10.0.0.53': 1.0, 'node:10.0.0.19': 1.0, 'node:10.0.0.43': 1.0} resources.
+INFO:__main__:Submitting many tasks with large returns.
+INFO:__main__:Iteration 0
+INFO:__main__:Iteration 1
+INFO:__main__:Iteration 2
+INFO:__main__:Iteration 3
+INFO:__main__:Iteration 4
+INFO:__main__:Iteration 5
+INFO:__main__:Iteration 6
+INFO:__main__:Iteration 7
+INFO:__main__:Iteration 8
+INFO:__main__:Iteration 9
+INFO:__main__:Finished stage 0 after 56.82723140716553 seconds.
+INFO:__main__:Submitting many tasks.
+INFO:__main__:Iteration 0
+2020-12-19 03:02:39,788	WARNING worker.py:1032 -- The actor or task with ID ffc0fd37f7e261cfffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.90: 1.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}, {GPU: 100.000000}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:02:50,110	WARNING worker.py:1032 -- The actor or task with ID 57a7d05ac9c1fa97ffffffff05000000 cannot be scheduled right now. It requires {CPU: 1.000000}, {GPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.49: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:02:54,089	WARNING worker.py:1032 -- The actor or task with ID 49e8f67af8c28602ffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.103: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:03:02,829	WARNING worker.py:1032 -- The actor or task with ID 343246328d35af3bffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.167: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+INFO:__main__:Iteration 1
+2020-12-19 03:03:28,791	WARNING worker.py:1032 -- The actor or task with ID 281ca9c78ca0f2f8ffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.68: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+INFO:__main__:Iteration 2
+INFO:__main__:Iteration 3
+INFO:__main__:Iteration 4
+INFO:__main__:Iteration 5
+INFO:__main__:Iteration 6
+INFO:__main__:Iteration 7
+INFO:__main__:Iteration 8
+INFO:__main__:Iteration 9
+INFO:__main__:Finished stage 1 after 210.9983310699463 seconds.
+INFO:__main__:Submitting tasks with many dependencies.
+INFO:__main__:Iteration 0. Cumulative time 5.7697296142578125e-05 seconds
+INFO:__main__:Iteration 1. Cumulative time 0.06696534156799316 seconds
+INFO:__main__:Iteration 2. Cumulative time 2.6857428550720215 seconds
+INFO:__main__:Iteration 3. Cumulative time 5.459338903427124 seconds
+INFO:__main__:Iteration 4. Cumulative time 8.001792669296265 seconds
+INFO:__main__:Iteration 5. Cumulative time 10.787103176116943 seconds
+INFO:__main__:Iteration 6. Cumulative time 13.58342170715332 seconds
+INFO:__main__:Iteration 7. Cumulative time 16.37558364868164 seconds
+INFO:__main__:Iteration 8. Cumulative time 19.158924341201782 seconds
+INFO:__main__:Iteration 9. Cumulative time 21.94761562347412 seconds
+INFO:__main__:Iteration 10. Cumulative time 24.55484890937805 seconds
+INFO:__main__:Iteration 11. Cumulative time 27.25826621055603 seconds
+INFO:__main__:Iteration 12. Cumulative time 30.028104543685913 seconds
+INFO:__main__:Iteration 13. Cumulative time 32.79865503311157 seconds
+INFO:__main__:Iteration 14. Cumulative time 35.33954405784607 seconds
+INFO:__main__:Iteration 15. Cumulative time 38.13868975639343 seconds
+INFO:__main__:Iteration 16. Cumulative time 40.91155934333801 seconds
+INFO:__main__:Iteration 17. Cumulative time 43.69741201400757 seconds
+INFO:__main__:Iteration 18. Cumulative time 46.454044580459595 seconds
+INFO:__main__:Iteration 19. Cumulative time 49.17334604263306 seconds
+INFO:__main__:Finished after 51.832698822021484 seconds.
+INFO:__main__:Iteration 0. Cumulative time 51.832839250564575 seconds
+INFO:__main__:Iteration 1. Cumulative time 54.58825397491455 seconds
+INFO:__main__:Iteration 2. Cumulative time 57.339115858078 seconds
+INFO:__main__:Iteration 3. Cumulative time 60.10687017440796 seconds
+INFO:__main__:Iteration 4. Cumulative time 62.88698887825012 seconds
+INFO:__main__:Iteration 5. Cumulative time 65.65305829048157 seconds
+INFO:__main__:Iteration 6. Cumulative time 68.39764475822449 seconds
+INFO:__main__:Iteration 7. Cumulative time 71.13473629951477 seconds
+INFO:__main__:Iteration 8. Cumulative time 73.88719439506531 seconds
+INFO:__main__:Iteration 9. Cumulative time 76.56037425994873 seconds
+INFO:__main__:Iteration 10. Cumulative time 79.12740087509155 seconds
+INFO:__main__:Iteration 11. Cumulative time 81.86739754676819 seconds
+INFO:__main__:Iteration 12. Cumulative time 84.52136301994324 seconds
+INFO:__main__:Iteration 13. Cumulative time 87.15643525123596 seconds
+INFO:__main__:Iteration 14. Cumulative time 89.96270227432251 seconds
+INFO:__main__:Iteration 15. Cumulative time 92.73356914520264 seconds
+INFO:__main__:Iteration 16. Cumulative time 95.4980981349945 seconds
+INFO:__main__:Iteration 17. Cumulative time 98.17870283126831 seconds
+INFO:__main__:Iteration 18. Cumulative time 100.94455027580261 seconds
+INFO:__main__:Iteration 19. Cumulative time 103.71609306335449 seconds
+INFO:__main__:Finished after 106.46690487861633 seconds.
+INFO:__main__:Iteration 0. Cumulative time 106.46706986427307 seconds
+INFO:__main__:Iteration 1. Cumulative time 109.068119764328 seconds
+INFO:__main__:Iteration 2. Cumulative time 111.69384217262268 seconds
+INFO:__main__:Iteration 3. Cumulative time 114.37492084503174 seconds
+INFO:__main__:Iteration 4. Cumulative time 117.12870669364929 seconds
+INFO:__main__:Iteration 5. Cumulative time 119.8786895275116 seconds
+INFO:__main__:Iteration 6. Cumulative time 122.63214588165283 seconds
+INFO:__main__:Iteration 7. Cumulative time 125.38149952888489 seconds
+INFO:__main__:Iteration 8. Cumulative time 128.118980884552 seconds
+INFO:__main__:Iteration 9. Cumulative time 130.75048828125 seconds
+INFO:__main__:Iteration 10. Cumulative time 133.5311017036438 seconds
+INFO:__main__:Iteration 11. Cumulative time 136.09821581840515 seconds
+INFO:__main__:Iteration 12. Cumulative time 138.6162929534912 seconds
+INFO:__main__:Iteration 13. Cumulative time 141.40116429328918 seconds
+INFO:__main__:Iteration 14. Cumulative time 144.1846694946289 seconds
+INFO:__main__:Iteration 15. Cumulative time 146.97024059295654 seconds
+INFO:__main__:Iteration 16. Cumulative time 149.74796199798584 seconds
+INFO:__main__:Iteration 17. Cumulative time 152.51817846298218 seconds
+INFO:__main__:Iteration 18. Cumulative time 155.10719680786133 seconds
+INFO:__main__:Iteration 19. Cumulative time 157.84426856040955 seconds
+INFO:__main__:Finished after 160.68722200393677 seconds.
+INFO:__main__:Iteration 0. Cumulative time 160.68739414215088 seconds
+INFO:__main__:Iteration 1. Cumulative time 163.48737382888794 seconds
+INFO:__main__:Iteration 2. Cumulative time 166.28522562980652 seconds
+INFO:__main__:Iteration 3. Cumulative time 169.04967784881592 seconds
+INFO:__main__:Iteration 4. Cumulative time 171.84391689300537 seconds
+INFO:__main__:Iteration 5. Cumulative time 174.6143434047699 seconds
+INFO:__main__:Iteration 6. Cumulative time 177.38927555084229 seconds
+INFO:__main__:Iteration 7. Cumulative time 180.1548774242401 seconds
+INFO:__main__:Iteration 8. Cumulative time 182.91530585289001 seconds
+INFO:__main__:Iteration 9. Cumulative time 185.680020570755 seconds
+INFO:__main__:Iteration 10. Cumulative time 188.4528567790985 seconds
+INFO:__main__:Iteration 11. Cumulative time 191.21460437774658 seconds
+INFO:__main__:Iteration 12. Cumulative time 193.96897053718567 seconds
+INFO:__main__:Iteration 13. Cumulative time 196.72346544265747 seconds
+INFO:__main__:Iteration 14. Cumulative time 199.49185800552368 seconds
+INFO:__main__:Iteration 15. Cumulative time 202.25339221954346 seconds
+INFO:__main__:Iteration 16. Cumulative time 204.99544644355774 seconds
+INFO:__main__:Iteration 17. Cumulative time 207.69459676742554 seconds
+INFO:__main__:Iteration 18. Cumulative time 210.45933175086975 seconds
+INFO:__main__:Iteration 19. Cumulative time 213.21412110328674 seconds
+INFO:__main__:Finished after 215.82959818840027 seconds.
+INFO:__main__:Iteration 0. Cumulative time 215.8298680782318 seconds
+INFO:__main__:Iteration 1. Cumulative time 218.57535552978516 seconds
+INFO:__main__:Iteration 2. Cumulative time 221.34164428710938 seconds
+INFO:__main__:Iteration 3. Cumulative time 224.09685468673706 seconds
+INFO:__main__:Iteration 4. Cumulative time 226.87156772613525 seconds
+INFO:__main__:Iteration 5. Cumulative time 229.4717297554016 seconds
+INFO:__main__:Iteration 6. Cumulative time 232.2244176864624 seconds
+INFO:__main__:Iteration 7. Cumulative time 234.96767592430115 seconds
+INFO:__main__:Iteration 8. Cumulative time 237.74992752075195 seconds
+INFO:__main__:Iteration 9. Cumulative time 240.41476130485535 seconds
+INFO:__main__:Iteration 10. Cumulative time 243.17967581748962 seconds
+INFO:__main__:Iteration 11. Cumulative time 245.93305373191833 seconds
+INFO:__main__:Iteration 12. Cumulative time 248.6845679283142 seconds
+INFO:__main__:Iteration 13. Cumulative time 251.43006491661072 seconds
+INFO:__main__:Iteration 14. Cumulative time 254.1829011440277 seconds
+INFO:__main__:Iteration 15. Cumulative time 256.9373197555542 seconds
+INFO:__main__:Iteration 16. Cumulative time 259.6680533885956 seconds
+INFO:__main__:Iteration 17. Cumulative time 262.44308257102966 seconds
+INFO:__main__:Iteration 18. Cumulative time 265.2176775932312 seconds
+INFO:__main__:Iteration 19. Cumulative time 267.86785554885864 seconds
+INFO:__main__:Finished after 270.5600154399872 seconds.
+INFO:__main__:Finished stage 2 after 270.56019592285156 seconds.
+INFO:__main__:Creating 200 actors.
+INFO:__main__:Finished stage 3 actor creation in 0.4038546085357666 seconds.
+INFO:__main__:Submitting many small actor tasks.
+INFO:__main__:Submitted 0
+INFO:__main__:Submitted 20000
+INFO:__main__:Submitted 40000
+INFO:__main__:Submitted 60000
+INFO:__main__:Submitted 80000
+INFO:__main__:Submitted 100000
+INFO:__main__:Submitted 120000
+INFO:__main__:Submitted 140000
+INFO:__main__:Submitted 160000
+INFO:__main__:Submitted 180000
+INFO:__main__:Submitted 0
+INFO:__main__:Submitted 20000
+INFO:__main__:Submitted 40000
+INFO:__main__:Submitted 60000
+INFO:__main__:Submitted 80000
+INFO:__main__:Submitted 100000
+INFO:__main__:Submitted 120000
+INFO:__main__:Submitted 140000
+INFO:__main__:Submitted 160000
+INFO:__main__:Submitted 180000
+INFO:__main__:Submitted 200000
+INFO:__main__:Submitted 220000
+INFO:__main__:Submitted 240000
+INFO:__main__:Submitted 260000
+INFO:__main__:Submitted 280000
+INFO:__main__:Submitted 300000
+INFO:__main__:Submitted 320000
+INFO:__main__:Submitted 340000
+INFO:__main__:Submitted 360000
+INFO:__main__:Submitted 380000
+INFO:__main__:Submitted 400000
+INFO:__main__:Submitted 420000
+INFO:__main__:Submitted 440000
+INFO:__main__:Submitted 460000
+INFO:__main__:Submitted 480000
+INFO:__main__:Submitted 500000
+INFO:__main__:Submitted 520000
+INFO:__main__:Submitted 540000
+INFO:__main__:Submitted 560000
+INFO:__main__:Submitted 580000
+INFO:__main__:Submitted 600000
+INFO:__main__:Submitted 620000
+INFO:__main__:Submitted 640000
+INFO:__main__:Submitted 660000
+INFO:__main__:Submitted 680000
+INFO:__main__:Submitted 700000
+INFO:__main__:Submitted 720000
+INFO:__main__:Submitted 740000
+INFO:__main__:Submitted 760000
+INFO:__main__:Submitted 780000
+INFO:__main__:Submitted 800000
+INFO:__main__:Submitted 820000
+INFO:__main__:Submitted 840000
+INFO:__main__:Submitted 860000
+INFO:__main__:Submitted 880000
+INFO:__main__:Submitted 900000
+INFO:__main__:Submitted 920000
+INFO:__main__:Submitted 940000
+INFO:__main__:Submitted 960000
+INFO:__main__:Submitted 980000
+INFO:__main__:Submitted 1000000
+INFO:__main__:Submitted 1020000
+INFO:__main__:Submitted 1040000
+INFO:__main__:Submitted 1060000
+INFO:__main__:Submitted 1080000
+INFO:__main__:Submitted 1100000
+INFO:__main__:Submitted 1120000
+INFO:__main__:Submitted 1140000
+INFO:__main__:Submitted 1160000
+INFO:__main__:Submitted 1180000
+INFO:__main__:Submitted 1200000
+INFO:__main__:Submitted 1220000
+INFO:__main__:Submitted 1240000
+INFO:__main__:Submitted 1260000
+INFO:__main__:Submitted 1280000
+INFO:__main__:Submitted 1300000
+INFO:__main__:Submitted 1320000
+INFO:__main__:Submitted 1340000
+INFO:__main__:Submitted 1360000
+INFO:__main__:Submitted 1380000
+INFO:__main__:Submitted 1400000
+INFO:__main__:Submitted 1420000
+INFO:__main__:Submitted 1440000
+INFO:__main__:Submitted 1460000
+INFO:__main__:Submitted 1480000
+INFO:__main__:Submitted 1500000
+INFO:__main__:Submitted 1520000
+INFO:__main__:Submitted 1540000
+INFO:__main__:Submitted 1560000
+INFO:__main__:Submitted 1580000
+INFO:__main__:Submitted 1600000
+INFO:__main__:Submitted 1620000
+INFO:__main__:Submitted 1640000
+INFO:__main__:Submitted 1660000
+INFO:__main__:Submitted 1680000
+INFO:__main__:Submitted 1700000
+INFO:__main__:Submitted 1720000
+INFO:__main__:Submitted 1740000
+INFO:__main__:Submitted 1760000
+INFO:__main__:Submitted 1780000
+INFO:__main__:Submitted 1800000
+INFO:__main__:Submitted 1820000
+INFO:__main__:Submitted 1840000
+INFO:__main__:Submitted 1860000
+INFO:__main__:Submitted 1880000
+INFO:__main__:Submitted 1900000
+INFO:__main__:Submitted 1920000
+INFO:__main__:Submitted 1940000
+INFO:__main__:Submitted 1960000
+INFO:__main__:Submitted 1980000
+INFO:__main__:Submitted 2000000
+INFO:__main__:Submitted 2020000
+INFO:__main__:Submitted 2040000
+INFO:__main__:Submitted 2060000
+INFO:__main__:Submitted 2080000
+INFO:__main__:Submitted 2100000
+INFO:__main__:Submitted 2120000
+INFO:__main__:Submitted 2140000
+INFO:__main__:Submitted 2160000
+INFO:__main__:Submitted 2180000
+INFO:__main__:Submitted 2200000
+INFO:__main__:Submitted 2220000
+INFO:__main__:Submitted 2240000
+INFO:__main__:Submitted 2260000
+INFO:__main__:Submitted 2280000
+INFO:__main__:Submitted 2300000
+INFO:__main__:Submitted 2320000
+INFO:__main__:Submitted 2340000
+INFO:__main__:Submitted 2360000
+INFO:__main__:Submitted 2380000
+INFO:__main__:Submitted 2400000
+INFO:__main__:Submitted 2420000
+INFO:__main__:Submitted 2440000
+INFO:__main__:Submitted 2460000
+INFO:__main__:Submitted 2480000
+INFO:__main__:Submitted 2500000
+INFO:__main__:Submitted 2520000
+INFO:__main__:Submitted 2540000
+INFO:__main__:Submitted 2560000
+INFO:__main__:Submitted 2580000
+INFO:__main__:Submitted 2600000
+INFO:__main__:Submitted 2620000
+INFO:__main__:Submitted 2640000
+INFO:__main__:Submitted 2660000
+INFO:__main__:Submitted 2680000
+INFO:__main__:Submitted 2700000
+INFO:__main__:Submitted 2720000
+INFO:__main__:Submitted 2740000
+INFO:__main__:Submitted 2760000
+INFO:__main__:Submitted 2780000
+INFO:__main__:Submitted 2800000
+INFO:__main__:Submitted 2820000
+INFO:__main__:Submitted 2840000
+INFO:__main__:Submitted 2860000
+INFO:__main__:Submitted 2880000
+INFO:__main__:Submitted 2900000
+INFO:__main__:Submitted 2920000
+INFO:__main__:Submitted 2940000
+INFO:__main__:Submitted 2960000
+INFO:__main__:Submitted 2980000
+INFO:__main__:Submitted 3000000
+INFO:__main__:Submitted 3020000
+INFO:__main__:Submitted 3040000
+INFO:__main__:Submitted 3060000
+INFO:__main__:Submitted 3080000
+INFO:__main__:Submitted 3100000
+INFO:__main__:Submitted 3120000
+INFO:__main__:Submitted 3140000
+INFO:__main__:Submitted 3160000
+INFO:__main__:Submitted 3180000
+INFO:__main__:Submitted 3200000
+INFO:__main__:Submitted 3220000
+INFO:__main__:Submitted 3240000
+INFO:__main__:Submitted 3260000
+INFO:__main__:Submitted 3280000
+INFO:__main__:Submitted 3300000
+INFO:__main__:Submitted 3320000
+INFO:__main__:Submitted 3340000
+INFO:__main__:Submitted 3360000
+INFO:__main__:Submitted 3380000
+INFO:__main__:Submitted 3400000
+INFO:__main__:Submitted 3420000
+INFO:__main__:Submitted 3440000
+INFO:__main__:Submitted 3460000
+INFO:__main__:Submitted 3480000
+INFO:__main__:Submitted 3500000
+INFO:__main__:Submitted 3520000
+INFO:__main__:Submitted 3540000
+INFO:__main__:Submitted 3560000
+INFO:__main__:Submitted 3580000
+INFO:__main__:Submitted 3600000
+INFO:__main__:Submitted 3620000
+INFO:__main__:Submitted 3640000
+INFO:__main__:Submitted 3660000
+INFO:__main__:Submitted 3680000
+INFO:__main__:Submitted 3700000
+INFO:__main__:Submitted 3720000
+INFO:__main__:Submitted 3740000
+INFO:__main__:Submitted 3760000
+INFO:__main__:Submitted 3780000
+INFO:__main__:Submitted 3800000
+INFO:__main__:Submitted 3820000
+INFO:__main__:Submitted 3840000
+INFO:__main__:Submitted 3860000
+INFO:__main__:Submitted 3880000
+INFO:__main__:Submitted 3900000
+INFO:__main__:Submitted 3920000
+INFO:__main__:Submitted 3940000
+INFO:__main__:Submitted 3960000
+INFO:__main__:Submitted 3980000
+INFO:__main__:Submitted 4000000
+INFO:__main__:Submitted 4020000
+INFO:__main__:Submitted 4040000
+INFO:__main__:Submitted 4060000
+INFO:__main__:Submitted 4080000
+INFO:__main__:Submitted 4100000
+INFO:__main__:Submitted 4120000
+INFO:__main__:Submitted 4140000
+INFO:__main__:Submitted 4160000
+INFO:__main__:Submitted 4180000
+INFO:__main__:Submitted 4200000
+INFO:__main__:Submitted 4220000
+INFO:__main__:Submitted 4240000
+INFO:__main__:Submitted 4260000
+INFO:__main__:Submitted 4280000
+INFO:__main__:Submitted 4300000
+INFO:__main__:Submitted 4320000
+INFO:__main__:Submitted 4340000
+INFO:__main__:Submitted 4360000
+INFO:__main__:Submitted 4380000
+INFO:__main__:Submitted 4400000
+INFO:__main__:Submitted 4420000
+INFO:__main__:Submitted 4440000
+INFO:__main__:Submitted 4460000
+INFO:__main__:Submitted 4480000
+INFO:__main__:Submitted 4500000
+INFO:__main__:Submitted 4520000
+INFO:__main__:Submitted 4540000
+INFO:__main__:Submitted 4560000
+INFO:__main__:Submitted 4580000
+INFO:__main__:Submitted 4600000
+INFO:__main__:Submitted 4620000
+INFO:__main__:Submitted 4640000
+INFO:__main__:Submitted 4660000
+INFO:__main__:Submitted 4680000
+INFO:__main__:Submitted 4700000
+INFO:__main__:Submitted 4720000
+INFO:__main__:Submitted 4740000
+INFO:__main__:Submitted 4760000
+INFO:__main__:Submitted 4780000
+INFO:__main__:Submitted 4800000
+INFO:__main__:Submitted 4820000
+INFO:__main__:Submitted 4840000
+INFO:__main__:Submitted 4860000
+INFO:__main__:Submitted 4880000
+INFO:__main__:Submitted 4900000
+INFO:__main__:Submitted 4920000
+INFO:__main__:Submitted 4940000
+INFO:__main__:Submitted 4960000
+INFO:__main__:Submitted 4980000
+INFO:__main__:Submitted 5000000
+INFO:__main__:Submitted 5020000
+INFO:__main__:Submitted 5040000
+INFO:__main__:Submitted 5060000
+INFO:__main__:Submitted 5080000
+INFO:__main__:Submitted 5100000
+INFO:__main__:Submitted 5120000
+INFO:__main__:Submitted 5140000
+INFO:__main__:Submitted 5160000
+INFO:__main__:Submitted 5180000
+INFO:__main__:Submitted 5200000
+INFO:__main__:Submitted 5220000
+INFO:__main__:Submitted 5240000
+INFO:__main__:Submitted 5260000
+INFO:__main__:Submitted 5280000
+INFO:__main__:Submitted 5300000
+INFO:__main__:Submitted 5320000
+INFO:__main__:Submitted 5340000
+INFO:__main__:Submitted 5360000
+INFO:__main__:Submitted 5380000
+INFO:__main__:Submitted 5400000
+INFO:__main__:Submitted 5420000
+INFO:__main__:Submitted 5440000
+INFO:__main__:Submitted 5460000
+INFO:__main__:Submitted 5480000
+INFO:__main__:Submitted 5500000
+INFO:__main__:Submitted 5520000
+INFO:__main__:Submitted 5540000
+INFO:__main__:Submitted 5560000
+INFO:__main__:Submitted 5580000
+INFO:__main__:Submitted 5600000
+INFO:__main__:Submitted 5620000
+INFO:__main__:Submitted 5640000
+INFO:__main__:Submitted 5660000
+INFO:__main__:Submitted 5680000
+INFO:__main__:Submitted 5700000
+INFO:__main__:Submitted 5720000
+INFO:__main__:Submitted 5740000
+INFO:__main__:Submitted 5760000
+INFO:__main__:Submitted 5780000
+INFO:__main__:Submitted 5800000
+INFO:__main__:Submitted 5820000
+INFO:__main__:Submitted 5840000
+INFO:__main__:Submitted 5860000
+INFO:__main__:Submitted 5880000
+INFO:__main__:Submitted 5900000
+INFO:__main__:Submitted 5920000
+INFO:__main__:Submitted 5940000
+INFO:__main__:Submitted 5960000
+INFO:__main__:Submitted 5980000
+INFO:__main__:Submitted 6000000
+INFO:__main__:Submitted 6020000
+INFO:__main__:Submitted 6040000
+INFO:__main__:Submitted 6060000
+INFO:__main__:Submitted 6080000
+INFO:__main__:Submitted 6100000
+INFO:__main__:Submitted 6120000
+INFO:__main__:Submitted 6140000
+INFO:__main__:Submitted 6160000
+INFO:__main__:Submitted 6180000
+INFO:__main__:Submitted 6200000
+INFO:__main__:Submitted 6220000
+INFO:__main__:Submitted 6240000
+INFO:__main__:Submitted 6260000
+INFO:__main__:Submitted 6280000
+INFO:__main__:Submitted 6300000
+INFO:__main__:Submitted 6320000
+INFO:__main__:Submitted 6340000
+INFO:__main__:Submitted 6360000
+INFO:__main__:Submitted 6380000
+INFO:__main__:Submitted 6400000
+INFO:__main__:Submitted 6420000
+INFO:__main__:Submitted 6440000
+INFO:__main__:Submitted 6460000
+INFO:__main__:Submitted 6480000
+INFO:__main__:Submitted 6500000
+INFO:__main__:Submitted 6520000
+INFO:__main__:Submitted 6540000
+INFO:__main__:Submitted 6560000
+INFO:__main__:Submitted 6580000
+INFO:__main__:Submitted 6600000
+INFO:__main__:Submitted 6620000
+INFO:__main__:Submitted 6640000
+INFO:__main__:Submitted 6660000
+INFO:__main__:Submitted 6680000
+INFO:__main__:Submitted 6700000
+INFO:__main__:Submitted 6720000
+INFO:__main__:Submitted 6740000
+INFO:__main__:Submitted 6760000
+INFO:__main__:Submitted 6780000
+INFO:__main__:Submitted 6800000
+INFO:__main__:Submitted 6820000
+INFO:__main__:Submitted 6840000
+INFO:__main__:Submitted 6860000
+INFO:__main__:Submitted 6880000
+INFO:__main__:Submitted 6900000
+INFO:__main__:Submitted 6920000
+INFO:__main__:Submitted 6940000
+INFO:__main__:Submitted 6960000
+INFO:__main__:Submitted 6980000
+INFO:__main__:Submitted 7000000
+INFO:__main__:Submitted 7020000
+INFO:__main__:Submitted 7040000
+INFO:__main__:Submitted 7060000
+INFO:__main__:Submitted 7080000
+INFO:__main__:Submitted 7100000
+INFO:__main__:Submitted 7120000
+INFO:__main__:Submitted 7140000
+INFO:__main__:Submitted 7160000
+INFO:__main__:Submitted 7180000
+INFO:__main__:Submitted 7200000
+INFO:__main__:Submitted 7220000
+INFO:__main__:Submitted 7240000
+INFO:__main__:Submitted 7260000
+INFO:__main__:Submitted 7280000
+INFO:__main__:Submitted 7300000
+INFO:__main__:Submitted 7320000
+INFO:__main__:Submitted 7340000
+INFO:__main__:Submitted 7360000
+INFO:__main__:Submitted 7380000
+INFO:__main__:Submitted 7400000
+INFO:__main__:Submitted 7420000
+INFO:__main__:Submitted 7440000
+INFO:__main__:Submitted 7460000
+INFO:__main__:Submitted 7480000
+INFO:__main__:Submitted 7500000
+INFO:__main__:Submitted 7520000
+INFO:__main__:Submitted 7540000
+INFO:__main__:Submitted 7560000
+INFO:__main__:Submitted 7580000
+INFO:__main__:Submitted 7600000
+INFO:__main__:Submitted 7620000
+INFO:__main__:Submitted 7640000
+INFO:__main__:Submitted 7660000
+INFO:__main__:Submitted 7680000
+INFO:__main__:Submitted 7700000
+INFO:__main__:Submitted 7720000
+INFO:__main__:Submitted 7740000
+INFO:__main__:Submitted 7760000
+INFO:__main__:Submitted 7780000
+INFO:__main__:Submitted 7800000
+INFO:__main__:Submitted 7820000
+INFO:__main__:Submitted 7840000
+INFO:__main__:Submitted 7860000
+INFO:__main__:Submitted 7880000
+INFO:__main__:Submitted 7900000
+INFO:__main__:Submitted 7920000
+INFO:__main__:Submitted 7940000
+INFO:__main__:Submitted 7960000
+INFO:__main__:Submitted 7980000
+INFO:__main__:Submitted 8000000
+INFO:__main__:Submitted 8020000
+INFO:__main__:Submitted 8040000
+INFO:__main__:Submitted 8060000
+INFO:__main__:Submitted 8080000
+INFO:__main__:Submitted 8100000
+INFO:__main__:Submitted 8120000
+INFO:__main__:Submitted 8140000
+INFO:__main__:Submitted 8160000
+INFO:__main__:Submitted 8180000
+INFO:__main__:Submitted 8200000
+INFO:__main__:Submitted 8220000
+INFO:__main__:Submitted 8240000
+INFO:__main__:Submitted 8260000
+INFO:__main__:Submitted 8280000
+INFO:__main__:Submitted 8300000
+INFO:__main__:Submitted 8320000
+INFO:__main__:Submitted 8340000
+INFO:__main__:Submitted 8360000
+INFO:__main__:Submitted 8380000
+INFO:__main__:Submitted 8400000
+INFO:__main__:Submitted 8420000
+INFO:__main__:Submitted 8440000
+INFO:__main__:Submitted 8460000
+INFO:__main__:Submitted 8480000
+INFO:__main__:Submitted 8500000
+INFO:__main__:Submitted 8520000
+INFO:__main__:Submitted 8540000
+INFO:__main__:Submitted 8560000
+INFO:__main__:Submitted 8580000
+INFO:__main__:Submitted 8600000
+INFO:__main__:Submitted 8620000
+INFO:__main__:Submitted 8640000
+INFO:__main__:Submitted 8660000
+INFO:__main__:Submitted 8680000
+INFO:__main__:Submitted 8700000
+INFO:__main__:Submitted 8720000
+INFO:__main__:Submitted 8740000
+INFO:__main__:Submitted 8760000
+INFO:__main__:Submitted 8780000
+INFO:__main__:Submitted 8800000
+INFO:__main__:Submitted 8820000
+INFO:__main__:Submitted 8840000
+INFO:__main__:Submitted 8860000
+INFO:__main__:Submitted 8880000
+INFO:__main__:Submitted 8900000
+INFO:__main__:Submitted 8920000
+INFO:__main__:Submitted 8940000
+INFO:__main__:Submitted 8960000
+INFO:__main__:Submitted 8980000
+INFO:__main__:Submitted 9000000
+INFO:__main__:Submitted 9020000
+INFO:__main__:Submitted 9040000
+INFO:__main__:Submitted 9060000
+INFO:__main__:Submitted 9080000
+INFO:__main__:Submitted 9100000
+INFO:__main__:Submitted 9120000
+INFO:__main__:Submitted 9140000
+INFO:__main__:Submitted 9160000
+INFO:__main__:Submitted 9180000
+INFO:__main__:Submitted 9200000
+INFO:__main__:Submitted 9220000
+INFO:__main__:Submitted 9240000
+INFO:__main__:Submitted 9260000
+INFO:__main__:Submitted 9280000
+INFO:__main__:Submitted 9300000
+INFO:__main__:Submitted 9320000
+INFO:__main__:Submitted 9340000
+INFO:__main__:Submitted 9360000
+INFO:__main__:Submitted 9380000
+INFO:__main__:Submitted 9400000
+INFO:__main__:Submitted 9420000
+INFO:__main__:Submitted 9440000
+INFO:__main__:Submitted 9460000
+INFO:__main__:Submitted 9480000
+INFO:__main__:Submitted 9500000
+INFO:__main__:Submitted 9520000
+INFO:__main__:Submitted 9540000
+INFO:__main__:Submitted 9560000
+INFO:__main__:Submitted 9580000
+INFO:__main__:Submitted 9600000
+INFO:__main__:Submitted 9620000
+INFO:__main__:Submitted 9640000
+INFO:__main__:Submitted 9660000
+INFO:__main__:Submitted 9680000
+INFO:__main__:Submitted 9700000
+INFO:__main__:Submitted 9720000
+INFO:__main__:Submitted 9740000
+INFO:__main__:Submitted 9760000
+INFO:__main__:Submitted 9780000
+INFO:__main__:Submitted 9800000
+INFO:__main__:Submitted 9820000
+INFO:__main__:Submitted 9840000
+INFO:__main__:Submitted 9860000
+INFO:__main__:Submitted 9880000
+INFO:__main__:Submitted 9900000
+INFO:__main__:Submitted 9920000
+INFO:__main__:Submitted 9940000
+INFO:__main__:Submitted 9960000
+INFO:__main__:Submitted 9980000
+INFO:__main__:Submitted 10000000
+INFO:__main__:Submitted 10020000
+INFO:__main__:Submitted 10040000
+INFO:__main__:Submitted 10060000
+INFO:__main__:Submitted 10080000
+INFO:__main__:Submitted 10100000
+INFO:__main__:Submitted 10120000
+INFO:__main__:Submitted 10140000
+INFO:__main__:Submitted 10160000
+INFO:__main__:Submitted 10180000
+INFO:__main__:Submitted 10200000
+INFO:__main__:Submitted 10220000
+INFO:__main__:Submitted 10240000
+INFO:__main__:Submitted 10260000
+INFO:__main__:Submitted 10280000
+INFO:__main__:Submitted 10300000
+INFO:__main__:Submitted 10320000
+INFO:__main__:Submitted 10340000
+INFO:__main__:Submitted 10360000
+INFO:__main__:Submitted 10380000
+INFO:__main__:Submitted 10400000
+INFO:__main__:Submitted 10420000
+INFO:__main__:Submitted 10440000
+INFO:__main__:Submitted 10460000
+INFO:__main__:Submitted 10480000
+INFO:__main__:Submitted 10500000
+INFO:__main__:Submitted 10520000
+INFO:__main__:Submitted 10540000
+INFO:__main__:Submitted 10560000
+INFO:__main__:Submitted 10580000
+INFO:__main__:Submitted 10600000
+INFO:__main__:Submitted 10620000
+INFO:__main__:Submitted 10640000
+INFO:__main__:Submitted 10660000
+INFO:__main__:Submitted 10680000
+INFO:__main__:Submitted 10700000
+INFO:__main__:Submitted 10720000
+INFO:__main__:Submitted 10740000
+INFO:__main__:Submitted 10760000
+INFO:__main__:Submitted 10780000
+INFO:__main__:Submitted 10800000
+INFO:__main__:Submitted 10820000
+INFO:__main__:Submitted 10840000
+INFO:__main__:Submitted 10860000
+INFO:__main__:Submitted 10880000
+INFO:__main__:Submitted 10900000
+INFO:__main__:Submitted 10920000
+INFO:__main__:Submitted 10940000
+INFO:__main__:Submitted 10960000
+INFO:__main__:Submitted 10980000
+INFO:__main__:Submitted 11000000
+INFO:__main__:Submitted 11020000
+INFO:__main__:Submitted 11040000
+INFO:__main__:Submitted 11060000
+INFO:__main__:Submitted 11080000
+INFO:__main__:Submitted 11100000
+INFO:__main__:Submitted 11120000
+INFO:__main__:Submitted 11140000
+INFO:__main__:Submitted 11160000
+INFO:__main__:Submitted 11180000
+INFO:__main__:Submitted 11200000
+INFO:__main__:Submitted 11220000
+INFO:__main__:Submitted 11240000
+INFO:__main__:Submitted 11260000
+INFO:__main__:Submitted 11280000
+INFO:__main__:Submitted 11300000
+INFO:__main__:Submitted 11320000
+INFO:__main__:Submitted 11340000
+INFO:__main__:Submitted 11360000
+INFO:__main__:Submitted 11380000
+INFO:__main__:Submitted 11400000
+INFO:__main__:Submitted 11420000
+INFO:__main__:Submitted 11440000
+INFO:__main__:Submitted 11460000
+INFO:__main__:Submitted 11480000
+INFO:__main__:Submitted 11500000
+INFO:__main__:Submitted 11520000
+INFO:__main__:Submitted 11540000
+INFO:__main__:Submitted 11560000
+INFO:__main__:Submitted 11580000
+INFO:__main__:Submitted 11600000
+INFO:__main__:Submitted 11620000
+INFO:__main__:Submitted 11640000
+INFO:__main__:Submitted 11660000
+INFO:__main__:Submitted 11680000
+INFO:__main__:Submitted 11700000
+INFO:__main__:Submitted 11720000
+INFO:__main__:Submitted 11740000
+INFO:__main__:Submitted 11760000
+INFO:__main__:Submitted 11780000
+INFO:__main__:Submitted 11800000
+INFO:__main__:Submitted 11820000
+INFO:__main__:Submitted 11840000
+INFO:__main__:Submitted 11860000
+INFO:__main__:Submitted 11880000
+INFO:__main__:Submitted 11900000
+INFO:__main__:Submitted 11920000
+INFO:__main__:Submitted 11940000
+INFO:__main__:Submitted 11960000
+INFO:__main__:Submitted 11980000
+INFO:__main__:Submitted 12000000
+INFO:__main__:Submitted 12020000
+INFO:__main__:Submitted 12040000
+INFO:__main__:Submitted 12060000
+INFO:__main__:Submitted 12080000
+INFO:__main__:Submitted 12100000
+INFO:__main__:Submitted 12120000
+INFO:__main__:Submitted 12140000
+INFO:__main__:Submitted 12160000
+INFO:__main__:Submitted 12180000
+INFO:__main__:Submitted 12200000
+INFO:__main__:Submitted 12220000
+INFO:__main__:Submitted 12240000
+INFO:__main__:Submitted 12260000
+INFO:__main__:Submitted 12280000
+INFO:__main__:Submitted 12300000
+INFO:__main__:Submitted 12320000
+INFO:__main__:Submitted 12340000
+INFO:__main__:Submitted 12360000
+INFO:__main__:Submitted 12380000
+INFO:__main__:Submitted 12400000
+INFO:__main__:Submitted 12420000
+INFO:__main__:Submitted 12440000
+INFO:__main__:Submitted 12460000
+INFO:__main__:Submitted 12480000
+INFO:__main__:Submitted 12500000
+INFO:__main__:Submitted 12520000
+INFO:__main__:Submitted 12540000
+INFO:__main__:Submitted 12560000
+INFO:__main__:Submitted 12580000
+INFO:__main__:Submitted 12600000
+INFO:__main__:Submitted 12620000
+INFO:__main__:Submitted 12640000
+INFO:__main__:Submitted 12660000
+INFO:__main__:Submitted 12680000
+INFO:__main__:Submitted 12700000
+INFO:__main__:Submitted 12720000
+INFO:__main__:Submitted 12740000
+INFO:__main__:Submitted 12760000
+INFO:__main__:Submitted 12780000
+INFO:__main__:Submitted 12800000
+INFO:__main__:Submitted 12820000
+INFO:__main__:Submitted 12840000
+INFO:__main__:Submitted 12860000
+INFO:__main__:Submitted 12880000
+INFO:__main__:Submitted 12900000
+INFO:__main__:Submitted 12920000
+INFO:__main__:Submitted 12940000
+INFO:__main__:Submitted 12960000
+INFO:__main__:Submitted 12980000
+INFO:__main__:Submitted 13000000
+INFO:__main__:Submitted 13020000
+INFO:__main__:Submitted 13040000
+INFO:__main__:Submitted 13060000
+INFO:__main__:Submitted 13080000
+INFO:__main__:Submitted 13100000
+INFO:__main__:Submitted 13120000
+INFO:__main__:Submitted 13140000
+INFO:__main__:Submitted 13160000
+INFO:__main__:Submitted 13180000
+INFO:__main__:Submitted 13200000
+INFO:__main__:Submitted 13220000
+INFO:__main__:Submitted 13240000
+INFO:__main__:Submitted 13260000
+INFO:__main__:Submitted 13280000
+INFO:__main__:Submitted 13300000
+INFO:__main__:Submitted 13320000
+INFO:__main__:Submitted 13340000
+INFO:__main__:Submitted 13360000
+INFO:__main__:Submitted 13380000
+INFO:__main__:Submitted 13400000
+INFO:__main__:Submitted 13420000
+INFO:__main__:Submitted 13440000
+INFO:__main__:Submitted 13460000
+INFO:__main__:Submitted 13480000
+INFO:__main__:Submitted 13500000
+INFO:__main__:Submitted 13520000
+INFO:__main__:Submitted 13540000
+INFO:__main__:Submitted 13560000
+INFO:__main__:Submitted 13580000
+INFO:__main__:Submitted 13600000
+INFO:__main__:Submitted 13620000
+INFO:__main__:Submitted 13640000
+INFO:__main__:Submitted 13660000
+INFO:__main__:Submitted 13680000
+INFO:__main__:Submitted 13700000
+INFO:__main__:Submitted 13720000
+INFO:__main__:Submitted 13740000
+INFO:__main__:Submitted 13760000
+INFO:__main__:Submitted 13780000
+INFO:__main__:Submitted 13800000
+INFO:__main__:Submitted 13820000
+INFO:__main__:Submitted 13840000
+INFO:__main__:Submitted 13860000
+INFO:__main__:Submitted 13880000
+INFO:__main__:Submitted 13900000
+INFO:__main__:Submitted 13920000
+INFO:__main__:Submitted 13940000
+INFO:__main__:Submitted 13960000
+INFO:__main__:Submitted 13980000
+INFO:__main__:Submitted 14000000
+INFO:__main__:Submitted 14020000
+INFO:__main__:Submitted 14040000
+INFO:__main__:Submitted 14060000
+INFO:__main__:Submitted 14080000
+INFO:__main__:Submitted 14100000
+INFO:__main__:Submitted 14120000
+INFO:__main__:Submitted 14140000
+INFO:__main__:Submitted 14160000
+INFO:__main__:Submitted 14180000
+INFO:__main__:Submitted 14200000
+INFO:__main__:Submitted 14220000
+INFO:__main__:Submitted 14240000
+INFO:__main__:Submitted 14260000
+INFO:__main__:Submitted 14280000
+INFO:__main__:Submitted 14300000
+INFO:__main__:Submitted 14320000
+INFO:__main__:Submitted 14340000
+INFO:__main__:Submitted 14360000
+INFO:__main__:Submitted 14380000
+INFO:__main__:Submitted 14400000
+INFO:__main__:Submitted 14420000
+INFO:__main__:Submitted 14440000
+INFO:__main__:Submitted 14460000
+INFO:__main__:Submitted 14480000
+INFO:__main__:Submitted 14500000
+INFO:__main__:Submitted 14520000
+INFO:__main__:Submitted 14540000
+INFO:__main__:Submitted 14560000
+INFO:__main__:Submitted 14580000
+INFO:__main__:Submitted 14600000
+INFO:__main__:Submitted 14620000
+INFO:__main__:Submitted 14640000
+INFO:__main__:Submitted 14660000
+INFO:__main__:Submitted 14680000
+INFO:__main__:Submitted 14700000
+INFO:__main__:Submitted 14720000
+INFO:__main__:Submitted 14740000
+INFO:__main__:Submitted 14760000
+INFO:__main__:Submitted 14780000
+INFO:__main__:Submitted 14800000
+INFO:__main__:Submitted 14820000
+INFO:__main__:Submitted 14840000
+INFO:__main__:Submitted 14860000
+INFO:__main__:Submitted 14880000
+INFO:__main__:Submitted 14900000
+INFO:__main__:Submitted 14920000
+INFO:__main__:Submitted 14940000
+INFO:__main__:Submitted 14960000
+INFO:__main__:Submitted 14980000
+INFO:__main__:Submitted 15000000
+INFO:__main__:Submitted 15020000
+INFO:__main__:Submitted 15040000
+INFO:__main__:Submitted 15060000
+INFO:__main__:Submitted 15080000
+INFO:__main__:Submitted 15100000
+INFO:__main__:Submitted 15120000
+INFO:__main__:Submitted 15140000
+INFO:__main__:Submitted 15160000
+INFO:__main__:Submitted 15180000
+INFO:__main__:Submitted 15200000
+INFO:__main__:Submitted 15220000
+INFO:__main__:Submitted 15240000
+INFO:__main__:Submitted 15260000
+INFO:__main__:Submitted 15280000
+INFO:__main__:Submitted 15300000
+INFO:__main__:Submitted 15320000
+INFO:__main__:Submitted 15340000
+INFO:__main__:Submitted 15360000
+INFO:__main__:Submitted 15380000
+INFO:__main__:Submitted 15400000
+INFO:__main__:Submitted 15420000
+INFO:__main__:Submitted 15440000
+INFO:__main__:Submitted 15460000
+INFO:__main__:Submitted 15480000
+INFO:__main__:Submitted 15500000
+INFO:__main__:Submitted 15520000
+INFO:__main__:Submitted 15540000
+INFO:__main__:Submitted 15560000
+INFO:__main__:Submitted 15580000
+INFO:__main__:Submitted 15600000
+INFO:__main__:Submitted 15620000
+INFO:__main__:Submitted 15640000
+INFO:__main__:Submitted 15660000
+INFO:__main__:Submitted 15680000
+INFO:__main__:Submitted 15700000
+INFO:__main__:Submitted 15720000
+INFO:__main__:Submitted 15740000
+INFO:__main__:Submitted 15760000
+INFO:__main__:Submitted 15780000
+INFO:__main__:Submitted 15800000
+INFO:__main__:Submitted 15820000
+INFO:__main__:Submitted 15840000
+INFO:__main__:Submitted 15860000
+INFO:__main__:Submitted 15880000
+INFO:__main__:Submitted 15900000
+INFO:__main__:Submitted 15920000
+INFO:__main__:Submitted 15940000
+INFO:__main__:Submitted 15960000
+INFO:__main__:Submitted 15980000
+INFO:__main__:Submitted 16000000
+INFO:__main__:Submitted 16020000
+INFO:__main__:Submitted 16040000
+INFO:__main__:Submitted 16060000
+INFO:__main__:Submitted 16080000
+INFO:__main__:Submitted 16100000
+INFO:__main__:Submitted 16120000
+INFO:__main__:Submitted 16140000
+INFO:__main__:Submitted 16160000
+INFO:__main__:Submitted 16180000
+INFO:__main__:Submitted 16200000
+INFO:__main__:Submitted 16220000
+INFO:__main__:Submitted 16240000
+INFO:__main__:Submitted 16260000
+INFO:__main__:Submitted 16280000
+INFO:__main__:Submitted 16300000
+INFO:__main__:Submitted 16320000
+INFO:__main__:Submitted 16340000
+INFO:__main__:Submitted 16360000
+INFO:__main__:Submitted 16380000
+INFO:__main__:Submitted 16400000
+INFO:__main__:Submitted 16420000
+INFO:__main__:Submitted 16440000
+INFO:__main__:Submitted 16460000
+INFO:__main__:Submitted 16480000
+INFO:__main__:Submitted 16500000
+INFO:__main__:Submitted 16520000
+INFO:__main__:Submitted 16540000
+INFO:__main__:Submitted 16560000
+INFO:__main__:Submitted 16580000
+INFO:__main__:Submitted 16600000
+INFO:__main__:Submitted 16620000
+INFO:__main__:Submitted 16640000
+INFO:__main__:Submitted 16660000
+INFO:__main__:Submitted 16680000
+INFO:__main__:Submitted 16700000
+INFO:__main__:Submitted 16720000
+INFO:__main__:Submitted 16740000
+INFO:__main__:Submitted 16760000
+INFO:__main__:Submitted 16780000
+INFO:__main__:Submitted 16800000
+INFO:__main__:Submitted 16820000
+INFO:__main__:Submitted 16840000
+INFO:__main__:Submitted 16860000
+INFO:__main__:Submitted 16880000
+INFO:__main__:Submitted 16900000
+INFO:__main__:Submitted 16920000
+INFO:__main__:Submitted 16940000
+INFO:__main__:Submitted 16960000
+INFO:__main__:Submitted 16980000
+INFO:__main__:Submitted 17000000
+INFO:__main__:Submitted 17020000
+INFO:__main__:Submitted 17040000
+INFO:__main__:Submitted 17060000
+INFO:__main__:Submitted 17080000
+INFO:__main__:Submitted 17100000
+INFO:__main__:Submitted 17120000
+INFO:__main__:Submitted 17140000
+INFO:__main__:Submitted 17160000
+INFO:__main__:Submitted 17180000
+INFO:__main__:Submitted 17200000
+INFO:__main__:Submitted 17220000
+INFO:__main__:Submitted 17240000
+INFO:__main__:Submitted 17260000
+INFO:__main__:Submitted 17280000
+INFO:__main__:Submitted 17300000
+INFO:__main__:Submitted 17320000
+INFO:__main__:Submitted 17340000
+INFO:__main__:Submitted 17360000
+INFO:__main__:Submitted 17380000
+INFO:__main__:Submitted 17400000
+INFO:__main__:Submitted 17420000
+INFO:__main__:Submitted 17440000
+INFO:__main__:Submitted 17460000
+INFO:__main__:Submitted 17480000
+INFO:__main__:Submitted 17500000
+INFO:__main__:Submitted 17520000
+INFO:__main__:Submitted 17540000
+INFO:__main__:Submitted 17560000
+INFO:__main__:Submitted 17580000
+INFO:__main__:Submitted 17600000
+INFO:__main__:Submitted 17620000
+INFO:__main__:Submitted 17640000
+INFO:__main__:Submitted 17660000
+INFO:__main__:Submitted 17680000
+INFO:__main__:Submitted 17700000
+INFO:__main__:Submitted 17720000
+INFO:__main__:Submitted 17740000
+INFO:__main__:Submitted 17760000
+INFO:__main__:Submitted 17780000
+INFO:__main__:Submitted 17800000
+INFO:__main__:Submitted 17820000
+INFO:__main__:Submitted 17840000
+INFO:__main__:Submitted 17860000
+INFO:__main__:Submitted 17880000
+INFO:__main__:Submitted 17900000
+INFO:__main__:Submitted 17920000
+INFO:__main__:Submitted 17940000
+INFO:__main__:Submitted 17960000
+INFO:__main__:Submitted 17980000
+INFO:__main__:Submitted 18000000
+INFO:__main__:Submitted 18020000
+INFO:__main__:Submitted 18040000
+INFO:__main__:Submitted 18060000
+INFO:__main__:Submitted 18080000
+INFO:__main__:Submitted 18100000
+INFO:__main__:Submitted 18120000
+INFO:__main__:Submitted 18140000
+INFO:__main__:Submitted 18160000
+INFO:__main__:Submitted 18180000
+INFO:__main__:Submitted 18200000
+
+INFO:__main__:Submitted 18220000
+
+INFO:__main__:Submitted 18240000
+INFO:__main__:Submitted 18260000
+INFO:__main__:Submitted 18280000
+INFO:__main__:Submitted 18300000
+INFO:__main__:Submitted 18320000
+INFO:__main__:Submitted 18340000
+INFO:__main__:Submitted 18360000
+INFO:__main__:Submitted 18380000
+INFO:__main__:Submitted 18400000
+INFO:__main__:Submitted 18420000
+INFO:__main__:Submitted 18440000
+INFO:__main__:Submitted 18460000
+INFO:__main__:Submitted 18480000
+INFO:__main__:Submitted 18500000
+INFO:__main__:Submitted 18520000
+INFO:__main__:Submitted 18540000
+INFO:__main__:Submitted 18560000
+INFO:__main__:Submitted 18580000
+INFO:__main__:Submitted 18600000
+INFO:__main__:Submitted 18620000
+INFO:__main__:Submitted 18640000
+INFO:__main__:Submitted 18660000
+INFO:__main__:Submitted 18680000
+INFO:__main__:Submitted 18700000
+INFO:__main__:Submitted 18720000
+INFO:__main__:Submitted 18740000
+INFO:__main__:Submitted 18760000
+INFO:__main__:Submitted 18780000
+INFO:__main__:Submitted 18800000
+INFO:__main__:Submitted 18820000
+INFO:__main__:Submitted 18840000
+INFO:__main__:Submitted 18860000
+INFO:__main__:Submitted 18880000
+INFO:__main__:Submitted 18900000
+INFO:__main__:Submitted 18920000
+INFO:__main__:Submitted 18940000
+INFO:__main__:Submitted 18960000
+INFO:__main__:Submitted 18980000
+INFO:__main__:Submitted 19000000
+INFO:__main__:Submitted 19020000
+INFO:__main__:Submitted 19040000
+INFO:__main__:Submitted 19060000
+INFO:__main__:Submitted 19080000
+INFO:__main__:Submitted 19100000
+INFO:__main__:Submitted 19120000
+INFO:__main__:Submitted 19140000
+INFO:__main__:Submitted 19160000
+INFO:__main__:Submitted 19180000
+INFO:__main__:Submitted 19200000
+INFO:__main__:Submitted 19220000
+INFO:__main__:Submitted 19240000
+INFO:__main__:Submitted 19260000
+INFO:__main__:Submitted 19280000
+INFO:__main__:Submitted 19300000
+INFO:__main__:Submitted 19320000
+INFO:__main__:Submitted 19340000
+INFO:__main__:Submitted 19360000
+INFO:__main__:Submitted 19380000
+INFO:__main__:Submitted 19400000
+INFO:__main__:Submitted 19420000
+INFO:__main__:Submitted 19440000
+INFO:__main__:Submitted 19460000
+INFO:__main__:Submitted 19480000
+INFO:__main__:Submitted 19500000
+INFO:__main__:Submitted 19520000
+INFO:__main__:Submitted 19540000
+INFO:__main__:Submitted 19560000
+INFO:__main__:Submitted 19580000
+INFO:__main__:Submitted 19600000
+INFO:__main__:Submitted 19620000
+INFO:__main__:Submitted 19640000
+INFO:__main__:Submitted 19660000
+INFO:__main__:Submitted 19680000
+INFO:__main__:Submitted 19700000
+INFO:__main__:Submitted 19720000
+INFO:__main__:Submitted 19740000
+INFO:__main__:Submitted 19760000
+INFO:__main__:Submitted 19780000
+INFO:__main__:Submitted 19800000
+INFO:__main__:Submitted 19820000
+INFO:__main__:Submitted 19840000
+INFO:__main__:Submitted 19860000
+INFO:__main__:Submitted 19880000
+INFO:__main__:Submitted 19900000
+INFO:__main__:Submitted 19920000
+INFO:__main__:Submitted 19940000
+INFO:__main__:Submitted 19960000
+INFO:__main__:Submitted 19980000
+INFO:__main__:Finished stage 3 in 2379.7233917713165 seconds.
+INFO:__main__:Scheduling many tasks for spillback.
+2020-12-19 03:50:21,247	WARNING worker.py:1032 -- The actor or task with ID 1791811b4979bd48ffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.161: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:50:25,387	WARNING worker.py:1032 -- The actor or task with ID b74c917496272f33ffffffff05000000 cannot be scheduled right now. It requires {CPU: 1.000000}, {GPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.107: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:50:31,729	WARNING worker.py:1032 -- The actor or task with ID a0fa77153a7564cfffffffff05000000 cannot be scheduled right now. It requires {CPU: 1.000000}, {GPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.82: 1.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}, {GPU: 100.000000}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:50:39,437	WARNING worker.py:1032 -- The actor or task with ID 662695143f31bc10ffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.65: 1.000000}, {memory: 5.224609 GiB}, {object_store_memory: 1.513672 GiB}, {GPU: 100.000000}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:50:42,909	WARNING worker.py:1032 -- The actor or task with ID 6e92b474bef4be8effffffff05000000 cannot be scheduled right now. It requires {CPU: 1.000000}, {GPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.96: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:50:54,908	WARNING worker.py:1032 -- The actor or task with ID c5720cc92e2db602ffffffff05000000 cannot be scheduled right now. It requires {CPU: 1.000000}, {GPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.222: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:50:57,122	WARNING worker.py:1032 -- The actor or task with ID 8c1da4d77b0d120bffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.213: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:51:05,543	WARNING worker.py:1032 -- The actor or task with ID 1d5ef11df8a970e0ffffffff05000000 cannot be scheduled right now. It requires {CPU: 1.000000}, {GPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.18: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:51:12,375	WARNING worker.py:1032 -- The actor or task with ID cbf5bf8afea8fa43ffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.141: 1.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}, {GPU: 100.000000}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:51:19,685	WARNING worker.py:1032 -- The actor or task with ID d5741921eaae7789ffffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.209: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+2020-12-19 03:51:24,539	WARNING worker.py:1032 -- The actor or task with ID 5e41e8cd711eb85effffffff05000000 cannot be scheduled right now. It requires {GPU: 1.000000}, {CPU: 1.000000} for placement, but this node only has remaining {CPU: 2.000000}, {node:10.0.0.145: 1.000000}, {GPU: 100.000000}, {object_store_memory: 1.513672 GiB}, {memory: 5.224609 GiB}. In total there are 1 pending tasks and 0 pending actors on this node. This is likely due to all cluster resources being claimed by actors. To resolve the issue, consider creating fewer actors or increase the resources available to this Ray cluster. You can ignore this message if this Ray cluster is expected to auto-scale.
+INFO:__main__:Spread: 131.16851814300026	Last: 11005.392116378	First: 10874.223598235
+INFO:__main__:Spread: 129.95781768900088	Last: 11011.317473494	First: 10881.359655805
+INFO:__main__:Spread: 129.00212139900032	Last: 10991.546567586	First: 10862.544446187
+INFO:__main__:Spread: 128.61399907899977	Last: 11003.940184179	First: 10875.3261851
+INFO:__main__:Spread: 127.71274852899842	Last: 11010.048321821	First: 10882.335573292
+INFO:__main__:Spread: 126.9848742610011	Last: 11000.008808578	First: 10873.023934317
+INFO:__main__:Spread: 126.45815178700104	Last: 10988.414591332	First: 10861.956439545
+INFO:__main__:Spread: 125.66962645700005	Last: 10985.479153914	First: 10859.809527457
+INFO:__main__:Spread: 124.00463663499977	Last: 10988.48777503	First: 10864.483138395
+INFO:__main__:Spread: 124.01349812499939	Last: 10998.707172667	First: 10874.693674542
+INFO:__main__:Spread: 122.64780702799908	Last: 10996.704188053	First: 10874.056381025
+INFO:__main__:Spread: 122.40338972100108	Last: 11003.517137811	First: 10881.11374809
+INFO:__main__:Spread: 120.7276262689993	Last: 10980.386215212	First: 10859.658588943
+INFO:__main__:Spread: 120.39094161100002	Last: 11004.989992642	First: 10884.599051031
+INFO:__main__:Spread: 119.37369353400027	Last: 11010.62081147	First: 10891.247117936
+INFO:__main__:Spread: 119.21593555000072	Last: 11001.096429208	First: 10881.880493658
+INFO:__main__:Spread: 118.2084747150002	Last: 11000.602765282	First: 10882.394290567
+INFO:__main__:Spread: 117.38391815700015	Last: 10983.698708866	First: 10866.314790709
+INFO:__main__:Spread: 115.96967294600108	Last: 11009.229148762	First: 10893.259475816
+INFO:__main__:Spread: 115.759886292999	Last: 10985.229774877	First: 10869.469888584
+INFO:__main__:Spread: 114.44303068699992	Last: 11002.591900072	First: 10888.148869385
+INFO:__main__:Spread: 113.80713840899989	Last: 10999.528810582	First: 10885.721672173
+INFO:__main__:Spread: 112.82218719400043	Last: 10987.592456134	First: 10874.77026894
+INFO:__main__:Spread: 112.78460539600019	Last: 11008.064241475	First: 10895.279636079
+INFO:__main__:Spread: 111.60947689900058	Last: 10994.700318691	First: 10883.090841792
+INFO:__main__:Spread: 110.9816659650005	Last: 10987.762776161	First: 10876.781110196
+INFO:__main__:Spread: 110.49134899199998	Last: 11010.680956638	First: 10900.189607646
+INFO:__main__:Spread: 109.34988252000039	Last: 10987.940228726	First: 10878.590346206
+INFO:__main__:Spread: 108.35546703100044	Last: 10994.000335174	First: 10885.644868143
+INFO:__main__:Spread: 107.68499555400012	Last: 11007.089196366	First: 10899.404200812
+INFO:__main__:Spread: 106.81887443900087	Last: 10994.901151349	First: 10888.08227691
+INFO:__main__:Spread: 105.67693535500075	Last: 10984.175465413	First: 10878.498530058
+INFO:__main__:Spread: 105.65518715100006	Last: 10990.298675112	First: 10884.643487961
+INFO:__main__:Spread: 104.48119070400026	Last: 11009.910183853	First: 10905.428993149
+INFO:__main__:Spread: 104.119904227	Last: 10988.300763021	First: 10884.180858794
+INFO:__main__:Spread: 103.22358794899992	Last: 10991.915171788	First: 10888.691583839
+INFO:__main__:Spread: 101.81035625000004	Last: 11010.361384982	First: 10908.551028732
+INFO:__main__:Spread: 101.23446698000043	Last: 11003.21072314	First: 10901.97625616
+INFO:__main__:Spread: 100.94624037999893	Last: 10987.410488672	First: 10886.464248292
+INFO:__main__:Spread: 99.5571977999989	Last: 11004.138210537	First: 10904.581012737
+INFO:__main__:Spread: 99.31052403899957	Last: 11001.430836622	First: 10902.120312583
+INFO:__main__:Spread: 98.2483225420001	Last: 10990.247811448	First: 10891.999488906
+INFO:__main__:Spread: 97.17249313100001	Last: 10984.427694747	First: 10887.255201616
+INFO:__main__:Spread: 96.72219903299992	Last: 11001.593070865	First: 10904.870871832
+INFO:__main__:Spread: 96.13409650799986	Last: 11004.43864019	First: 10908.304543682
+INFO:__main__:Spread: 94.94883326800118	Last: 10987.520111207	First: 10892.571277939
+INFO:__main__:Spread: 94.58568835400001	Last: 11012.795643516	First: 10918.209955162
+INFO:__main__:Spread: 93.25882683800046	Last: 10985.111201497	First: 10891.852374659
+INFO:__main__:Spread: 92.72406922499977	Last: 11004.531631799	First: 10911.807562574
+INFO:__main__:Spread: 91.93991515499874	Last: 11008.62476487	First: 10916.684849715
+INFO:__main__:Spread: 91.18830514000001	Last: 10983.218684994	First: 10892.030379854
+INFO:__main__:Spread: 90.3072393600014	Last: 10997.914829867	First: 10907.607590507
+INFO:__main__:Spread: 89.56309061799948	Last: 11007.063766451	First: 10917.500675833
+INFO:__main__:Spread: 88.42798299700007	Last: 11010.243161642	First: 10921.815178645
+INFO:__main__:Spread: 88.18692754599942	Last: 11000.181912119	First: 10911.994984573
+INFO:__main__:Spread: 86.73802978000094	Last: 10985.593554097	First: 10898.855524317
+INFO:__main__:Spread: 86.0608917949994	Last: 10992.343816817	First: 10906.282925022
+INFO:__main__:Spread: 85.31671577099951	Last: 10989.82535456	First: 10904.508638789
+INFO:__main__:Spread: 84.36134375899928	Last: 10983.918830134	First: 10899.557486375
+INFO:__main__:Spread: 83.67452869599947	Last: 10992.75862001	First: 10909.084091314
+INFO:__main__:Spread: 83.3715347640009	Last: 11003.963416213	First: 10920.591881449
+INFO:__main__:Spread: 81.98065552799926	Last: 10985.094678562	First: 10903.114023034
+INFO:__main__:Spread: 81.76355526000043	Last: 11006.423826941	First: 10924.660271681
+INFO:__main__:Spread: 80.42139111200049	Last: 11003.612974432	First: 10923.19158332
+INFO:__main__:Spread: 79.48401370000101	Last: 11008.723810375	First: 10929.239796675
+INFO:__main__:Spread: 79.42759589799971	Last: 11012.530984961	First: 10933.103389063
+INFO:__main__:Spread: 78.19012261900025	Last: 10999.6271215	First: 10921.436998881
+INFO:__main__:Spread: 77.29561619299966	Last: 11012.663922228	First: 10935.368306035
+INFO:__main__:Spread: 76.93490116400062	Last: 10985.839226271	First: 10908.904325107
+INFO:__main__:Spread: 75.82638052100083	Last: 11002.15979275	First: 10926.333412229
+INFO:__main__:Spread: 75.40267556000072	Last: 10986.303664954	First: 10910.900989394
+INFO:__main__:Spread: 74.36683164900023	Last: 10998.829860375	First: 10924.463028726
+INFO:__main__:Spread: 73.84269442999903	Last: 10991.347709552	First: 10917.505015122
+INFO:__main__:Spread: 72.8264913109997	Last: 10985.029975395	First: 10912.203484084
+INFO:__main__:Spread: 72.1334280250012	Last: 11005.220180587	First: 10933.086752562
+INFO:__main__:Spread: 70.69846238199898	Last: 10985.807724007	First: 10915.109261625
+INFO:__main__:Spread: 70.46275290300036	Last: 11007.12149533	First: 10936.658742427
+INFO:__main__:Spread: 69.49877866499992	Last: 10987.938343307	First: 10918.439564642
+INFO:__main__:Spread: 68.80926122500023	Last: 10983.272112493	First: 10914.462851268
+INFO:__main__:Spread: 67.50817465799992	Last: 10984.055665601	First: 10916.547490943
+INFO:__main__:Spread: 67.36016511899834	Last: 11005.643127798	First: 10938.282962679
+INFO:__main__:Spread: 66.27537784199922	Last: 10985.334437054	First: 10919.059059212
+INFO:__main__:Spread: 64.62403163800082	Last: 10986.803294129	First: 10922.179262491
+INFO:__main__:Spread: 64.680920073999	Last: 11009.18992809	First: 10944.509008016
+INFO:__main__:Spread: 63.702880005001134	Last: 11000.315378682	First: 10936.612498677
+INFO:__main__:Spread: 61.95378161000008	Last: 11007.08953528	First: 10945.13575367
+INFO:__main__:Spread: 62.42021154000031	Last: 10990.189397397	First: 10927.769185857
+INFO:__main__:Spread: 61.47740912500012	Last: 10994.183913358	First: 10932.706504233
+INFO:__main__:Spread: 60.38485789800143	Last: 10993.099107964	First: 10932.714250066
+INFO:__main__:Spread: 59.79464526100128	Last: 10997.866459057	First: 10938.071813796
+INFO:__main__:Spread: 58.751223301998834	Last: 10989.343835347	First: 10930.592612045
+INFO:__main__:Spread: 57.63613310400069	Last: 11011.695888192	First: 10954.059755088
+INFO:__main__:Spread: 56.808472171000176	Last: 10998.663775794	First: 10941.855303623
+INFO:__main__:Spread: 56.61976304299969	Last: 10991.971338113	First: 10935.35157507
+INFO:__main__:Spread: 55.82144408400018	Last: 10987.426993118	First: 10931.605549034
+INFO:__main__:Spread: 54.71222433499861	Last: 10984.165714558	First: 10929.453490223
+INFO:__main__:Spread: 54.40044232500077	Last: 11000.509187222	First: 10946.108744897
+INFO:__main__:Spread: 53.63889681599903	Last: 11005.876595298	First: 10952.237698482
+INFO:__main__:Spread: 52.68193455800065	Last: 10999.719612397	First: 10947.037677839
+INFO:__main__:Spread: 51.656585803999405	Last: 11013.489191517	First: 10961.832605713
+INFO:__main__:Avg spread: 91.36037818586006
+Stage 0 results:
+	Total time: 56.82723140716553
+Stage 1 results:
+	Total time: 210.9983310699463
+	Average iteration time: 21.099819946289063
+	Max iteration time: 41.857728004455566
+	Min iteration time: 17.929903984069824
+Stage 2 results:
+	Total time: 270.56019592285156
+	Average iteration time: 54.11184158325195
+	Max iteration time: 55.14220356941223
+	Min iteration time: 51.832639932632446
+Stage 3 results:
+	Actor creation time: 0.4038546085357666
+	Total time: 2379.7233917713165
+Stage 4 results:
+	Scheduling spread: 91.36037818586006.
