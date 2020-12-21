@@ -39,6 +39,7 @@ if __name__ == "__main__":
 
     config = {
         "env": args.env,
+        # This env_config is only used for the RepeatAfterMeEnv env.
         "env_config": {
             "repeat_delay": 2,
         },
@@ -48,7 +49,7 @@ if __name__ == "__main__":
         "num_workers": 0,
         "num_envs_per_worker": 20,
         "entropy_coeff": 0.001,
-        "num_sgd_iter": 5,
+        "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
             "custom_model": GTrXLNet,
@@ -56,9 +57,10 @@ if __name__ == "__main__":
             "custom_model_config": {
                 "num_transformer_units": 1,
                 "attn_dim": 64,
-                "num_heads": 2,
-                "memory_tau": 50,
+                "memory_inference": 100,
+                "memory_training": 50,
                 "head_dim": 32,
+                "num_heads": 2,
                 "ff_hidden_dim": 32,
             },
         },
@@ -71,7 +73,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=1)
+    results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
