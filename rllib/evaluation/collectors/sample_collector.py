@@ -31,6 +31,34 @@ class SampleCollector(metaclass=ABCMeta):
     communication channel).
     """
 
+    def __init__(self,
+                 policy_map: Dict[PolicyID, Policy],
+                 clip_rewards: Union[bool, float],
+                 callbacks: "DefaultCallbacks",
+                 multiple_episodes_in_batch: bool = True,
+                 rollout_fragment_length: int = 200,
+                 count_steps_by: str = "env_steps"):
+        """Initializes a SampleCollector instance.
+
+        Args:
+            policy_map (Dict[str, Policy]): Maps policy ids to policy
+                instances.
+            clip_rewards (Union[bool, float]): Whether to clip rewards before
+                postprocessing (at +/-1.0) or the actual value to +/- clip.
+            callbacks (DefaultCallbacks): RLlib callbacks.
+            multiple_episodes_in_batch (bool): Whether it's allowed to pack
+                multiple episodes into the same built batch.
+            rollout_fragment_length (int): The
+
+        """
+
+        self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
+        self.callbacks = callbacks
+        self.multiple_episodes_in_batch = multiple_episodes_in_batch
+        self.rollout_fragment_length = rollout_fragment_length
+        self.count_steps_by = count_steps_by
+
     @abstractmethod
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
                      policy_id: PolicyID, t: int,

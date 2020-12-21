@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 from typing import Any, Callable, Dict, List, Iterable, Optional, Set, Tuple,\
-    TYPE_CHECKING, Union
+    Type, TYPE_CHECKING, Union
 
 from ray.util.debug import log_once
 from ray.rllib.evaluation.collectors.sample_collector import \
@@ -138,7 +138,10 @@ class SyncSampler(SamplerInput):
                  soft_horizon: bool = False,
                  no_done_at_end: bool = False,
                  observation_fn: "ObservationFunction" = None,
-                 _use_trajectory_view_api: bool = False):
+                 _use_trajectory_view_api: bool = False,
+                 sample_collector_class: Optional[
+                     Type[SampleCollector]] = None
+                 ):
         """Initializes a SyncSampler object.
 
         Args:
@@ -178,6 +181,9 @@ class SyncSampler(SamplerInput):
             _use_trajectory_view_api (bool): Whether to use the (experimental)
                 `_use_trajectory_view_api` to make generic trajectory views
                 available to Models. Default: False.
+            sample_collector_class (Optional[Type[SampleCollector]]): An
+                optional Samplecollector sub-class to use to collect, store,
+                and retrieve environment-, model-, and sampler data.
         """
 
         self.base_env = BaseEnv.to_base_env(env)
@@ -190,7 +196,9 @@ class SyncSampler(SamplerInput):
         self.extra_batches = queue.Queue()
         self.perf_stats = _PerfStats()
         if _use_trajectory_view_api:
-            self.sample_collector = SimpleListCollector(
+            if not sample_collector_class:
+                sample_collector_class = SimpleListCollector
+            self.sample_collector = sample_collector_class(
                 policies,
                 clip_rewards,
                 callbacks,
@@ -269,7 +277,10 @@ class AsyncSampler(threading.Thread, SamplerInput):
                  soft_horizon: bool = False,
                  no_done_at_end: bool = False,
                  observation_fn: "ObservationFunction" = None,
-                 _use_trajectory_view_api: bool = False):
+                 _use_trajectory_view_api: bool = False,
+                 sample_collector_class: Optional[
+                     Type[SampleCollector]] = None,
+                 ):
         """Initializes a AsyncSampler object.
 
         Args:
@@ -313,6 +324,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
             _use_trajectory_view_api (bool): Whether to use the (experimental)
                 `_use_trajectory_view_api` to make generic trajectory views
                 available to Models. Default: False.
+            sample_collector_class (Optional[Type[SampleCollector]]): An
+                optional Samplecollector sub-class to use to collect, store,
+                and retrieve environment-, model-, and sampler data.
         """
         for _, f in obs_filters.items():
             assert getattr(f, "is_concurrent", False), \
@@ -343,7 +357,9 @@ class AsyncSampler(threading.Thread, SamplerInput):
         self.observation_fn = observation_fn
         self._use_trajectory_view_api = _use_trajectory_view_api
         if _use_trajectory_view_api:
-            self.sample_collector = SimpleListCollector(
+            if not sample_collector_class:
+                sample_collector_class = SimpleListCollector
+            self.sample_collector = sample_collector_class(
                 policies,
                 clip_rewards,
                 callbacks,

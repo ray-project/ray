@@ -237,8 +237,7 @@ def build_torch_policy(
             )
 
             # Merge Model's view requirements into Policy's.
-            self.view_requirements.update(
-                self.model.inference_view_requirements)
+            self.view_requirements.update(self.model.view_requirements)
 
             _before_loss_init = before_loss_init or after_init
             if _before_loss_init:

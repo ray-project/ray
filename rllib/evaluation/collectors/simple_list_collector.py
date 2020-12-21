@@ -397,29 +397,19 @@ class SimpleListCollector(SampleCollector):
                  multiple_episodes_in_batch: bool = True,
                  rollout_fragment_length: int = 200,
                  count_steps_by: str = "env_steps"):
-        """Initializes a SimpleListCollector instance.
+        """Initializes a SimpleListCollector instance."""
 
-        Args:
-            policy_map (Dict[str, Policy]): Maps policy ids to policy
-                instances.
-            clip_rewards (Union[bool, float]): Whether to clip rewards before
-                postprocessing (at +/-1.0) or the actual value to +/- clip.
-            callbacks (DefaultCallbacks): RLlib callbacks.
-            multiple_episodes_in_batch (bool): Whether it's allowed to pack
-                multiple episodes into the same built batch.
-            rollout_fragment_length (int): The
+        super().__init__(
+            policy_map,
+            clip_rewards,
+            callbacks,
+            multiple_episodes_in_batch,
+            rollout_fragment_length,
+            count_steps_by)
 
-        """
-
-        self.policy_map = policy_map
-        self.clip_rewards = clip_rewards
-        self.callbacks = callbacks
-        self.multiple_episodes_in_batch = multiple_episodes_in_batch
-        self.rollout_fragment_length = rollout_fragment_length
-        self.count_steps_by = count_steps_by
         self.large_batch_threshold: int = max(
-            1000, rollout_fragment_length *
-            10) if rollout_fragment_length != float("inf") else 5000
+            1000, self.rollout_fragment_length *
+            10) if self.rollout_fragment_length != float("inf") else 5000
 
         # Whenever we observe a new episode+agent, add a new
         # _SingleTrajectoryCollector.
@@ -432,8 +422,9 @@ class SimpleListCollector(SampleCollector):
         self.policy_collector_groups = []
 
         # Agents to collect data from for the next forward pass (per policy).
-        self.forward_pass_agent_keys = {pid: [] for pid in policy_map.keys()}
-        self.forward_pass_size = {pid: 0 for pid in policy_map.keys()}
+        self.forward_pass_agent_keys = \
+            {pid: [] for pid in self.policy_map.keys()}
+        self.forward_pass_size = {pid: 0 for pid in self.policy_map.keys()}
 
         # Maps episode ID to the (non-built) env steps taken in this episode.
         self.episode_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
@@ -483,7 +474,7 @@ class SimpleListCollector(SampleCollector):
         else:
             assert self.agent_key_to_policy_id[agent_key] == policy_id
         policy = self.policy_map[policy_id]
-        view_reqs = policy.model.inference_view_requirements if \
+        view_reqs = policy.model.view_requirements if \
             getattr(policy, "model", None) else policy.view_requirements
 
         # Add initial obs to Trajectory.
@@ -548,7 +539,7 @@ class SimpleListCollector(SampleCollector):
         policy = self.policy_map[policy_id]
         keys = self.forward_pass_agent_keys[policy_id]
         buffers = {k: self.agent_collectors[k].buffers for k in keys}
-        view_reqs = policy.model.inference_view_requirements if \
+        view_reqs = policy.model.view_requirements if \
             getattr(policy, "model", None) else policy.view_requirements
 
         input_dict = {}

@@ -14,6 +14,8 @@ from ray.exceptions import RayError
 from ray.rllib.agents.callbacks import DefaultCallbacks
 from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.evaluation.collectors.simple_list_collector import \
+    SimpleListCollector
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy import Policy
@@ -231,6 +233,10 @@ COMMON_CONFIG: TrainerConfigDict = {
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
     "_use_trajectory_view_api": True,
+    # The SampleCollector class to be used to collect and retrieve
+    # environment-, model-, and sampler data. Override the SampleCollector base
+    # class to implement your own collection/buffering/retrieval logic.
+    "sample_collector": SimpleListCollector,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",

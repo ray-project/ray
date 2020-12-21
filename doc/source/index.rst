@@ -259,6 +259,7 @@ Papers
    rllib-env.rst
    rllib-models.rst
    rllib-algorithms.rst
+   rllib-sample-collection.rst
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst

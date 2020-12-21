@@ -147,7 +147,7 @@ class TFPolicy(Policy):
         self.model = model
         # Auto-update model's inference view requirements, if recurrent.
         if self.model is not None:
-            self._update_model_inference_view_requirements_from_init_state()
+            self._update_model_view_requirements_from_init_state()
 
         self.exploration = self._create_exploration()
         self._sess = sess

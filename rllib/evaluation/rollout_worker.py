@@ -473,7 +473,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # state.
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added:
-                pol._update_model_inference_view_requirements_from_init_state()
+                pol._update_model_view_requirements_from_init_state()
 
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
@@ -587,6 +587,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
                 _use_trajectory_view_api=_use_trajectory_view_api,
+                sample_collector_class=policy_config.get(
+                    "sample_collector_class"),
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -610,6 +612,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
                 _use_trajectory_view_api=_use_trajectory_view_api,
+                sample_collector_class=policy_config.get(
+                    "sample_collector_class"),
             )
 
         self.input_reader: InputReader = input_creator(self.io_context)

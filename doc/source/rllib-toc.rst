@@ -143,6 +143,11 @@ Algorithms
 
    -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
 
+Sample Collection
+-----------------
+*  `The SampleCollector Class is Used to Store and Retrieve Temporary Data <rllib-sample-collection.html#the-samplecollector-class-is-used-to-store-and-retrieve-temporary-data>`__
+*  `Trajectory View API <rllib-sample-collection.html#trajectory-view-api>`__
+
 
 Offline Datasets
 ----------------
