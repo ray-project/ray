@@ -3,9 +3,11 @@ import ray
 import time
 ray.init()
 
+
 @ray.remote
 def f(arg):
     return arg
+
 
 a = ray.put(None)
 b = f.remote(None)
