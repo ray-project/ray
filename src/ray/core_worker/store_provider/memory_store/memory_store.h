@@ -56,8 +56,7 @@ class CoreWorkerMemoryStore {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-             const WorkerContext &ctx,
-             std::vector<std::shared_ptr<RayObject>> *results,
+             const WorkerContext &ctx, std::vector<std::shared_ptr<RayObject>> *results,
              bool release_resources = true);
 
   /// Convenience wrapper around Get() that stores results in a given result map.
