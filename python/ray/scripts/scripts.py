@@ -1,3 +1,4 @@
+import asyncio
 import click
 import copy
 from datetime import datetime
@@ -22,6 +23,8 @@ from ray.autoscaler._private.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 import ray.new_dashboard.memory_utils as memory_utils
+import ray.new_dashboard.datacenter as datacenter
+
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
@@ -1369,8 +1372,13 @@ def memory(address, redis_password, sort_by, group_by):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
 
+    print("woah there, how is it going?")
+    # memory_information = asyncio.run(datacenter.DataOrganizer.get_memory_table())
+    # print("memory table:", memory_information)
+
     print("We shall sort by ", sort_by, "then group by ", group_by)
     print(ray.internal.internal_api.memory_summary())
+    
 
 
 @cli.command()
