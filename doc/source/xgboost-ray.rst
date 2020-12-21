@@ -187,7 +187,7 @@ suggestions:
 
 Placement Strategies
 --------------------
-``xgboost_ray`` leverages Ray's Placement Group API (https://docs.ray.io/en/master/placement-group.html)
+``xgboost_ray`` leverages :ref:`Ray's Placement Group API <ray-placement-group-doc-ref>`
 to implement placement strategies for better fault tolerance.
 
 By default, a SPREAD strategy is used for training, which attempts to spread all of the training workers
