@@ -111,6 +111,9 @@ void PullManager::TryPull(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
+  const auto time = get_time_();
+  auto &request = it->second;
+  request.next_pull_time = time + (pull_timeout_ms_ / 1000) * (1 << request.num_retries);
   send_pull_request_(object_id, node_id);
 }
 
@@ -131,7 +134,7 @@ void PullManager::Tick() {
     const auto time = get_time_();
     if (time >= request.next_pull_time) {
       TryPull(object_id);
-      request.next_pull_time = time + pull_timeout_ms_ / 1000;
+      request.num_retries++;
     }
   }
 }
