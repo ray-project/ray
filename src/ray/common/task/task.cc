@@ -35,6 +35,8 @@ void Task::CopyTaskExecutionSpec(const Task &task) {
   task_execution_spec_ = task.task_execution_spec_;
 }
 
+void Task::SetBacklogSize(int64_t backlog_size) { backlog_size_ = backlog_size; }
+
 int64_t Task::BacklogSize() const { return backlog_size_; }
 
 std::string Task::DebugString() const {

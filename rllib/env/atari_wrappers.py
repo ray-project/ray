@@ -278,7 +278,7 @@ def wrap_deepmind(env, dim=84, framestack=True):
     """
     env = MonitorEnv(env)
     env = NoopResetEnv(env, noop_max=30)
-    if "NoFrameskip" in env.spec.id:
+    if env.spec is not None and "NoFrameskip" in env.spec.id:
         env = MaxAndSkipEnv(env, skip=4)
     env = EpisodicLifeEnv(env)
     if "FIRE" in env.unwrapped.get_action_meanings():

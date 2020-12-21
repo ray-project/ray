@@ -14,8 +14,8 @@ cdef class Config:
         return RayConfig.instance().raylet_heartbeat_timeout_milliseconds()
 
     @staticmethod
-    def light_heartbeat_enabled():
-        return RayConfig.instance().light_heartbeat_enabled()
+    def light_report_resource_usage_enabled():
+        return RayConfig.instance().light_report_resource_usage_enabled()
 
     @staticmethod
     def debug_dump_period_milliseconds():
@@ -89,14 +89,6 @@ cdef class Config:
         return RayConfig.instance().object_manager_default_chunk_size()
 
     @staticmethod
-    def num_workers_per_process_python():
-        return RayConfig.instance().num_workers_per_process_python()
-
-    @staticmethod
-    def num_workers_per_process_java():
-        return RayConfig.instance().num_workers_per_process_java()
-
-    @staticmethod
     def maximum_gcs_deletion_batch_size():
         return RayConfig.instance().maximum_gcs_deletion_batch_size()
 
@@ -119,3 +111,7 @@ cdef class Config:
     @staticmethod
     def automatic_object_deletion_enabled():
         return RayConfig.instance().automatic_object_deletion_enabled()
+
+    @staticmethod
+    def max_grpc_message_size():
+        return RayConfig.instance().max_grpc_message_size()

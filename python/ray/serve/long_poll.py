@@ -1,4 +1,5 @@
 import asyncio
+from inspect import iscoroutinefunction
 import random
 from collections import defaultdict
 from dataclasses import dataclass
@@ -22,7 +23,7 @@ class UpdatedObject:
 UpdateStateAsyncCallable = Callable[[Any], Awaitable[None]]
 
 
-class LongPollerAsyncClient:
+class LongPollAsyncClient:
     """The asynchronous long polling client.
 
     Internally, it runs `await object_ref` in a `while True` loop. When a
@@ -31,7 +32,7 @@ class LongPollerAsyncClient:
     the next poll.
 
     Args:
-        host_actor(ray.ActorHandle): handle to actor embedding LongPollerHost.
+        host_actor(ray.ActorHandle): handle to actor embedding LongPollHost.
         key_listeners(Dict[str, AsyncCallable]): a dictionary mapping keys to
           callbacks to be called on state update for the corresponding keys.
     """
@@ -40,6 +41,10 @@ class LongPollerAsyncClient:
                  key_listeners: Dict[str, UpdateStateAsyncCallable]) -> None:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
+        for callback in key_listeners.values():
+            if not iscoroutinefunction(callback):
+                raise ValueError(
+                    "Callbacks to async long poller must be 'async def'.")
 
         self.snapshot_ids: Dict[str, int] = {
             key: -1
@@ -56,34 +61,31 @@ class LongPollerAsyncClient:
             self.snapshot_ids)
         return object_ref
 
-    def _update(self, updates: Dict[str, UpdatedObject]):
-        for key, update in updates.items():
-            self.object_snapshots[key] = update.object_snapshot
-            self.snapshot_ids[key] = update.snapshot_id
-
     async def _do_long_poll(self):
         while True:
             try:
                 updates: Dict[str, UpdatedObject] = await self._poll_once()
-                self._update(updates)
-                logger.debug(f"LongPollerClient received udpates: {updates}")
-                for key, updated_object in updates.items():
+                logger.debug("LongPollClient received updates for keys: "
+                             f"{list(updates.keys())}.")
+                for key, update in updates.items():
+                    self.object_snapshots[key] = update.object_snapshot
+                    self.snapshot_ids[key] = update.snapshot_id
                     # NOTE(simon):
                     # This blocks the loop from doing another poll. Consider
                     # use loop.create_task here or poll first then call the
                     # callbacks.
                     callback = self.key_listeners[key]
-                    await callback(updated_object.object_snapshot)
+                    await callback(update.object_snapshot)
             except ray.exceptions.RayActorError:
                 # This can happen during shutdown where the controller is
                 # intentionally killed, the client should just gracefully
                 # exit.
-                logger.debug("LongPollerClient failed to connect to host. "
+                logger.debug("LongPollClient failed to connect to host. "
                              "Shutting down.")
                 break
 
 
-class LongPollerHost:
+class LongPollHost:
     """The server side object that manages long pulling requests.
 
     The desired use case is to embed this in an Ray actor. Client will be
@@ -115,11 +117,10 @@ class LongPollerHost:
         immediately if the snapshot_ids are outdated, otherwise it will block
         until there's one updates.
         """
-        # 1. Figure out which keys do we care about
-        watched_keys = set(self.snapshot_ids.keys()).intersection(
-            keys_to_snapshot_ids.keys())
-        if len(watched_keys) == 0:
-            raise ValueError("Keys not found.")
+        watched_keys = keys_to_snapshot_ids.keys()
+        nonexistent_keys = set(watched_keys) - set(self.snapshot_ids.keys())
+        if len(nonexistent_keys) > 0:
+            raise ValueError(f"Keys not found: {nonexistent_keys}.")
 
         # 2. If there are any outdated keys (by comparing snapshot ids)
         #    return immediately.
@@ -159,7 +160,7 @@ class LongPollerHost:
     def notify_changed(self, object_key: str, updated_object: Any):
         self.snapshot_ids[object_key] += 1
         self.object_snapshots[object_key] = updated_object
-        logger.debug(f"LongPollerHost: {object_key} = {updated_object}")
+        logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
         if object_key in self.notifier_events:
             for event in self.notifier_events.pop(object_key):

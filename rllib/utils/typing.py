@@ -67,6 +67,10 @@ EnvInfoDict = dict
 # Represents a File object
 FileType = Any
 
+# Represents a ViewRequirements dict mapping column names (str) to
+# ViewRequirement objects.
+ViewRequirementsDict = Dict[str, "ViewRequirement"]
+
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
 
@@ -95,6 +99,9 @@ ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
 
 # Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict
+
+# An input dict used for direct ModelV2 calls or `ModelV2.from_batch` calls.
+ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]

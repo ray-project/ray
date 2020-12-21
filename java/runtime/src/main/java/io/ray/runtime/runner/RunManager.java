@@ -5,7 +5,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.ray.runtime.config.RayConfig;
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -31,12 +30,6 @@ public class RunManager {
    */
   public static void startRayHead(RayConfig rayConfig) {
     LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
-    String codeSearchPath;
-    if (!rayConfig.codeSearchPath.isEmpty()) {
-      codeSearchPath = Joiner.on(File.pathSeparator).join(rayConfig.codeSearchPath);
-    } else {
-      codeSearchPath = System.getProperty("java.class.path");
-    }
     List<String> command = new ArrayList<>();
     command.add("ray");
     command.add("start");
@@ -44,7 +37,6 @@ public class RunManager {
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
     command.add("--system-config=" + new Gson().toJson(rayConfig.rayletConfigParameters));
-    command.add("--code-search-path=" + codeSearchPath);
     command.addAll(rayConfig.headArgs);
     String output;
     try {
@@ -83,14 +75,18 @@ public class RunManager {
     // address info of the local node.
     String script = String.format("import ray;"
         + " print(ray._private.services.get_address_info_from_redis("
-        + "'%s', '%s', redis_password='%s', no_warning=True))",
+        + "'%s', '%s', redis_password='%s'))",
         rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 
     String output = null;
     try {
       output = runCommand(command);
-      JsonObject addressInfo = new JsonParser().parse(output).getAsJsonObject();
+      // NOTE(kfstorm): We only parse the last line here in case there are some warning
+      // messages appear at the beginning.
+      String[] lines = output.split(System.lineSeparator());
+      String lastLine = lines[lines.length - 1];
+      JsonObject addressInfo = new JsonParser().parse(lastLine).getAsJsonObject();
       rayConfig.rayletSocketName = addressInfo.get("raylet_socket_name").getAsString();
       rayConfig.objectStoreSocketName = addressInfo.get("object_store_address").getAsString();
       rayConfig.nodeManagerPort = addressInfo.get("node_manager_port").getAsInt();
