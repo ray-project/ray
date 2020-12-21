@@ -575,8 +575,7 @@ void CoreWorker::Exit(bool intentional) {
       << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+  RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
 
   // Callback to shutdown.
   auto shutdown = [this, intentional]() {
