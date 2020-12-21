@@ -53,6 +53,7 @@ def convert_to_torch_tensor(x, device=None):
         Any: A new struct with the same structure as `stats`, but with all
             values converted to torch Tensor types.
     """
+
     def mapping(item):
         # Already torch tensor -> make sure it's on right device.
         if torch.is_tensor(item):
