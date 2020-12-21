@@ -2,7 +2,8 @@
 import pytest
 import ray
 
-from .util import Worker, create_collective_workers
+from ray.util.collective.tests.util import Worker, \
+    create_collective_workers
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])

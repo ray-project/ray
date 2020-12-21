@@ -113,4 +113,4 @@ def init_tensors_for_gather_scatter(actors,
         ]
     else:
         raise RuntimeError("Unsupported tensor backend.")
-    ray.wait([a.set_list_buffer.remote(list_buffer) for a in actors])
+    ray.get([a.set_list_buffer.remote(list_buffer) for a in actors])

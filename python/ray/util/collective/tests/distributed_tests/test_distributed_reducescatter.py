@@ -5,7 +5,8 @@ import ray
 import cupy as cp
 import torch
 
-from ..util import create_collective_workers, init_tensors_for_gather_scatter
+from ray.util.collective.tests.util import create_collective_workers, \
+    init_tensors_for_gather_scatter
 
 
 @pytest.mark.parametrize("tensor_backend", ["cupy", "torch"])

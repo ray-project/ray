@@ -32,8 +32,7 @@ def mpi_available():
 
 
 class GroupManager(object):
-    """
-    Use this class to manage the collective groups we created so far.
+    """Use this class to manage the collective groups we created so far.
 
     Each process will have an instance of `GroupManager`. Each process
     could belong to multiple collective groups. The membership information
@@ -45,8 +44,7 @@ class GroupManager(object):
         self._group_name_map = {}
 
     def create_collective_group(self, backend, world_size, rank, group_name):
-        """
-        The entry to create new collective groups and register in the manager.
+        """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
         metadata as well.
@@ -120,8 +118,7 @@ def init_collective_group(world_size: int,
                           rank: int,
                           backend=types.Backend.NCCL,
                           group_name: str = "default"):
-    """
-    Initialize a collective group inside an actor process.
+    """Initialize a collective group inside an actor process.
 
     Args:
         world_size (int): the total number of processed in the group.
@@ -158,8 +155,7 @@ def destroy_collective_group(group_name: str = "default") -> None:
 
 
 def get_rank(group_name: str = "default") -> int:
-    """
-    Return the rank of this process in the given group.
+    """Return the rank of this process in the given group.
 
     Args:
         group_name (str): the name of the group to query
@@ -177,8 +173,7 @@ def get_rank(group_name: str = "default") -> int:
 
 
 def get_world_size(group_name: str = "default") -> int:
-    """
-    Return the size of the collective gropu with the given name.
+    """Return the size of the collective gropu with the given name.
 
     Args:
         group_name: the name of the group to query
@@ -196,8 +191,7 @@ def get_world_size(group_name: str = "default") -> int:
 
 
 def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
-    """
-    Collective allreduce the tensor across the group with name group_name.
+    """Collective allreduce the tensor across the group.
 
     Args:
         tensor: the tensor to be all-reduced on this process.
@@ -215,8 +209,7 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
 
 
 def barrier(group_name: str = "default"):
-    """
-    Barrier all processes in the collective group.
+    """Barrier all processes in the collective group.
 
     Args:
         group_name (str): the name of the group to barrier.
@@ -232,8 +225,7 @@ def reduce(tensor,
            dst_rank: int = 0,
            group_name: str = "default",
            op=types.ReduceOp.SUM):
-    """
-    Reduce the tensor across the group to the destination rank.
+    """Reduce the tensor across the group to the destination rank.
 
     Args:
         tensor: the tensor to be reduced on this process.
@@ -256,8 +248,7 @@ def reduce(tensor,
 
 
 def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
-    """
-    Broadcast the tensor from a source process to all others.
+    """Broadcast the tensor from a source process to all others.
 
     Args:
         tensor: the tensor to be broadcasted (src) or received (destination).
@@ -278,8 +269,7 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
 
 
 def allgather(tensor_list: list, tensor, group_name: str = "default"):
-    """
-    Allgather tensors from each process of the collective group into a list.
+    """Allgather tensors from each process of the group into a list.
 
     Args:
         tensor_list (list): the results, stored as a list of tensors.
@@ -306,8 +296,7 @@ def reducescatter(tensor,
                   tensor_list: list,
                   group_name: str = "default",
                   op=types.ReduceOp.SUM):
-    """
-    Reducescatter a list of tensors across the group.
+    """Reducescatter a list of tensors across the group.
 
     Reduce the list of the tensors across each process in the group, then
     scatter the reduced list of tensors -- one tensor for each process.
