@@ -859,6 +859,8 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
     assert ray.get(actor.g.remote(5)) == 6
 
 
+@pytest.mark.skip(
+    "This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):
     # This test is just used to test the latency of actor creation.
     @ray.remote
