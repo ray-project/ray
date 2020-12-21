@@ -13,8 +13,7 @@ PullManager::PullManager(
       restore_spilled_object_(restore_spilled_object),
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
-}
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
@@ -115,8 +114,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
   const auto time = get_time_();
   auto &request = it->second;
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
-  request.next_pull_time =
-      time + retry_timeout_len;
+  request.next_pull_time = time + retry_timeout_len;
   send_pull_request_(object_id, node_id);
 }
 
@@ -137,9 +135,8 @@ void PullManager::Tick() {
     const auto time = get_time_();
     if (time >= request.next_pull_time) {
       TryPull(object_id);
-      request.num_retries++;
       // Bound the retry time at 10 * 1024 seconds.
-      request.num_retries = std::min(num_retries + 1, 10);
+      request.num_retries = std::min(request.num_retries + 1, 10);
     }
   }
 }
