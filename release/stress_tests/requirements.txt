@@ -1,1 +1,1 @@
-ray
+ray[debug]

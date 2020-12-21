@@ -3,7 +3,7 @@
 ####################################################################
 
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: ray-stress-tests
+cluster_name: autoscaler-stress-test-1.1.0-alex
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -26,8 +26,8 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-west-2
-    availability_zone: us-west-2a
+    region: us-west-1
+    availability_zone: us-west-1a
     cache_stopped_nodes: False
 
 # How Ray will authenticate with newly launched nodes.
@@ -44,7 +44,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m4.16xlarge
-    ImageId: ami-042d0d6196f494652 # Custom ami
+    ImageId: ami-0cc472544ce594a19 # Custom ami
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -60,7 +60,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m4.large
-    ImageId: ami-042d0d6196f494652 # Custom ami
+    ImageId: ami-0cc472544ce594a19 # Custom ami
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -89,7 +89,9 @@ setup_commands:
     - pip install terminado
     - pip install boto3==1.4.8 cython==0.29.0
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
-    - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/ray-1.1.0/c7239d7b738919daa2fad65e26d3634a9f36f2eb/ray-1.1.0.dev0-cp38-cp38-manylinux2014_x86_64.whl"
+    - pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.1.0/496e449a8bc022b3cd544f7bca76d91be05f04f4/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+    # - "pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/1.1.0/496e449a8bc022b3cd544f7bca76d91be05f04f4/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
+
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
 
