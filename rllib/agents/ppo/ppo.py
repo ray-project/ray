@@ -130,7 +130,7 @@ def validate_config(config: TrainerConfigDict) -> None:
             "trajectory). Consider setting batch_mode=complete_episodes.")
 
     # Multi-gpu not supported for PyTorch and tf-eager.
-    if config["framework"] in ["tf2", "tfe", "torch"]:
+    if config["framework"] != "tf":
         config["simple_optimizer"] = True
     # Performance warning, if "simple" optimizer used with (static-graph) tf.
     elif config["simple_optimizer"]:

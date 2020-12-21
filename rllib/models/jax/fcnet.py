@@ -80,16 +80,21 @@ class FullyConnectedNetwork(JAXModelV2):
         if not self.vf_share_layers:
             # Build a parallel set of hidden layers for the value net.
             self._value_branch_separate = FCStack(
-                in_features=int(np.product(obs_space.shape)),
+                in_features=in_features,
                 layers=hiddens,
                 activation=activation,
                 prng_key=self.prng_key,
             )
+            in_ = jnp.zeros((1, in_features))
+            self._value_branch_separate_params = self._value_branch_separate.init(self.prng_key, in_)
+
         self._value_branch = FCStack(
             in_features=prev_layer_size,
             layers=[1],
             prng_key=self.prng_key,
         )
+        in_ = jnp.zeros((1, prev_layer_size))
+        self._value_branch_params = self._value_branch.init(self.prng_key, in_)
         # Holds the current "base" output (before logits layer).
         self._features = None
         # Holds the last input, in case value branch is separate.
@@ -107,7 +112,7 @@ class FullyConnectedNetwork(JAXModelV2):
     def value_function(self):
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
-            x = self._value_branch_separate(self._last_flat_in)
-            return self._value_branch(x).squeeze(1)
+            x = self._value_branch_separate.apply(self._value_branch_separate_params, self._last_flat_in)
+            return self._value_branch.apply(self._value_branch_params, x).squeeze(1)
         else:
-            return self._value_branch(self._features).squeeze(1)
+            return self._value_branch.apply(self._value_branch_params, self._features).squeeze(1)

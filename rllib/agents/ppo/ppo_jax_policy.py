@@ -139,20 +139,21 @@ class ValueNetworkMixin:
         # observation.
         if config["use_gae"]:
 
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: jnp.asarray([ob]),
-                    SampleBatch.PREV_ACTIONS: jnp.asarray([prev_action]),
-                    SampleBatch.PREV_REWARDS: jnp.asarray([prev_reward]),
-                    "is_training": False,
-                }, [jnp.asarray([s]) for s in state], jnp.asarray([1]))
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            assert config["_use_trajectory_view_api"]
+
+            def value(**input_dict):
+                model_out, _ = self.model.from_batch(
+                    input_dict, is_training=False)
                 # [0] = remove the batch dim.
                 return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
 
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return 0.0
 
         self._value = value

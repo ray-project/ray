@@ -14,16 +14,18 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax
+from ray.rllib.utils.jax_ops import convert_to_non_jax_type
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
-    convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
 
 jax, flax = try_import_jax()
+jnp = None
+fd = None
 if jax:
     import jax.numpy as jnp
+    from flax.core.frozen_dict import FrozenDict as fd
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +223,7 @@ class JAXPolicy(Policy):
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
-        return actions, state_out, extra_fetches
+        return convert_to_non_jax_type((actions, state_out, extra_fetches))
 
     @override(Policy)
     @DeveloperAPI
@@ -384,16 +386,17 @@ class JAXPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def get_weights(self) -> ModelWeights:
+        cpu = jax.devices("cpu")[0]
         return {
-            k: v.cpu().detach().numpy()
-            for k, v in self.model.state_dict().items()
+            k: jax.device_put(v, cpu)
+            for k, v in self.model.variables(as_dict=True).items()
         }
 
     @override(Policy)
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
-        weights = convert_to_torch_tensor(weights, device=self.device)
-        self.model.load_state_dict(weights)
+        for k, v in weights.items():
+            setattr(self.model, k, fd({"params": v}))
 
     @override(Policy)
     @DeveloperAPI
@@ -418,7 +421,7 @@ class JAXPolicy(Policy):
         state = super().get_state()
         state["_optimizer_variables"] = []
         for i, o in enumerate(self._optimizers):
-            optim_state_dict = convert_to_non_torch_type(o.state_dict())
+            optim_state_dict = convert_to_non_jax_type(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         return state
 
@@ -543,61 +546,5 @@ class JAXPolicy(Policy):
     #def _lazy_numpy_dict(self, postprocessed_batch):
     #    train_batch = UsageTrackingDict(postprocessed_batch)
     #    train_batch.set_get_interceptor(
-    #        functools.partial(convert_to_non_torch_type))
+    #        functools.partial(convert_to_non_jax_type))
     #    return train_batch
-
-
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
-@DeveloperAPI
-class LearningRateSchedule:
-    """Mixin for TFPolicy that adds a learning rate schedule."""
-
-    @DeveloperAPI
-    def __init__(self, lr, lr_schedule):
-        self.cur_lr = lr
-        if lr_schedule is None:
-            self.lr_schedule = ConstantSchedule(lr, framework=None)
-        else:
-            self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super().on_global_var_update(global_vars)
-        self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-        for opt in self._optimizers:
-            for p in opt.param_groups:
-                p["lr"] = self.cur_lr
-
-
-@DeveloperAPI
-class EntropyCoeffSchedule:
-    """Mixin for TorchPolicy that adds entropy coeff decay."""
-
-    @DeveloperAPI
-    def __init__(self, entropy_coeff, entropy_coeff_schedule):
-        self.entropy_coeff = entropy_coeff
-
-        if entropy_coeff_schedule is None:
-            self.entropy_coeff_schedule = ConstantSchedule(
-                entropy_coeff, framework=None)
-        else:
-            # Allows for custom schedule similar to lr_schedule format
-            if isinstance(entropy_coeff_schedule, list):
-                self.entropy_coeff_schedule = PiecewiseSchedule(
-                    entropy_coeff_schedule,
-                    outside_value=entropy_coeff_schedule[-1][-1],
-                    framework=None)
-            else:
-                # Implements previous version but enforces outside_value
-                self.entropy_coeff_schedule = PiecewiseSchedule(
-                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
-                    outside_value=0.0,
-                    framework=None)
-
-    @override(Policy)
-    def on_global_var_update(self, global_vars):
-        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        self.entropy_coeff = self.entropy_coeff_schedule.value(
-            global_vars["timestep"])

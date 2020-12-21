@@ -1,5 +1,6 @@
 import gym
 import time
+import tree
 from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -43,17 +44,15 @@ class JAXModelV2(ModelV2):
     @override(ModelV2)
     def variables(self, as_dict: bool = False
                   ) -> Union[List[TensorType], Dict[str, TensorType]]:
-        params = fd({
-            k: v["params"] for k, v in self.__dict__.items() if
-            isinstance(v, fd) and "params" in v
-        })
+        params = fd({k: v["params"]._dict for k, v in self.__dict__.items() if
+                     isinstance(v, fd) and "params" in v})._dict
         if as_dict:
             return params
-        return list(params.values())
+        return tree.flatten(params)
 
     @PublicAPI
     @override(ModelV2)
     def trainable_variables(
             self, as_dict: bool = False
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
-        return self.variables
+        return self.variables(as_dict=as_dict)
