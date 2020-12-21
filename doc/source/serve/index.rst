@@ -38,6 +38,9 @@ As a library, Ray Serve enables:
 .. note::
   Chat with Ray Serve users and developers on our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel, or post questions on our `Discourse <https://discuss.ray.io/>`!
 
+.. note::
+  Starting with Ray version 1.3.0, Ray Serve backends must take in a Starlette Request object instead of a Flask Request object.  
+  See the `migration guide <https://docs.google.com/document/d/1CG4y5WTTc4G_MRQGyjnb_eZ7GK3G9dUX6TNLKLnKRAc/edit?usp=sharing>`_ for details.
 
 Installation
 ============

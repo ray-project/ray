@@ -1,10 +1,8 @@
 import requests
-import ray
 from ray import serve
 from ray.serve import CondaEnv
 import tensorflow as tf
 
-ray.init()
 client = serve.start()
 
 

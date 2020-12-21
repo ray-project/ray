@@ -278,9 +278,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncGet(const TaskID &task_id,
                   const OptionalItemCallback<rpc::TaskTableData> &callback) override;
 
-  Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                     const StatusCallback &callback) override;
-
   Status AsyncSubscribe(const TaskID &task_id,
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
                         const StatusCallback &done) override;

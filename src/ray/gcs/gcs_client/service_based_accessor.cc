@@ -886,25 +886,6 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
   return Status::OK();
 }
 
-Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                                 const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Deleting tasks, task id list size = " << task_ids.size();
-  rpc::DeleteTasksRequest request;
-  for (auto &task_id : task_ids) {
-    request.add_task_id_list(task_id.Binary());
-  }
-  client_impl_->GetGcsRpcClient().DeleteTasks(
-      request,
-      [task_ids, callback](const Status &status, const rpc::DeleteTasksReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << status
-                       << ", task id list size = " << task_ids.size();
-      });
-  return Status::OK();
-}
-
 Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const TaskID &task_id, const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
     const StatusCallback &done) {
