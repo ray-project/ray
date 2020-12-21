@@ -171,6 +171,7 @@ def stage4():
     logger.info(f"Avg spread: {sum(spreads)/len(spreads)}")
     return avg_spread
 
+
 stage_4_spread = stage4()
 print("Stage 0 results:")
 print("\tTotal time: {}".format(stage_0_time))
