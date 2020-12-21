@@ -2,6 +2,8 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray.experimental.client import ray
 from ray.experimental.client.options import validate_options
 
+import inspect
+from ray.util.inspect import is_cython
 import json
 import threading
 from typing import Any
@@ -294,3 +296,17 @@ class DataEncodingSentinel:
 
 class SelfReferenceSentinel(DataEncodingSentinel):
     pass
+
+
+def remote_decorator(options: Optional[Dict[str, Any]]):
+    def decorator(function_or_class) -> ClientStub:
+        if (inspect.isfunction(function_or_class)
+                or is_cython(function_or_class)):
+            return ClientRemoteFunc(function_or_class, options=options)
+        elif inspect.isclass(function_or_class):
+            return ClientActorClass(function_or_class, options=options)
+        else:
+            raise TypeError("The @ray.remote decorator must be applied to "
+                            "either a function or to a class.")
+
+    return decorator

@@ -17,11 +17,9 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.experimental.client import stash_api_for_tests, _set_server_api
 from ray.experimental.client.server.server_pickler import convert_from_arg
 from ray.experimental.client.server.server_pickler import dumps_from_server
 from ray.experimental.client.server.server_pickler import loads_from_client
-from ray.experimental.client.server.core_ray_api import RayServerAPI
 from ray.experimental.client.server.dataservicer import DataServicer
 from ray.experimental.client.server.logservicer import LogstreamServicer
 from ray.experimental.client.server.server_stubs import current_remote
@@ -215,28 +213,27 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             "schedule: %s %s" % (task.name,
                                  ray_client_pb2.ClientTask.RemoteExecType.Name(
                                      task.type)))
-        with stash_api_for_tests(self._test_mode):
-            try:
-                if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                    result = self._schedule_function(task, context)
-                elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                    result = self._schedule_actor(task, context)
-                elif task.type == ray_client_pb2.ClientTask.METHOD:
-                    result = self._schedule_method(task, context)
-                elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
-                    result = self._schedule_named_actor(task, context)
-                else:
-                    raise NotImplementedError(
-                        "Unimplemented Schedule task type: %s" %
-                        ray_client_pb2.ClientTask.RemoteExecType.Name(
-                            task.type))
-                result.valid = True
-                return result
-            except Exception as e:
-                logger.error(f"Caught schedule exception {e}")
-                raise e
-                return ray_client_pb2.ClientTaskTicket(
-                    valid=False, error=cloudpickle.dumps(e))
+        try:
+            if task.type == ray_client_pb2.ClientTask.FUNCTION:
+                result = self._schedule_function(task, context)
+            elif task.type == ray_client_pb2.ClientTask.ACTOR:
+                result = self._schedule_actor(task, context)
+            elif task.type == ray_client_pb2.ClientTask.METHOD:
+                result = self._schedule_method(task, context)
+            elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
+                result = self._schedule_named_actor(task, context)
+            else:
+                raise NotImplementedError(
+                    "Unimplemented Schedule task type: %s" %
+                    ray_client_pb2.ClientTask.RemoteExecType.Name(
+                        task.type))
+            result.valid = True
+            return result
+        except Exception as e:
+            logger.error(f"Caught schedule exception {e}")
+            raise e
+            return ray_client_pb2.ClientTaskTicket(
+                valid=False, error=cloudpickle.dumps(e))
 
     def _schedule_method(self, task: ray_client_pb2.ClientTask,
                          context=None) -> ray_client_pb2.ClientTaskTicket:
@@ -369,12 +366,22 @@ def decode_options(
     return opts
 
 
+_current_servicer: Optional[RayletServicer] = None
+
+
+# Used by tests to peek inside the servicer
+def _get_current_servicer():
+    global _current_servicer
+    return _current_servicer
+
+
 def serve(connection_str, test_mode=False):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     task_servicer = RayletServicer(test_mode=test_mode)
     data_servicer = DataServicer(task_servicer)
     logs_servicer = LogstreamServicer()
-    _set_server_api(RayServerAPI(task_servicer))
+    global _current_servicer
+    _current_servicer = task_servicer
     ray_client_pb2_grpc.add_RayletDriverServicer_to_server(
         task_servicer, server)
     ray_client_pb2_grpc.add_RayletDataStreamerServicer_to_server(

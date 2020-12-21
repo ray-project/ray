@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
 import ray.experimental.client.server.server as ray_client_server
-from ray.experimental.client import ray, reset_api
+from ray.experimental.client import ray
 
 
 @contextmanager
@@ -13,4 +13,3 @@ def ray_start_client_server():
     finally:
         ray.disconnect()
         server.stop(0)
-        reset_api()

@@ -20,7 +20,6 @@ def shutdown_only():
     if client_test_enabled():
         ray_client.ray.disconnect()
         ray_client._stop_test_server(1)
-        ray_client.reset_api()
     ray.shutdown()
 
 
@@ -59,7 +58,6 @@ def _ray_start(**kwargs):
     if client_test_enabled():
         ray_client.ray.disconnect()
         ray_client._stop_test_server(1)
-        ray_client.reset_api()
     ray.shutdown()
 
 
