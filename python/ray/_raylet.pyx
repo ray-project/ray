@@ -1031,14 +1031,13 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
-    def free_objects(self, object_refs, c_bool local_only,
-                     c_bool delete_creating_tasks):
+    def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only, delete_creating_tasks))
+                free_ids, local_only))
 
     def global_gc(self):
         with nogil:

@@ -3,9 +3,7 @@ package io.ray.test;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.api.id.TaskId;
 import io.ray.runtime.object.ObjectRefImpl;
-import java.util.Arrays;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -20,7 +18,7 @@ public class PlasmaFreeTest extends BaseTest {
     ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
     String helloString = helloId.get();
     Assert.assertEquals("hello", helloString);
-    Ray.internal().free(ImmutableList.of(helloId), true, false);
+    Ray.internal().free(ImmutableList.of(helloId), true);
 
     final boolean result = TestUtils.waitForCondition(() ->
         !TestUtils.getRuntime().getObjectStore()
@@ -32,19 +30,4 @@ public class PlasmaFreeTest extends BaseTest {
       Assert.assertFalse(result);
     }
   }
-
-  @Test(groups = {"cluster"})
-  public void testDeleteCreatingTasks() {
-    ObjectRef<String> helloId = Ray.task(PlasmaFreeTest::hello).remote();
-    Assert.assertEquals("hello", helloId.get());
-    Ray.internal().free(ImmutableList.of(helloId), true, true);
-
-    TaskId taskId = TaskId.fromBytes(
-        Arrays.copyOf(((ObjectRefImpl<String>) helloId).getId().getBytes(), TaskId.LENGTH));
-    final boolean result = TestUtils.waitForCondition(
-        () -> !TestUtils.getRuntime().getGcsClient()
-            .rayletTaskExistsInGcs(taskId), 50);
-    Assert.assertTrue(result);
-  }
-
 }

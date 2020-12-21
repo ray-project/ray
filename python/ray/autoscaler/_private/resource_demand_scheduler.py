@@ -192,7 +192,8 @@ class ResourceDemandScheduler:
         # Add 1 to account for the head node.
         max_to_add = self.max_workers + 1 - sum(node_type_counts.values())
         nodes_to_add_based_on_demand = get_nodes_for(
-            self.node_types, node_type_counts, max_to_add, unfulfilled)
+            self.node_types, node_type_counts, self.head_node_type, max_to_add,
+            unfulfilled)
         # Merge nodes to add based on demand and nodes to add based on
         # min_workers constraint. We add them because nodes to add based on
         # demand was calculated after the min_workers constraint was respected.
@@ -447,6 +448,7 @@ class ResourceDemandScheduler:
             to_launch = get_nodes_for(
                 self.node_types,
                 node_type_counts,
+                self.head_node_type,
                 max_to_add,
                 unfulfilled,
                 strict_spread=True)
@@ -544,7 +546,7 @@ def _add_min_workers_nodes(
             max_node_resources, ensure_min_cluster_size)
         # Get the nodes to meet the unfulfilled.
         nodes_to_add_request_resources = get_nodes_for(
-            node_types, node_type_counts, max_to_add,
+            node_types, node_type_counts, head_node_type, max_to_add,
             resource_requests_unfulfilled)
         # Update the resources, counts and total nodes to add.
         for node_type in nodes_to_add_request_resources:
@@ -565,6 +567,7 @@ def _add_min_workers_nodes(
 
 def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
                   existing_nodes: Dict[NodeType, int],
+                  head_node_type: NodeType,
                   max_to_add: int,
                   resources: List[ResourceDict],
                   strict_spread: bool = False) -> Dict[NodeType, int]:
@@ -588,9 +591,13 @@ def get_nodes_for(node_types: Dict[NodeType, NodeTypeConfigDict],
     while resources and sum(nodes_to_add.values()) < max_to_add:
         utilization_scores = []
         for node_type in node_types:
+            max_workers_of_node_type = node_types[node_type].get(
+                "max_workers", 0)
+            if head_node_type == node_type:
+                # Add 1 to account for head node.
+                max_workers_of_node_type = max_workers_of_node_type + 1
             if (existing_nodes.get(node_type, 0) + nodes_to_add.get(
-                    node_type, 0) >= node_types[node_type].get(
-                        "max_workers", 0)):
+                    node_type, 0) >= max_workers_of_node_type):
                 continue
             node_resources = node_types[node_type]["resources"]
             if strict_spread:

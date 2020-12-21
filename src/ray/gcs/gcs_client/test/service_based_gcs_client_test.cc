@@ -415,13 +415,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return task_table_data;
   }
 
-  bool DeleteTask(const std::vector<TaskID> &task_ids) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(
-        task_ids, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool SubscribeTaskLease(
       const TaskID &task_id,
       const gcs::SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>>
@@ -874,10 +867,6 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   // Assert unsubscribe succeeded.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(task_count, 1);
-
-  // Delete tasks from GCS.
-  std::vector<TaskID> task_ids = {task_id};
-  ASSERT_TRUE(DeleteTask(task_ids));
 
   // Subscribe to the event that the given task lease is added in GCS.
   std::atomic<int> task_lease_count(0);
