@@ -20,7 +20,7 @@ from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import BackendConfig, ReplicaConfig, HTTPConfig
 from ray.serve.long_poll import LongPollHost
 from ray.actor import ActorHandle
 
@@ -80,17 +80,72 @@ class TrafficPolicy:
         return f"<Traffic {self.traffic_dict}; Shadow {self.shadow_dict}>"
 
 
-class BackendInfo(BaseModel):
-    # TODO(architkulkarni): Add type hint for worker_class after upgrading
-    # cloudpickle and adding types to RayServeWrappedReplica
-    worker_class: Any
-    backend_config: BackendConfig
-    replica_config: ReplicaConfig
+class HTTPState:
+    def __init__(self, controller_name: str, detached: bool,
+                 config: HTTPConfig):
+        self.controller_name = controller_name
+        self.detached = detached
+        self.config = config
+        self.proxy_actors: Dict[NodeId, ActorHandle] = dict()
 
-    class Config:
-        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
-        # model
-        arbitrary_types_allowed = True
+        # Will populate self.proxy_actors with existing actors.
+        self._start_proxies_if_needed()
+
+    def http_proxy_handles(self) -> List[ActorHandle]:
+        return list(self.proxy_actors.values())
+
+    def update(self):
+        self._start_proxies_if_needed()
+        self._stop_proxies_if_needed()
+
+    def _start_proxies_if_needed(self) -> None:
+        """Start a proxy on every node if it doesn't already exist."""
+        if self.config.host is None:
+            return
+
+        for node_id, node_resource in get_all_node_ids():
+            if node_id in self.proxy_actors:
+                continue
+
+            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
+                                     node_id)
+            try:
+                proxy = ray.get_actor(name)
+            except ValueError:
+                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
+                            "listening on '{}:{}'".format(
+                                name, node_id, self.config.host,
+                                self.config.port))
+                proxy = HTTPProxyActor.options(
+                    name=name,
+                    lifetime="detached" if self.detached else None,
+                    max_concurrency=ASYNC_CONCURRENCY,
+                    max_restarts=-1,
+                    max_task_retries=-1,
+                    resources={
+                        node_resource: 0.01
+                    },
+                ).remote(
+                    self.config.host,
+                    self.config.port,
+                    controller_name=self.controller_name,
+                    http_middlewares=self.config.middlewares)
+
+            self.proxy_actors[node_id] = proxy
+
+    def _stop_proxies_if_needed(self) -> bool:
+        """Removes proxy actors from any nodes that no longer exist."""
+        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
+        to_stop = []
+        for node_id in self.proxy_actors:
+            if node_id not in all_node_ids:
+                logger.info("Removing HTTP proxy on removed node '{}'.".format(
+                    node_id))
+                to_stop.append(node_id)
+
+        for node_id in to_stop:
+            proxy = self.proxy_actors.pop(node_id)
+            ray.kill(proxy, no_restart=True)
 
 
 class EndpointState:
@@ -124,6 +179,19 @@ class EndpointState:
         return endpoints
 
 
+class BackendInfo(BaseModel):
+    # TODO(architkulkarni): Add type hint for worker_class after upgrading
+    # cloudpickle and adding types to RayServeWrappedReplica
+    worker_class: Any
+    backend_config: BackendConfig
+    replica_config: ReplicaConfig
+
+    class Config:
+        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
+        # model
+        arbitrary_types_allowed = True
+
+
 class BackendState:
     def __init__(self, checkpoint: bytes = None):
         self.backends: Dict[BackendTag, BackendInfo] = dict()
@@ -155,7 +223,6 @@ class ActorStateReconciler:
     controller_name: str = field(init=True)
     detached: bool = field(init=True)
 
-    http_proxy_cache: Dict[NodeId, ActorHandle] = field(default_factory=dict)
     backend_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]] = field(
         default_factory=lambda: defaultdict(dict))
     backend_replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
@@ -183,9 +250,6 @@ class ActorStateReconciler:
         self.currently_starting_replicas = {}
 
     # TODO(edoakes): consider removing this and just using the names.
-
-    def http_proxy_handles(self) -> List[ActorHandle]:
-        return list(self.http_proxy_cache.values())
 
     def get_replica_handles(self) -> List[ActorHandle]:
         return list(
@@ -389,70 +453,7 @@ class ActorStateReconciler:
 
             asyncio.sleep(1)
 
-    def _start_http_proxies_if_needed(self, http_host: str, http_port: str,
-                                      http_middlewares: List[Any]) -> None:
-        """Start an HTTP proxy on every node if it doesn't already exist."""
-        if http_host is None:
-            return
-
-        for node_id, node_resource in get_all_node_ids():
-            if node_id in self.http_proxy_cache:
-                continue
-
-            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
-                                     node_id)
-            try:
-                proxy = ray.get_actor(name)
-            except ValueError:
-                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
-                            "listening on '{}:{}'".format(
-                                name, node_id, http_host, http_port))
-                proxy = HTTPProxyActor.options(
-                    name=name,
-                    lifetime="detached" if self.detached else None,
-                    max_concurrency=ASYNC_CONCURRENCY,
-                    max_restarts=-1,
-                    max_task_retries=-1,
-                    resources={
-                        node_resource: 0.01
-                    },
-                ).remote(
-                    http_host,
-                    http_port,
-                    controller_name=self.controller_name,
-                    http_middlewares=http_middlewares)
-
-            self.http_proxy_cache[node_id] = proxy
-
-    def _stop_http_proxies_if_needed(self) -> bool:
-        """Removes HTTP proxy actors from any nodes that no longer exist.
-
-        Returns whether or not any actors were removed (a checkpoint should
-        be taken).
-        """
-        actor_stopped = False
-        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
-        to_stop = []
-        for node_id in self.http_proxy_cache:
-            if node_id not in all_node_ids:
-                logger.info("Removing HTTP proxy on removed node '{}'.".format(
-                    node_id))
-                to_stop.append(node_id)
-
-        for node_id in to_stop:
-            proxy = self.http_proxy_cache.pop(node_id)
-            ray.kill(proxy, no_restart=True)
-            actor_stopped = True
-
-        return actor_stopped
-
     def _recover_actor_handles(self) -> None:
-        # Refresh the RouterCache
-        for node_id in self.http_proxy_cache.keys():
-            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
-                                     node_id)
-            self.http_proxy_cache[node_id] = ray.get_actor(name)
-
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these backend_replicas are guaranteed to already exist because
         #  they would not be written to a checkpoint in self.backend_replicas
@@ -526,9 +527,7 @@ class ServeController:
 
     async def __init__(self,
                        controller_name: str,
-                       http_host: str,
-                       http_port: str,
-                       http_middlewares: List[Any],
+                       http_config: HTTPConfig,
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
@@ -545,19 +544,13 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        self.http_host = http_host
-        self.http_port = http_port
-        self.http_middlewares = http_middlewares
-
-        # If starting the actor for the first time, starts up the other system
-        # components. If recovering, fetches their actor handles.
-        self.actor_reconciler._start_http_proxies_if_needed(
-            self.http_host, self.http_port, self.http_middlewares)
-
         # Map of awaiting results
         # TODO(ilr): Checkpoint this once this becomes asynchronous
         self.inflight_results: Dict[UUID, asyncio.Event] = dict()
         self._serializable_inflight_results: Dict[UUID, FutureResult] = dict()
+
+        # HTTP state doesn't currently require a checkpoint.
+        self.http_state = HTTPState(controller_name, detached, http_config)
 
         checkpoint_bytes = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint_bytes is None:
@@ -653,7 +646,7 @@ class ServeController:
 
     def get_http_proxies(self) -> Dict[str, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
-        return self.actor_reconciler.http_proxy_cache
+        return self.http_state.proxy_actors
 
     def _checkpoint(self) -> None:
         """Checkpoint internal state and write it to the KV store."""
@@ -662,8 +655,8 @@ class ServeController:
         start = time.time()
 
         checkpoint = pickle.dumps(
-            Checkpoint(self.endpoint_state.checkpoint(), self.backend_state,
-                       self.actor_reconciler,
+            Checkpoint(self.endpoint_state.checkpoint(),
+                       self.backend_state.checkpoint(), self.actor_reconciler,
                        self._serializable_inflight_results))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
@@ -738,12 +731,7 @@ class ServeController:
         while True:
             await self.do_autoscale()
             async with self.write_lock:
-                self.actor_reconciler._start_http_proxies_if_needed(
-                    self.http_host, self.http_port, self.http_middlewares)
-                checkpoint_required = self.actor_reconciler.\
-                    _stop_http_proxies_if_needed()
-                if checkpoint_required:
-                    self._checkpoint()
+                self.http_state.update()
 
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -1058,12 +1046,12 @@ class ServeController:
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
-        return self.http_host, self.http_port
+        return self.http_state.config
 
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for http_proxy in self.actor_reconciler.http_proxy_handles():
+            for http_proxy in self.http_state.http_proxy_handles():
                 ray.kill(http_proxy, no_restart=True)
             for replica in self.actor_reconciler.get_replica_handles():
                 ray.kill(replica, no_restart=True)
