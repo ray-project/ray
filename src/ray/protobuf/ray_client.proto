@@ -54,6 +54,7 @@ message ClientTask {
     ACTOR = 1;
     METHOD = 2;
     STATIC_METHOD = 3;
+    NAMED_ACTOR = 4;
   }
   // Which type of work this request represents.
   RemoteExecType type = 1;

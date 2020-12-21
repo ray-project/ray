@@ -144,7 +144,7 @@ class ClientActorClass(ClientStub):
         # Actually instantiate the actor
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]), self)
+        return ClientActorHandle(ClientActorRef(ref_ids[0]))
 
     def options(self, **kwargs):
         return ActorOptionWrapper(self, kwargs)
@@ -186,8 +186,7 @@ class ClientActorHandle(ClientStub):
           ray.actor.ActorHandle contained in the actor_id ref.
     """
 
-    def __init__(self, actor_ref: ClientActorRef,
-                 actor_class: ClientActorClass):
+    def __init__(self, actor_ref: ClientActorRef):
         self.actor_ref = actor_ref
 
     def __del__(self) -> None:
@@ -266,7 +265,7 @@ class ActorOptionWrapper(OptionWrapper):
     def remote(self, *args, **kwargs):
         ref_ids = ray.call_remote(self, *args, **kwargs)
         assert len(ref_ids) == 1
-        return ClientActorHandle(ClientActorRef(ref_ids[0]), self)
+        return ClientActorHandle(ClientActorRef(ref_ids[0]))
 
 
 def set_task_options(task: ray_client_pb2.ClientTask,
