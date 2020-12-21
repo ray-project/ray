@@ -138,11 +138,8 @@ void PullManager::Tick() {
     if (time >= request.next_pull_time) {
       TryPull(object_id);
       request.num_retries++;
-      // Better to fail than have unexpected overflow behavior.
-      RAY_CHECK(request.num_retries < 42) << "Pull manager has retried pull object: " << object_id
-                       << "more than 42 times. There is an exponential backoff between "
-                          "retries so this should never happen. Please file a bug report "
-        "https://github.com/ray-project/ray/issues/new.";
+      // Bound the retry time at 10 * 1024 seconds.
+      request.num_retries = std::min(num_retries + 1, 10);
     }
   }
 }
