@@ -1,45 +1,27 @@
 #!/usr/bin/env python
 
 import argparse
-import json
-import os
-import random
-
-import numpy as np
+import time
 
 import ray
-from ray.tune import Trainable, run, sample_from
+from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
-class MyTrainableClass(Trainable):
-    """Example agent whose learning curve is a random sigmoid.
+def evaluation_fn(step, width, height):
+    time.sleep(0.1)
+    return (0.1 + width * step / 100)**(-1) + height * 0.1
 
-    The dummy hyperparameters "width" and "height" determine the slope and
-    maximum reward value reached.
-    """
 
-    def setup(self, config):
-        self.timestep = 0
+def easy_objective(config):
+    # Hyperparameters
+    width, height = config["width"], config["height"]
 
-    def step(self):
-        self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
-        v *= self.config.get("height", 1)
-
-        # Here we use `episode_reward_mean`, but you can also report other
-        # objectives such as loss or accuracy.
-        return {"episode_reward_mean": v}
-
-    def save_checkpoint(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "checkpoint")
-        with open(path, "w") as f:
-            f.write(json.dumps({"timestep": self.timestep}))
-        return path
-
-    def load_checkpoint(self, checkpoint_path):
-        with open(checkpoint_path) as f:
-            self.timestep = json.loads(f.read())["timestep"]
+    for step in range(config["steps"]):
+        # Iterative training function - can be an arbitrary training procedure
+        intermediate_score = evaluation_fn(step, width, height)
+        # Feed the score back back to Tune.
+        tune.report(iterations=step, mean_loss=intermediate_score)
 
 
 if __name__ == "__main__":
@@ -48,31 +30,33 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
         "--ray-address",
-        help="Address of Ray cluster for seamless distributed execution.")
+        help="Address of Ray cluster for seamless distributed execution.",
+        required=False)
     args, _ = parser.parse_known_args()
     ray.init(address=args.ray_address)
 
-    # asynchronous hyperband early stopping, configured with
-    # `episode_reward_mean` as the
-    # objective and `training_iteration` as the time unit,
-    # which is automatically filled by Tune.
-    ahb = AsyncHyperBandScheduler(
-        time_attr="training_iteration",
-        metric="episode_reward_mean",
-        mode="max",
-        grace_period=5,
-        max_t=100)
+    # AsyncHyperBand enables aggressive early stopping of bad trials.
+    scheduler = AsyncHyperBandScheduler(grace_period=5, max_t=100)
 
-    run(MyTrainableClass,
+    # 'training_iteration' is incremented every time `trainable.step` is called
+    stopping_criteria = {"training_iteration": 1 if args.smoke_test else 9999}
+
+    analysis = tune.run(
+        easy_objective,
         name="asynchyperband_test",
-        scheduler=ahb,
-        stop={"training_iteration": 1 if args.smoke_test else 99999},
+        metric="mean_loss",
+        mode="min",
+        scheduler=scheduler,
+        stop=stopping_criteria,
         num_samples=20,
+        verbose=1,
         resources_per_trial={
             "cpu": 1,
             "gpu": 0
         },
-        config={
-            "width": sample_from(lambda spec: 10 + int(90 * random.random())),
-            "height": sample_from(lambda spec: int(100 * random.random())),
+        config={  # Hyperparameter space
+            "steps": 100,
+            "width": tune.uniform(10, 100),
+            "height": tune.uniform(0, 100),
         })
+    print("Best hyperparameters found were: ", analysis.best_config)

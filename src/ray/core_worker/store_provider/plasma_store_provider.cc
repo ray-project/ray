@@ -25,22 +25,22 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
     const std::shared_ptr<ReferenceCounter> reference_counter,
-    std::function<Status()> check_signals, bool evict_if_full,
-    std::function<void()> on_store_full,
+    std::function<Status()> check_signals, bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
       reference_counter_(reference_counter),
-      check_signals_(check_signals),
-      evict_if_full_(evict_if_full),
-      on_store_full_(on_store_full) {
+      check_signals_(check_signals) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
     get_current_call_site_ = []() { return "<no callsite callback>"; };
   }
+  object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
   RAY_CHECK_OK(store_client_.Connect(store_socket));
-  RAY_CHECK_OK(WarmupStore());
+  if (warmup) {
+    RAY_CHECK_OK(WarmupStore());
+  }
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
@@ -84,58 +84,52 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const ObjectID &object_id,
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data) {
-  int32_t retries = 0;
-  int32_t max_retries = RayConfig::instance().object_store_full_max_retries();
-  uint32_t delay = RayConfig::instance().object_store_full_initial_delay_ms();
   Status status;
-  bool should_retry = true;
-  // If we cannot retry, then always evict on the first attempt.
-  bool evict_if_full = max_retries == 0 ? true : evict_if_full_;
-  while (should_retry) {
-    should_retry = false;
-    Status plasma_status;
-    std::shared_ptr<arrow::Buffer> arrow_buffer;
+  std::shared_ptr<arrow::Buffer> arrow_buffer;
+  uint64_t retry_with_request_id = 0;
+  {
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
+    status = store_client_.Create(
+        object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
+        metadata ? metadata->Size() : 0, &retry_with_request_id, &arrow_buffer,
+        /*device_num=*/0);
+  }
+
+  while (retry_with_request_id > 0) {
+    // TODO(sang): Use exponential backoff instead.
+    std::this_thread::sleep_for(std::chrono::milliseconds(object_store_full_delay_ms_));
     {
       std::lock_guard<std::mutex> guard(store_client_mutex_);
-      plasma_status = store_client_.Create(object_id, owner_address, data_size,
-                                           metadata ? metadata->Data() : nullptr,
-                                           metadata ? metadata->Size() : 0, &arrow_buffer,
-                                           /*device_num=*/0, evict_if_full);
-      // Always try to evict after the first attempt.
-      evict_if_full = true;
+      RAY_LOG(DEBUG) << "Retrying request for object " << object_id << " with request ID "
+                     << retry_with_request_id;
+      status = store_client_.RetryCreate(object_id, retry_with_request_id,
+                                         metadata ? metadata->Data() : nullptr,
+                                         &retry_with_request_id, &arrow_buffer);
     }
-    if (plasma_status.IsObjectStoreFull()) {
-      std::ostringstream message;
-      message << "Failed to put object " << object_id << " in object store because it "
-              << "is full. Object size is " << data_size << " bytes.";
-      status = Status::ObjectStoreFull(message.str());
-      if (max_retries < 0 || retries < max_retries) {
-        RAY_LOG(ERROR) << message.str() << "\nWaiting " << delay
-                       << "ms for space to free up...";
-        if (on_store_full_) {
-          on_store_full_();
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-        delay *= 2;
-        retries += 1;
-        should_retry = true;
-      } else {
-        RAY_LOG(ERROR) << "Failed to put object " << object_id << " after "
-                       << (max_retries + 1) << " attempts. Plasma store status:\n"
-                       << MemoryUsageString() << "\n---\n"
-                       << "--- Tip: Use the `ray memory` command to list active objects "
-                          "in the cluster."
-                       << "\n---\n";
-      }
-    } else if (plasma_status.IsObjectExists()) {
-      RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
-                       << object_id << ".";
-      status = Status::OK();
-    } else {
-      RAY_RETURN_NOT_OK(plasma_status);
-      *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
-      status = Status::OK();
-    }
+  }
+
+  if (status.IsObjectStoreFull()) {
+    RAY_LOG(ERROR) << "Failed to put object " << object_id
+                   << " in object store because it "
+                   << "is full. Object size is " << data_size << " bytes.\n"
+                   << "Plasma store status:\n"
+                   << MemoryUsageString() << "\n---\n"
+                   << "--- Tip: Use the `ray memory` command to list active objects "
+                      "in the cluster."
+                   << "\n---\n";
+
+    // Replace the status with a more helpful error message.
+    std::ostringstream message;
+    message << "Failed to put object " << object_id << " in object store because it "
+            << "is full. Object size is " << data_size << " bytes.";
+    status = Status::ObjectStoreFull(message.str());
+  } else if (status.IsObjectExists()) {
+    RAY_LOG(WARNING) << "Trying to put an object that already existed in plasma: "
+                     << object_id << ".";
+    status = Status::OK();
+  } else {
+    RAY_RETURN_NOT_OK(status);
+    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
   }
   return status;
 }
@@ -232,7 +226,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception) {
+    bool *got_exception, bool release_resources) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -283,7 +277,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(release_resources));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -340,13 +334,15 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+      // SANG-TODO Implement wait
+      RAY_RETURN_NOT_OK(
+          raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
-    RAY_RETURN_NOT_OK(raylet_client_->Wait(
-        id_vector, owner_addresses, num_objects, call_timeout, /*wait_local*/ true,
-        /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(), ctx.GetCurrentTaskID(),
-        &result_pair));
+    RAY_RETURN_NOT_OK(
+        raylet_client_->Wait(id_vector, owner_addresses, num_objects, call_timeout,
+                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
+                             ctx.GetCurrentTaskID(), &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

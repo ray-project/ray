@@ -4,7 +4,6 @@ import numpy as np
 
 import ray
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.impala.vtrace_tf_policy import postprocess_trajectory
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -209,7 +208,7 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
         T = tensor.shape[0] // B
     else:
         # Important: chop the tensor into batches at known episode cut
-        # boundaries. TODO(ekl) this is kind of a hack
+        # boundaries.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
@@ -266,7 +265,6 @@ VTraceTorchPolicy = build_torch_policy(
     loss_fn=build_vtrace_loss,
     get_default_config=lambda: ray.rllib.agents.impala.impala.DEFAULT_CONFIG,
     stats_fn=stats,
-    postprocess_fn=postprocess_trajectory,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
     before_init=setup_mixins,

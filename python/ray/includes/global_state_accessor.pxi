@@ -78,11 +78,11 @@ cdef class GlobalStateAccessor:
             return c_string(object_info.get().data(), object_info.get().size())
         return None
 
-    def get_all_heartbeat(self):
-        """Get newest heartbeat of all nodes from GCS service."""
+    def get_all_resource_usage(self):
+        """Get newest resource usage of all nodes from GCS service."""
         cdef unique_ptr[c_string] result
         with nogil:
-            result = self.inner.get().GetAllHeartbeat()
+            result = self.inner.get().GetAllResourceUsage()
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
@@ -112,7 +112,7 @@ cdef class GlobalStateAccessor:
     def get_worker_table(self):
         cdef c_vector[c_string] result
         with nogil:
-            self.inner.get().GetAllWorkerInfo()
+            result = self.inner.get().GetAllWorkerInfo()
         return result
 
     def get_worker_info(self, worker_id):

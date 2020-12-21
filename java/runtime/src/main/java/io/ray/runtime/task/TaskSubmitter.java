@@ -3,6 +3,7 @@ package io.ray.runtime.task;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
@@ -52,12 +53,28 @@ public interface TaskSubmitter {
 
   /**
    * Create a placement group.
-   * @param bundles Preallocated resource list.
+   *
+   * @param name Name of the placement group.
+   * @param bundles Pre-allocated resource list.
    * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
    */
-  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+  PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy);
+
+  /**
+   * Remove a placement group by id.
+   * @param id Id of the placement group.
+   */
+  void removePlacementGroup(PlacementGroupId id);
+
+  /**
+   * Wait for the placement group to be ready within the specified time.
+   * @param id Id of placement group.
+   * @param timeoutMs Timeout in milliseconds.
+   * @return True if the placement group is created. False otherwise.
+   */
+  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs);
 
   BaseActorHandle getActor(ActorId actorId);
 

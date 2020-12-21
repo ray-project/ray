@@ -154,6 +154,10 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     with pytest.raises(ray.exceptions.RayTaskError):
         await actor.throw_error.remote().as_future()
 
+    ray.kill(actor)
+    with pytest.raises(ray.exceptions.RayActorError):
+        await actor.echo.remote(1)
+
 
 def test_asyncio_actor_async_get(ray_start_regular_shared):
     @ray.remote
@@ -192,6 +196,32 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     await signal.send.remote()
     await waiting
     await waiting
+
+
+@pytest.mark.asyncio
+async def test_asyncio_exit_actor(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/12649
+    # The test should just hang without the fix.
+
+    @ray.remote
+    class Actor:
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        async def ping(self):
+            return "pong"
+
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.options(max_task_retries=0).remote()
+    a.loop_forever.remote()
+    # Make sure exit_actor exits immediately, not once all tasks completed.
+    ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ping.remote())
 
 
 if __name__ == "__main__":

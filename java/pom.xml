@@ -134,7 +134,7 @@
             </execution>
           </executions>
           <configuration>
-            <additionalparam>-Xdoclint:none</additionalparam>
+            <doclint>none</doclint>
           </configuration>
         </plugin>
 

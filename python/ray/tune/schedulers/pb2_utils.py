@@ -1,16 +1,11 @@
 import numpy as np
 from scipy.optimize import minimize
 
-from ray.tune.schedulers.pb2 import is_gpy_available, is_sklearn_available
-
-if is_gpy_available():
-    import GPy
-    from GPy.kern import Kern
-    from GPy.core import Param
-
-if is_sklearn_available():
-    from sklearn.metrics import pairwise_distances
-    from sklearn.metrics.pairwise import euclidean_distances
+import GPy
+from GPy.kern import Kern
+from GPy.core import Param
+from sklearn.metrics import pairwise_distances
+from sklearn.metrics.pairwise import euclidean_distances
 
 
 class TV_SquaredExp(Kern):

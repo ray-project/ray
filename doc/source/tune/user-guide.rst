@@ -87,6 +87,8 @@ See :ref:`limiter` for more details.
 Distributed Tuning
 ~~~~~~~~~~~~~~~~~~
 
+.. tip:: This section covers how to run Tune across multiple machines. See :ref:`Distributed Training <tune-dist-training>` for guidance in tuning distributed training jobs.
+
 To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :ref:`start-ray-cli` for more information about ``ray.init``:
 
 .. code-block:: python
@@ -96,6 +98,28 @@ To attach to a Ray cluster, simply run ``ray.init`` before ``tune.run``. See :re
     tune.run(trainable, num_samples=100, resources_per_trial={"cpu": 2, "gpu": 1})
 
 Read more in the Tune :ref:`distributed experiments guide <tune-distributed>`.
+
+.. _tune-dist-training:
+
+Tune Distributed Training
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To tune distributed training jobs, Tune provides a set of ``DistributedTrainableCreator`` for different training frameworks.
+Below is an example for tuning distributed TensorFlow jobs:
+
+.. code-block:: python
+
+    # Please refer to full example in tf_distributed_keras_example.py
+    from ray.tune.integration.tensorflow import DistributedTrainableCreator
+    tf_trainable = DistributedTrainableCreator(
+        train_mnist,
+        use_gpu=args.use_gpu,
+        num_workers=2)
+    tune.run(tf_trainable,
+             num_samples=1)
+
+Read more about tuning :ref:`distributed PyTorch <tune-ddp-doc>`, :ref:`TensorFlow <tune-dist-tf-doc>` and :ref:`Horovod <tune-integration-horovod>` jobs.
+
 
 .. _tune-default-search-space:
 
@@ -281,7 +305,9 @@ and passed to your trainable as a parameter.
 Stopping Trials
 ---------------
 
-You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
+You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``.
+This argument takes, a dictionary, a function, or a :class:`Stopper <ray.tune.stopper.Stopper>` class
+as an argument.
 
 If a dictionary is passed in, the keys may be any field in the return result of ``tune.report`` in the Function API or ``step()`` (including the results from ``step`` and auto-filled metrics).
 
@@ -305,7 +331,7 @@ For more flexibility, you can pass in a function instead. If a function is passe
 
     tune.run(my_trainable, stop=stopper)
 
-Finally, you can implement the ``Stopper`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
+Finally, you can implement the :class:`Stopper <ray.tune.stopper.Stopper>` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
@@ -328,7 +354,9 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
     tune.run(my_trainable, stop=stopper)
 
 
-Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete. See the :ref:`tune-stop-ref` documentation.
+Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
+
+Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 .. _tune-logging:
 
@@ -635,9 +663,18 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_CLUSTER_SSH_KEY**: SSH key used by the Tune driver process to connect
   to remote cluster machines for checkpoint syncing. If this is not set,
   ``~/ray_bootstrap_key.pem`` will be used.
+* **TUNE_DISABLE_AUTO_CALLBACK_LOGGERS**: Ray Tune automatically adds a CSV and
+  JSON logger callback if they haven't been passed. Setting this variable to
+  `1` disables this automatic creation. Please note that this will most likely
+  affect analyzing your results after the tuning run.
+* **TUNE_DISABLE_AUTO_CALLBACK_SYNCER**: Ray Tune automatically adds a
+  Syncer callback to sync logs and checkpoints between different nodes if none
+  has been passed. Setting this variable to `1` disables this automatic creation.
+  Please note that this will most likely affect advanced scheduling algorithms
+  like PopulationBasedTraining.
 * **TUNE_DISABLE_AUTO_INIT**: Disable automatically calling ``ray.init()`` if
   not attached to a Ray session.
-* **TUNE_DISABLE_DATED_SUBDIR**: Tune automatically adds a date string to experiment
+* **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
@@ -653,6 +690,9 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
+* **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
+* **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 
 
 There are some environment variables that are mostly relevant for integrated libraries:

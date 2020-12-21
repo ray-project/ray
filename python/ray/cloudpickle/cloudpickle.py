@@ -42,29 +42,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 from __future__ import print_function
 
-import abc
 import builtins
 import dis
-import io
-import itertools
-import logging
 import opcode
-import operator
-import pickle
 import platform
-import struct
 import sys
 import types
 import weakref
 import uuid
 import threading
 import typing
-from enum import Enum
+import warnings
 
+from .compat import pickle
 from typing import Generic, Union, Tuple, Callable
-from pickle import _Pickler as Pickler
 from pickle import _getattribute
-from io import BytesIO
 from importlib._bootstrap import _find_spec
 
 try:  # pragma: no branch
@@ -77,6 +69,17 @@ if sys.version_info >= (3, 5, 3):
     from typing import ClassVar
 else:  # pragma: no cover
     ClassVar = None
+
+if sys.version_info >= (3, 8):
+    from types import CellType
+else:
+    def f():
+        a = 1
+
+        def g():
+            return a
+        return g
+    CellType = type(f().__closure__[0])
 
 
 # cloudpickle is meant for inter process communication: we expect all
@@ -163,9 +166,24 @@ def _whichmodule(obj, name):
     return None
 
 
-def _is_importable_by_name(obj, name=None):
-    """Determine if obj can be pickled as attribute of a file-backed module"""
-    return _lookup_module_and_qualname(obj, name=name) is not None
+def _is_importable(obj, name=None):
+    """Dispatcher utility to test the importability of various constructs."""
+    if isinstance(obj, types.FunctionType):
+        return _lookup_module_and_qualname(obj, name=name) is not None
+    elif issubclass(type(obj), type):
+        return _lookup_module_and_qualname(obj, name=name) is not None
+    elif isinstance(obj, types.ModuleType):
+        # We assume that sys.modules is primarily used as a cache mechanism for
+        # the Python import machinery. Checking if a module has been added in
+        # is sys.modules therefore a cheap and simple heuristic to tell us whether
+        # we can assume  that a given module could be imported by name in
+        # another Python process.
+        return obj.__name__ in sys.modules
+    else:
+        raise TypeError(
+            "cannot check importability of {} instances".format(
+                type(obj).__name__)
+        )
 
 
 def _lookup_module_and_qualname(obj, name=None):
@@ -187,6 +205,8 @@ def _lookup_module_and_qualname(obj, name=None):
     if module_name == "__main__":
         return None
 
+    # Note: if module_name is in sys.modules, the corresponding module is
+    # assumed importable at unpickling time. See #357
     module = sys.modules.get(module_name, None)
     if module is None:
         # The main reason why obj's module would not be imported is that this
@@ -194,10 +214,6 @@ def _lookup_module_and_qualname(obj, name=None):
         # types.ModuleType. The other possibility is that module was removed
         # from sys.modules after obj was created/imported. But this case is not
         # supported, as the standard pickle does not support it either.
-        return None
-
-    # module has been added to sys.modules, but it can still be dynamic.
-    if _is_dynamic(module):
         return None
 
     try:
@@ -458,577 +474,61 @@ if sys.version_info[:2] < (3, 7):  # pragma: no branch
 
     def _create_parametrized_type_hint(origin, args):
         return origin[args]
+else:
+    _is_parametrized_type_hint = None
+    _create_parametrized_type_hint = None
 
 
-class CloudPickler(Pickler):
+def parametrized_type_hint_getinitargs(obj):
+    # The distorted type check sematic for typing construct becomes:
+    # ``type(obj) is type(TypeHint)``, which means "obj is a
+    # parametrized TypeHint"
+    if type(obj) is type(Literal):  # pragma: no branch
+        initargs = (Literal, obj.__values__)
+    elif type(obj) is type(Final):  # pragma: no branch
+        initargs = (Final, obj.__type__)
+    elif type(obj) is type(ClassVar):
+        initargs = (ClassVar, obj.__type__)
+    elif type(obj) is type(Generic):
+        parameters = obj.__parameters__
+        if len(obj.__parameters__) > 0:
+            # in early Python 3.5, __parameters__ was sometimes
+            # preferred to __args__
+            initargs = (obj.__origin__, parameters)
 
-    dispatch = Pickler.dispatch.copy()
-
-    def __init__(self, file, protocol=None):
-        if protocol is None:
-            protocol = DEFAULT_PROTOCOL
-        Pickler.__init__(self, file, protocol=protocol)
-        # map ids to dictionary. used to ensure that functions can share global env
-        self.globals_ref = {}
-
-    def dump(self, obj):
-        self.inject_addons()
-        try:
-            return Pickler.dump(self, obj)
-        except RuntimeError as e:
-            if 'recursion' in e.args[0]:
-                msg = """Could not pickle object as excessively deep recursion required."""
-                raise pickle.PicklingError(msg)
+        else:
+            initargs = (obj.__origin__, obj.__args__)
+    elif type(obj) is type(Union):
+        if sys.version_info < (3, 5, 3):  # pragma: no cover
+            initargs = (Union, obj.__union_params__)
+        else:
+            initargs = (Union, obj.__args__)
+    elif type(obj) is type(Tuple):
+        if sys.version_info < (3, 5, 3):  # pragma: no cover
+            initargs = (Tuple, obj.__tuple_params__)
+        else:
+            initargs = (Tuple, obj.__args__)
+    elif type(obj) is type(Callable):
+        if sys.version_info < (3, 5, 3):  # pragma: no cover
+            args = obj.__args__
+            result = obj.__result__
+            if args != Ellipsis:
+                if isinstance(args, tuple):
+                    args = list(args)
+                else:
+                    args = [args]
+        else:
+            (*args, result) = obj.__args__
+            if len(args) == 1 and args[0] is Ellipsis:
+                args = Ellipsis
             else:
-                raise
-
-    def save_typevar(self, obj):
-        self.save_reduce(*_typevar_reduce(obj), obj=obj)
-
-    dispatch[typing.TypeVar] = save_typevar
-
-    def save_memoryview(self, obj):
-        self.save(obj.tobytes())
-
-    dispatch[memoryview] = save_memoryview
-
-    def save_module(self, obj):
-        """
-        Save a module as an import
-        """
-        if _is_dynamic(obj):
-            obj.__dict__.pop('__builtins__', None)
-            self.save_reduce(dynamic_subimport, (obj.__name__, vars(obj)),
-                             obj=obj)
-        else:
-            self.save_reduce(subimport, (obj.__name__,), obj=obj)
-
-    dispatch[types.ModuleType] = save_module
-
-    def save_codeobject(self, obj):
-        """
-        Save a code object
-        """
-        if hasattr(obj, "co_posonlyargcount"):  # pragma: no branch
-            args = (
-                obj.co_argcount, obj.co_posonlyargcount,
-                obj.co_kwonlyargcount, obj.co_nlocals, obj.co_stacksize,
-                obj.co_flags, obj.co_code, obj.co_consts, obj.co_names,
-                obj.co_varnames, obj.co_filename, obj.co_name,
-                obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
-                obj.co_cellvars
-            )
-        else:
-            args = (
-                obj.co_argcount, obj.co_kwonlyargcount, obj.co_nlocals,
-                obj.co_stacksize, obj.co_flags, obj.co_code, obj.co_consts,
-                obj.co_names, obj.co_varnames, obj.co_filename,
-                obj.co_name, obj.co_firstlineno, obj.co_lnotab,
-                obj.co_freevars, obj.co_cellvars
-            )
-        self.save_reduce(types.CodeType, args, obj=obj)
-
-    dispatch[types.CodeType] = save_codeobject
-
-    def save_function(self, obj, name=None):
-        """ Registered with the dispatch to handle all function types.
-
-        Determines what kind of function obj is (e.g. lambda, defined at
-        interactive prompt, etc) and handles the pickling appropriately.
-        """
-        if _is_importable_by_name(obj, name=name):
-            return Pickler.save_global(self, obj, name=name)
-        elif PYPY and isinstance(obj.__code__, builtin_code_type):
-            return self.save_pypy_builtin_func(obj)
-        else:
-            return self.save_function_tuple(obj)
-
-    dispatch[types.FunctionType] = save_function
-
-    def save_pypy_builtin_func(self, obj):
-        """Save pypy equivalent of builtin functions.
-
-        PyPy does not have the concept of builtin-functions. Instead,
-        builtin-functions are simple function instances, but with a
-        builtin-code attribute.
-        Most of the time, builtin functions should be pickled by attribute. But
-        PyPy has flaky support for __qualname__, so some builtin functions such
-        as float.__new__ will be classified as dynamic. For this reason only,
-        we created this special routine. Because builtin-functions are not
-        expected to have closure or globals, there is no additional hack
-        (compared the one already implemented in pickle) to protect ourselves
-        from reference cycles. A simple (reconstructor, newargs, obj.__dict__)
-        tuple is save_reduced.
-
-        Note also that PyPy improved their support for __qualname__ in v3.6, so
-        this routing should be removed when cloudpickle supports only PyPy 3.6
-        and later.
-        """
-        rv = (types.FunctionType, (obj.__code__, {}, obj.__name__,
-                                   obj.__defaults__, obj.__closure__),
-              obj.__dict__)
-        self.save_reduce(*rv, obj=obj)
-
-    def _save_dynamic_enum(self, obj, clsdict):
-        """Special handling for dynamic Enum subclasses
-
-        Use a dedicated Enum constructor (inspired by EnumMeta.__call__) as the
-        EnumMeta metaclass has complex initialization that makes the Enum
-        subclasses hold references to their own instances.
-        """
-        members = dict((e.name, e.value) for e in obj)
-
-        self.save_reduce(
-                _make_skeleton_enum,
-                (obj.__bases__, obj.__name__, obj.__qualname__,
-                 members, obj.__module__, _get_or_create_tracker_id(obj), None),
-                obj=obj
-         )
-
-        # Cleanup the clsdict that will be passed to _rehydrate_skeleton_class:
-        # Those attributes are already handled by the metaclass.
-        for attrname in ["_generate_next_value_", "_member_names_",
-                         "_member_map_", "_member_type_",
-                         "_value2member_map_"]:
-            clsdict.pop(attrname, None)
-        for member in members:
-            clsdict.pop(member)
-
-    def save_dynamic_class(self, obj):
-        """Save a class that can't be stored as module global.
-
-        This method is used to serialize classes that are defined inside
-        functions, or that otherwise can't be serialized as attribute lookups
-        from global modules.
-        """
-        clsdict = _extract_class_dict(obj)
-        clsdict.pop('__weakref__', None)
-
-        if issubclass(type(obj), abc.ABCMeta):
-            # If obj is an instance of an ABCMeta subclass, dont pickle the
-            # cache/negative caches populated during isinstance/issubclass
-            # checks, but pickle the list of registered subclasses of obj.
-            clsdict.pop('_abc_cache', None)
-            clsdict.pop('_abc_negative_cache', None)
-            clsdict.pop('_abc_negative_cache_version', None)
-            registry = clsdict.pop('_abc_registry', None)
-            if registry is None:
-                # in Python3.7+, the abc caches and registered subclasses of a
-                # class are bundled into the single _abc_impl attribute
-                clsdict.pop('_abc_impl', None)
-                (registry, _, _, _) = abc._get_dump(obj)
-
-                clsdict["_abc_impl"] = [subclass_weakref()
-                                        for subclass_weakref in registry]
-            else:
-                # In the above if clause, registry is a set of weakrefs -- in
-                # this case, registry is a WeakSet
-                clsdict["_abc_impl"] = [type_ for type_ in registry]
-
-        # On PyPy, __doc__ is a readonly attribute, so we need to include it in
-        # the initial skeleton class.  This is safe because we know that the
-        # doc can't participate in a cycle with the original class.
-        type_kwargs = {'__doc__': clsdict.pop('__doc__', None)}
-
-        if "__slots__" in clsdict:
-            type_kwargs['__slots__'] = obj.__slots__
-            # pickle string length optimization: member descriptors of obj are
-            # created automatically from obj's __slots__ attribute, no need to
-            # save them in obj's state
-            if isinstance(obj.__slots__, str):
-                clsdict.pop(obj.__slots__)
-            else:
-                for k in obj.__slots__:
-                    clsdict.pop(k, None)
-
-        # If type overrides __dict__ as a property, include it in the type
-        # kwargs. In Python 2, we can't set this attribute after construction.
-        # XXX: can this ever happen in Python 3? If so add a test.
-        __dict__ = clsdict.pop('__dict__', None)
-        if isinstance(__dict__, property):
-            type_kwargs['__dict__'] = __dict__
-
-        save = self.save
-        write = self.write
-
-        # We write pickle instructions explicitly here to handle the
-        # possibility that the type object participates in a cycle with its own
-        # __dict__. We first write an empty "skeleton" version of the class and
-        # memoize it before writing the class' __dict__ itself. We then write
-        # instructions to "rehydrate" the skeleton class by restoring the
-        # attributes from the __dict__.
-        #
-        # A type can appear in a cycle with its __dict__ if an instance of the
-        # type appears in the type's __dict__ (which happens for the stdlib
-        # Enum class), or if the type defines methods that close over the name
-        # of the type, (which is common for Python 2-style super() calls).
-
-        # Push the rehydration function.
-        save(_rehydrate_skeleton_class)
-
-        # Mark the start of the args tuple for the rehydration function.
-        write(pickle.MARK)
-
-        # Create and memoize an skeleton class with obj's name and bases.
-        if Enum is not None and issubclass(obj, Enum):
-            # Special handling of Enum subclasses
-            self._save_dynamic_enum(obj, clsdict)
-        else:
-            # "Regular" class definition:
-            tp = type(obj)
-            self.save_reduce(_make_skeleton_class,
-                             (tp, obj.__name__, _get_bases(obj), type_kwargs,
-                              _get_or_create_tracker_id(obj), None),
-                             obj=obj)
-
-        # Now save the rest of obj's __dict__. Any references to obj
-        # encountered while saving will point to the skeleton class.
-        save(clsdict)
-
-        # Write a tuple of (skeleton_class, clsdict).
-        write(pickle.TUPLE)
-
-        # Call _rehydrate_skeleton_class(skeleton_class, clsdict)
-        write(pickle.REDUCE)
-
-    def save_function_tuple(self, func):
-        """  Pickles an actual func object.
-
-        A func comprises: code, globals, defaults, closure, and dict.  We
-        extract and save these, injecting reducing functions at certain points
-        to recreate the func object.  Keep in mind that some of these pieces
-        can contain a ref to the func itself.  Thus, a naive save on these
-        pieces could trigger an infinite loop of save's.  To get around that,
-        we first create a skeleton func object using just the code (this is
-        safe, since this won't contain a ref to the func), and memoize it as
-        soon as it's created.  The other stuff can then be filled in later.
-        """
-        if is_tornado_coroutine(func):
-            self.save_reduce(_rebuild_tornado_coroutine, (func.__wrapped__,),
-                             obj=func)
-            return
-
-        save = self.save
-        write = self.write
-
-        code, f_globals, defaults, closure_values, dct, base_globals = self.extract_func_data(func)
-
-        save(_fill_function)  # skeleton function updater
-        write(pickle.MARK)    # beginning of tuple that _fill_function expects
-
-        # Extract currently-imported submodules used by func. Storing these
-        # modules in a smoke _cloudpickle_subimports attribute of the object's
-        # state will trigger the side effect of importing these modules at
-        # unpickling time (which is necessary for func to work correctly once
-        # depickled)
-        submodules = _find_imported_submodules(
-            code,
-            itertools.chain(f_globals.values(), closure_values or ()),
+                args = list(args)
+        initargs = (Callable, (args, result))
+    else:  # pragma: no cover
+        raise pickle.PicklingError(
+            "Cloudpickle Error: Unknown type {}".format(type(obj))
         )
-
-        # create a skeleton function object and memoize it
-        save(_make_skel_func)
-        save((
-            code,
-            len(closure_values) if closure_values is not None else -1,
-            base_globals,
-        ))
-        write(pickle.REDUCE)
-        self.memoize(func)
-
-        # save the rest of the func data needed by _fill_function
-        state = {
-            'globals': f_globals,
-            'defaults': defaults,
-            'dict': dct,
-            'closure_values': closure_values,
-            'module': func.__module__,
-            'name': func.__name__,
-            'doc': func.__doc__,
-            '_cloudpickle_submodules': submodules
-        }
-        if hasattr(func, '__annotations__'):
-            state['annotations'] = func.__annotations__
-        if hasattr(func, '__qualname__'):
-            state['qualname'] = func.__qualname__
-        if hasattr(func, '__kwdefaults__'):
-            state['kwdefaults'] = func.__kwdefaults__
-        save(state)
-        write(pickle.TUPLE)
-        write(pickle.REDUCE)  # applies _fill_function on the tuple
-
-    def extract_func_data(self, func):
-        """
-        Turn the function into a tuple of data necessary to recreate it:
-            code, globals, defaults, closure_values, dict
-        """
-        code = func.__code__
-
-        # extract all global ref's
-        func_global_refs = _extract_code_globals(code)
-
-        # process all variables referenced by global environment
-        f_globals = {}
-        for var in func_global_refs:
-            if var in func.__globals__:
-                f_globals[var] = func.__globals__[var]
-
-        # defaults requires no processing
-        defaults = func.__defaults__
-
-        # process closure
-        closure = (
-            list(map(_get_cell_contents, func.__closure__))
-            if func.__closure__ is not None
-            else None
-        )
-
-        # save the dict
-        dct = func.__dict__
-
-        # base_globals represents the future global namespace of func at
-        # unpickling time. Looking it up and storing it in globals_ref allow
-        # functions sharing the same globals at pickling time to also
-        # share them once unpickled, at one condition: since globals_ref is
-        # an attribute of a Cloudpickler instance, and that a new CloudPickler is
-        # created each time pickle.dump or pickle.dumps is called, functions
-        # also need to be saved within the same invokation of
-        # cloudpickle.dump/cloudpickle.dumps (for example: cloudpickle.dumps([f1, f2])). There
-        # is no such limitation when using Cloudpickler.dump, as long as the
-        # multiple invokations are bound to the same Cloudpickler.
-        base_globals = self.globals_ref.setdefault(id(func.__globals__), {})
-
-        if base_globals == {}:
-            # Add module attributes used to resolve relative imports
-            # instructions inside func.
-            for k in ["__package__", "__name__", "__path__", "__file__"]:
-                # Some built-in functions/methods such as object.__new__  have
-                # their __globals__ set to None in PyPy
-                if func.__globals__ is not None and k in func.__globals__:
-                    base_globals[k] = func.__globals__[k]
-
-        return (code, f_globals, defaults, closure, dct, base_globals)
-
-    def save_getset_descriptor(self, obj):
-        return self.save_reduce(getattr, (obj.__objclass__, obj.__name__))
-
-    dispatch[types.GetSetDescriptorType] = save_getset_descriptor
-
-    def save_global(self, obj, name=None, pack=struct.pack):
-        """
-        Save a "global".
-
-        The name of this method is somewhat misleading: all types get
-        dispatched here.
-        """
-        if obj is type(None):
-            return self.save_reduce(type, (None,), obj=obj)
-        elif obj is type(Ellipsis):
-            return self.save_reduce(type, (Ellipsis,), obj=obj)
-        elif obj is type(NotImplemented):
-            return self.save_reduce(type, (NotImplemented,), obj=obj)
-        elif obj in _BUILTIN_TYPE_NAMES:
-            return self.save_reduce(
-                _builtin_type, (_BUILTIN_TYPE_NAMES[obj],), obj=obj)
-
-        if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
-            # Parametrized typing constructs in Python < 3.7 are not compatible
-            # with type checks and ``isinstance`` semantics. For this reason,
-            # it is easier to detect them using a duck-typing-based check
-            # (``_is_parametrized_type_hint``) than to populate the Pickler's
-            # dispatch with type-specific savers.
-            self._save_parametrized_type_hint(obj)
-        elif name is not None:
-            Pickler.save_global(self, obj, name=name)
-        elif not _is_importable_by_name(obj, name=name):
-            self.save_dynamic_class(obj)
-        else:
-            Pickler.save_global(self, obj, name=name)
-
-    dispatch[type] = save_global
-
-    def save_instancemethod(self, obj):
-        # Memoization rarely is ever useful due to python bounding
-        if obj.__self__ is None:
-            self.save_reduce(getattr, (obj.im_class, obj.__name__))
-        else:
-            self.save_reduce(types.MethodType, (obj.__func__, obj.__self__), obj=obj)
-
-    dispatch[types.MethodType] = save_instancemethod
-
-    def save_property(self, obj):
-        # properties not correctly saved in python
-        self.save_reduce(property, (obj.fget, obj.fset, obj.fdel, obj.__doc__),
-                         obj=obj)
-
-    dispatch[property] = save_property
-
-    def save_classmethod(self, obj):
-        orig_func = obj.__func__
-        self.save_reduce(type(obj), (orig_func,), obj=obj)
-
-    dispatch[classmethod] = save_classmethod
-    dispatch[staticmethod] = save_classmethod
-
-    def save_itemgetter(self, obj):
-        """itemgetter serializer (needed for namedtuple support)"""
-        class Dummy:
-            def __getitem__(self, item):
-                return item
-        items = obj(Dummy())
-        if not isinstance(items, tuple):
-            items = (items,)
-        return self.save_reduce(operator.itemgetter, items)
-
-    if type(operator.itemgetter) is type:
-        dispatch[operator.itemgetter] = save_itemgetter
-
-    def save_attrgetter(self, obj):
-        """attrgetter serializer"""
-        class Dummy(object):
-            def __init__(self, attrs, index=None):
-                self.attrs = attrs
-                self.index = index
-            def __getattribute__(self, item):
-                attrs = object.__getattribute__(self, "attrs")
-                index = object.__getattribute__(self, "index")
-                if index is None:
-                    index = len(attrs)
-                    attrs.append(item)
-                else:
-                    attrs[index] = ".".join([attrs[index], item])
-                return type(self)(attrs, index)
-        attrs = []
-        obj(Dummy(attrs))
-        return self.save_reduce(operator.attrgetter, tuple(attrs))
-
-    if type(operator.attrgetter) is type:
-        dispatch[operator.attrgetter] = save_attrgetter
-
-    def save_file(self, obj):
-        """Save a file"""
-
-        if not hasattr(obj, 'name') or not hasattr(obj, 'mode'):
-            raise pickle.PicklingError("Cannot pickle files that do not map to an actual file")
-        if obj is sys.stdout:
-            return self.save_reduce(getattr, (sys, 'stdout'), obj=obj)
-        if obj is sys.stderr:
-            return self.save_reduce(getattr, (sys, 'stderr'), obj=obj)
-        if obj is sys.stdin:
-            raise pickle.PicklingError("Cannot pickle standard input")
-        if obj.closed:
-            raise pickle.PicklingError("Cannot pickle closed files")
-        if hasattr(obj, 'isatty') and obj.isatty():
-            raise pickle.PicklingError("Cannot pickle files that map to tty objects")
-        if 'r' not in obj.mode and '+' not in obj.mode:
-            raise pickle.PicklingError("Cannot pickle files that are not opened for reading: %s" % obj.mode)
-
-        name = obj.name
-
-        # TODO: also support binary mode files with io.BytesIO
-        retval = io.StringIO()
-
-        try:
-            # Read the whole file
-            curloc = obj.tell()
-            obj.seek(0)
-            contents = obj.read()
-            obj.seek(curloc)
-        except IOError:
-            raise pickle.PicklingError("Cannot pickle file %s as it cannot be read" % name)
-        retval.write(contents)
-        retval.seek(curloc)
-
-        retval.name = name
-        self.save(retval)
-        self.memoize(obj)
-
-    def save_ellipsis(self, obj):
-        self.save_reduce(_gen_ellipsis, ())
-
-    def save_not_implemented(self, obj):
-        self.save_reduce(_gen_not_implemented, ())
-
-    dispatch[io.TextIOWrapper] = save_file
-    dispatch[type(Ellipsis)] = save_ellipsis
-    dispatch[type(NotImplemented)] = save_not_implemented
-
-    def save_weakset(self, obj):
-        self.save_reduce(weakref.WeakSet, (list(obj),))
-
-    dispatch[weakref.WeakSet] = save_weakset
-
-    def save_logger(self, obj):
-        self.save_reduce(logging.getLogger, (obj.name,), obj=obj)
-
-    dispatch[logging.Logger] = save_logger
-
-    def save_root_logger(self, obj):
-        self.save_reduce(logging.getLogger, (), obj=obj)
-
-    dispatch[logging.RootLogger] = save_root_logger
-
-    if hasattr(types, "MappingProxyType"):  # pragma: no branch
-        def save_mappingproxy(self, obj):
-            self.save_reduce(types.MappingProxyType, (dict(obj),), obj=obj)
-
-        dispatch[types.MappingProxyType] = save_mappingproxy
-
-    """Special functions for Add-on libraries"""
-    def inject_addons(self):
-        """Plug in system. Register additional pickling functions if modules already loaded"""
-        pass
-
-    if sys.version_info < (3, 7):  # pragma: no branch
-        def _save_parametrized_type_hint(self, obj):
-            # The distorted type check sematic for typing construct becomes:
-            # ``type(obj) is type(TypeHint)``, which means "obj is a
-            # parametrized TypeHint"
-            if type(obj) is type(Literal):  # pragma: no branch
-                initargs = (Literal, obj.__values__)
-            elif type(obj) is type(Final):  # pragma: no branch
-                initargs = (Final, obj.__type__)
-            elif type(obj) is type(ClassVar):
-                initargs = (ClassVar, obj.__type__)
-            elif type(obj) is type(Generic):
-                parameters = obj.__parameters__
-                if len(obj.__parameters__) > 0:
-                    # in early Python 3.5, __parameters__ was sometimes
-                    # preferred to __args__
-                    initargs = (obj.__origin__, parameters)
-                else:
-                    initargs = (obj.__origin__, obj.__args__)
-            elif type(obj) is type(Union):
-                if sys.version_info < (3, 5, 3):  # pragma: no cover
-                    initargs = (Union, obj.__union_params__)
-                else:
-                    initargs = (Union, obj.__args__)
-            elif type(obj) is type(Tuple):
-                if sys.version_info < (3, 5, 3):  # pragma: no cover
-                    initargs = (Tuple, obj.__tuple_params__)
-                else:
-                    initargs = (Tuple, obj.__args__)
-            elif type(obj) is type(Callable):
-                if sys.version_info < (3, 5, 3):  # pragma: no cover
-                    args = obj.__args__
-                    result = obj.__result__
-                    if args != Ellipsis:
-                        if isinstance(args, tuple):
-                            args = list(args)
-                        else:
-                            args = [args]
-                else:
-                    (*args, result) = obj.__args__
-                    if len(args) == 1 and args[0] is Ellipsis:
-                        args = Ellipsis
-                    else:
-                        args = list(args)
-                initargs = (Callable, (args, result))
-            else:  # pragma: no cover
-                raise pickle.PicklingError(
-                    "Cloudpickle Error: Unknown type {}".format(type(obj))
-                )
-            self.save_reduce(_create_parametrized_type_hint, initargs, obj=obj)
+    return initargs
 
 
 # Tornado support
@@ -1050,40 +550,6 @@ def is_tornado_coroutine(func):
 def _rebuild_tornado_coroutine(func):
     from tornado import gen
     return gen.coroutine(func)
-
-
-# Shorthands for legacy support
-
-def dump(obj, file, protocol=None):
-    """Serialize obj as bytes streamed into file
-
-    protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
-    pickle.HIGHEST_PROTOCOL. This setting favors maximum communication speed
-    between processes running the same Python version.
-
-    Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
-    compatibility with older versions of Python.
-    """
-    CloudPickler(file, protocol=protocol).dump(obj)
-
-
-def dumps(obj, protocol=None):
-    """Serialize obj as a string of bytes allocated in memory
-
-    protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
-    pickle.HIGHEST_PROTOCOL. This setting favors maximum communication speed
-    between processes running the same Python version.
-
-    Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
-    compatibility with older versions of Python.
-    """
-    file = BytesIO()
-    try:
-        cp = CloudPickler(file, protocol=protocol)
-        cp.dump(obj)
-        return file.getvalue()
-    finally:
-        file.close()
 
 
 # including pickles unloading functions in this namespace
@@ -1184,7 +650,7 @@ def _fill_function(*args):
     if 'annotations' in state:
         func.__annotations__ = state['annotations']
     if 'doc' in state:
-        func.__doc__  = state['doc']
+        func.__doc__ = state['doc']
     if 'name' in state:
         func.__name__ = state['name']
     if 'module' in state:
@@ -1219,11 +685,24 @@ def _make_empty_cell():
     return (lambda: cell).__closure__[0]
 
 
+def _make_cell(value=_empty_cell_value):
+    cell = _make_empty_cell()
+    if value is not _empty_cell_value:
+        cell_set(cell, value)
+    return cell
+
+
 def _make_skel_func(code, cell_count, base_globals=None):
     """ Creates a skeleton function object that contains just the provided
         code and the correct number of cells in func_closure.  All other
         func attributes (e.g. func_globals) are empty.
     """
+    # This function is deprecated and should be removed in cloudpickle 1.7
+    warnings.warn(
+        "A pickle file created using an old (<=1.4.1) version of cloudpicke "
+        "is currently being loaded. This is not supported by cloudpickle and "
+        "will break in cloudpickle 1.7", category=UserWarning
+    )
     # This is backward-compatibility code: for cloudpickle versions between
     # 0.5.4 and 0.7, base_globals could be a string or None. base_globals
     # should now always be a dictionary.
@@ -1307,39 +786,6 @@ def _make_skeleton_enum(bases, name, qualname, members, module,
     return _lookup_class_or_track(class_tracker_id, enum_class)
 
 
-def _is_dynamic(module):
-    """
-    Return True if the module is special module that cannot be imported by its
-    name.
-    """
-    # Quick check: module that have __file__ attribute are not dynamic modules.
-    if hasattr(module, '__file__'):
-        return False
-
-    if module.__spec__ is not None:
-        return False
-
-    # In PyPy, Some built-in modules such as _codecs can have their
-    # __spec__ attribute set to None despite being imported.  For such
-    # modules, the ``_find_spec`` utility of the standard library is used.
-    parent_name = module.__name__.rpartition('.')[0]
-    if parent_name:  # pragma: no cover
-        # This code handles the case where an imported package (and not
-        # module) remains with __spec__ set to None. It is however untested
-        # as no package in the PyPy stdlib has __spec__ set to None after
-        # it is imported.
-        try:
-            parent = sys.modules[parent_name]
-        except KeyError:
-            msg = "parent {!r} not in sys.modules"
-            raise ImportError(msg.format(parent_name))
-        else:
-            pkgpath = parent.__path__
-    else:
-        pkgpath = None
-    return _find_spec(module.__name__, pkgpath, module) is None
-
-
 def _make_typevar(name, bound, constraints, covariant, contravariant,
                   class_tracker_id):
     tv = typing.TypeVar(
@@ -1382,3 +828,15 @@ def _get_bases(typ):
         # For regular class objects
         bases_attr = '__bases__'
     return getattr(typ, bases_attr)
+
+
+def _make_dict_keys(obj):
+    return dict.fromkeys(obj).keys()
+
+
+def _make_dict_values(obj):
+    return {i: _ for i, _ in enumerate(obj)}.values()
+
+
+def _make_dict_items(obj):
+    return obj.items()

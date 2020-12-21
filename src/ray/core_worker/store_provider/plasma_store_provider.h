@@ -37,8 +37,7 @@ class CoreWorkerPlasmaStoreProvider {
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
-      std::function<Status()> check_signals, bool evict_if_full,
-      std::function<void()> on_store_full = nullptr,
+      std::function<Status()> check_signals, bool warmup,
       std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
@@ -91,7 +90,7 @@ class CoreWorkerPlasmaStoreProvider {
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception);
+             bool *got_exception, bool release_resources = true);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
@@ -154,9 +153,8 @@ class CoreWorkerPlasmaStoreProvider {
   const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;
-  const bool evict_if_full_;
-  std::function<void()> on_store_full_;
   std::function<std::string()> get_current_call_site_;
+  uint32_t object_store_full_delay_ms_;
 
   // Active buffers tracker. This must be allocated as a separate structure since its
   // lifetime can exceed that of the store provider due to callback references.

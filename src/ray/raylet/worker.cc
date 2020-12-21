@@ -26,7 +26,7 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, const Language &language,
+Worker::Worker(const JobID &job_id, const WorkerID &worker_id, const Language &language,
                rpc::WorkerType worker_type, const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
@@ -37,7 +37,8 @@ Worker::Worker(const WorkerID &worker_id, const Language &language,
       assigned_port_(-1),
       port_(-1),
       connection_(connection),
-      placement_group_id_(PlacementGroupID::Nil()),
+      assigned_job_id_(job_id),
+      bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
@@ -110,21 +111,6 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignJobId(const JobID &job_id) {
-  if (!RayConfig::instance().enable_multi_tenancy()) {
-    assigned_job_id_ = job_id;
-  } else {
-    if (!assigned_job_id_.IsNil()) {
-      RAY_CHECK(assigned_job_id_ == job_id)
-          << "The worker " << worker_id_ << " is already assigned to job "
-          << assigned_job_id_ << ". It cannot be reassigned to job " << job_id;
-    } else {
-      assigned_job_id_ = job_id;
-      RAY_LOG(INFO) << "Assigned worker " << worker_id_ << " to job " << job_id;
-    }
-  }
-}
-
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
@@ -191,13 +177,9 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
       });
 }
 
-const PlacementGroupID &Worker::GetPlacementGroupId() const {
-  return placement_group_id_;
-}
+const BundleID &Worker::GetBundleId() const { return bundle_id_; }
 
-void Worker::SetPlacementGroupId(const PlacementGroupID &placement_group_id) {
-  placement_group_id_ = placement_group_id;
-}
+void Worker::SetBundleId(const BundleID &bundle_id) { bundle_id_ = bundle_id; }
 
 }  // namespace raylet
 

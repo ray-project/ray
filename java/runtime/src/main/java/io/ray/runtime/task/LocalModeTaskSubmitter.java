@@ -8,6 +8,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.api.options.ActorCreationOptions;
@@ -30,7 +31,6 @@ import io.ray.runtime.generated.Common.TaskSpec;
 import io.ray.runtime.generated.Common.TaskType;
 import io.ray.runtime.object.LocalModeObjectStore;
 import io.ray.runtime.object.NativeRayObject;
-import io.ray.runtime.placementgroup.PlacementGroupId;
 import io.ray.runtime.placementgroup.PlacementGroupImpl;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -75,6 +75,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final Map<String, ActorHandle> namedActors = new ConcurrentHashMap<>();
 
   private final Map<ActorId, TaskExecutor.ActorContext> actorContexts = new ConcurrentHashMap<>();
+
+  private final Map<PlacementGroupId, PlacementGroup> placementGroups = new ConcurrentHashMap<>();
 
   public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
                                 LocalModeObjectStore objectStore) {
@@ -171,7 +173,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (options.group != null) {
         PlacementGroupImpl group = (PlacementGroupImpl)options.group;
         Preconditions.checkArgument(options.bundleIndex >= 0
-                && options.bundleIndex < group.getBundleCount(),
+                && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
       }
     }
@@ -224,9 +226,23 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
+  public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
       PlacementStrategy strategy) {
-    return new PlacementGroupImpl(PlacementGroupId.fromRandom(), bundles.size());
+    PlacementGroupImpl placementGroup = new PlacementGroupImpl.Builder()
+        .setId(PlacementGroupId.fromRandom()).setName(name)
+        .setBundles(bundles).setStrategy(strategy).build();
+    placementGroups.put(placementGroup.getId(), placementGroup);
+    return placementGroup;
+  }
+
+  @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    placementGroups.remove(id);
+  }
+
+  @Override
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    return true;
   }
 
   @Override

@@ -1,6 +1,6 @@
 ## About
 Default docker images for [Ray](https://github.com/ray-project/ray)! This includes
-everything needed to get started with running Ray! They work for both local development and *are ideal* for use with the [Ray Cluster Launcher](https://docs.ray.io/en/latest/cluster/launcher.html). [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/ray/Dockerfile)
+everything needed to get started with running Ray! They work for both local development and *are ideal* for use with the [Ray Cluster Launcher](https://docs.ray.io/en/master/cluster/launcher.html). [Find the Dockerfile here.](https://github.com/ray-project/ray/blob/master/docker/ray/Dockerfile)
 
 
 

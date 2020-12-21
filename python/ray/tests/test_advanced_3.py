@@ -18,9 +18,11 @@ import ray.cluster_utils
 import ray.test_utils
 from ray import resource_spec
 import setproctitle
+import subprocess
 
 from ray.test_utils import (check_call_ray, RayTestTimeoutException,
-                            wait_for_condition, wait_for_num_actors)
+                            wait_for_condition, wait_for_num_actors,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,13 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-def test_load_balancing_with_dependencies(ray_start_cluster):
+@pytest.mark.parametrize("fast", [True, False])
+def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+    if fast and new_scheduler_enabled:
+        # Load-balancing on new scheduler can be inefficient if (task
+        # duration:heartbeat interval) is small enough.
+        pytest.skip()
+
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -103,7 +111,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
+        if fast:
+            time.sleep(0.010)
+        else:
+            time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
@@ -153,7 +164,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    _ = Actor.remote()  # noqa: F841
+    _ = Actor.options(name="test_actor").remote()  # noqa: F841
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -162,6 +173,7 @@ def test_global_state_api(shutdown_only):
 
     actor_info, = actor_table.values()
     assert actor_info["JobID"] == job_id.hex()
+    assert actor_info["Name"] == "test_actor"
     assert "IPAddress" in actor_info["Address"]
     assert "IPAddress" in actor_info["OwnerAddress"]
     assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
@@ -472,16 +484,6 @@ def test_decorated_function(ray_start_regular):
     assert ray.get(result_id) == (3, 2, 1, 5)
 
 
-def test_get_postprocess(ray_start_regular):
-    def get_postprocessor(object_refs, values):
-        return [value for value in values if value > 0]
-
-    ray.worker.global_worker._post_get_hooks.append(get_postprocessor)
-
-    assert ray.get(
-        [ray.put(i) for i in [0, 1, 3, 5, -1, -3, 4]]) == [1, 3, 5, 4]
-
-
 def test_export_after_shutdown(ray_start_regular):
     # This test checks that we can use actor and remote function definitions
     # across multiple Ray sessions.
@@ -520,6 +522,12 @@ def test_export_after_shutdown(ray_start_regular):
         ray.get(actor_handle.method.remote())
 
     ray.get(export_definitions_from_worker.remote(f, Actor))
+
+
+def test_ray_start_and_stop():
+    for i in range(10):
+        subprocess.check_call(["ray", "start", "--head"])
+        subprocess.check_call(["ray", "stop"])
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):

@@ -59,27 +59,27 @@ class QuotaAwarePolicy : public EvictionPolicy {
   /// \param store_info Information about the Plasma store that is exposed
   ///        to the eviction policy.
   /// \param max_size Max size in bytes total of objects to store.
-  explicit QuotaAwarePolicy(PlasmaStoreInfo* store_info, int64_t max_size);
-  void ObjectCreated(const ObjectID& object_id, Client* client, bool is_create) override;
-  bool SetClientQuota(Client* client, int64_t output_memory_quota) override;
-  bool EnforcePerClientQuota(Client* client, int64_t size, bool is_create,
-                             std::vector<ObjectID>* objects_to_evict) override;
-  void ClientDisconnected(Client* client) override;
-  void BeginObjectAccess(const ObjectID& object_id) override;
-  void EndObjectAccess(const ObjectID& object_id) override;
-  void RemoveObject(const ObjectID& object_id) override;
-  void RefreshObjects(const std::vector<ObjectID>& object_ids) override;
+  explicit QuotaAwarePolicy(PlasmaStoreInfo *store_info, int64_t max_size);
+  void ObjectCreated(const ObjectID &object_id, Client *client, bool is_create) override;
+  bool SetClientQuota(Client *client, int64_t output_memory_quota) override;
+  bool EnforcePerClientQuota(Client *client, int64_t size, bool is_create,
+                             std::vector<ObjectID> *objects_to_evict) override;
+  void ClientDisconnected(Client *client) override;
+  void BeginObjectAccess(const ObjectID &object_id) override;
+  void EndObjectAccess(const ObjectID &object_id) override;
+  void RemoveObject(const ObjectID &object_id) override;
+  void RefreshObjects(const std::vector<ObjectID> &object_ids) override;
   std::string DebugString() const override;
 
  private:
   /// Returns whether we are enforcing memory quotas for an operation.
-  bool HasQuota(Client* client, bool is_create);
+  bool HasQuota(Client *client, bool is_create);
 
   /// Per-client LRU caches, if quota is enabled.
-  std::unordered_map<Client*, std::unique_ptr<LRUCache>> per_client_cache_;
+  std::unordered_map<Client *, std::unique_ptr<LRUCache>> per_client_cache_;
   /// Tracks which client created which object. This only applies to clients
   /// that have a memory quota set.
-  std::unordered_map<ObjectID, Client*> owned_by_client_;
+  std::unordered_map<ObjectID, Client *> owned_by_client_;
   /// Tracks which objects are mapped for read and hence can't be evicted.
   /// However these objects are still tracked within the client caches.
   std::unordered_set<ObjectID> shared_for_read_;

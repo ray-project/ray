@@ -4,9 +4,9 @@ import argparse
 import pandas as pd
 from datetime import datetime
 
-import ray
 from ray.tune import run, sample_from
-from ray.tune.schedulers import PB2, PopulationBasedTraining
+from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.schedulers.pb2 import PB2
 
 
 # Postprocess the perturbed config to ensure it's still valid used if PBT.
@@ -45,7 +45,6 @@ if __name__ == "__main__":
     parser.add_argument("--save_csv", type=bool, default=False)
 
     args = parser.parse_args()
-    ray.init()
 
     # bipedalwalker needs 1600
     if args.env_name in ["BipedalWalker-v2", "BipedalWalker-v3"]:

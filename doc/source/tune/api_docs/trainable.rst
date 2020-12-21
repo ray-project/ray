@@ -352,7 +352,7 @@ Utilities
 Distributed Torch
 -----------------
 
-Ray also offers lightweight integrations to distribute your model training on Ray Tune.
+Ray offers lightweight integrations to distribute your PyTorch training on Ray Tune.
 
 
 .. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
@@ -362,6 +362,17 @@ Ray also offers lightweight integrations to distribute your model training on Ra
    :noindex:
 
 .. autofunction:: ray.tune.integration.torch.is_distributed_trainable
+   :noindex:
+
+.. _tune-dist-tf-doc:
+
+Distributed TensorFlow
+----------------------
+
+Ray also offers lightweight integrations to distribute your TensorFlow training on Ray Tune.
+
+
+.. autofunction:: ray.tune.integration.tensorflow.DistributedTrainableCreator
    :noindex:
 
 tune.DurableTrainable

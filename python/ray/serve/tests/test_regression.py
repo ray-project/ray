@@ -1,6 +1,9 @@
+import gc
+
 import numpy as np
 import requests
 
+import ray
 from ray import serve
 
 
@@ -33,6 +36,31 @@ def test_np_in_composed_model(serve_instance):
     result = requests.get("http://127.0.0.1:8000/model")
     assert result.status_code == 200
     assert result.json() == 100.0
+
+
+def test_backend_worker_memory_growth(serve_instance):
+    # https://github.com/ray-project/ray/issues/12395
+    client = serve_instance
+
+    def gc_unreachable_objects(flask_request):
+        gc.set_debug(gc.DEBUG_SAVEALL)
+        gc.collect()
+        return len(gc.garbage)
+
+    client.create_backend("model", gc_unreachable_objects)
+    client.create_endpoint("model", backend="model", route="/model")
+
+    handle = client.get_handle("model")
+
+    for _ in range(10):
+        result = requests.get("http://127.0.0.1:8000/model")
+        assert result.status_code == 200
+        num_unreachable_objects = result.json()
+        assert num_unreachable_objects == 0
+
+    for _ in range(10):
+        num_unreachable_objects = ray.get(handle.remote())
+        assert num_unreachable_objects == 0
 
 
 if __name__ == "__main__":

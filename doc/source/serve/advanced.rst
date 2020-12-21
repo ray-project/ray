@@ -1,5 +1,5 @@
 ======================================
-Advanced Topics, Configurations, & FAQ
+Advanced Topics and Configurations
 ======================================
 
 Ray Serve has a number of knobs and tools for you to tune for your particular workload.
@@ -16,7 +16,7 @@ the properties of a particular backend.
 Scaling Out
 ===========
 
-To scale out a backend to multiple workers, simply configure the number of replicas.
+To scale out a backend to many instances, simply configure the number of replicas.
 
 .. code-block:: python
 
@@ -27,14 +27,14 @@ To scale out a backend to multiple workers, simply configure the number of repli
   config = {"num_replicas": 2}
   client.update_backend_config("my_scaled_endpoint_backend", config)
 
-This will scale up or down the number of workers that can accept requests.
+This will scale up or down the number of replicas that can accept requests.
 
 Using Resources (CPUs, GPUs)
 ============================
 
-To assign hardware resources per worker, you can pass resource requirements to
+To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
-By default, each worker requires one CPU.
+By default, each replica requires one CPU.
 To learn about options to pass in, take a look at :ref:`Resources with Actor<actor-resource-guide>` guide.
 
 For example, to create a backend where each replica uses a single GPU, you can do the
@@ -49,7 +49,7 @@ Fractional Resources
 --------------------
 
 The resources specified in ``ray_actor_options`` can also be *fractional*.
-This allows you to flexibly share resources between workers.
+This allows you to flexibly share resources between replicas.
 For example, if you have two models and each doesn't fully saturate a GPU, you might want to have them share a GPU by allocating 0.5 GPUs each.
 The same could be done to multiplex over CPUs.
 
@@ -80,6 +80,12 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
           # Download model weights, initialize model, etc.
 
   client.create_backend("parallel_backend", MyBackend, 12)
+
+
+.. note::
+  Some other libraries may not respect ``OMP_NUM_THREADS`` and have their own way to configure parallelism.
+  For example, if you're using OpenCV, you'll need to manually set the number of threads using ``cv2.setNumThreads(num_threads)`` (set to 0 to disable multi-threading).
+  You can check the configuration using ``cv2.getNumThreads()`` and ``cv2.getNumberOfCPUs()``.
 
 .. _serve-batching:
 
@@ -268,3 +274,64 @@ Ray Serve exposes important system metrics like the number of successful and
 errored requests through the Ray metrics monitoring infrastructure. By default,
 the metrics are exposed in Prometheus format on each node. See the
 `Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
+
+
+Reconfiguring Backends (Experimental)
+=====================================
+
+Suppose you want to update a parameter in your model without creating a whole
+new backend.  You can do this by writing a `reconfigure` method for the class
+underlying your backend.  At runtime, you can then pass in your new parameters
+by setting the `user_config` field of :mod:`BackendConfig <ray.serve.BackendConfig>`.
+
+The following simple example will make the usage clear:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_reconfigure.py
+
+The `reconfigure` method is called when the class is created if `user_config`
+is set.  In particular, it's also called when new replicas are created in the
+future, in case you decide to scale up your backend later.  The
+`reconfigure` method is also called each time `user_config` is updated via 
+:mod:`client.update_backend_config <ray.serve.api.Client.update_backend_config>`.
+
+Dependency Management
+=====================
+
+Ray Serve supports serving backends with different (possibly conflicting)
+python dependencies.  For example, you can simultaneously serve one backend
+that uses legacy Tensorflow 1 and another backend that uses Tensorflow 2.
+
+Currently this is supported using `conda <https://docs.conda.io/en/latest/>`_.
+You must have a conda environment set up for each set of
+dependencies you want to isolate.  If using a multi-node cluster, the
+conda configuration must be identical across all nodes.
+
+Here's an example script.  For it to work, first create a conda
+environment named ``ray-tf1`` with Ray Serve and Tensorflow 1 installed,
+and another named ``ray-tf2`` with Ray Serve and Tensorflow 2.  The Ray and
+python versions must be the same in both environments.  To specify
+an environment for a backend to use, simply pass the environment name in to
+:mod:`client.create_backend <ray.serve.api.Client.create_backend>`
+as shown below.
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
+
+.. warning::
+  The script must be run in an activated conda environment (not required to be
+  ``ray-tf1`` or ``ray-tf2``).  We hope to remove this restriction in the
+  future.
+
+.. note::
+  If the argument ``env`` is omitted, backends will be started in the same
+  conda environment as the caller of
+  :mod:`client.create_backend <ray.serve.api.Client.create_backend>` by
+  default.
+
+The dependencies required in the backend may be different than
+the dependencies installed in the driver program (the one running Serve API
+calls). In this case, you can use an
+:mod:`ImportedBackend <ray.serve.backends.ImportedBackend>` to specify a
+backend based on a class that is installed in the Python environment that
+the workers will run in. Example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py

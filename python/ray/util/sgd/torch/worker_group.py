@@ -175,7 +175,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=i + starting_rank,
                 world_size=world_size,
-                timeout=timedelta(self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
         ]
         return remote_pgroup_setups
@@ -381,7 +381,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
         past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
         if past_cooldown and worker_gap:
             # Assume 1 resource is already reserved for local worker.
-            potential_remote_size = self._check_potential_remote_workers_size()
+            potential_remote_size = self.new_workers_size()
             return potential_remote_size > 0
         return False
 
@@ -467,7 +467,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=0,
                 world_size=num_workers,
-                timeout=timedelta(self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s))
             ray.get(remote_pgs)
 
             local_node_ip = ray.services.get_node_ip_address()
@@ -514,7 +514,10 @@ class LocalWorkerGroup(WorkerGroupInterface):
 
     def reset(self):
         """Terminates models without giving up local resource reservation."""
-        self.local_worker.shutdown(cleanup=False)
+        if not isinstance(self.local_worker, LocalDistributedRunner):
+            self.local_worker.shutdown()
+        else:
+            self.local_worker.shutdown(cleanup=False)
         self.remote_worker_group.reset()
 
         self.local_worker = None

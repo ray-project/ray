@@ -1,5 +1,6 @@
 import asyncio
 from functools import singledispatch
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -144,6 +145,7 @@ class ServeEncoder(json.JSONEncoder):
 @ray.remote(num_cpus=0)
 def block_until_http_ready(http_endpoint,
                            backoff_time_s=1,
+                           check_ready=None,
                            timeout=HTTP_PROXY_TIMEOUT):
     http_is_ready = False
     start_time = time.time()
@@ -152,7 +154,10 @@ def block_until_http_ready(http_endpoint,
         try:
             resp = requests.get(http_endpoint)
             assert resp.status_code == 200
-            http_is_ready = True
+            if check_ready is None:
+                http_is_ready = True
+            else:
+                http_is_ready = check_ready(resp)
         except Exception:
             pass
 
@@ -177,6 +182,39 @@ def format_actor_name(actor_name, controller_name=None, *modifiers):
         name += "-{}".format(modifier)
 
     return name
+
+
+def get_conda_env_dir(env_name):
+    """Given a environment name like `tf1`, find and validate the
+    corresponding conda directory.
+    """
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix is None:
+        raise ValueError(
+            "Serve cannot find environment variables installed by conda. " +
+            "Are you sure you are in a conda env?")
+
+    # There are two cases:
+    # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
+    #    CONDA_PREFIX=$HOME/anaconda3
+    # 2. We are in user created conda env: CONDA_DEFAULT_ENV=$env_name and
+    #    CONDA_PREFIX=$HOME/anaconda3/envs/$env_name
+    if os.environ.get("CONDA_DEFAULT_ENV") == "base":
+        # Caller is running in base conda env.
+        # Not recommended by conda, but we can still try to support it.
+        env_dir = os.path.join(conda_prefix, "envs", env_name)
+    else:
+        # Now `conda_prefix` should be something like
+        # $HOME/anaconda3/envs/$env_name
+        # We want to strip the $env_name component.
+        conda_envs_dir = os.path.split(conda_prefix)[0]
+        env_dir = os.path.join(conda_envs_dir, env_name)
+    if not os.path.isdir(env_dir):
+        raise ValueError(
+            "conda env " + env_name +
+            " not found in conda envs directory. Run `conda env list` to " +
+            "verify the name is correct.")
+    return env_dir
 
 
 @singledispatch
@@ -305,3 +343,43 @@ def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
     return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
+
+
+def import_class(full_path: str):
+    """Given a full import path to a class name, return the imported class.
+
+    For example, the following are equivalent:
+        MyClass = import_class("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Returns:
+        Imported class
+    """
+
+    last_period_idx = full_path.rfind(".")
+    class_name = full_path[last_period_idx + 1:]
+    module_name = full_path[:last_period_idx]
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
+
+
+class MockImportedBackend:
+    """Used for testing backends.ImportedBackend.
+
+    This is necessary because we need the class to be installed in the worker
+    processes. We could instead mock out importlib but doing so is messier and
+    reduces confidence in the test (it isn't truly end-to-end).
+    """
+
+    def __init__(self, arg):
+        self.arg = arg
+        self.config = None
+
+    def reconfigure(self, config):
+        self.config = config
+
+    def __call__(self, *args):
+        return {"arg": self.arg, "config": self.config}
+
+    def other_method(self, request):
+        return request.data

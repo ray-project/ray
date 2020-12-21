@@ -48,11 +48,15 @@ class ClusterTaskManager {
   /// the state of the cluster.
   /// \param fulfills_dependencies_func: Returns true if all of a task's
   /// dependencies are fulfilled.
+  /// \param is_owner_alive: A callback which returns if the owner process is alive
+  /// (according to our ownership model).
   /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
                      std::function<bool(const Task &)> fulfills_dependencies_func,
-                     NodeInfoGetter get_node_info);
+                     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
+                     NodeInfoGetter get_node_info,
+                     std::function<void(const Task &)> announce_infeasible_task);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
@@ -63,7 +67,12 @@ class ClusterTaskManager {
 
   /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
-  /// avaialable resources on the node.
+  /// available resources on the node.
+  ///
+  /// If there are not enough resources locally, up to one task per resource
+  /// shape (the task at the head of the queue) will get spilled back to a
+  /// different node.
+  ///
   /// \param worker_pool: The pool of workers which will be dispatched to.
   /// `worker_pool` state will be modified (idle workers will be popped) during
   /// dispatching.
@@ -96,32 +105,76 @@ class ClusterTaskManager {
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
 
+  /// Populate the list of pending or infeasible actor tasks for node stats.
+  ///
+  /// \param Output parameter.
+  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param light_heartbeat_enabled Only send changed fields if true.
+  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void Heartbeat(bool light_heartbeat_enabled,
-                 std::shared_ptr<HeartbeatTableData> data) const;
+  void FillResourceUsage(bool light_report_resource_usage_enabled,
+                         std::shared_ptr<rpc::ResourcesData> data) const;
 
-  std::string DebugString();
+  /// Return if any tasks are pending resource acquisition.
+  ///
+  /// \param[in] exemplar An example task that is deadlocking.
+  /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
+  /// \param[in] num_pending_tasks Number of pending tasks.
+  /// \param[in] any_pending True if there's any pending exemplar.
+  /// \return True if any progress is any tasks are pending.
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+                       int *num_pending_tasks) const;
+
+  std::string DebugString() const;
 
  private:
+  /// Helper method to try dispatching a single task from the queue to an
+  /// available worker. Returns whether the task should be removed from the
+  /// queue and whether the worker was successfully leased to execute the work.
+  bool AttemptDispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
+                           bool *worker_leased);
+
+  /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
+  /// becomes feasible to schedule.
+  void TryLocalInfeasibleTaskScheduling();
+
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  /// Function to make task dependencies to be local.
   std::function<bool(const Task &)> fulfills_dependencies_func_;
+  /// Function to check if the owner is alive on a given node.
+  std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
+  /// Function to get the node information of a given node id.
   NodeInfoGetter get_node_info_;
+  /// Function to announce infeasible task to GCS.
+  std::function<void(const Task &)> announce_infeasible_task_;
 
-  // TODO (Alex): Implement fair queuing for these queues
+  const int max_resource_shapes_per_load_report_;
+  const bool report_worker_backlog_;
+
   /// Queue of lease requests that are waiting for resources to become available.
+  /// Tasks move from scheduled -> dispatch | waiting.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
+  /// Tasks move from scheduled | waiting -> dispatch.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+
   /// Tasks waiting for arguments to be transferred locally.
+  /// Tasks move from waiting -> dispatch.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+
+  /// Queue of lease requests that are infeasible.
+  /// Tasks go between scheduling <-> infeasible.
+  std::unordered_map<SchedulingClass, std::deque<Work>> infeasible_tasks_;
+
+  /// Track the cumulative backlog of all workers requesting a lease to this raylet.
+  std::unordered_map<SchedulingClass, int> backlog_tracker_;
 
   /// Determine whether a task should be immediately dispatched,
   /// or placed on a wait queue.
@@ -132,12 +185,13 @@ class ClusterTaskManager {
   void Dispatch(
       std::shared_ptr<WorkerInterface> worker,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_,
-      const TaskSpecification &task_spec, rpc::RequestWorkerLeaseReply *reply,
+      const Task &task, rpc::RequestWorkerLeaseReply *reply,
       std::function<void(void)> send_reply_callback);
 
-  void Spillback(NodeID spillback_to, std::string address, int port,
-                 rpc::RequestWorkerLeaseReply *reply,
-                 std::function<void(void)> send_reply_callback);
+  void Spillback(const NodeID &spillback_to, const Work &work);
+
+  void AddToBacklogTracker(const Task &task);
+  void RemoveFromBacklogTracker(const Task &task);
 };
 }  // namespace raylet
 }  // namespace ray

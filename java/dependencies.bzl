@@ -22,7 +22,6 @@ def gen_java_deps():
             "net.java.dev.jna:jna:5.5.0",
         ],
         repositories = [
-            "https://repo.spring.io/plugins-release/",
             "https://repo1.maven.org/maven2/",
         ],
     )

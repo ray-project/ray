@@ -15,6 +15,8 @@ Backend Configuration
 ---------------------
 .. autoclass:: ray.serve.BackendConfig
 
+.. autoclass:: ray.serve.CondaEnv
+
 Handle API
 ----------
 .. autoclass:: ray.serve.handle.RayServeHandle
@@ -29,3 +31,6 @@ objects instead of Flask requests.
 Batching Requests
 -----------------
 .. autofunction:: ray.serve.accept_batch
+
+Built-in Backends
+.. autoclass:: ray.serve.backends.ImportedBackend

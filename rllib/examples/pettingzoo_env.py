@@ -1,12 +1,13 @@
 from copy import deepcopy
 from numpy import float32
 import os
-from pettingzoo.butterfly import pistonball_v0
 from supersuit import normalize_obs_v0, dtype_v0, color_reduction_v0
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.env import PettingZooEnv
+from pettingzoo.butterfly import pistonball_v1
+
 from ray.tune.registry import register_env
 
 if __name__ == "__main__":
@@ -22,7 +23,7 @@ if __name__ == "__main__":
 
     # function that outputs the environment you wish to register.
     def env_creator(config):
-        env = pistonball_v0.env(local_ratio=config.get("local_ratio", 0.2))
+        env = pistonball_v1.env(local_ratio=config.get("local_ratio", 0.2))
         env = dtype_v0(env, dtype=float32)
         env = color_reduction_v0(env, mode="R")
         env = normalize_obs_v0(env)

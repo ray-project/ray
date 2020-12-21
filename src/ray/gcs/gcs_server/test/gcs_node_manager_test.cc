@@ -23,33 +23,67 @@ class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
     gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(nullptr, nullptr);
   }
 
  protected:
   std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
   boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(io_service, gcs_pub_sub_, gcs_table_storage_,
+                                   gcs_resource_manager_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
+  {
+    rpc::GetAllResourceUsageRequest request;
+    rpc::GetAllResourceUsageReply reply;
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                  std::function<void()> f2) {};
+    node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
+    ASSERT_EQ(reply.resource_usage_data().batch().size(), 0);
+  }
+
   node_manager.AddNode(node);
-  ASSERT_EQ(node, node_manager.GetNode(node_id).value());
+  ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
+
+  rpc::ReportResourceUsageRequest report_request;
+  (*report_request.mutable_resources()->mutable_resources_available())["CPU"] = 2;
+  (*report_request.mutable_resources()->mutable_resources_total())["CPU"] = 2;
+  node_manager.UpdateNodeResourceUsage(node_id, report_request);
+
+  {
+    rpc::GetAllResourceUsageRequest request;
+    rpc::GetAllResourceUsageReply reply;
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                  std::function<void()> f2) {};
+    node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
+    ASSERT_EQ(reply.resource_usage_data().batch().size(), 1);
+  }
 
   node_manager.RemoveNode(node_id);
-  ASSERT_TRUE(!node_manager.GetNode(node_id).has_value());
+  ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
+
+  {
+    rpc::GetAllResourceUsageRequest request;
+    rpc::GetAllResourceUsageReply reply;
+    auto send_reply_callback = [](ray::Status status, std::function<void()> f1,
+                                  std::function<void()> f2) {};
+    node_manager.HandleGetAllResourceUsage(request, &reply, send_reply_callback);
+    ASSERT_EQ(reply.resource_usage_data().batch().size(), 0);
+  }
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
   boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(io_service, gcs_pub_sub_, gcs_table_storage_,
+                                   gcs_resource_manager_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
@@ -84,30 +118,6 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   for (int i = 0; i < node_count; ++i) {
     ASSERT_EQ(added_nodes[i], removed_nodes[i]);
   }
-}
-
-TEST_F(GcsNodeManagerTest, TestGetClusterRealtimeResources) {
-  boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
-
-  auto node_id = NodeID::FromRandom();
-  rpc::HeartbeatTableData heartbeat;
-  const std::string cpu_resource = "CPU";
-  (*heartbeat.mutable_resources_available())[cpu_resource] = 10;
-  node_manager.UpdateNodeRealtimeResources(node_id, heartbeat);
-  auto node_resources = node_manager.GetClusterRealtimeResources();
-
-  ResourceSet required_resources;
-  required_resources.AddOrUpdateResource(cpu_resource, 9);
-  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
-  required_resources.AddOrUpdateResource(cpu_resource, 10);
-  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
-  required_resources.AddOrUpdateResource(cpu_resource, 10.1);
-  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
-  required_resources.DeleteResource(cpu_resource);
-  required_resources.AddOrUpdateResource("GPU", 9);
-  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
 }
 
 }  // namespace ray
