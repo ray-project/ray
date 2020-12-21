@@ -3,8 +3,7 @@ import gym
 import logging
 import numpy as np
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, \
-    TYPE_CHECKING, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -21,9 +20,6 @@ from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation.episode import MultiAgentEpisode
 
 torch, _ = try_import_torch()
 

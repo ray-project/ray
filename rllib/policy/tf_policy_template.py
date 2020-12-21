@@ -1,6 +1,5 @@
 import gym
-from typing import Callable, Dict, List, Optional, Tuple, Type, \
-    TYPE_CHECKING, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -14,9 +13,6 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation.episode import MultiAgentEpisode
 
 tf1, tf, tfv = try_import_tf()
 
