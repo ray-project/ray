@@ -96,7 +96,7 @@ class RayServeHandle:
 
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
-        """Issue an asynchrounous request to the endpoint.
+        """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
@@ -106,9 +106,9 @@ class RayServeHandle:
         Args:
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.data``.
+                Otherwise, it will be available in ``request.body()``.
             ``**kwargs``: All keyword arguments will be available in
-                ``request.args``.
+                ``request.query_params``.
         """
         if not self.sync:
             raise RayServeException(
