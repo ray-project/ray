@@ -210,12 +210,25 @@ def test_get_nodes_packing_heuristic():
         "m4.4xlarge": 2,
         "m4.large": 2
     }
-    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999,
-                        [{"GPU": 1}] + ([{"CPU": 1}] * 64)) == \
-                            {"m4.16xlarge": 1, "p2.xlarge": 1}
-    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999,
-                        ([{"GPU": 1}] * 8) + ([{"CPU": 1}] * 64)) == \
-                            {"m4.16xlarge": 1, "p2.8xlarge": 1}
+
+    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{
+        "GPU": 1
+    }] + ([{
+        "CPU": 1
+    }] * 64)) == {
+        "m4.16xlarge": 1,
+        "p2.xlarge": 1
+    }
+
+    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, ([{
+        "GPU": 1
+    }] * 8) + ([{
+        "CPU": 1
+    }] * 64)) == {
+        "m4.16xlarge": 1,
+        "p2.8xlarge": 1
+    }
+
     assert get_nodes_for(
         TYPES_A, {}, "empty_node", 9999, [{
             "GPU": 1
