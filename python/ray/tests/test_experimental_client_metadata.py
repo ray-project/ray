@@ -1,4 +1,4 @@
-from ray._private.ray_client_helpers import ray_start_client_server
+from ray.experimental.client.ray_client_helpers import ray_start_client_server
 
 
 def test_get_ray_metadata(ray_start_regular_shared):

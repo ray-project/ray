@@ -4,7 +4,7 @@ import sys
 import logging
 
 from ray.experimental.client.common import ClientObjectRef
-from ray._private.ray_client_helpers import ray_start_client_server
+from ray.experimental.client.ray_client_helpers import ray_start_client_server
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
