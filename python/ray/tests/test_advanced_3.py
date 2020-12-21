@@ -284,14 +284,14 @@ def test_workers(shutdown_only):
 
 
 def test_object_ref_properties():
-    id_bytes = b"00112233445566778899"
+    id_bytes = b"0011223344556677889900001111"
     object_ref = ray.ObjectRef(id_bytes)
     assert object_ref.binary() == id_bytes
     object_ref = ray.ObjectRef.nil()
     assert object_ref.is_nil()
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(id_bytes + b"1234")
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(b"0123456789")
     object_ref = ray.ObjectRef.from_random()
     assert not object_ref.is_nil()
