@@ -8,13 +8,17 @@
 # making into the core-ray module are contained and well-defined.
 
 from typing import Any
+from typing import Optional
 from typing import Union
 
+import logging
 import ray
 
 from ray.experimental.client.api import APIImpl
 from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.common import ClientStub
+
+logger = logging.getLogger(__name__)
 
 
 class CoreRayAPI(APIImpl):
@@ -24,8 +28,8 @@ class CoreRayAPI(APIImpl):
     to core ray when passed client stubs.
     """
 
-    def get(self, *args, **kwargs):
-        return ray.get(*args, **kwargs)
+    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
+        return ray.get(vals, timeout=timeout)
 
     def put(self, vals: Any, *args,
             **kwargs) -> Union[ClientObjectRef, ray._raylet.ObjectRef]:
@@ -38,9 +42,25 @@ class CoreRayAPI(APIImpl):
         return ray.remote(*args, **kwargs)
 
     def call_remote(self, instance: ClientStub, *args, **kwargs):
-        return instance._get_ray_remote_impl().remote(*args, **kwargs)
+        raise NotImplementedError(
+            "Should not attempt execution of a client stub inside the raylet")
 
     def close(self) -> None:
+        return None
+
+    def kill(self, actor, *, no_restart=True):
+        return ray.kill(actor, no_restart=no_restart)
+
+    def cancel(self, obj, *, force=False, recursive=True):
+        return ray.cancel(obj, force=force, recursive=recursive)
+
+    def is_initialized(self) -> bool:
+        return ray.is_initialized()
+
+    def call_release(self, id: bytes) -> None:
+        return None
+
+    def call_retain(self, id: bytes) -> None:
         return None
 
     # Allow for generic fallback to ray.* in remote methods. This allows calls
@@ -59,27 +79,3 @@ class RayServerAPI(CoreRayAPI):
 
     def __init__(self, server_instance):
         self.server = server_instance
-
-    # Wrap single item into list if needed before calling server put.
-    def put(self, vals: Any, *args, **kwargs) -> ClientObjectRef:
-        to_put = []
-        single = False
-        if isinstance(vals, list):
-            to_put = vals
-        else:
-            single = True
-            to_put.append(vals)
-
-        out = [self._put(x) for x in to_put]
-        if single:
-            out = out[0]
-        return out
-
-    def _put(self, val: Any):
-        resp = self.server._put_and_retain_obj(val)
-        return ClientObjectRef(resp.id)
-
-    def call_remote(self, instance: ClientStub, *args, **kwargs):
-        task = instance._prepare_client_task()
-        ticket = self.server.Schedule(task, prepared_args=args)
-        return ClientObjectRef(ticket.return_id)

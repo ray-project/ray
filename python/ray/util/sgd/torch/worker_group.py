@@ -175,7 +175,7 @@ class RemoteWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=i + starting_rank,
                 world_size=world_size,
-                timeout=timedelta(self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s))
             for i, worker in enumerate(self.remote_workers)
         ]
         return remote_pgroup_setups
@@ -467,7 +467,7 @@ class LocalWorkerGroup(WorkerGroupInterface):
                 url=address,
                 world_rank=0,
                 world_size=num_workers,
-                timeout=timedelta(self._timeout_s))
+                timeout=timedelta(seconds=self._timeout_s))
             ray.get(remote_pgs)
 
             local_node_ip = ray.services.get_node_ip_address()

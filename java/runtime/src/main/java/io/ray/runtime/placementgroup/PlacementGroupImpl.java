@@ -52,11 +52,11 @@ public class PlacementGroupImpl implements PlacementGroup {
 
   /**
    * Wait for the placement group to be ready within the specified time.
-   * @param timeoutMs Timeout in milliseconds.
+   * @param timeoutSeconds Timeout in seconds.
    * @return True if the placement group is created. False otherwise.
    */
-  public boolean wait(int timeoutMs) {
-    return Ray.internal().waitPlacementGroupReady(id, timeoutMs);
+  public boolean wait(int timeoutSeconds) {
+    return Ray.internal().waitPlacementGroupReady(id, timeoutSeconds);
   }
 
   /**
