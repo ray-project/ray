@@ -11,15 +11,23 @@ import sys
 import tempfile
 import datetime
 
-import ray
-import ray.test_utils
-import ray.cluster_utils
+from ray.test_utils import client_test_enabled
+from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_pid_to_exit
+from ray.tests.client_test_utils import create_remote_signal_actor
 
+if client_test_enabled():
+    from ray.experimental.client import ray
+else:
+    import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
-import setproctitle
+import setproctitle  # noqa
 
 
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="defining early, no ray package injection yet")
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -238,6 +246,7 @@ def test_actor_import_counter(ray_start_10_cpus):
     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass
@@ -257,6 +266,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_class_name(ray_start_regular):
     @ray.remote
     class Foo:
@@ -618,6 +628,8 @@ def test_random_id_generation(ray_start_regular_shared):
     assert f1._actor_id != f2._actor_id
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="differing inheritence structure")
 def test_actor_inheritance(ray_start_regular_shared):
     class NonActorBase:
         def __init__(self):
@@ -630,8 +642,7 @@ def test_actor_inheritance(ray_start_regular_shared):
             pass
 
     # Test that you can't instantiate an actor class directly.
-    with pytest.raises(
-            Exception, match="Actors cannot be instantiated directly."):
+    with pytest.raises(Exception, match="cannot be instantiated directly"):
         ActorBase()
 
     # Test that you can't inherit from an actor class.
@@ -645,6 +656,7 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="ray.method unimplemented")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -693,6 +705,7 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -734,13 +747,13 @@ def test_actor_deletion(ray_start_regular_shared):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     a = None
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     actors = [Actor.remote() for _ in range(10)]
     pids = ray.get([a.getpid.remote() for a in actors])
     a = None
     actors = None
-    [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
+    [wait_for_pid_to_exit(pid) for pid in pids]
 
 
 def test_actor_method_deletion(ray_start_regular_shared):
@@ -769,7 +782,8 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor(ray)
+    signal = SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     # Pass the handle to another task that cannot run yet.
@@ -780,7 +794,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())
     assert ray.get(x_id) == 1
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
 
 def test_multiple_actors(ray_start_regular_shared):
@@ -921,7 +935,7 @@ def test_atexit_handler(ray_start_regular_shared, exit_condition):
     if exit_condition == "ray.kill":
         assert not check_file_written()
     else:
-        ray.test_utils.wait_for_condition(check_file_written)
+        wait_for_condition(check_file_written)
 
 
 if __name__ == "__main__":

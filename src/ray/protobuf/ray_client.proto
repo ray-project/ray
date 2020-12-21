@@ -35,6 +35,18 @@ message Arg {
   Type type = 4;
 }
 
+// A message representing the valid options to modify a task exectution
+//
+// TODO(barakmich): In the longer term, if everything were a client,
+// this message could be the actual standard for which options are
+// allowed in the API. Today, however, it's a bit flexible and defined in the
+// Python code. So for now, it's a stand-in message with a json field, but
+// this is forwards-compatible with deprecating that field and instituting
+// strongly defined and typed fields, without migrating the original ClientTask.
+message TaskOptions {
+  string json_options = 1;
+}
+
 // Represents one unit of work to be executed by the server.
 message ClientTask {
   enum RemoteExecType {
@@ -42,24 +54,35 @@ message ClientTask {
     ACTOR = 1;
     METHOD = 2;
     STATIC_METHOD = 3;
+    NAMED_ACTOR = 4;
   }
   // Which type of work this request represents.
   RemoteExecType type = 1;
-  // A name parameter, if the payload can be called in more than one way (like a method on
-  // a payload object).
+  // A name parameter, if the payload can be called in more than one way
+  // (like a method on a payload object).
   string name = 2;
   // A reference to the payload.
   bytes payload_id = 3;
-  // The parameters to pass to this call.
+  // Positional parameters to pass to this call.
   repeated Arg args = 4;
-  // The ID of the client namespace associated with the Datapath stream making this
-  // request.
-  string client_id = 5;
+  // Keyword parameters to pass to this call.
+  map<string, Arg> kwargs = 5;
+  // The ID of the client namespace associated with the Datapath stream
+  // making this request.
+  string client_id = 6;
+  // Options for modifying the remote task execution environment.
+  TaskOptions options = 7;
+  // Options passed to create the default remote task excution environment.
+  TaskOptions baseline_options = 8;
 }
 
 message ClientTaskTicket {
-  // A reference to the returned value from the execution.
-  bytes return_id = 1;
+  // Was the task successful?
+  bool valid = 1;
+  // A reference to the returned values from the execution.
+  repeated bytes return_ids = 2;
+  // If unsuccessful, an encoding of the error.
+  bytes error = 3;
 }
 
 // Delivers data to the server

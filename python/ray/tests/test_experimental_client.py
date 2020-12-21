@@ -81,11 +81,11 @@ def test_wait(ray_start_regular_shared):
         with pytest.raises(Exception):
             # Reference not in the object store.
             ray.wait([ClientObjectRef("blabla")])
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait("blabla")
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait(ClientObjectRef("blabla"))
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait(["blabla"])
 
 
@@ -232,6 +232,35 @@ def test_pass_handles(ray_start_regular_shared):
         test_actor_obj["f"] = fact
         assert ray.get(sneaky_actor_exec.remote(test_actor_obj,
                                                 4)) == local_fact(4)
+
+
+def test_basic_named_actor(ray_start_regular_shared):
+    """
+    Test that ray.get_actor() can create and return a detached actor.
+    """
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        class Accumulator:
+            def __init__(self):
+                self.x = 0
+
+            def inc(self):
+                self.x += 1
+
+            def get(self):
+                return self.x
+
+        # Create the actor
+        actor = Accumulator.options(name="test_acc").remote()
+
+        actor.inc.remote()
+        actor.inc.remote()
+        del actor
+
+        new_actor = ray.get_actor("test_acc")
+        new_actor.inc.remote()
+        assert ray.get(new_actor.get.remote()) == 3
 
 
 if __name__ == "__main__":

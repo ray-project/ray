@@ -4,8 +4,10 @@ import grpc
 import base64
 from collections import defaultdict
 
+from typing import Any
 from typing import Dict
 from typing import Set
+from typing import Optional
 
 from ray import cloudpickle
 import ray
@@ -21,7 +23,7 @@ from ray.experimental.client.server.server_pickler import dumps_from_server
 from ray.experimental.client.server.server_pickler import loads_from_client
 from ray.experimental.client.server.core_ray_api import RayServerAPI
 from ray.experimental.client.server.dataservicer import DataServicer
-from ray.experimental.client.server.server_stubs import current_func
+from ray.experimental.client.server.server_stubs import current_remote
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +189,11 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_refs, remaining_object_refs = ray.wait(
                 object_refs,
                 num_returns=num_returns,
-                timeout=timeout if timeout != -1 else None)
-        except Exception:
+                timeout=timeout if timeout != -1 else None,
+            )
+        except Exception as e:
             # TODO(ameer): improve exception messages.
+            logger.error(f"Exception {e}")
             return ray_client_pb2.WaitResponse(valid=False)
         logger.debug("wait: %s %s" % (str(ready_object_refs),
                                       str(remaining_object_refs)))
@@ -205,93 +209,143 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             ready_object_ids=ready_object_ids,
             remaining_object_ids=remaining_object_ids)
 
-    def Schedule(self, task, context=None,
-                 prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        logger.info("schedule: %s %s" %
-                    (task.name,
-                     ray_client_pb2.ClientTask.RemoteExecType.Name(task.type)))
+    def Schedule(self, task, context=None) -> ray_client_pb2.ClientTaskTicket:
+        logger.debug(
+            "schedule: %s %s" % (task.name,
+                                 ray_client_pb2.ClientTask.RemoteExecType.Name(
+                                     task.type)))
         with stash_api_for_tests(self._test_mode):
-            if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                return self._schedule_function(task, context, prepared_args)
-            elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                return self._schedule_actor(task, context, prepared_args)
-            elif task.type == ray_client_pb2.ClientTask.METHOD:
-                return self._schedule_method(task, context, prepared_args)
-            else:
-                raise NotImplementedError(
-                    "Unimplemented Schedule task type: %s" %
-                    ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
+            try:
+                if task.type == ray_client_pb2.ClientTask.FUNCTION:
+                    result = self._schedule_function(task, context)
+                elif task.type == ray_client_pb2.ClientTask.ACTOR:
+                    result = self._schedule_actor(task, context)
+                elif task.type == ray_client_pb2.ClientTask.METHOD:
+                    result = self._schedule_method(task, context)
+                elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
+                    result = self._schedule_named_actor(task, context)
+                else:
+                    raise NotImplementedError(
+                        "Unimplemented Schedule task type: %s" %
+                        ray_client_pb2.ClientTask.RemoteExecType.Name(
+                            task.type))
+                result.valid = True
+                return result
+            except Exception as e:
+                logger.error(f"Caught schedule exception {e}")
+                raise e
+                return ray_client_pb2.ClientTaskTicket(
+                    valid=False, error=cloudpickle.dumps(e))
 
-    def _schedule_method(
-            self,
-            task: ray_client_pb2.ClientTask,
-            context=None,
-            prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
+    def _schedule_method(self, task: ray_client_pb2.ClientTask,
+                         context=None) -> ray_client_pb2.ClientTaskTicket:
         actor_handle = self.actor_refs.get(task.payload_id)
         if actor_handle is None:
             raise Exception(
                 "Can't run an actor the server doesn't have a handle for")
-        arglist = self._convert_args(task.args, prepared_args)
-        output = getattr(actor_handle, task.name).remote(*arglist)
-        self.object_refs[task.client_id][output.binary()] = output
-        return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
+        arglist, kwargs = self._convert_args(task.args, task.kwargs)
+        method = getattr(actor_handle, task.name)
+        opts = decode_options(task.options)
+        if opts is not None:
+            method = method.options(**opts)
+        output = method.remote(*arglist, **kwargs)
+        ids = self.unify_and_track_outputs(output, task.client_id)
+        return ray_client_pb2.ClientTaskTicket(return_ids=ids)
 
-    def _schedule_actor(self,
-                        task: ray_client_pb2.ClientTask,
-                        context=None,
-                        prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        if task.payload_id not in self.registered_actor_classes:
-            actor_class_ref = \
-                    self.object_refs[task.client_id][task.payload_id]
-            actor_class = ray.get(actor_class_ref)
-            if not inspect.isclass(actor_class):
-                raise Exception("Attempting to schedule actor that "
-                                "isn't a class.")
-            reg_class = ray.remote(actor_class)
-            self.registered_actor_classes[task.payload_id] = reg_class
-        remote_class = self.registered_actor_classes[task.payload_id]
-        arglist = self._convert_args(task.args, prepared_args)
-        actor = remote_class.remote(*arglist)
+    def _schedule_actor(self, task: ray_client_pb2.ClientTask,
+                        context=None) -> ray_client_pb2.ClientTaskTicket:
+        remote_class = self.lookup_or_register_actor(
+            task.payload_id, task.client_id,
+            decode_options(task.baseline_options))
+
+        arglist, kwargs = self._convert_args(task.args, task.kwargs)
+        opts = decode_options(task.options)
+        if opts is not None:
+            remote_class = remote_class.options(**opts)
+        with current_remote(remote_class):
+            actor = remote_class.remote(*arglist, **kwargs)
         self.actor_refs[actor._actor_id.binary()] = actor
         self.actor_owners[task.client_id].add(actor._actor_id.binary())
         return ray_client_pb2.ClientTaskTicket(
-            return_id=actor._actor_id.binary())
+            return_ids=[actor._actor_id.binary()])
 
-    def _schedule_function(
-            self,
-            task: ray_client_pb2.ClientTask,
-            context=None,
-            prepared_args=None) -> ray_client_pb2.ClientTaskTicket:
-        remote_func = self.lookup_or_register_func(task.payload_id,
-                                                   task.client_id)
-        arglist = self._convert_args(task.args, prepared_args)
-        # Prepare call if we're in a test
-        with current_func(remote_func):
-            output = remote_func.remote(*arglist)
-        if output.binary() in self.object_refs[task.client_id]:
-            raise Exception("already found it")
-        self.object_refs[task.client_id][output.binary()] = output
-        return ray_client_pb2.ClientTaskTicket(return_id=output.binary())
+    def _schedule_function(self, task: ray_client_pb2.ClientTask,
+                           context=None) -> ray_client_pb2.ClientTaskTicket:
+        remote_func = self.lookup_or_register_func(
+            task.payload_id, task.client_id,
+            decode_options(task.baseline_options))
+        arglist, kwargs = self._convert_args(task.args, task.kwargs)
+        opts = decode_options(task.options)
+        if opts is not None:
+            remote_func = remote_func.options(**opts)
+        with current_remote(remote_func):
+            output = remote_func.remote(*arglist, **kwargs)
+        ids = self.unify_and_track_outputs(output, task.client_id)
+        return ray_client_pb2.ClientTaskTicket(return_ids=ids)
 
-    def _convert_args(self, arg_list, prepared_args=None):
-        if prepared_args is not None:
-            return prepared_args
-        out = []
+    def _schedule_named_actor(self,
+                              task: ray_client_pb2.ClientTask,
+                              context=None) -> ray_client_pb2.ClientTaskTicket:
+        assert len(task.payload_id) == 0
+        actor = ray.get_actor(task.name)
+        self.actor_refs[actor._actor_id.binary()] = actor
+        self.actor_owners[task.client_id].add(actor._actor_id.binary())
+        return ray_client_pb2.ClientTaskTicket(
+            return_ids=[actor._actor_id.binary()])
+
+    def _convert_args(self, arg_list, kwarg_map):
+        argout = []
         for arg in arg_list:
             t = convert_from_arg(arg, self)
-            out.append(t)
-        return out
+            argout.append(t)
+        kwargout = {}
+        for k in kwarg_map:
+            kwargout[k] = convert_from_arg(kwarg_map[k], self)
+        return argout, kwargout
 
-    def lookup_or_register_func(self, id: bytes, client_id: str
-                                ) -> ray.remote_function.RemoteFunction:
+    def lookup_or_register_func(
+            self, id: bytes, client_id: str,
+            options: Optional[Dict]) -> ray.remote_function.RemoteFunction:
         if id not in self.function_refs:
             funcref = self.object_refs[client_id][id]
             func = ray.get(funcref)
             if not inspect.isfunction(func):
                 raise Exception("Attempting to register function that "
                                 "isn't a function.")
-            self.function_refs[id] = ray.remote(func)
+            if options is None or len(options) == 0:
+                self.function_refs[id] = ray.remote(func)
+            else:
+                self.function_refs[id] = ray.remote(**options)(func)
         return self.function_refs[id]
+
+    def lookup_or_register_actor(self, id: bytes, client_id: str,
+                                 options: Optional[Dict]):
+        if id not in self.registered_actor_classes:
+            actor_class_ref = self.object_refs[client_id][id]
+            actor_class = ray.get(actor_class_ref)
+            if not inspect.isclass(actor_class):
+                raise Exception("Attempting to schedule actor that "
+                                "isn't a class.")
+            if options is None or len(options) == 0:
+                reg_class = ray.remote(actor_class)
+            else:
+                reg_class = ray.remote(**options)(actor_class)
+            self.registered_actor_classes[id] = reg_class
+
+        return self.registered_actor_classes[id]
+
+    def unify_and_track_outputs(self, output, client_id):
+        if output is None:
+            outputs = []
+        elif isinstance(output, list):
+            outputs = output
+        else:
+            outputs = [output]
+        for out in outputs:
+            if out.binary() in self.object_refs[client_id]:
+                logger.warning(f"Already saw object_ref {out}")
+            self.object_refs[client_id][out.binary()] = out
+        return [out.binary() for out in outputs]
 
 
 def return_exception_in_context(err, context):
@@ -303,6 +357,15 @@ def return_exception_in_context(err, context):
 def encode_exception(exception) -> str:
     data = cloudpickle.dumps(exception)
     return base64.standard_b64encode(data).decode()
+
+
+def decode_options(
+        options: ray_client_pb2.TaskOptions) -> Optional[Dict[str, Any]]:
+    if options.json_options == "":
+        return None
+    opts = json.loads(options.json_options)
+    assert isinstance(opts, dict)
+    return opts
 
 
 def serve(connection_str, test_mode=False):
@@ -317,6 +380,12 @@ def serve(connection_str, test_mode=False):
     server.add_insecure_port(connection_str)
     server.start()
     return server
+
+
+def init_and_serve(connection_str, test_mode=False, *args, **kwargs):
+    info = ray.init(*args, **kwargs)
+    server = serve(connection_str, test_mode)
+    return (server, info)
 
 
 if __name__ == "__main__":
