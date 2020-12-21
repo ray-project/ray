@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 def ppo_surrogate_loss(
         policy: Policy, model: ModelV2,
         dist_class: Type[TorchDistributionWrapper],
-        train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        train_batch: SampleBatch,
+        vars=None,#TODO: test
+) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
     Args:

@@ -112,6 +112,7 @@ class JAXPolicy(Policy):
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
+        self._gradient_loss = jax.grad(self._loss, argnums=4)
         self._optimizers = force_list(self.optimizer())
 
         self.dist_class = action_distribution_class
@@ -288,7 +289,7 @@ class JAXPolicy(Policy):
 
         # Step the optimizer(s).
         for i, opt in enumerate(self._optimizers):
-            opt.step()
+            opt.apply_gradients(grads)
 
         if self.model:
             fetches["model"] = self.model.metrics()
@@ -309,20 +310,20 @@ class JAXPolicy(Policy):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         # Calculate the actual policy loss.
-        loss_out = force_list(
-            self._loss(self, self.model, self.dist_class, train_batch))
+        all_grads = force_list(
+            self._gradient_loss(self, self.model, self.dist_class, train_batch, self.model.variables()))
 
         # Call Model's custom-loss with Policy loss outputs and train_batch.
-        if self.model:
-            loss_out = self.model.custom_loss(loss_out, train_batch)
+        #if self.model:
+        #    loss_out = self.model.custom_loss(loss_out, train_batch)
 
         # Give Exploration component that chance to modify the loss (or add
         # its own terms).
-        if hasattr(self, "exploration"):
-            loss_out = self.exploration.get_exploration_loss(
-                loss_out, train_batch)
+        #if hasattr(self, "exploration"):
+        #    loss_out = self.exploration.get_exploration_loss(
+        #        loss_out, train_batch)
 
-        assert len(loss_out) == len(self._optimizers)
+        #assert len(loss_out) == len(self._optimizers)
 
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
@@ -330,42 +331,24 @@ class JAXPolicy(Policy):
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
 
-        all_grads = []
-        for i, opt in enumerate(self._optimizers):
-            # Erase gradients in all vars of this optimizer.
-            opt.zero_grad()
-            # Recompute gradients of loss over all variables.
-            loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
-            grad_info.update(self.extra_grad_process(opt, loss_out[i]))
+        #all_grads = []
+        #for i, opt in enumerate(self._optimizers):
+        #    # Erase gradients in all vars of this optimizer.
+        #    opt.zero_grad()
+        #    # Recompute gradients of loss over all variables.
+        #    loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
+        #    grad_info.update(self.extra_grad_process(opt, loss_out[i]))
 
-            grads = []
-            # Note that return values are just references;
-            # Calling zero_grad would modify the values.
-            for param_group in opt.param_groups:
-                for p in param_group["params"]:
-                    if p.grad is not None:
-                        grads.append(p.grad)
-                        all_grads.append(p.grad.data.cpu().numpy())
-                    else:
-                        all_grads.append(None)
-
-            if self.distributed_world_size:
-                start = time.time()
-                if torch.cuda.is_available():
-                    # Sadly, allreduce_coalesced does not work with CUDA yet.
-                    for g in grads:
-                        torch.distributed.all_reduce(
-                            g, op=torch.distributed.ReduceOp.SUM)
-                else:
-                    torch.distributed.all_reduce_coalesced(
-                        grads, op=torch.distributed.ReduceOp.SUM)
-
-                for param_group in opt.param_groups:
-                    for p in param_group["params"]:
-                        if p.grad is not None:
-                            p.grad /= self.distributed_world_size
-
-                grad_info["allreduce_latency"] += time.time() - start
+        #    grads = []
+        #    # Note that return values are just references;
+        #    # Calling zero_grad would modify the values.
+        #    for param_group in opt.param_groups:
+        #        for p in param_group["params"]:
+        #            if p.grad is not None:
+        #                grads.append(p.grad)
+        #                all_grads.append(p.grad.data.cpu().numpy())
+        #            else:
+        #                all_grads.append(None)
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
