@@ -1075,13 +1075,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_attention_nets",
-    tags = ["models"],
-    size = "small",
-    srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
     name = "test_convtranspose2d_stack",
     tags = ["models"],
     size = "small",

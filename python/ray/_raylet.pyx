@@ -638,9 +638,11 @@ cdef c_vector[c_string] spill_objects_handler(
         return return_urls
 
 
-cdef void restore_spilled_objects_handler(
+cdef int64_t restore_spilled_objects_handler(
         const c_vector[CObjectID]& object_ids_to_restore,
         const c_vector[c_string]& object_urls) nogil:
+    cdef:
+        int64_t bytes_restored = 0
     with gil:
         urls = []
         size = object_urls.size()
@@ -651,7 +653,8 @@ cdef void restore_spilled_objects_handler(
             with ray.worker._changeproctitle(
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER,
                     ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE):
-                external_storage.restore_spilled_objects(object_refs, urls)
+                bytes_restored = external_storage.restore_spilled_objects(
+                    object_refs, urls)
         except Exception:
             exception_str = (
                 "An unexpected internal error occurred while the IO worker "
@@ -662,6 +665,7 @@ cdef void restore_spilled_objects_handler(
                 "restore_spilled_objects_error",
                 traceback.format_exc() + exception_str,
                 job_id=None)
+    return bytes_restored
 
 
 cdef void delete_spilled_objects_handler(
@@ -873,7 +877,8 @@ cdef class CoreWorker:
         return self.plasma_event_handler
 
     def get_objects(self, object_refs, TaskID current_task_id,
-                    int64_t timeout_ms=-1, plasma_objects_only=False):
+                    int64_t timeout_ms=-1,
+                    plasma_objects_only=False):
         cdef:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
@@ -1571,17 +1576,6 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().SetResource(
             resource_name.encode("ascii"), capacity,
             CNodeID.FromBinary(client_id.binary()))
-
-    def force_spill_objects(self, object_refs):
-        cdef c_vector[CObjectID] object_ids
-        object_ids = ObjectRefsToVector(object_refs)
-        assert not RayConfig.instance().automatic_object_deletion_enabled(), (
-            "Automatic object deletion is not supported for"
-            "force_spill_objects yet. Please set"
-            "automatic_object_deletion_enabled: False in Ray's system config.")
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .SpillObjects(object_ids))
 
 cdef void async_set_result(shared_ptr[CRayObject] obj,
                            CObjectID object_ref,

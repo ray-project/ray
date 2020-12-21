@@ -2,6 +2,7 @@ import numpy as np
 import unittest
 
 from ray import tune
+from ray.tune import Experiment
 from ray.tune.suggest.variant_generator import generate_variants
 
 
@@ -871,8 +872,104 @@ class SearchSpaceTest(unittest.TestCase):
         return self._testPointsToEvaluate(
             ZOOptSearch, config, budget=10, parallel_num=8)
 
+    def testPointsToEvaluateBasicVariant(self):
+        config = {
+            "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
+            "a": tune.sample.Categorical(["t1", "t2", "t3", "t4"]).uniform(),
+            "b": tune.sample.Integer(0, 5),
+            "c": tune.sample.Float(1e-4, 1e-1).loguniform()
+        }
+
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+        return self._testPointsToEvaluate(BasicVariantGenerator, config)
+
+    def testPointsToEvaluateBasicVariantAdvanced(self):
+        config = {
+            "grid_1": tune.grid_search(["a", "b", "c", "d"]),
+            "grid_2": tune.grid_search(["x", "y", "z"]),
+            "nested": {
+                "random": tune.uniform(2., 10.),
+                "dependent": tune.sample_from(
+                    lambda spec: -1. * spec.config.nested.random)
+            }
+        }
+
+        points = [
+            {
+                "grid_1": "b"
+            },
+            {
+                "grid_2": "z"
+            },
+            {
+                "grid_1": "a",
+                "grid_2": "y"
+            },
+            {
+                "nested": {
+                    "random": 8.0
+                }
+            },
+        ]
+
+        from ray.tune.suggest.basic_variant import BasicVariantGenerator
+
+        # grid_1 * grid_2 are 3 * 4 = 12 variants per complete grid search
+        # However if one grid var is set by preset variables, that run
+        # is excluded from grid search.
+
+        # Point 1 overwrites grid_1, so the first trial only grid searches
+        # over grid_2 (3 trials).
+        # The remaining 5 trials search over the whole space (5 * 12 trials)
+        searcher = BasicVariantGenerator(points_to_evaluate=[points[0]])
+        exp = Experiment(
+            run=_mock_objective, name="test", config=config, num_samples=6)
+        searcher.add_configurations(exp)
+        self.assertEqual(searcher.total_samples, 1 * 3 + 5 * 12)
+
+        # Point 2 overwrites grid_2, so the first trial only grid searches
+        # over grid_1 (4 trials).
+        # The remaining 5 trials search over the whole space (5 * 12 trials)
+        searcher = BasicVariantGenerator(points_to_evaluate=[points[1]])
+        exp = Experiment(
+            run=_mock_objective, name="test", config=config, num_samples=6)
+        searcher.add_configurations(exp)
+        self.assertEqual(searcher.total_samples, 1 * 4 + 5 * 12)
+
+        # Point 3 overwrites grid_1 and grid_2, so the first trial does not
+        # grid search.
+        # The remaining 5 trials search over the whole space (5 * 12 trials)
+        searcher = BasicVariantGenerator(points_to_evaluate=[points[2]])
+        exp = Experiment(
+            run=_mock_objective, name="test", config=config, num_samples=6)
+        searcher.add_configurations(exp)
+        self.assertEqual(searcher.total_samples, 1 + 5 * 12)
+
+        # When initialized with all points, the first three trials are
+        # defined by the logic above. Only 3 trials are grid searched
+        # compeletely.
+        searcher = BasicVariantGenerator(points_to_evaluate=points)
+        exp = Experiment(
+            run=_mock_objective, name="test", config=config, num_samples=6)
+        searcher.add_configurations(exp)
+        self.assertEqual(searcher.total_samples, 1 * 3 + 1 * 4 + 1 + 3 * 12)
+
+        # Run this and confirm results
+        analysis = tune.run(exp, search_alg=searcher)
+        configs = [trial.config for trial in analysis.trials]
+
+        self.assertEqual(len(configs), searcher.total_samples)
+        self.assertTrue(
+            all(config["grid_1"] == "b" for config in configs[0:3]))
+        self.assertTrue(
+            all(config["grid_2"] == "z" for config in configs[3:7]))
+        self.assertTrue(configs[7]["grid_1"] == "a"
+                        and configs[7]["grid_2"] == "y")
+        self.assertTrue(configs[8]["nested"]["random"] == 8.0)
+        self.assertTrue(configs[8]["nested"]["dependent"] == -8.0)
+
 
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
