@@ -48,6 +48,7 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
+from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
 
@@ -911,7 +912,7 @@ def print_logs(redis_client, threads_stopped, job_id):
                     job_id.binary()) != data["job"]:
                 continue
             data["localhost"] = localhost
-            print_to_stdstream(data)
+            global_worker_stdstream_dispatcher.emit(data)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error(f"print_logs: {e}")
@@ -922,7 +923,10 @@ def print_logs(redis_client, threads_stopped, job_id):
 
 def print_to_stdstream(data):
     print_file = sys.stderr if data["is_err"] else sys.stdout
+    print_worker_logs(data, print_file)
 
+
+def print_worker_logs(data, print_file):
     def color_for(data):
         if data["pid"] == "raylet":
             return colorama.Fore.YELLOW
@@ -1205,6 +1209,8 @@ def connect(node,
         worker.printer_thread.daemon = True
         worker.printer_thread.start()
         if log_to_driver:
+            global_worker_stdstream_dispatcher.add_handler(
+                "ray_print_logs", print_to_stdstream)
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",

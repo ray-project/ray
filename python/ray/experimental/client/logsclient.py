@@ -2,6 +2,7 @@
 This file implements a threaded stream controller to return logs back from
 the ray clientserver.
 """
+import sys
 import logging
 import queue
 import threading
@@ -33,6 +34,8 @@ class LogstreamClient:
         log_stream = stub.Logstream(iter(self.request_queue.get, None))
         try:
             for record in log_stream:
+                if record.level < 0:
+                    self.stdstream(level=record.level, msg=record.msg)
                 self.log(level=record.level, msg=record.msg)
         except grpc.RpcError as e:
             if grpc.StatusCode.CANCELLED != e.code():
@@ -51,6 +54,18 @@ class LogstreamClient:
             msg: The content of the message
         """
         logger.log(level=level, msg=msg)
+
+    def stdstream(self, level: int, msg: str):
+        """
+        Log the stdout/stderr entry from the log stream.
+        By default, calls print but this can be overridden.
+
+        Args:
+            level: The loglevel of the received log message
+            msg: The content of the message
+        """
+        print_file = sys.stderr if level == -2 else sys.stdout
+        print(msg, file=print_file)
 
     def set_logstream_level(self, level: int):
         req = ray_client_pb2.LogSettingsRequest()

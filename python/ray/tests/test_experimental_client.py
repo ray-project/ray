@@ -1,5 +1,6 @@
 import pytest
 import time
+import sys
 import logging
 from contextlib import contextmanager
 
@@ -256,6 +257,26 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert any((msg.find("put") >= 0 for msg in logs_with_id))
 
 
+def test_stdout_log_stream(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        log_msgs = []
+
+        def test_log(level, msg):
+            log_msgs.append(msg)
+
+        ray.worker.log_client.stdstream = test_log
+
+        @ray.remote
+        def print_on_stderr_and_stdout(s):
+            print(s)
+            print(s, file=sys.stderr)
+
+        time.sleep(1)
+        print_on_stderr_and_stdout.remote("Hello world")
+        time.sleep(1)
+        assert len(log_msgs) == 2
+        assert all((msg.find("Hello world") for msg in log_msgs))
+
+
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

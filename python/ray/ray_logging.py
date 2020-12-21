@@ -269,17 +269,18 @@ class WorkerStandardStreamDispatcher:
         self._lock = threading.Lock()
 
     def add_handler(self, name: str, handler: Callable) -> None:
-        with self._lock():
+        with self._lock:
             self.handlers.append((name, handler))
 
     def remove_handler(self, name: str) -> None:
-        with self._lock():
+        with self._lock:
             new_handlers = [pair for pair in self.handlers if pair[0] != name]
             self.handlers = new_handlers
 
     def emit(self, data):
-        with self._lock():
-            for handle in self.handlers:
+        with self._lock:
+            for pair in self.handlers:
+                _, handle = pair
                 handle(data)
 
 

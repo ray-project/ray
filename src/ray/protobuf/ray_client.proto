@@ -243,6 +243,9 @@ message LogData {
   // The message data in the log
   string msg = 1;
   // The loglevel at which this log should be displayed.
+  // * level > 0: Log leveling as per python's logging library
+  // * level == -1: stdout (fd 1)
+  // * level == -2: stderr (fd 2)
   int32 level = 2;
   // The name of the logger that generated this message.
   string name = 3;
