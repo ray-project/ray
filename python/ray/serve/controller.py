@@ -661,8 +661,8 @@ class ServeController:
         start = time.time()
 
         checkpoint = pickle.dumps(
-            Checkpoint(self.endpoint_state.checkpoint(), self.backend_state,
-                       self.actor_reconciler,
+            Checkpoint(self.endpoint_state.checkpoint(),
+                       self.backend_state.checkpoint(), self.actor_reconciler,
                        self._serializable_inflight_results))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
