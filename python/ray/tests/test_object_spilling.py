@@ -598,7 +598,7 @@ def do_test_release_resource(tmp_path, expect_released):
 
     done = f.remote([plasma_obj])
     canary = sneaky_task_tries_to_steal_released_resources.remote()
-    ready, _ = ray.wait([canary], timeout=1)
+    ready, _ = ray.wait([canary], timeout=2)
     if expect_released:
         assert ready
     else:
