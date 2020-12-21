@@ -531,7 +531,6 @@ class ServeController:
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
-        self.backend_state = BackendState()
         self.actor_reconciler = ActorStateReconciler(controller_name, detached)
 
         # backend -> AutoscalingPolicy
