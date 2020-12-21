@@ -12,7 +12,8 @@ class DebugCounterEnv(gym.Env):
     Reward is always: current ts % 3.
     """
 
-    def __init__(self, config):
+    def __init__(self, config=None):
+        config = config or {}
         self.action_space = gym.spaces.Discrete(2)
         self.observation_space = \
             gym.spaces.Box(0, 100, (1, ), dtype=np.float32)
