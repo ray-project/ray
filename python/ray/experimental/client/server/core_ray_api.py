@@ -79,8 +79,3 @@ class RayServerAPI(CoreRayAPI):
 
     def __init__(self, server_instance):
         self.server = server_instance
-
-    def call_remote(self, instance: ClientStub, *args, **kwargs) -> bytes:
-        task = instance._prepare_client_task()
-        ticket = self.server.Schedule(task, prepared_args=args)
-        return ticket.return_id

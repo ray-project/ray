@@ -105,6 +105,11 @@ class ClusterTaskManager {
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
 
+  /// Populate the list of pending or infeasible actor tasks for node stats.
+  ///
+  /// \param Output parameter.
+  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
