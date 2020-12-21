@@ -98,8 +98,7 @@ class CoreWorkerPlasmaStoreProvider {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
-  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only);
 
   /// Lists objects in used (pinned) by the current client.
   ///

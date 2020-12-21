@@ -208,16 +208,6 @@ class TaskInfoAccessor {
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
 
-  /// Delete tasks from GCS asynchronously.
-  ///
-  /// \param task_ids The vector of IDs to delete from GCS.
-  /// \param callback Callback that is called after delete finished.
-  /// \return Status
-  // TODO(micafan) Will support callback of batch deletion in the future.
-  // Currently this callback will never be called.
-  virtual Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                             const StatusCallback &callback) = 0;
-
   /// Subscribe asynchronously to the event that the given task is added in GCS.
   ///
   /// \param task_id The ID of the task to be subscribed to.
