@@ -299,8 +299,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
-    // SANG-TODO Implement memory store get
-    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
   }
 
   bool done = false;
