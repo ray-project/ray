@@ -25,9 +25,6 @@ else:
 import setproctitle  # noqa
 
 
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="defining early, no ray package injection yet")
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -705,7 +702,6 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -863,8 +859,6 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
     assert ray.get(actor.g.remote(5)) == 6
 
 
-@pytest.mark.skip(
-    "This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):
     # This test is just used to test the latency of actor creation.
     @ray.remote
