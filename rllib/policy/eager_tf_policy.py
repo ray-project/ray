@@ -373,7 +373,8 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
-            self._is_recurrent = state_batches is not None
+            self._is_recurrent = \
+                state_batches is not None and state_batches != []
             self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():

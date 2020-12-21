@@ -209,7 +209,7 @@ class TorchPolicy(Policy):
             Tuple:
                 - actions, state_out, extra_fetches, logp.
         """
-        self._is_recurrent = state_batches is not None
+        self._is_recurrent = state_batches is not None and state_batches != []
         # Switch to eval mode.
         if self.model:
             self.model.eval()
