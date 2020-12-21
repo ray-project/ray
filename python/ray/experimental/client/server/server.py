@@ -222,6 +222,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     result = self._schedule_actor(task, context)
                 elif task.type == ray_client_pb2.ClientTask.METHOD:
                     result = self._schedule_method(task, context)
+                elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
+                    result = self._schedule_named_actor(task, context)
                 else:
                     raise NotImplementedError(
                         "Unimplemented Schedule task type: %s" %
@@ -280,6 +282,16 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             output = remote_func.remote(*arglist, **kwargs)
         ids = self.unify_and_track_outputs(output, task.client_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=ids)
+
+    def _schedule_named_actor(self,
+                              task: ray_client_pb2.ClientTask,
+                              context=None) -> ray_client_pb2.ClientTaskTicket:
+        assert len(task.payload_id) == 0
+        actor = ray.get_actor(task.name)
+        self.actor_refs[actor._actor_id.binary()] = actor
+        self.actor_owners[task.client_id].add(actor._actor_id.binary())
+        return ray_client_pb2.ClientTaskTicket(
+            return_ids=[actor._actor_id.binary()])
 
     def _convert_args(self, arg_list, kwarg_map):
         argout = []

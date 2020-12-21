@@ -197,6 +197,9 @@ class ClientAPI(APIImpl):
     def close(self) -> None:
         return self.worker.close()
 
+    def get_actor(self, name: str) -> "ClientActorHandle":
+        return self.worker.get_actor(name)
+
     def kill(self, actor: "ClientActorHandle", *, no_restart=True):
         return self.worker.terminate_actor(actor, no_restart)
 
