@@ -22,6 +22,7 @@ from ray.autoscaler._private.commands import (
     debug_status, RUN_ENV_TYPES)
 import ray.ray_constants as ray_constants
 import ray.utils
+import ray.new_dashboard.memory_utils as memory_utils
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
@@ -1352,12 +1353,26 @@ def timeline(address):
     type=str,
     default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="Connect to ray with redis_password.")
-def memory(address, redis_password):
+@click.option(
+    "--sort-by",
+    required=False,
+    type=str,
+    default=memory_utils.SortingType.OBJECT_SIZE,
+    help="Sort object references in descending order by a SortingType (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
+@click.option(
+    "--group-by",
+    required=False,
+    type=str,
+    default=memory_utils.GroupByType.NODE_ADDRESS,
+    help="Group object references by a GroupByType (e.g. NODE_ADDRESS or STACK_TRACE).")
+def memory(address, redis_password, sort_by, group_by):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
+
+    print("We shall sort by ", sort_by, "then group by ", group_by)
     print(ray.internal.internal_api.memory_summary())
 
 
