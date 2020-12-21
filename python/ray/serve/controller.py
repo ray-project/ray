@@ -125,8 +125,14 @@ class EndpointState:
 
 
 class BackendState:
-    def __init__(self):
+    def __init__(self, checkpoint: bytes = None):
         self.backends: Dict[BackendTag, BackendInfo] = dict()
+
+        if checkpoint is not None:
+            self.backends = pickle.loads(checkpoint)
+
+    def checkpoint(self):
+        return pickle.dumps(self.backends)
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
         return {
@@ -486,7 +492,7 @@ class FutureResult:
 @dataclass
 class Checkpoint:
     endpoint_state_checkpoint: bytes
-    backend_state: BackendState
+    backend_state_checkpoint: bytes
     reconciler: ActorStateReconciler
     # TODO(ilr) Rename reconciler to PendingState
     inflight_reqs: Dict[uuid4, FutureResult]
@@ -556,9 +562,12 @@ class ServeController:
         checkpoint_bytes = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint_bytes is None:
             logger.debug("No checkpoint found")
+            self.backend_state = BackendState()
             self.endpoint_state = EndpointState()
         else:
             checkpoint: Checkpoint = pickle.loads(checkpoint_bytes)
+            self.backend_state = BackendState(
+                checkpoint=checkpoint.backend_state_checkpoint)
             self.endpoint_state = EndpointState(
                 checkpoint=checkpoint.endpoint_state_checkpoint)
             await self._recover_from_checkpoint(checkpoint)
@@ -680,7 +689,6 @@ class ServeController:
         start = time.time()
         logger.info("Recovering from checkpoint")
 
-        self.backend_state = checkpoint.backend_state
         self.actor_reconciler = checkpoint.reconciler
 
         self._serializable_inflight_results = checkpoint.inflight_reqs
