@@ -13,7 +13,8 @@ PullManager::PullManager(
       restore_spilled_object_(restore_spilled_object),
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {
+}
 
 bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Pull "
@@ -113,8 +114,9 @@ void PullManager::TryPull(const ObjectID &object_id) {
                  << " of object " << object_id;
   const auto time = get_time_();
   auto &request = it->second;
+  auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time =
-      time + (pull_timeout_ms_ / 1000) * (1UL << request.num_retries);
+      time + retry_timeout_len;
   send_pull_request_(object_id, node_id);
 }
 
@@ -137,10 +139,10 @@ void PullManager::Tick() {
       TryPull(object_id);
       request.num_retries++;
       // Better to fail than have unexpected overflow behavior.
-      RAY_CHECK(false) << "Pull manager has retried pull object: " << object_id
+      RAY_CHECK(request.num_retries < 42) << "Pull manager has retried pull object: " << object_id
                        << "more than 42 times. There is an exponential backoff between "
                           "retries so this should never happen. Please file a bug report "
-                          "https://github.com/ray-project/ray/issues/new".
+        "https://github.com/ray-project/ray/issues/new.";
     }
   }
 }
