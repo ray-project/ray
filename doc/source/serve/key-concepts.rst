@@ -19,10 +19,8 @@ Backends
 Backends define the implementation of your business logic or models that will handle requests when queries come in to :ref:`serve-endpoint`.
 In order to support seamless scalability backends can have many replicas, which are individual processes running in the Ray cluster to handle requests.
 To define a backend, first you must define the "handler" or the business logic you'd like to respond with.
-The handler should take as input a `Flask Request object <https://flask.palletsprojects.com/en/1.1.x/api/?highlight=request#flask.Request>`_. 
-The handler should return any JSON-serializable object as output.  For a more customizable response type, the handler may return a 
+The handler should take as input a `Starlette Request object <https://www.starlette.io/requests/>`_ and return any JSON-serializable object as output.  For a more customizable response type, the handler may return a 
 `Starlette Response object <https://www.starlette.io/responses/>`_.  
-In the future, Ray Serve will support `Starlette Request objects <https://www.starlette.io/requests/>`_ as input as well.
 
 A backend is defined using :mod:`client.create_backend <ray.serve.api.Client.create_backend>`, and the implementation can be defined as either a function or a class.
 Use a function when your response is stateless and a class when you might need to maintain some state (like a model).
@@ -32,7 +30,7 @@ A backend consists of a number of *replicas*, which are individual copies of the
 
 .. code-block:: python
 
-  def handle_request(flask_request):
+  def handle_request(starlette_request):
     return "hello world"
 
   class RequestHandler:
@@ -40,7 +38,7 @@ A backend consists of a number of *replicas*, which are individual copies of the
     def __init__(self, msg):
         self.msg = msg
 
-    def __call__(self, flask_request):
+    def __call__(self, starlette_request):
         return self.msg
 
   client.create_backend("simple_backend", handle_request)
