@@ -4,7 +4,8 @@ import ray
 def set_resource(resource_name, capacity, node_id=None):
     """Set a resource to a specified capacity.
 
-    Dynamic custom resources are deprecated; consider using placement groups
+    Dynamic custom resources are deprecated and won't work unless
+    RAY_ENABLE_NEW_SCHEDULER=0 is set; consider using placement groups
     instead (docs.ray.io/en/master/placement-group.html).
     """
 
