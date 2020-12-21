@@ -949,7 +949,6 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
                    << " not in reference table, locality data not available";
     return absl::nullopt;
   }
-  // Reference for object_id exists.
 
   const auto &node_id = it->second.pinned_at_raylet_id;
   if (!node_id.has_value()) {
