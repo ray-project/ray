@@ -137,6 +137,7 @@ def get_tensor_n_elements(tensor):
                      "GPU tensor types are: torch.Tensor, "
                      "cupy.ndarray.".format(type(tensor)))
 
+
 def get_tensor_shape(tensor):
     """Return the shape of the tensor as a list."""
     if isinstance(tensor, cupy.ndarray):
