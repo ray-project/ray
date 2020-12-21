@@ -2,21 +2,21 @@ import ray
 from ray import serve
 import requests
 
-ray.init(num_cpus=8)
+ray.init()
 client = serve.start()
-
 
 class Counter:
     def __init__(self):
         self.count = 0
 
-    def __call__(self, flask_request):
+    def __call__(self, request):
         self.count += 1
-        return {"current_counter": self.count}
+        return {"count": self.count}
 
-
-client.create_backend("counter", Counter)
-client.create_endpoint("counter", backend="counter", route="/counter")
+client.create_backend("my_backend", Counter)
+client.create_endpoint("my_endpoint", backend="my_backend", route="/counter")
 
 print(requests.get("http://127.0.0.1:8000/counter").json())
-# > {"current_counter": 1}
+# > {"count": 1}
+print(ray.get(client.get_handle("my_endpoint").remote()))
+# > {"count": 2}

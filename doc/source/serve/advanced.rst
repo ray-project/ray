@@ -89,7 +89,7 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
 .. _serve-batching:
 
-Batching to improve performance
+Batching to Improve Performance
 ===============================
 
 You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
