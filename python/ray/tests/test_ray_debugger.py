@@ -44,6 +44,7 @@ def test_ray_debugger_commands(shutdown_only):
 
     @ray.remote
     def f():
+        """We support unicode too: 🐛"""
         ray.util.pdb.set_trace()
 
     result1 = f.remote()
@@ -55,6 +56,10 @@ def test_ray_debugger_commands(shutdown_only):
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
     p.expect("-> ray.util.pdb.set_trace()")
+    p.sendline("ll")
+    # Cannot use the 🐛 symbol here because pexpect doesn't support
+    # unicode, but this test also does nicely:
+    p.expect("unicode")
     p.sendline("c")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")

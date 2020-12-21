@@ -279,8 +279,7 @@ def get_address_info_from_redis_helper(redis_address,
 def get_address_info_from_redis(redis_address,
                                 node_ip_address,
                                 num_retries=5,
-                                redis_password=None,
-                                no_warning=False):
+                                redis_password=None):
     counter = 0
     while True:
         try:
@@ -291,11 +290,10 @@ def get_address_info_from_redis(redis_address,
                 raise
             # Some of the information may not be in Redis yet, so wait a little
             # bit.
-            if not no_warning:
-                logger.warning(
-                    "Some processes that the driver needs to connect to have "
-                    "not registered with Redis, so retrying. Have you run "
-                    "'ray start' on this node?")
+            logger.warning(
+                "Some processes that the driver needs to connect to have "
+                "not registered with Redis, so retrying. Have you run "
+                "'ray start' on this node?")
             time.sleep(1)
         counter += 1
 
