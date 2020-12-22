@@ -1556,6 +1556,7 @@ def get_actor(name):
     return handle
 
 
+@client_mode_hook
 def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
