@@ -19,8 +19,10 @@ def _disable_client_hook():
 @contextmanager
 def disable_client_hook():
     val = _disable_client_hook()
-    yield None
-    _enable_client_hook(val)
+    try:
+        yield None
+    finally:
+        _enable_client_hook(val)
 
 def client_mode_hook(func):
     """
