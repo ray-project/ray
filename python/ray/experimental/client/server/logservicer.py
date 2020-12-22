@@ -70,6 +70,9 @@ def log_status_change_thread(log_queue, request_iterator):
             std_handler.register_global()
             root_logger.addHandler(current_handler)
             root_logger.setLevel(req.loglevel)
+    except grpc.RpcError as e:
+        logger.debug(f"closing log thread "
+                     f"grpc error reading request_iterator: {e}")
     finally:
         if current_handler is not None:
             root_logger.setLevel(default_level)
