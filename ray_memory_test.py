@@ -16,4 +16,4 @@ d = ray.put([c])
 del c
 
 # Give some time to test 'ray memory'
-time.sleep(60)
+time.sleep(3600)
