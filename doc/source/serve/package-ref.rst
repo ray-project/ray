@@ -17,8 +17,10 @@ Backend Configuration
 
 .. autoclass:: ray.serve.CondaEnv
 
-Handle API
-----------
+.. _`servehandle-api`:
+
+ServeHandle API
+---------------
 .. autoclass:: ray.serve.handle.RayServeHandle
     :members: remote, options
 

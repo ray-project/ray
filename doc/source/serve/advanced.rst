@@ -29,8 +29,10 @@ To scale out a backend to many instances, simply configure the number of replica
 
 This will scale up or down the number of replicas that can accept requests.
 
-Using Resources (CPUs, GPUs)
-============================
+.. _`serve-cpus-gpus`:
+
+Resource Management (CPUs, GPUs)
+================================
 
 To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
