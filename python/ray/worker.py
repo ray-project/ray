@@ -48,6 +48,7 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
+from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
 
@@ -345,7 +346,8 @@ class Worker:
             # actually run the function locally.
             pickled_function = pickle.dumps(function)
 
-            function_to_run_id = hashlib.sha1(pickled_function).digest()
+            function_to_run_id = hashlib.shake_128(pickled_function).digest(
+                ray_constants.ID_SIZE)
             key = b"FunctionsToRun:" + function_to_run_id
             # First run the function on the driver.
             # We always run the task locally.
@@ -608,10 +610,12 @@ def init(
         import resource
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
         if soft < hard:
+            # https://github.com/ray-project/ray/issues/12059
+            soft = max(soft, min(hard, 65536))
             logger.debug("Automatically increasing RLIMIT_NOFILE to max "
                          "value of {}".format(hard))
             try:
-                resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+                resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
             except ValueError:
                 logger.debug("Failed to raise limit.")
         soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -908,35 +912,42 @@ def print_logs(redis_client, threads_stopped, job_id):
             if data["job"] and ray.utils.binary_to_hex(
                     job_id.binary()) != data["job"]:
                 continue
-
-            print_file = sys.stderr if data["is_err"] else sys.stdout
-
-            def color_for(data):
-                if data["pid"] == "raylet":
-                    return colorama.Fore.YELLOW
-                else:
-                    return colorama.Fore.CYAN
-
-            if data["ip"] == localhost:
-                for line in data["lines"]:
-                    print(
-                        "{}{}(pid={}){} {}".format(
-                            colorama.Style.DIM, color_for(data), data["pid"],
-                            colorama.Style.RESET_ALL, line),
-                        file=print_file)
-            else:
-                for line in data["lines"]:
-                    print(
-                        "{}{}(pid={}, ip={}){} {}".format(
-                            colorama.Style.DIM, color_for(data), data["pid"],
-                            data["ip"], colorama.Style.RESET_ALL, line),
-                        file=print_file)
+            data["localhost"] = localhost
+            global_worker_stdstream_dispatcher.emit(data)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error(f"print_logs: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
+
+
+def print_to_stdstream(data):
+    print_file = sys.stderr if data["is_err"] else sys.stdout
+    print_worker_logs(data, print_file)
+
+
+def print_worker_logs(data, print_file):
+    def color_for(data):
+        if data["pid"] == "raylet":
+            return colorama.Fore.YELLOW
+        else:
+            return colorama.Fore.CYAN
+
+    if data["ip"] == data["localhost"]:
+        for line in data["lines"]:
+            print(
+                "{}{}(pid={}){} {}".format(colorama.Style.DIM, color_for(data),
+                                           data["pid"],
+                                           colorama.Style.RESET_ALL, line),
+                file=print_file)
+    else:
+        for line in data["lines"]:
+            print(
+                "{}{}(pid={}, ip={}){} {}".format(
+                    colorama.Style.DIM, color_for(data), data["pid"],
+                    data["ip"], colorama.Style.RESET_ALL, line),
+                file=print_file)
 
 
 def print_error_messages_raylet(task_error_queue, threads_stopped):
@@ -1199,6 +1210,8 @@ def connect(node,
         worker.printer_thread.daemon = True
         worker.printer_thread.start()
         if log_to_driver:
+            global_worker_stdstream_dispatcher.add_handler(
+                "ray_print_logs", print_to_stdstream)
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
@@ -1415,7 +1428,7 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_refs, *, num_returns=1, timeout=None):
+def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1443,6 +1456,11 @@ def wait(object_refs, *, num_returns=1, timeout=None):
         num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
+        fetch_local (bool): If True, wait for the object to be downloaded onto
+            the local node before returning it as ready. If False, ray.wait()
+            will not trigger fetching of objects to the local node and will
+            return immediately once the object is available anywhere in the
+            cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
@@ -1505,6 +1523,7 @@ def wait(object_refs, *, num_returns=1, timeout=None):
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
+            fetch_local,
         )
         return ready_ids, remaining_ids
 
@@ -1533,11 +1552,12 @@ def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
     This will interrupt any running tasks on the actor, causing them to fail
-    immediately. Any atexit handlers installed in the actor will still be run.
+    immediately. ``atexit`` handlers installed in the actor will not be run.
 
     If you want to kill the actor but let pending tasks finish,
     you can call ``actor.__ray_terminate__.remote()`` instead to queue a
-    termination task.
+    termination task. Any ``atexit`` handlers installed in the actor *will*
+    be run in this case.
 
     If the actor is a detached actor, subsequent calls to get its handle via
     ray.get_actor will fail.

@@ -6,7 +6,6 @@ import logging
 import os
 import subprocess
 import sys
-from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse
@@ -172,8 +171,7 @@ def continue_debug_session():
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
-                    with Telnet(host, int(port)) as tn:
-                        tn.interact()
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
                     continue_debug_session()
                     return
@@ -215,8 +213,7 @@ def debug(address):
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            with Telnet(host, int(port)) as tn:
-                tn.interact()
+            ray.util.rpdb.connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -649,7 +646,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "This command will now block until terminated by a signal.")
             cli_logger.print(
-                "Runing subprocesses are monitored and a message will be "
+                "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
 
         while True:
@@ -1290,7 +1287,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
+    echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.

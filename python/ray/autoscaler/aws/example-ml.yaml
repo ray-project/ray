@@ -120,7 +120,7 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - source activate pytorch_p36 && pip install -U ray
-    - source activate pytorch_p36 && pip install -U ray[rllib] ray[tune] ray[debug]
+    - source activate pytorch_p36 && pip install -U ray[rllib] ray[tune] ray
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true

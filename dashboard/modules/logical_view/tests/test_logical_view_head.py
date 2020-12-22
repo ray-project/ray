@@ -35,7 +35,7 @@ def test_actor_groups(ray_start_with_dashboard):
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
+    timeout_seconds = 10
     start_time = time.time()
     last_ex = None
     while True:
@@ -54,6 +54,13 @@ def test_actor_groups(ray_start_with_dashboard):
             assert summary["stateToCount"]["ALIVE"] == 2
 
             entries = actor_groups["Foo"]["entries"]
+            foo_entry = entries[0]
+            assert type(foo_entry["gpus"]) is list
+            assert "timestamp" in foo_entry
+            assert "actorConstructor" in foo_entry
+            assert "actorClass" in foo_entry
+            assert "actorId" in foo_entry
+            assert "ipAddress" in foo_entry
             assert len(entries) == 2
             assert "InfeasibleActor" in actor_groups
 

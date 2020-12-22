@@ -62,6 +62,11 @@ class OptunaSearch(Searcher):
             per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
             draw hyperparameter configurations. Defaults to ``TPESampler``.
 
@@ -109,6 +114,7 @@ class OptunaSearch(Searcher):
                  space: Optional[Union[Dict, List[Tuple]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  sampler: Optional[BaseSampler] = None):
         assert ot is not None, (
             "Optuna must be installed! Run `pip install optuna`.")
@@ -127,6 +133,8 @@ class OptunaSearch(Searcher):
                 space = self.convert_search_space(space)
 
         self._space = space
+
+        self._points_to_evaluate = points_to_evaluate
 
         self._study_name = "optuna"  # Fixed study name for in-memory storage
         self._sampler = sampler or ot.samplers.TPESampler()
@@ -188,12 +196,15 @@ class OptunaSearch(Searcher):
                                                        ot_trial_id)
         ot_trial = self._ot_trials[trial_id]
 
-        # getattr will fetch the trial.suggest_ function on Optuna trials
-        params = {
-            args[0] if len(args) > 0 else kwargs["name"]: getattr(
-                ot_trial, fn)(*args, **kwargs)
-            for (fn, args, kwargs) in self._space
-        }
+        if self._points_to_evaluate:
+            params = self._points_to_evaluate.pop(0)
+        else:
+            # getattr will fetch the trial.suggest_ function on Optuna trials
+            params = {
+                args[0] if len(args) > 0 else kwargs["name"]: getattr(
+                    ot_trial, fn)(*args, **kwargs)
+                for (fn, args, kwargs) in self._space
+            }
         return unflatten_dict(params)
 
     def on_trial_result(self, trial_id: str, result: Dict):
@@ -215,7 +226,8 @@ class OptunaSearch(Searcher):
 
     def save(self, checkpoint_path: str):
         save_object = (self._storage, self._pruner, self._sampler,
-                       self._ot_trials, self._ot_study)
+                       self._ot_trials, self._ot_study,
+                       self._points_to_evaluate)
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
@@ -223,7 +235,8 @@ class OptunaSearch(Searcher):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
         self._storage, self._pruner, self._sampler, \
-            self._ot_trials, self._ot_study = save_object
+            self._ot_trials, self._ot_study, \
+            self._points_to_evaluate = save_object
 
     @staticmethod
     def convert_search_space(spec: Dict) -> List[Tuple]:

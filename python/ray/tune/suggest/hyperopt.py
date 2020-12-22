@@ -58,11 +58,9 @@ class HyperOptSearch(Searcher):
             minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
-            you want hyperopt to run first to help the TPE algorithm
-            make better suggestions for future parameters. Needs to be
-            a list of dict of hyperopt-named variables.
-            Choice variables should be indicated by their index in the
-            list (see example)
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         n_initial_points (int): number of random evaluations of the
             objective function before starting to aproximate it with
             tree parzen estimators. Defaults to 20.
@@ -86,7 +84,7 @@ class HyperOptSearch(Searcher):
         current_best_params = [{
             'width': 10,
             'height': 0,
-            'activation': 0, # The index of "relu"
+            'activation': "relu",
         }]
 
         hyperopt_search = HyperOptSearch(
@@ -109,7 +107,7 @@ class HyperOptSearch(Searcher):
         current_best_params = [{
             'width': 10,
             'height': 0,
-            'activation': 0, # The index of "relu"
+            'activation': "relu",
         }]
 
         hyperopt_search = HyperOptSearch(
@@ -137,7 +135,6 @@ class HyperOptSearch(Searcher):
             "HyperOpt must be installed! Run `pip install hyperopt`.")
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
-        from hyperopt.fmin import generate_trials_to_calculate
         super(HyperOptSearch, self).__init__(
             metric=metric,
             mode=mode,
@@ -157,15 +154,9 @@ class HyperOptSearch(Searcher):
                 hpo.tpe.suggest, n_startup_jobs=n_initial_points)
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
-        if points_to_evaluate is None:
-            self._hpopt_trials = hpo.Trials()
-            self._points_to_evaluate = 0
-        else:
-            assert isinstance(points_to_evaluate, (list, tuple))
-            self._hpopt_trials = generate_trials_to_calculate(
-                points_to_evaluate)
-            self._hpopt_trials.refresh()
-            self._points_to_evaluate = len(points_to_evaluate)
+
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
+
         self._live_trial_mapping = {}
         if random_state_seed is None:
             self.rstate = np.random.RandomState()
@@ -184,11 +175,68 @@ class HyperOptSearch(Searcher):
             self._setup_hyperopt()
 
     def _setup_hyperopt(self):
+        from hyperopt.fmin import generate_trials_to_calculate
+
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
+        if self._points_to_evaluate is None:
+            self._hpopt_trials = hpo.Trials()
+            self._points_to_evaluate = 0
+        else:
+            assert isinstance(self._points_to_evaluate, (list, tuple))
+
+            for i in range(len(self._points_to_evaluate)):
+                config = self._points_to_evaluate[i]
+                self._convert_categories_to_indices(config)
+            # HyperOpt treats initial points as LIFO, reverse to get FIFO
+            self._points_to_evaluate = list(reversed(self._points_to_evaluate))
+            self._hpopt_trials = generate_trials_to_calculate(
+                self._points_to_evaluate)
+            self._hpopt_trials.refresh()
+            self._points_to_evaluate = len(self._points_to_evaluate)
+
         self.domain = hpo.Domain(lambda spc: spc, self._space)
+
+    def _convert_categories_to_indices(self, config):
+        """Convert config parameters for categories into hyperopt-compatible
+        representations where instead the index of the category is expected."""
+
+        def _lookup(config_dict, space_dict, key):
+            if isinstance(config_dict[key], dict):
+                for k in config_dict[key]:
+                    _lookup(config_dict[key], space_dict[key], k)
+            else:
+                if isinstance(space_dict[key], hpo.base.pyll.Apply) \
+                   and space_dict[key].name == "switch":
+                    if len(space_dict[key].pos_args) > 0:
+                        categories = [
+                            a.obj for a in space_dict[key].pos_args[1:]
+                            if a.name == "literal"
+                        ]
+                        try:
+                            idx = categories.index(config_dict[key])
+                        except ValueError as exc:
+                            msg = f"Did not find category with value " \
+                                  f"`{config_dict[key]}` in " \
+                                  f"hyperopt parameter `{key}`. "
+
+                            if isinstance(config_dict[key], int):
+                                msg += "In previous versions, a numerical " \
+                                       "index was expected for categorical " \
+                                       "values of `points_to_evaluate`, " \
+                                       "but in ray>=1.2.0, the categorical " \
+                                       "value is expected to be directly " \
+                                       "provided. "
+
+                            msg += "Please make sure the specified category " \
+                                   "is valid."
+                            raise ValueError(msg) from exc
+                        config_dict[key] = idx
+
+        for k in config:
+            _lookup(config, self._space, k)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:

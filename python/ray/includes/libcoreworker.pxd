@@ -179,9 +179,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                        c_bool plasma_objects_only)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results)
+                        int64_t timeout_ms, c_vector[c_bool] *results,
+                        c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only, c_bool delete_creating_tasks)
+                          c_bool local_only)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
@@ -232,7 +233,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
         (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
-        (void(
+        (int64_t(
             const c_vector[CObjectID] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(

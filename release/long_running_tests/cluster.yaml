@@ -1,48 +1,17 @@
-cluster_name: default
-min_workers: 0
-max_workers: 0
-target_utilization_fraction: 0.8
-idle_timeout_minutes: 5
+cluster_name: ray-release-long-running-tests
 
-# Cloud-provider specific configuration.
+docker:
+    image: anyscale/ray:latest
+    container_name: ray_container
+    pull_before_run: False
+
 provider:
     type: aws
     region: us-west-2
-    availability_zone: us-west-2a
+    availability_zone: us-west-2a, us-west-2b, us-west-2c
+
 auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: m5.2xlarge
-    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 150
-
-worker_nodes:
-    InstanceType: m5.large
-    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-              VolumeSize: 150
-
-    # Run workers on spot by default. Comment this out to use on-demand.
-    InstanceMarketOptions:
-        MarketType: spot
-
-# List of shell commands to run to set up nodes.
-setup_commands: []
-
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
-
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
-
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands: []
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands: []
+    InstanceType: m5.xlarge

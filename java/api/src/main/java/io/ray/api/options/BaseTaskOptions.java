@@ -1,12 +1,13 @@
 package io.ray.api.options;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * The options class for RayCall or ActorCreation.
  */
-public abstract class BaseTaskOptions {
+public abstract class BaseTaskOptions implements Serializable {
 
   public final Map<String, Double> resources;
 

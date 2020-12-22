@@ -31,7 +31,7 @@ def check_id(b, size=kUniqueIDSize):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(size))
+                         str(size) + ", got " + str(len(b)))
 
 
 cdef extern from "ray/common/constants.h" nogil:
