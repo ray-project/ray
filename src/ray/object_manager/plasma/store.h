@@ -99,9 +99,6 @@ class PlasmaStore {
   ///  - PlasmaError::OutOfMemory, if the store is out of memory and
   ///    cannot create the object. In this case, the client should not call
   ///    plasma_release.
-  ///  - PlasmaError::TransientOutOfMemory, if the store is temporarily out of
-  ///    memory but there may be space soon to create the object.  In this
-  ///    case, the client should not call plasma_release.
   PlasmaError CreateObject(const ObjectID &object_id, const NodeID &owner_raylet_id,
                            const std::string &owner_ip_address, int owner_port,
                            const WorkerID &owner_worker_id, bool evict_if_full,
@@ -185,6 +182,14 @@ class PlasmaStore {
   Status ProcessMessage(const std::shared_ptr<Client> &client,
                         plasma::flatbuf::MessageType type,
                         const std::vector<uint8_t> &message);
+
+  /// Return true if the given object id has only one reference.
+  /// Only one reference means there's only a raylet that pins the object
+  /// so it is safe to spill the object.
+  /// NOTE: Avoid using this method outside object spilling context (e.g., unless you
+  /// absolutely know what's going on). This method won't work correctly if it is used
+  /// before the object is pinned by raylet for the first time.
+  bool IsObjectSpillable(const ObjectID &object_id);
 
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
@@ -286,15 +291,13 @@ class PlasmaStore {
   /// A callback to asynchronously spill objects when space is needed. The
   /// callback returns the amount of space still needed after the spilling is
   /// complete.
+  /// NOTE: This function should guarantee the thread-safety because the callback is
+  /// shared with the main raylet thread.
   ray::SpillObjectsCallback spill_objects_callback_;
 
   /// The amount of time to wait before retrying a creation request after an
   /// OOM error.
   const uint32_t delay_on_oom_ms_;
-
-  /// The amount of time to wait before retrying a creation request after a
-  /// transient OOM error.
-  const uint32_t delay_on_transient_oom_ms_ = 10;
 
   /// The amount of time to wait between logging space usage debug messages.
   const uint64_t usage_log_interval_ns_;
@@ -309,6 +312,14 @@ class PlasmaStore {
 
   /// Queue of object creation requests.
   CreateRequestQueue create_request_queue_;
+
+  /// This mutex is used in order to make plasma store threas-safe with raylet.
+  /// Raylet's local_object_manager needs to ping access plasma store's method in order to
+  /// figure out the correct view of the object store. recursive_mutex is used to avoid
+  /// deadlock while we keep the simplest possible change. NOTE(sang): Avoid adding more
+  /// interface that node manager or object manager can access the plasma store with this
+  /// mutex if it is not absolutely necessary.
+  std::recursive_mutex mutex_;
 };
 
 }  // namespace plasma

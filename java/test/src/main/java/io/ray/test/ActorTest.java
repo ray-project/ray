@@ -128,7 +128,7 @@ public class ActorTest extends BaseTest {
     ObjectRef value = counter.task(Counter::getValue).remote();
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value), false, false);
+    Ray.internal().free(ImmutableList.of(value), false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
     // Free deletes from in-memory store.
@@ -138,7 +138,7 @@ public class ActorTest extends BaseTest {
     ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
     Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(largeValue), false, false);
+    Ray.internal().free(ImmutableList.of(largeValue), false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
     // Free deletes big objects from plasma store.

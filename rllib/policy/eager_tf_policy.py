@@ -259,10 +259,8 @@ def build_eager_tf_policy(name,
             self._update_model_inference_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
-            self._state_in = [
-                tf.convert_to_tensor([s])
-                for s in self.model.get_initial_state()
-            ]
+            self._state_inputs = self.model.get_initial_state()
+            self._is_recurrent = len(self._state_inputs) > 0
 
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(
@@ -314,12 +312,16 @@ def build_eager_tf_policy(name,
             self.callbacks.on_learn_on_batch(
                 policy=self, train_batch=postprocessed_batch)
 
-            # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req)
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
+            self._is_training = True
+            postprocessed_batch["is_training"] = True
             return self._learn_on_batch_eager(postprocessed_batch)
 
         @convert_eager_inputs
@@ -332,12 +334,14 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def compute_gradients(self, samples):
-            # Get batch ready for RNNs, if applicable.
             pad_batch_to_sequences_of_same_size(
                 samples,
                 shuffle=False,
                 max_seq_len=self._max_seq_len,
                 batch_divisibility_req=self.batch_divisibility_req)
+
+            self._is_training = True
+            samples["is_training"] = True
             return self._compute_gradients_eager(samples)
 
         @convert_eager_inputs
@@ -369,7 +373,9 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
-            self._state_in = state_batches
+            self._is_recurrent = \
+                state_batches is not None and state_batches != []
+            self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -546,11 +552,11 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def is_recurrent(self):
-            return len(self._state_in) > 0
+            return self._is_recurrent
 
         @override(Policy)
         def num_state_tensors(self):
-            return len(self._state_in)
+            return len(self._state_inputs)
 
         @override(Policy)
         def get_initial_state(self):
@@ -590,8 +596,6 @@ def build_eager_tf_policy(name,
 
         def _compute_gradients(self, samples):
             """Computes and returns grads as eager tensors."""
-
-            self._is_training = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 loss = loss_fn(self, self.model, self.dist_class, samples)

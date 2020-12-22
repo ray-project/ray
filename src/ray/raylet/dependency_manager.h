@@ -30,12 +30,13 @@ using rpc::TaskLeaseData;
 
 class ReconstructionPolicy;
 
+/// Used for unit-testing the ClusterTaskManager, which requests dependencies
+/// for queued tasks.
 class TaskDependencyManagerInterface {
  public:
   virtual bool AddTaskDependencies(
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
-
   virtual void RemoveTaskDependencies(const TaskID &task_id) = 0;
   virtual ~TaskDependencyManagerInterface(){};
 };
@@ -164,6 +165,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   std::string DebugString() const;
 
  private:
+  /// Metadata for an object that is needed by at least one executing worker
+  /// and/or one queued task.
   struct ObjectDependencies {
     ObjectDependencies(const rpc::ObjectReference &ref)
         : owner_address(ref.owner_address()) {}

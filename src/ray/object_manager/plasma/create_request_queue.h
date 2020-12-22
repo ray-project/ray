@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
@@ -34,9 +35,11 @@ class CreateRequestQueue {
       std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
   CreateRequestQueue(int32_t max_retries, bool evict_if_full,
+                     ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc)
       : max_retries_(max_retries),
         evict_if_full_(evict_if_full),
+        spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with " << max_retries_
                    << " retries on OOM, evict if full? " << (evict_if_full_ ? 1 : 0);
@@ -136,7 +139,7 @@ class CreateRequestQueue {
   /// Process a single request. Sets the request's error result to the error
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
-  Status ProcessRequest(std::unique_ptr<CreateRequest> &request);
+  bool ProcessRequest(std::unique_ptr<CreateRequest> &request);
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(std::list<std::unique_ptr<CreateRequest>>::iterator request_it);
@@ -155,6 +158,11 @@ class CreateRequestQueue {
   /// object store to make space. If the first attempt fails, then we will
   /// always try to evict.
   const bool evict_if_full_;
+
+  /// A callback to trigger object spilling. It tries to spill objects upto max
+  /// throughput. It returns true if space is made by object spilling, and false if
+  /// there's no more space to be made.
+  ray::SpillObjectsCallback spill_objects_callback_;
 
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.
@@ -177,6 +185,9 @@ class CreateRequestQueue {
   /// while the request is pending and will be set once the request has
   /// finished.
   absl::flat_hash_map<uint64_t, std::unique_ptr<CreateRequest>> fulfilled_requests_;
+
+  /// Last time global gc was invoked in ms.
+  uint64_t last_global_gc_ms_;
 
   friend class CreateRequestQueueTest;
 };

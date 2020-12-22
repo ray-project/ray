@@ -4,11 +4,9 @@ import os
 import random
 import platform
 import sys
-import time
 
 import numpy as np
 import pytest
-import psutil
 import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
@@ -41,57 +39,6 @@ def object_spilling_config(request, tmpdir):
     if request.param["type"] == "filesystem":
         request.param["params"]["directory_path"] = str(tmpdir)
     yield json.dumps(request.param)
-
-
-@pytest.mark.skip("This test is for local benchmark.")
-def test_sample_benchmark(object_spilling_config, shutdown_only):
-    # --Config values--
-    max_io_workers = 10
-    object_store_limit = 500 * 1024 * 1024
-    eight_mb = 1024 * 1024
-    object_size = 12 * eight_mb
-    spill_cnt = 50
-
-    # Limit our object store to 200 MiB of memory.
-    ray.init(
-        object_store_memory=object_store_limit,
-        _system_config={
-            "object_store_full_max_retries": 0,
-            "max_io_workers": max_io_workers,
-            "object_spilling_config": object_spilling_config,
-            "automatic_object_deletion_enabled": False,
-        })
-    arr = np.random.rand(object_size)
-    replay_buffer = []
-    pinned_objects = set()
-
-    # Create objects of more than 200 MiB.
-    spill_start = time.perf_counter()
-    for _ in range(spill_cnt):
-        ref = None
-        while ref is None:
-            try:
-                ref = ray.put(arr)
-                replay_buffer.append(ref)
-                pinned_objects.add(ref)
-            except ray.exceptions.ObjectStoreFullError:
-                ref_to_spill = pinned_objects.pop()
-                ray.experimental.force_spill_objects([ref_to_spill])
-    spill_end = time.perf_counter()
-
-    # Make sure to remove unpinned objects.
-    del pinned_objects
-    restore_start = time.perf_counter()
-    while replay_buffer:
-        ref = replay_buffer.pop()
-        sample = ray.get(ref)  # noqa
-    restore_end = time.perf_counter()
-
-    print(f"Object spilling benchmark for the config {object_spilling_config}")
-    print(f"Spilling {spill_cnt} number of objects of size {object_size}B "
-          f"takes {spill_end - spill_start} seconds with {max_io_workers} "
-          "number of io workers.")
-    print(f"Getting all objects takes {restore_end - restore_start} seconds.")
 
 
 def test_invalid_config_raises_exception(shutdown_only):
@@ -127,123 +74,38 @@ def test_url_generation_and_parse():
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_manually(object_spilling_config, shutdown_only):
+def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "object_store_full_max_retries": 0,
-            "automatic_object_spilling_enabled": False,
             "max_io_workers": 4,
-            "object_spilling_config": object_spilling_config,
+            "automatic_object_spilling_enabled": True,
+            "object_store_full_max_retries": 4,
+            "object_store_full_delay_ms": 100,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
             "min_spilling_size": 0,
-            "automatic_object_deletion_enabled": False,
         })
-    arr = np.random.rand(1024 * 1024)  # 8 MB data
-    replay_buffer = []
-    pinned_objects = set()
+    arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+    ref = ray.get(ray.put(arr))  # noqa
+    # Since the ref exists, it should raise OOM.
+    with pytest.raises(ray.exceptions.ObjectStoreFullError):
+        ref2 = ray.put(arr)  # noqa
 
-    # Create objects of more than 200 MiB.
-    for _ in range(25):
-        ref = None
-        while ref is None:
-            try:
-                ref = ray.put(arr)
-                replay_buffer.append(ref)
-                pinned_objects.add(ref)
-            except ray.exceptions.ObjectStoreFullError:
-                ref_to_spill = pinned_objects.pop()
-                ray.experimental.force_spill_objects([ref_to_spill])
+    def is_dir_empty():
+        num_files = 0
+        for path in temp_folder.iterdir():
+            num_files += 1
+        return num_files == 0
 
-    def is_worker(cmdline):
-        return cmdline and cmdline[0].startswith("ray::")
-
-    # Make sure io workers are spawned with proper name.
-    processes = [
-        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
-        if is_worker(x.info["cmdline"])
-    ]
-    assert (
-        ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE in processes)
-
-    # Spill 2 more objects so we will always have enough space for
-    # restoring objects back.
-    refs_to_spill = (pinned_objects.pop(), pinned_objects.pop())
-    ray.experimental.force_spill_objects(refs_to_spill)
-
-    # randomly sample objects
-    for _ in range(100):
-        ref = random.choice(replay_buffer)
-        sample = ray.get(ref)
-        assert np.array_equal(sample, arr)
-
-    # Make sure io workers are spawned with proper name.
-    processes = [
-        x.cmdline()[0] for x in psutil.process_iter(attrs=["cmdline"])
-        if is_worker(x.info["cmdline"])
-    ]
-    assert (
-        ray.ray_constants.WORKER_PROCESS_TYPE_RESTORE_WORKER_IDLE in processes)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_objects_manually_from_workers(object_spilling_config,
-                                             shutdown_only):
-    # Limit our object store to 100 MiB of memory.
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "object_store_full_max_retries": 0,
-            "automatic_object_spilling_enabled": False,
-            "max_io_workers": 4,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
-            "automatic_object_deletion_enabled": False,
-        })
-
-    @ray.remote
-    def _worker():
-        arr = np.random.rand(1024 * 1024)  # 8 MB data
-        ref = ray.put(arr)
-        ray.experimental.force_spill_objects([ref])
-        return ref
-
-    # Create objects of more than 200 MiB.
-    replay_buffer = [ray.get(_worker.remote()) for _ in range(25)]
-    values = {ref: np.copy(ray.get(ref)) for ref in replay_buffer}
-    # Randomly sample objects.
-    for _ in range(100):
-        ref = random.choice(replay_buffer)
-        sample = ray.get(ref)
-        assert np.array_equal(sample, values[ref])
-
-
-@pytest.mark.skip(reason="Not implemented yet.")
-def test_spill_objects_manually_with_workers(object_spilling_config,
-                                             shutdown_only):
-    # Limit our object store to 75 MiB of memory.
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "object_store_full_max_retries": 0,
-            "automatic_object_spilling_enabled": False,
-            "max_io_workers": 4,
-            "object_spilling_config": object_spilling_config,
-            "min_spilling_size": 0,
-            "automatic_object_deletion_enabled": False,
-        })
-    arrays = [np.random.rand(100 * 1024) for _ in range(50)]
-    objects = [ray.put(arr) for arr in arrays]
-
-    @ray.remote
-    def _worker(object_refs):
-        ray.experimental.force_spill_objects(object_refs)
-
-    ray.get([_worker.remote([o]) for o in objects])
-
-    for restored, arr in zip(ray.get(objects), arrays):
-        assert np.array_equal(restored, arr)
+    wait_for_condition(is_dir_empty)
 
 
 @pytest.mark.skipif(
@@ -255,7 +117,7 @@ def test_spill_objects_manually_with_workers(object_spilling_config,
         "_system_config": {
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "max_io_workers": 4,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
@@ -308,7 +170,7 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0
         })
@@ -344,7 +206,7 @@ def test_spill_during_get(object_spilling_config, shutdown_only):
         object_store_memory=100 * 1024 * 1024,
         _system_config={
             "automatic_object_spilling_enabled": True,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             # NOTE(swang): Use infinite retries because the OOM timer can still
             # get accidentally triggered when objects are released too slowly
             # (see github.com/ray-project/ray/issues/12040).
@@ -381,7 +243,7 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
             "max_io_workers": 1,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
         })
@@ -411,10 +273,11 @@ def test_delete_objects(tmp_path, shutdown_only):
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 1,
+            "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
                 "params": {
@@ -454,9 +317,10 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
+            "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
                 "params": {
@@ -506,7 +370,7 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
                 "params": {
@@ -579,9 +443,10 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 2,
+            "min_spilling_size": 20 * 1024 * 1024,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
                 "params": {
@@ -648,14 +513,14 @@ def test_fusion_objects(tmp_path, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     temp_folder = tmp_path / "spill"
     temp_folder.mkdir()
-    min_spilling_size = 30 * 1024 * 1024
+    min_spilling_size = 10 * 1024 * 1024
     ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
-            "max_io_workers": 4,
+            "max_io_workers": 3,
             "automatic_object_spilling_enabled": True,
             "object_store_full_max_retries": 4,
-            "object_store_full_initial_delay_ms": 100,
+            "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
                 "params": {
@@ -696,6 +561,60 @@ def test_fusion_objects(tmp_path, shutdown_only):
         if file_size >= min_spilling_size:
             is_test_passing = True
     assert is_test_passing
+
+
+# https://github.com/ray-project/ray/issues/12912
+def do_test_release_resource(tmp_path, expect_released):
+    temp_folder = tmp_path / "spill"
+    ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 1,
+            "release_resources_during_plasma_fetch": expect_released,
+            "automatic_object_spilling_enabled": True,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+        })
+    plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))
+    for _ in range(5):
+        ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))  # Force spilling
+
+    @ray.remote
+    def sneaky_task_tries_to_steal_released_resources():
+        print("resources were released!")
+
+    @ray.remote
+    def f(dep):
+        while True:
+            try:
+                ray.get(dep[0], timeout=0.001)
+            except ray.exceptions.GetTimeoutError:
+                pass
+
+    done = f.remote([plasma_obj])  # noqa
+    canary = sneaky_task_tries_to_steal_released_resources.remote()
+    ready, _ = ray.wait([canary], timeout=2)
+    if expect_released:
+        assert ready
+    else:
+        assert not ready
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_no_release_during_plasma_fetch(tmp_path, shutdown_only):
+    do_test_release_resource(tmp_path, expect_released=False)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_release_during_plasma_fetch(tmp_path, shutdown_only):
+    do_test_release_resource(tmp_path, expect_released=True)
 
 
 if __name__ == "__main__":

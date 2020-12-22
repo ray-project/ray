@@ -121,6 +121,13 @@ void ObjectManager::Stop() {
   }
 }
 
+bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
+  if (plasma::plasma_store_runner != nullptr) {
+    return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
+  }
+  return false;
+}
+
 void ObjectManager::RunRpcService() { rpc_service_.run(); }
 
 void ObjectManager::StartRpcService() {
@@ -214,7 +221,6 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 }
 
 void ObjectManager::CancelPull(uint64_t request_id) {
-  std::vector<ObjectID> objects_to_cancel;
   const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
