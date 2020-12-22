@@ -102,7 +102,16 @@ TEST_F(PullManagerTest, TestManyUpdates) {
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
-  ASSERT_EQ(num_send_pull_request_calls_, 100);
+  // We shouldn't send multiple requests to the same node.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  for (int i = 0; i < 100; i++) {
+    client_ids.insert(NodeID::FromRandom());
+    pull_manager_.OnLocationChange(obj1, client_ids, "");
+  }
+
+  ASSERT_EQ(num_send_pull_request_calls_, 1 + 100);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
@@ -117,7 +126,9 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
   std::unordered_set<NodeID> client_ids;
-  client_ids.insert(NodeID::FromRandom());
+  for (int i = 0; i < 127 * 2; i++) {
+    client_ids.insert(NodeID::FromRandom());
+  }
 
   // We need to call OnLocationChange at least once, to population the list of nodes with
   // the object.
