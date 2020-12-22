@@ -243,8 +243,7 @@ class Worker:
         resp = self.server.ClusterInfo(req)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
-            output_dict = {
-                k: v for k, v in resp.resource_table.table.items()}
+            output_dict = {k: v for k, v in resp.resource_table.table.items()}
             return output_dict
         return json.loads(resp.json)
 
