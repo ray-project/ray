@@ -498,9 +498,10 @@ class JAXPolicy(Policy):
                 The local FLAX optimizer(s) to use for this Policy.
         """
         if hasattr(self, "config"):
-            return flax.optim.Adam(learning_rate=self.config["lr"])
+            return flax.optim.Optimizer(flax.optim.Adam(
+                learning_rate=self.config["lr"]))
         else:
-            return flax.optim.Adam()
+            return flax.optim.Optimizer(flax.optim.Adam())
 
     @override(Policy)
     @DeveloperAPI
