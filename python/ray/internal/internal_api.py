@@ -36,8 +36,9 @@ def memory_summary():
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
     return reply.memory_summary
 
+
 def node_stats():
-    """Returns NodeStats object with information that describes memory usage in the cluster."""
+    """Returns NodeStats object describing memory usage in the cluster."""
 
     import grpc
     from ray.core.generated import node_manager_pb2
@@ -55,7 +56,9 @@ def node_stats():
         ],
     )
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    node_stats = stub.GetNodeStats(node_manager_pb2.GetNodeStatsRequest(include_memory_info=True), timeout=30.0)
+    node_stats = stub.GetNodeStats(
+        node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
+        timeout=30.0)
     return node_stats
 
 
