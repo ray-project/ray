@@ -1,5 +1,6 @@
 import asyncio
 from functools import singledispatch
+import importlib
 from itertools import groupby
 import json
 import logging
@@ -7,7 +8,6 @@ import random
 import string
 import time
 from typing import List, Dict
-import io
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
@@ -15,18 +15,18 @@ from collections import UserDict
 import requests
 import numpy as np
 import pydantic
-import flask
+import starlette.requests
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import TaskContext
-from ray.serve.http_util import build_flask_request
+from ray.serve.http_util import build_starlette_request
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
 class ServeMultiDict(UserDict):
-    """Compatible data structure to simulate Flask.Request.args API."""
+    """Compatible data structure to simulate Starlette Request query_args."""
 
     def getlist(self, key):
         """Return the list of items for a given key."""
@@ -34,11 +34,14 @@ class ServeMultiDict(UserDict):
 
 
 class ServeRequest:
-    """The request object used in Python context.
+    """The request object used when passing arguments via ServeHandle.
 
-    ServeRequest is built to have similar API as Flask.Request. You only need
-    to write your model serving code once; it can be queried by both HTTP and
-    Python.
+    ServeRequest partially implements the API of Starlette Request. You only
+    need to write your model serving code once; it can be queried by both HTTP
+    and Python.
+
+    To use the full Starlette Request interface with ServeHandle, you may
+    instead directly pass in a Starlette Request object to the ServeHandle.
     """
 
     def __init__(self, data, kwargs, headers, method):
@@ -58,28 +61,25 @@ class ServeRequest:
         return self._method
 
     @property
-    def args(self):
+    def query_params(self):
         """The keyword arguments from ``handle.remote(**kwargs)``."""
         return self._kwargs
 
-    @property
-    def json(self):
+    async def json(self):
         """The request dictionary, from ``handle.remote(dict)``."""
         if not isinstance(self._data, dict):
             raise RayServeException("Request data is not a dictionary. "
                                     f"It is {type(self._data)}.")
         return self._data
 
-    @property
-    def form(self):
+    async def form(self):
         """The request dictionary, from ``handle.remote(dict)``."""
         if not isinstance(self._data, dict):
             raise RayServeException("Request data is not a dictionary. "
                                     f"It is {type(self._data)}.")
         return self._data
 
-    @property
-    def data(self):
+    async def body(self):
         """The request data from ``handle.remote(obj)``."""
         return self._data
 
@@ -87,13 +87,13 @@ class ServeRequest:
 def parse_request_item(request_item):
     if request_item.metadata.request_context == TaskContext.Web:
         asgi_scope, body_bytes = request_item.args
-        return build_flask_request(asgi_scope, io.BytesIO(body_bytes))
+        return build_starlette_request(asgi_scope, body_bytes)
     else:
         arg = request_item.args[0] if len(request_item.args) == 1 else None
 
         # If the input data from handle is web request, we don't need to wrap
         # it in ServeRequest.
-        if isinstance(arg, flask.Request):
+        if isinstance(arg, starlette.requests.Request):
             return arg
 
         return ServeRequest(
@@ -342,3 +342,43 @@ def get_node_id_for_actor(actor_handle):
     """Given an actor handle, return the node id it's placed on."""
 
     return ray.actors()[actor_handle._actor_id.hex()]["Address"]["NodeID"]
+
+
+def import_class(full_path: str):
+    """Given a full import path to a class name, return the imported class.
+
+    For example, the following are equivalent:
+        MyClass = import_class("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Returns:
+        Imported class
+    """
+
+    last_period_idx = full_path.rfind(".")
+    class_name = full_path[last_period_idx + 1:]
+    module_name = full_path[:last_period_idx]
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
+
+
+class MockImportedBackend:
+    """Used for testing backends.ImportedBackend.
+
+    This is necessary because we need the class to be installed in the worker
+    processes. We could instead mock out importlib but doing so is messier and
+    reduces confidence in the test (it isn't truly end-to-end).
+    """
+
+    def __init__(self, arg):
+        self.arg = arg
+        self.config = None
+
+    def reconfigure(self, config):
+        self.config = config
+
+    def __call__(self, *args):
+        return {"arg": self.arg, "config": self.config}
+
+    def other_method(self, request):
+        return request.data

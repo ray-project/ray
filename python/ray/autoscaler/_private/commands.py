@@ -292,9 +292,10 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for non-AWS will
-    # fail (the schema error will ask the user to manually fill the resources)
-    # as we currently support autofilling resources for AWS instances only.
+    # NOTE: if `resources` field is missing, validate_config for providers
+    # other than AWS and Kubernetes will fail (the schema error will ask the
+    # user to manually fill the resources) as we currently support autofilling
+    # resources for AWS and Kubernetes only.
     validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 

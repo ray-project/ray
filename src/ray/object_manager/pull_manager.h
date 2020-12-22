@@ -81,9 +81,10 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
     PullRequest(double first_retry_time)
-        : client_locations(), next_pull_time(first_retry_time) {}
+        : client_locations(), next_pull_time(first_retry_time), num_retries(0) {}
     std::vector<NodeID> client_locations;
     double next_pull_time;
+    uint8_t num_retries;
   };
 
   /// See the constructor's arguments.
@@ -92,7 +93,7 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
-  int pull_timeout_ms_;
+  uint64_t pull_timeout_ms_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.

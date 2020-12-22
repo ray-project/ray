@@ -150,7 +150,6 @@ class StandardAutoscaler:
 
     def _update(self):
         now = time.time()
-
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.
         if now - self.last_update_time < self.update_interval_s:
@@ -332,7 +331,7 @@ class StandardAutoscaler:
                     NodeIP,
                     ResourceDict] = \
                     self.load_metrics.get_static_node_resources_by_ip()
-                head_node_resources = static_nodes[head_ip]
+                head_node_resources = static_nodes.get(head_ip, {})
             else:
                 head_node_resources = {}
 
@@ -481,11 +480,13 @@ class StandardAutoscaler:
                 # for legacy yamls.
                 self.resource_demand_scheduler.reset_config(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"], upscaling_speed)
+                    self.config["max_workers"], self.config["head_node_type"],
+                    upscaling_speed)
             else:
                 self.resource_demand_scheduler = ResourceDemandScheduler(
                     self.provider, self.available_node_types,
-                    self.config["max_workers"], upscaling_speed)
+                    self.config["max_workers"], self.config["head_node_type"],
+                    upscaling_speed)
 
         except Exception as e:
             if errors_fatal:

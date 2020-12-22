@@ -43,6 +43,12 @@ class GcsHeartbeatManager : public rpc::HeartbeatInfoHandler {
                              rpc::ReportHeartbeatReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
   /// Start node failure detect loop.
   void Start();
 

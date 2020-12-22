@@ -93,27 +93,27 @@ class LoadMetrics:
         active_ips = set(active_ips)
         active_ips.add(self.local_ip)
 
-        def prune(mapping):
+        def prune(mapping, should_log):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                # TODO (Alex): Change this back to info after #12138.
-                logger.debug("LoadMetrics: "
-                             "Removed mapping: {} - {}".format(
-                                 unwanted_key, mapping[unwanted_key]))
+                if should_log:
+                    logger.info("LoadMetrics: "
+                                "Removed mapping: {} - {}".format(
+                                    unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
-            if unwanted:
+            if unwanted and should_log:
                 # TODO (Alex): Change this back to info after #12138.
-                logger.debug(
+                logger.info(
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
             assert not (unwanted & set(mapping))
 
-        prune(self.last_used_time_by_ip)
-        prune(self.static_resources_by_ip)
-        prune(self.dynamic_resources_by_ip)
-        prune(self.resource_load_by_ip)
-        prune(self.last_heartbeat_time_by_ip)
+        prune(self.last_used_time_by_ip, should_log=True)
+        prune(self.static_resources_by_ip, should_log=False)
+        prune(self.dynamic_resources_by_ip, should_log=False)
+        prune(self.resource_load_by_ip, should_log=False)
+        prune(self.last_heartbeat_time_by_ip, should_log=False)
 
     def get_node_resources(self):
         """Return a list of node resources (static resource sizes).

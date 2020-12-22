@@ -263,10 +263,7 @@ Grid Search API
 
 .. autofunction:: ray.tune.grid_search
 
-Internals
----------
+References
+----------
 
-BasicVariantGenerator
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.tune.suggest.BasicVariantGenerator
+See also :ref:`tune-basicvariant`.

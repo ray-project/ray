@@ -34,6 +34,14 @@ GcsHeartbeatManager::GcsHeartbeatManager(
   }));
 }
 
+void GcsHeartbeatManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &item : gcs_init_data.Nodes()) {
+    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      heartbeats_.emplace(item.first, num_heartbeats_timeout_);
+    }
+  }
+}
+
 void GcsHeartbeatManager::Start() {
   io_service_.post([this] {
     if (!is_started_) {

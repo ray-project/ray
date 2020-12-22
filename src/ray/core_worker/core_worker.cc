@@ -575,7 +575,8 @@ void CoreWorker::Exit(bool intentional) {
       << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
+  RAY_CHECK_OK(
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, intentional]() {
@@ -1061,7 +1062,8 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
 }
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
-                        int64_t timeout_ms, std::vector<bool> *results) {
+                        int64_t timeout_ms, std::vector<bool> *results,
+                        bool fetch_local) {
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -1082,19 +1084,21 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
       memory_object_ids,
       std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
       worker_context_, &ready));
-  RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
-                            plasma_object_ids, ready);
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (timeout_ms > 0) {
     timeout_ms =
         std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
   }
-  if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-        plasma_object_ids,
-        std::min(static_cast<int>(plasma_object_ids.size()),
-                 num_objects - static_cast<int>(ready.size())),
-        timeout_ms, worker_context_, &ready));
+  if (fetch_local) {
+    RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
+                              plasma_object_ids, ready);
+    if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+          plasma_object_ids,
+          std::min(static_cast<int>(plasma_object_ids.size()),
+                   num_objects - static_cast<int>(ready.size())),
+          timeout_ms, worker_context_, &ready));
+    }
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -1107,8 +1111,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   return Status::OK();
 }
 
-Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                          bool delete_creating_tasks) {
+Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
   // Release the object from plasma. This does not affect the object's ref
   // count. If this was called from a non-owning worker, then a warning will be
   // logged and the object will not get released.
@@ -1125,8 +1128,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects can only be deleted once the ref count goes to 0.
   absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  return plasma_store_provider_->Delete(plasma_object_ids, local_only,
-                                        delete_creating_tasks);
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
 void CoreWorker::TriggerGlobalGC() {
@@ -1460,14 +1462,14 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
-                                           int timeout_ms) {
+                                           int timeout_seconds) {
   std::shared_ptr<std::promise<Status>> status_promise =
       std::make_shared<std::promise<Status>>();
   RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
       placement_group_id,
       [status_promise](const Status &status) { status_promise->set_value(status); }));
   auto status_future = status_promise->get_future();
-  if (status_future.wait_for(std::chrono::milliseconds(timeout_ms)) !=
+  if (status_future.wait_for(std::chrono::seconds(timeout_seconds)) !=
       std::future_status::ready) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
@@ -2366,7 +2368,9 @@ void CoreWorker::HandleRestoreSpilledObjects(
     for (const auto &url : request.spilled_objects_url()) {
       spilled_objects_url.push_back(url);
     }
-    options_.restore_spilled_objects(object_ids_to_restore, spilled_objects_url);
+    auto total =
+        options_.restore_spilled_objects(object_ids_to_restore, spilled_objects_url);
+    reply->set_bytes_restored_total(total);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(
