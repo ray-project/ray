@@ -16,10 +16,7 @@ from ray.test_utils import wait_for_condition
 from ray.test_utils import wait_for_pid_to_exit
 from ray.tests.client_test_utils import create_remote_signal_actor
 
-if client_test_enabled():
-    from ray.experimental.client import ray
-else:
-    import ray
+import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle  # noqa

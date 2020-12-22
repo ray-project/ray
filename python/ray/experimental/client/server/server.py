@@ -401,7 +401,7 @@ def serve(connection_str):
         logs_servicer, server)
     server.add_insecure_port(connection_str)
     server.start()
-    return server
+    return (server, task_servicer, data_servicer, logs_servicer)
 
 
 def init_and_serve(connection_str, *args, **kwargs):
@@ -412,7 +412,8 @@ def init_and_serve(connection_str, *args, **kwargs):
     return (server, info)
 
 
-def shutdown_with_server(server, _exiting_interpreter=False):
+def shutdown_with_server(server_set, _exiting_interpreter=False):
+    server, _, _, logs_servicer = server_set
     server.stop(1)
     with disable_client_hook():
         ray.shutdown(_exiting_interpreter)

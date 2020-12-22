@@ -19,7 +19,7 @@ class RayAPIStub:
         from ray.experimental.client.api import ClientAPI
         self.api = ClientAPI()
         self.client_worker = None
-        self.server = None
+        self._server = None
 
     def connect(self,
                 conn_str: str,
@@ -74,10 +74,10 @@ class RayAPIStub:
         return self.api is not None
 
     def init(self, *args, **kwargs):
-        if self.server is not None:
+        if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
         import ray.experimental.client.server.server as ray_client_server
-        self.server, address_info = ray_client_server.init_and_serve(
+        self._server, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self.connect("localhost:50051")
         return address_info
@@ -85,11 +85,11 @@ class RayAPIStub:
     def shutdown(self, _exiting_interpreter=False):
         self.disconnect()
         import ray.experimental.client.server.server as ray_client_server
-        if self.server is None:
+        if self._server is None:
             return
         ray_client_server.shutdown_with_server(
-            self.server, _exiting_interpreter)
-        self.server = None
+            self._server, _exiting_interpreter)
+        self._server = None
 
 
 ray = RayAPIStub()

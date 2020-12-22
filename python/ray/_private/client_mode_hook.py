@@ -31,7 +31,6 @@ def client_mode_hook(func):
 
     def wrapper(*args, **kwargs):
         global _client_hook_enabled
-        print(func.__name__, _client_hook_enabled)
         if _client_hook_enabled:
             return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
