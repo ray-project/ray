@@ -98,12 +98,6 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) = 0;
-
-  virtual std::vector<double> &GetBorrowedCPUInstances() = 0;
-
-  virtual void ClearBorrowedCPUInstances() = 0;
-
   virtual Task &GetAssignedTask() = 0;
 
   virtual void SetAssignedTask(const Task &assigned_task) = 0;
@@ -196,14 +190,6 @@ class Worker : public WorkerInterface {
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
 
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    borrowed_cpu_instances_ = cpu_instances;
-  };
-
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
-
-  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };
-
   Task &GetAssignedTask() { return assigned_task_; };
 
   void SetAssignedTask(const Task &assigned_task) { assigned_task_ = assigned_task; };
@@ -273,14 +259,6 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// CPUs borrowed by the worker. This happens in the following scenario:
-  /// 1) Worker A is blocked, so it donates its CPUs back to the node.
-  /// 2) Other workers are scheduled and are allocated some of the CPUs donated by A.
-  /// 3) Task A is unblocked, but it cannot get all CPUs back. At this point,
-  /// the node is oversubscribed. borrowed_cpu_instances_ represents the number
-  /// of CPUs this node is oversubscribed by.
-  /// TODO (Ion): Investigate a more intuitive alternative to track these Cpus.
-  std::vector<double> borrowed_cpu_instances_;
   /// Task being assigned to this worker.
   Task assigned_task_;
 };

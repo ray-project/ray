@@ -348,14 +348,6 @@ message GetTaskReply {
   TaskTableData task_data = 2;
 }
 
-message DeleteTasksRequest {
-  repeated bytes task_id_list = 1;
-}
-
-message DeleteTasksReply {
-  GcsStatus status = 1;
-}
-
 message AddTaskLeaseRequest {
   TaskLeaseData task_lease_data = 1;
 }
@@ -387,8 +379,6 @@ service TaskInfoGcsService {
   rpc AddTask(AddTaskRequest) returns (AddTaskReply);
   // Get task information from GCS Service.
   rpc GetTask(GetTaskRequest) returns (GetTaskReply);
-  // Delete tasks from GCS Service.
-  rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
   // Add a task lease to GCS Service.
   rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
   // Get task lease information from GCS Service.

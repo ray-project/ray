@@ -33,6 +33,9 @@ Since Serve is built on Ray, it also allows you to scale to many machines, in yo
   If you want to try out Serve, join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_
   and discuss in the #serve channel.
 
+.. note::
+  Starting with Ray version 1.3.0, Ray Serve backends must take in a Starlette Request object instead of a Flask Request object.  
+  See the `migration guide <https://docs.google.com/document/d/1CG4y5WTTc4G_MRQGyjnb_eZ7GK3G9dUX6TNLKLnKRAc/edit?usp=sharing>`_ for details.
 
 Installation
 ============

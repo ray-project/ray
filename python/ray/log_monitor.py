@@ -22,7 +22,7 @@ from ray.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]{40})-(\d+)-(\d+)")
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
 
 
 class LogFileInfo:

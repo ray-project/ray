@@ -32,7 +32,6 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/notification/object_store_notification_manager_ipc.h"
@@ -206,6 +205,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// Stop the Plasma Store eventloop. Currently it is only used to handle
   /// signals from Raylet.
   void Stop();
+
+  /// This methods call the plasma store which runs in a separate thread.
+  /// Check if the given object id is evictable by directly calling plasma store.
+  /// Plasma store will return true if the object is spillable, meaning it is only
+  /// pinned by the raylet, so we can comfotable evict after spilling the object from
+  /// local object manager. False otherwise.
+  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that

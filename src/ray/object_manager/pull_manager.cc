@@ -46,6 +46,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   if (!spilled_url.empty()) {
+    RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+                   << client_ids.size();
     // Try to restore the spilled object.
     restore_spilled_object_(object_id, spilled_url,
                             [this, object_id](const ray::Status &status) {
@@ -109,6 +111,10 @@ void PullManager::TryPull(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
+  const auto time = get_time_();
+  auto &request = it->second;
+  auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
+  request.next_pull_time = time + retry_timeout_len;
   send_pull_request_(object_id, node_id);
 }
 
@@ -129,7 +135,8 @@ void PullManager::Tick() {
     const auto time = get_time_();
     if (time >= request.next_pull_time) {
       TryPull(object_id);
-      request.next_pull_time = time + pull_timeout_ms_ / 1000;
+      // Bound the retry time at 10 * 1024 seconds.
+      request.num_retries = std::min(request.num_retries + 1, 10);
     }
   }
 }

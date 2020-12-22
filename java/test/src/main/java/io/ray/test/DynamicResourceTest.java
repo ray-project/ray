@@ -15,7 +15,8 @@ public class DynamicResourceTest extends BaseTest {
     return "hi";
   }
 
-  @Test(groups = {"cluster"})
+  // Dynamic resources not supported yet.
+  @Test(groups = {"cluster"}, enabled = false)
   public void testSetResource() {
     // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
     TestUtils.warmUpCluster();

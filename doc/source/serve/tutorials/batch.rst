@@ -30,13 +30,13 @@ You can use the ``@serve.accept_batch`` decorator to annotate a function or a cl
 This annotation is needed because batched backends have different APIs compared
 to single request backends. In a batched backend, the inputs are a list of values.
 
-For single query backend, the input type is a single Flask request or
+For single query backend, the input type is a single Starlette request or
 :mod:`ServeRequest <ray.serve.utils.ServeRequest>`:
 
 .. code-block:: python
 
     def single_request(
-        request: Union[Flask.Request, ServeRequest],
+        request: Union[starlette.requests.Request, ServeRequest],
     ):
         pass
 
@@ -47,7 +47,7 @@ types:
 
     @serve.accept_batch
     def batched_request(
-        request: List[Union[Flask.Request, ServeRequest]],
+        request: List[Union[starlette.requests.Request, ServeRequest]],
     ):
         pass
 
@@ -84,8 +84,8 @@ Ray Serve was able to evaluate them in batches.
 
 What if you want to evaluate a whole batch in Python? Ray Serve allows you to send
 queries via the Python API. A batch of queries can either come from the web server
-or the Python API. Requests coming from the Python API will have the similar API
-as Flask.Request. See more on the API :ref:`here<serve-handle-explainer>`.
+or the Python API. Requests coming from the Python API will have a similar API
+to Starlette Request. See more on the API :ref:`here<serve-handle-explainer>`.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_define_servable_v1_begin__

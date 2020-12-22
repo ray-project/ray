@@ -23,6 +23,7 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/filesystem.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
