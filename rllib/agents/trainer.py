@@ -1110,6 +1110,17 @@ class Trainer(Trainable):
                 "`count_steps_by` must be one of [env_steps|agent_steps]! "
                 "Got {}".format(config["multiagent"]["count_steps_by"]))
 
+        # If evaluation_num_workers > 0, warn if evaluation_interval is None
+        # (also set it to 1).
+        if config["evaluation_num_workers"] > 0 and \
+                not config["evaluation_interval"]:
+            logger.warning(
+                "You have specified {} evaluation workers, but no evaluation "
+                "interval! Will set the interval to 1 (each `train()` call). "
+                "If this is too frequent, set `evaluation_interval` to some "
+                "larger value.".format(config["evaluation_num_workers"]))
+            config["evaluation_interval"] = 1
+
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.
 

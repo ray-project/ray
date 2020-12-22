@@ -575,7 +575,8 @@ void CoreWorker::Exit(bool intentional) {
       << " received, this process will exit after all outstanding tasks have finished";
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
+  RAY_CHECK_OK(
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, intentional]() {
@@ -1110,8 +1111,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   return Status::OK();
 }
 
-Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                          bool delete_creating_tasks) {
+Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {
   // Release the object from plasma. This does not affect the object's ref
   // count. If this was called from a non-owning worker, then a warning will be
   // logged and the object will not get released.
@@ -1128,8 +1128,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects can only be deleted once the ref count goes to 0.
   absl::flat_hash_set<ObjectID> plasma_object_ids(object_ids.begin(), object_ids.end());
-  return plasma_store_provider_->Delete(plasma_object_ids, local_only,
-                                        delete_creating_tasks);
+  return plasma_store_provider_->Delete(plasma_object_ids, local_only);
 }
 
 void CoreWorker::TriggerGlobalGC() {
@@ -2369,7 +2368,9 @@ void CoreWorker::HandleRestoreSpilledObjects(
     for (const auto &url : request.spilled_objects_url()) {
       spilled_objects_url.push_back(url);
     }
-    options_.restore_spilled_objects(object_ids_to_restore, spilled_objects_url);
+    auto total =
+        options_.restore_spilled_objects(object_ids_to_restore, spilled_objects_url);
+    reply->set_bytes_restored_total(total);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   } else {
     send_reply_callback(

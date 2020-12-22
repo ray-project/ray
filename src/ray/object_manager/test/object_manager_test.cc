@@ -474,12 +474,14 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 };
 
+/* TODO(ekl) this seems to be hanging occasionally on Linux
 TEST_F(TestObjectManager, StartTestObjectManager) {
   // TODO: Break this test suite into unit tests.
   auto AsyncStartTests = main_service.wrap([this]() { WaitConnections(); });
   AsyncStartTests();
   main_service.run();
 }
+*/
 
 }  // namespace ray
 

@@ -629,10 +629,9 @@ class Policy(metaclass=ABCMeta):
         batch_for_postproc.count = self._dummy_batch.count
         self.exploration.postprocess_trajectory(self, batch_for_postproc)
         postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            # TODO: (sven) This hack will not work for attention net traj.
-            #  view setup.
             i = 0
             while "state_in_{}".format(i) in postprocessed_batch:
                 postprocessed_batch["state_in_{}".format(i)] = \
@@ -642,12 +641,11 @@ class Policy(metaclass=ABCMeta):
                         postprocessed_batch["state_out_{}".format(i)][:B]
                 i += 1
             seq_len = sample_batch_size // B
-            postprocessed_batch["seq_lens"] = \
-                np.array([seq_len for _ in range(B)], dtype=np.int32)
-        # Remove the UsageTrackingDict wrap to prep for wrapping the
-        # train batch with a to-tensor UsageTrackingDict.
-        train_batch = {k: v for k, v in postprocessed_batch.items()}
-        train_batch = self._lazy_tensor_dict(train_batch)
+            seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
+        # Wrap `train_batch` with a to-tensor UsageTrackingDict.
+        train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        if seq_lens is not None:
+            train_batch["seq_lens"] = seq_lens
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
@@ -712,13 +710,33 @@ class Policy(metaclass=ABCMeta):
                 ret[view_col] = \
                     np.zeros((batch_size, ) + shape[1:], np.float32)
             else:
-                if isinstance(view_req.space, gym.spaces.Space):
-                    ret[view_col] = np.zeros_like(
-                        [view_req.space.sample() for _ in range(batch_size)])
+                # Range of indices on time-axis, e.g. "-50:-1".
+                if view_req.shift_from is not None:
+                    ret[view_col] = np.zeros_like([[
+                        view_req.space.sample()
+                        for _ in range(view_req.shift_to -
+                                       view_req.shift_from + 1)
+                    ] for _ in range(batch_size)])
+                # Set of (probably non-consecutive) indices.
+                elif isinstance(view_req.shift, (list, tuple)):
+                    ret[view_col] = np.zeros_like([[
+                        view_req.space.sample()
+                        for t in range(len(view_req.shift))
+                    ] for _ in range(batch_size)])
+                # Single shift int value.
                 else:
-                    ret[view_col] = [view_req.space for _ in range(batch_size)]
+                    if isinstance(view_req.space, gym.spaces.Space):
+                        ret[view_col] = np.zeros_like([
+                            view_req.space.sample() for _ in range(batch_size)
+                        ])
+                    else:
+                        ret[view_col] = [
+                            view_req.space for _ in range(batch_size)
+                        ]
 
-        return SampleBatch(ret)
+        # Due to different view requirements for the different columns,
+        # columns in the resulting batch may not all have the same batch size.
+        return SampleBatch(ret, _dont_check_lens=True)
 
     def _update_model_inference_view_requirements_from_init_state(self):
         """Uses Model's (or this Policy's) init state to add needed ViewReqs.
@@ -737,8 +755,13 @@ class Policy(metaclass=ABCMeta):
             view_reqs = model.inference_view_requirements if model else \
                 self.view_requirements
             view_reqs["state_in_{}".format(i)] = ViewRequirement(
-                "state_out_{}".format(i), shift=-1, space=space)
-            view_reqs["state_out_{}".format(i)] = ViewRequirement(space=space)
+                "state_out_{}".format(i),
+                shift=-1,
+                batch_repeat_value=self.config.get("model", {}).get(
+                    "max_seq_len", 1),
+                space=space)
+            view_reqs["state_out_{}".format(i)] = ViewRequirement(
+                space=space, used_for_training=True)
 
 
 def clip_action(action, action_space):

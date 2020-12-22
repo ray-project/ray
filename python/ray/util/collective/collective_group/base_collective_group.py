@@ -2,13 +2,13 @@
 from abc import ABCMeta
 from abc import abstractmethod
 
-from ray.util.collective.types import AllReduceOptions, BarrierOptions
+from ray.util.collective.types import AllReduceOptions, BarrierOptions, \
+    ReduceOptions, AllGatherOptions, BroadcastOptions, ReduceScatterOptions
 
 
 class BaseGroup(metaclass=ABCMeta):
     def __init__(self, world_size, rank, group_name):
-        """
-        Init the process group with basic information.
+        """Init the process group with basic information.
 
         Args:
             world_size (int): The total number of processes in the group.
@@ -49,4 +49,26 @@ class BaseGroup(metaclass=ABCMeta):
 
     @abstractmethod
     def barrier(self, barrier_options=BarrierOptions()):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def reduce(self, tensor, reduce_options=ReduceOptions()):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def allgather(self,
+                  tensor_list,
+                  tensor,
+                  allgather_options=AllGatherOptions()):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def reducescatter(self,
+                      tensor,
+                      tensor_list,
+                      reducescatter_options=ReduceScatterOptions()):
         raise NotImplementedError()

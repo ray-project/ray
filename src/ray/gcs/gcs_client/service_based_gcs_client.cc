@@ -211,11 +211,15 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
         return;
       }
 
-      RAY_LOG(INFO) << "Attemptting to reconnect to GCS server: " << address.first << ":"
-                    << address.second;
+      RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
+                     << address.second;
       if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
-                      << address.second;
+        // If `last_reconnect_address_` port is -1, it means that this is the first
+        // connection and no log will be printed.
+        if (last_reconnect_address_.second != -1) {
+          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                        << address.second;
+        }
         break;
       }
     }
