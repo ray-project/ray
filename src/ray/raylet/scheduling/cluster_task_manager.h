@@ -202,6 +202,8 @@ class ClusterTaskManager {
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
+
+  friend class ClusterTaskManagerTest;
 };
 }  // namespace raylet
 }  // namespace ray

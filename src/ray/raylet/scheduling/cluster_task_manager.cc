@@ -139,6 +139,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto &task = std::get<0>(work);
       auto &spec = task.GetTaskSpecification();
 
+      // An argument was evicted since this task was added to the dispatch
+      // queue. Move it back to the waiting queue. The caller is responsible
+      // for notifying us when the task is unblocked again.
+      if (!task_dependency_manager_.IsTaskReady(spec.TaskId())) {
+        waiting_tasks_[spec.TaskId()] = std::move(*work_it);
+        work_it = dispatch_queue.erase(work_it);
+        continue;
+      }
+
       std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
       if (!worker) {
         // No worker available, we won't be able to schedule any kind of task.

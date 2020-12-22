@@ -101,9 +101,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
                     const std::vector<rpc::ObjectReference> &required_objects));
   MOCK_METHOD1(UnsubscribeGetDependencies, bool(const TaskID &task_id));
 
-  bool IsTaskReady(const TaskID &task_id) const {
-    return task_ready_;
-  }
+  bool IsTaskReady(const TaskID &task_id) const { return task_ready_; }
 
   bool task_ready_ = true;
 };
@@ -140,6 +138,13 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
     rpc::GcsNodeInfo info;
     node_info_[id] = info;
+  }
+
+  void AssertNoLeaks() {
+    ASSERT_TRUE(task_manager_.tasks_to_schedule_.empty());
+    ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
+    ASSERT_TRUE(task_manager_.waiting_tasks_.empty());
+    ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
   }
 
   NodeID id_;
@@ -187,6 +192,8 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
+
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
@@ -278,6 +285,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
@@ -327,6 +335,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   // The second task was spilled.
   ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
             remote_node_id.Binary());
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
@@ -383,6 +392,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
@@ -420,6 +430,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancelInfeasibleTask) {
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
@@ -585,6 +596,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(shape1.backlog_size(), 0);
   ASSERT_EQ(shape1.num_infeasible_requests_queued(), 0);
   ASSERT_EQ(shape1.num_ready_requests_queued(), 0);
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
@@ -618,6 +630,7 @@ TEST_F(ClusterTaskManagerTest, OwnerDeadTest) {
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
@@ -660,6 +673,7 @@ TEST_F(ClusterTaskManagerTest, TestInfeasibleTaskWarning) {
   ASSERT_EQ(pool_.workers.size(), 1);
   // Make sure the spillback callback is called.
   ASSERT_EQ(reply.retry_at_raylet_address().raylet_id(), remote_node_id.Binary());
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
@@ -765,8 +779,8 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   ASSERT_EQ(leased_workers_.size(), 0);
 
   /* Task argument gets evicted */
+  dependency_manager_.task_ready_ = false;
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
-  task_manager_.TasksBlocked({id});
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   ASSERT_EQ(num_callbacks, 0);
@@ -776,6 +790,7 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   EXPECT_CALL(dependency_manager_,
               UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()));
   task_manager_.TasksUnblocked({id});
+  dependency_manager_.task_ready_ = true;
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
   ASSERT_EQ(num_callbacks, 1);
