@@ -484,9 +484,6 @@ def lograndint(lower: int, upper: int, base: float = 10):
 
     ``lower`` is inclusive, ``upper`` is exclusive.
 
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
-
     """
     return Integer(lower, upper).loguniform(base)
 
@@ -498,9 +495,6 @@ def qrandint(lower: int, upper: int, q: int = 1):
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
-
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
 
     """
     return Integer(lower, upper).uniform().quantized(q)
@@ -514,9 +508,6 @@ def qlograndint(lower: int, upper: int, q: int, base: float = 10):
 
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
-
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
 
     """
     return Integer(lower, upper).loguniform(base).quantized(q)
