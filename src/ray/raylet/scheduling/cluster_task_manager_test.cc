@@ -39,6 +39,8 @@ namespace ray {
 
 namespace raylet {
 
+using ::testing::_;
+
 class MockWorkerPool : public WorkerPoolInterface {
  public:
   std::shared_ptr<WorkerInterface> PopWorker(const TaskSpecification &task_spec) {
@@ -92,21 +94,23 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
   return Task(spec_builder.Build(), TaskExecutionSpecification(execution_spec_message));
 }
 
+class MockTaskDependencyManager : public TaskDependencyManagerInterface {
+ public:
+  MOCK_METHOD2(SubscribeGetDependencies,
+               bool(const TaskID &task_id,
+                    const std::vector<rpc::ObjectReference> &required_objects));
+  MOCK_METHOD1(UnsubscribeGetDependencies, bool(const TaskID &task_id));
+};
+
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest()
       : id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary())),
-        fulfills_dependencies_calls_(0),
-        dependencies_fulfilled_(true),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
-        task_manager_(id_, scheduler_,
-                      [this](const Task &_task) {
-                        fulfills_dependencies_calls_++;
-                        return dependencies_fulfilled_;
-                      },
+        task_manager_(id_, scheduler_, dependency_manager_,
                       [this](const WorkerID &worker_id, const NodeID &node_id) {
                         return is_owner_alive_;
                       },
@@ -145,15 +149,13 @@ class ClusterTaskManagerTest : public ::testing::Test {
   MockWorkerPool pool_;
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
 
-  int fulfills_dependencies_calls_;
-  bool dependencies_fulfilled_;
-
   bool is_owner_alive_;
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
   std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
 
+  MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
 };
 
@@ -186,7 +188,6 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   ASSERT_TRUE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
-  ASSERT_EQ(fulfills_dependencies_calls_, 0);
   ASSERT_EQ(node_info_calls_, 0);
 
   AssertNoLeaks();
@@ -212,7 +213,6 @@ TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
   ASSERT_EQ(leased_workers_.size(), 0);
   // Worker is unused.
   ASSERT_EQ(pool_.workers.size(), 1);
-  ASSERT_EQ(fulfills_dependencies_calls_, 0);
   ASSERT_EQ(node_info_calls_, 0);
 }
 
@@ -238,7 +238,8 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
 
   /* Blocked on dependencies */
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
-  dependencies_fulfilled_ = false;
+  EXPECT_CALL(dependency_manager_,
+              SubscribeGetDependencies(task.GetTaskSpecification().TaskId(), _));
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
@@ -260,7 +261,6 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   /* First task is unblocked now, but resources are no longer available */
   auto id = task.GetTaskSpecification().TaskId();
   std::vector<TaskID> unblocked = {id};
-  dependencies_fulfilled_ = true;
   task_manager_.TasksUnblocked(unblocked);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
@@ -566,7 +566,6 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
   ASSERT_EQ(pool_.workers.size(), 1);
-  ASSERT_EQ(fulfills_dependencies_calls_, 0);
   ASSERT_EQ(node_info_calls_, 0);
 
   auto data = std::make_shared<rpc::ResourcesData>();

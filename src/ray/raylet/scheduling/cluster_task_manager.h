@@ -5,6 +5,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -46,14 +47,13 @@ class ClusterTaskManager {
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   /// the state of the cluster.
-  /// \param fulfills_dependencies_func: Returns true if all of a task's
-  /// dependencies are fulfilled.
+  /// \param task_dependency_manager_ Used to fetch task's dependencies.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
   /// (according to our ownership model).
   /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     std::function<bool(const Task &)> fulfills_dependencies_func,
+                     TaskDependencyManagerInterface &task_dependency_manager_,
                      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info,
                      std::function<void(const Task &)> announce_infeasible_task);
@@ -145,8 +145,8 @@ class ClusterTaskManager {
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Function to make task dependencies to be local.
-  std::function<bool(const Task &)> fulfills_dependencies_func_;
+  /// Class to make task dependencies to be local.
+  TaskDependencyManagerInterface &task_dependency_manager_;
   /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.

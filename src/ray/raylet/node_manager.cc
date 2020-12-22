@@ -205,16 +205,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
             self_node_id_.Binary(),
             local_resources.GetTotalResources().GetResourceMap()));
-    std::function<bool(const Task &)> fulfills_dependencies_func =
-        [this](const Task &task) {
-          bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
-              task.GetTaskSpecification().TaskId(), task.GetDependencies());
-          if (args_ready) {
-            task_dependency_manager_.UnsubscribeGetDependencies(
-                task.GetTaskSpecification().TaskId());
-          }
-          return args_ready;
-        };
 
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
@@ -228,8 +218,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, new_resource_scheduler_, fulfills_dependencies_func,
-        is_owner_alive, get_node_info_func, announce_infeasible_task));
+        self_node_id_, new_resource_scheduler_, task_dependency_manager_, is_owner_alive,
+        get_node_info_func, announce_infeasible_task));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler_);
   } else {
