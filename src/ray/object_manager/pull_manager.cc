@@ -40,8 +40,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   return bundle_it->first;
 }
 
-void PullManager::CancelPull(uint64_t request_id,
-                             std::vector<ObjectID> *objects_to_cancel) {
+std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
+  std::vector<ObjectID> objects_to_cancel;
   RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
   auto bundle_it = pull_request_bundles_.find(request_id);
   RAY_CHECK(bundle_it != pull_request_bundles_.end());
@@ -53,11 +53,12 @@ void PullManager::CancelPull(uint64_t request_id,
     RAY_CHECK(it->second.bundle_request_ids.erase(request_id));
     if (it->second.bundle_request_ids.empty()) {
       object_pull_requests_.erase(it);
-      objects_to_cancel->push_back(obj_id);
+      objects_to_cancel.push_back(obj_id);
     }
   }
 
   pull_request_bundles_.erase(bundle_it);
+  return objects_to_cancel;
 }
 
 void PullManager::OnLocationChange(const ObjectID &object_id,

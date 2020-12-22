@@ -94,9 +94,6 @@ class ObjectStoreRunner {
   std::thread store_thread_;
 };
 
-using PullRequestComplete = std::function<void(PullRequestID)>;
-using PullRequestIncomplete = std::function<void(PullRequestID)>;
-
 class ObjectManagerInterface {
  public:
   virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;

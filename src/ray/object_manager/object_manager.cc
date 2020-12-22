@@ -104,7 +104,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
         HandleObjectAdded(object_info);
       });
   store_notification_->SubscribeObjDeleted([this](const ObjectID &oid) {
-    pull_manager_->TryFetch(oid);
+    // TODO(swang): We may want to force the pull manager to fetch this object
+    // again, in case it was needed by an active pull request.
     NotifyDirectoryObjectDeleted(oid);
   });
 
@@ -214,7 +215,7 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 
 void ObjectManager::CancelPull(uint64_t request_id) {
   std::vector<ObjectID> objects_to_cancel;
-  pull_manager_->CancelPull(request_id, &objects_to_cancel);
+  const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
     RAY_CHECK_OK(object_directory_->UnsubscribeObjectLocations(
         object_directory_pull_callback_id_, object_id));

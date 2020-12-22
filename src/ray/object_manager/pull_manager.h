@@ -24,8 +24,6 @@
 
 namespace ray {
 
-using PullRequestID = int64_t;
-
 class PullManager {
  public:
   /// PullManager is responsible for managing the policy around when to send pull requests
@@ -44,42 +42,32 @@ class PullManager {
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms);
 
-  /// Begin a new pull request if necessary.
+  /// Begin a new pull request for a bundle of objects.
   ///
-  /// \param object_id The object id to pull.
-  /// \param owner_address The owner of the object.
-  ///
-  /// \return True if a new pull request was necessary. If true, the caller should
-  /// subscribe to new locations of the object, and call OnLocationChange when necessary.
+  /// \param object_refs The bundle of objects that must be made local.
+  /// \param objects_to_locate The objects whose new locations the caller
+  /// should subscribe to, and call OnLocationChange for.
+  /// \return A request ID that can be used to cancel the request.
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
-                std::vector<rpc::ObjectReference> *objects_to_cancel);
+                std::vector<rpc::ObjectReference> *objects_to_locate);
 
   /// Called when the available locations for a given object change.
   ///
   /// \param object_id The ID of the object which is now available in a new location.
   /// \param client_ids The new set of nodes that the object is available on. Not
-  /// necessarily a super or subset of the previously available nodes. \param spilled_url
-  /// The location of the object if it was spilled. If non-empty, the object may no longer
-  /// be on any node.
+  /// necessarily a super or subset of the previously available nodes.
+  /// \param spilled_url The location of the object if it was spilled. If
+  /// non-empty, the object may no longer be on any node.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
                         const std::string &spilled_url);
 
-  /// Cancel an existing pull request if necessary.
+  /// Cancel an existing pull request.
   ///
-  /// \param object_id The object id that no longer needs to be pulled.
-  ///
-  /// \return True if a pull was cancelled. If there was no pending pull request for the
-  /// object this method may return false.
-  void CancelPull(uint64_t request_id, std::vector<ObjectID> *objects_to_cancel);
-
-  /// Try to fetch an object immediately, by restoring the object from external
-  /// storage or by fetching the object from one of its expected client
+  /// \param request_id The request ID returned by Pull that should be canceled.
+  /// \return The objects for which the caller should stop subscribing to
   /// locations.
-  ///
-  /// \param object_id The object's object id.
-  /// \return Void.
-  void TryFetch(const ObjectID &object_id);
+  std::vector<ObjectID> CancelPull(uint64_t request_id);
 
   /// Called when the retry timer fires. If this fires, the pull manager may try to pull
   /// existing objects from other nodes if necessary.
@@ -101,6 +89,11 @@ class PullManager {
     double next_pull_time;
     absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
+
+  /// Try to fetch an object immediately, by restoring the object from external
+  /// storage or by fetching the object from one of its expected client
+  /// locations.
+  void TryFetch(const ObjectID &object_id);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
