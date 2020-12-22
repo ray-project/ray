@@ -245,7 +245,7 @@ class NCCLGroup(BaseGroup):
         """
 
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-        comm = self._get_nccl_communicator()
+        comm = self._get_nccl_collective_communicator()
         stream = self._get_cuda_stream()
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
