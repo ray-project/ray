@@ -28,6 +28,7 @@ import ray.new_dashboard.modules.stats_collector.stats_collector_head \
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 
+
 logger = logging.getLogger(__name__)
 
 
