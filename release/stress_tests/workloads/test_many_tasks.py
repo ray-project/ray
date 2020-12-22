@@ -165,8 +165,6 @@ def stage4():
         spreads.append(spread)
         logger.info(f"Spread: {last - first}\tLast: {last}\tFirst: {first}")
 
-
-# avg_spread ~ 115 with Ray 1.0 scheduler. ~695 with (buggy) 0.8.7 scheduler.
     avg_spread = sum(spreads) / len(spreads)
     logger.info(f"Avg spread: {sum(spreads)/len(spreads)}")
     return avg_spread
@@ -195,6 +193,7 @@ print("\tActor creation time: {}".format(stage_3_creation_time))
 print("\tTotal time: {}".format(stage_3_time))
 
 print("Stage 4 results:")
+# avg_spread ~ 115 with Ray 1.0 scheduler. ~695 with (buggy) 0.8.7 scheduler.
 print(f"\tScheduling spread: {stage_4_spread}.")
 
 # TODO(rkn): The test below is commented out because it currently does not
