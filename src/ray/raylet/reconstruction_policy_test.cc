@@ -109,7 +109,8 @@ class MockNodeInfoAccessor : public gcs::ServiceBasedNodeInfoAccessor {
 
 class MockTaskInfoAccessor : public gcs::ServiceBasedTaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::ServiceBasedGcsClient *client) : ServiceBasedTaskInfoAccessor(client) {}
+  MockTaskInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : ServiceBasedTaskInfoAccessor(client) {}
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
