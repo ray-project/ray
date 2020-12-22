@@ -217,8 +217,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, new_resource_scheduler_, dependency_manager_,
-        is_owner_alive, get_node_info_func, announce_infeasible_task));
+        self_node_id_, new_resource_scheduler_, dependency_manager_, is_owner_alive,
+        get_node_info_func, announce_infeasible_task));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler_);
   } else {
@@ -2240,11 +2240,10 @@ void NodeManager::AsyncResolveObjects(
   // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
-    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(),
-                                                     required_object_refs);
+    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), required_object_refs);
   } else {
     dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
-                                                      required_object_refs);
+                                                 required_object_refs);
   }
 }
 
@@ -2457,8 +2456,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                                            const ObjectID &required_object_id) {
   // Get the owner's address.
   rpc::Address owner_addr;
-  bool has_owner =
-      dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
+  bool has_owner = dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
   if (has_owner) {
     if (!RayConfig::instance().object_pinning_enabled()) {
       // LRU eviction is enabled. The object may still be in scope, but we
@@ -2738,8 +2736,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
     //    is local at this time but when the core worker was notified, the object is
     //    is evicted. The core worker should be able to handle evicted object in this
     //    case.
-    dependency_manager_.StartOrUpdateWaitRequest(associated_worker->WorkerId(),
-                                                      refs);
+    dependency_manager_.StartOrUpdateWaitRequest(associated_worker->WorkerId(), refs);
 
     // Add this worker to the listeners for the object ID.
     {

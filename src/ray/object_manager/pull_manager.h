@@ -82,7 +82,8 @@ class PullManager {
     ObjectPullRequest(double first_retry_time)
         : client_locations(),
           spilled_url(),
-        next_pull_time(first_retry_time), num_retries(0),
+          next_pull_time(first_retry_time),
+          num_retries(0),
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
