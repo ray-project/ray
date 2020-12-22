@@ -19,6 +19,7 @@ class RayAPIStub:
         from ray.experimental.client.api import ClientAPI
         self.api = ClientAPI()
         self.client_worker = None
+        self.server = None
 
     def connect(self,
                 conn_str: str,
@@ -73,30 +74,25 @@ class RayAPIStub:
         return self.api is not None
 
     def init(self, *args, **kwargs):
-        if _is_client_test_env():
-            global _test_server
-            import ray.experimental.client.server.server as ray_client_server
-            _test_server, address_info = ray_client_server.init_and_serve(
-                "localhost:50051", test_mode=True, *args, **kwargs)
-            self.connect("localhost:50051")
-            return address_info
-        else:
-            raise NotImplementedError(
-                "Please call ray.connect() in client mode")
+        if self.server is not None:
+            raise Exception("Trying to start two instances of ray via client")
+        import ray.experimental.client.server.server as ray_client_server
+        self.server, address_info = ray_client_server.init_and_serve(
+            "localhost:50051", *args, **kwargs)
+        self.connect("localhost:50051")
+        return address_info
+
+    def shutdown(self, _exiting_interpreter=False):
+        self.disconnect()
+        import ray.experimental.client.server.server as ray_client_server
+        if self.server is None:
+            return
+        ray_client_server.shutdown_with_server(
+            self.server, _exiting_interpreter)
+        self.server = None
 
 
 ray = RayAPIStub()
-
-_test_server = None
-
-
-def _stop_test_server(*args):
-    global _test_server
-    _test_server.stop(*args)
-
-
-def _is_client_test_env() -> bool:
-    return os.environ.get("RAY_TEST_CLIENT_MODE") == "1"
 
 
 # Someday we might add methods in this module so that someone who

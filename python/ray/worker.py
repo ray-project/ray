@@ -51,6 +51,7 @@ from ray.ray_logging import setup_logger
 from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
+from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -469,6 +470,7 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
+@client_mode_hook
 def init(
         address=None,
         *,
@@ -781,6 +783,7 @@ def init(
 _post_init_hooks = []
 
 
+@client_mode_hook
 def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -1044,6 +1047,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+@client_mode_hook
 def is_initialized():
     """Check if ray.init has been called yet.
 
@@ -1322,6 +1326,7 @@ def show_in_dashboard(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
+@client_mode_hook
 def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -1400,6 +1405,7 @@ def get(object_refs, *, timeout=None):
         return values
 
 
+@client_mode_hook
 def put(value):
     """Store an object in the object store.
 
@@ -1428,6 +1434,7 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
+@client_mode_hook
 def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -1528,6 +1535,7 @@ def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
         return ready_ids, remaining_ids
 
 
+@client_mode_hook
 def get_actor(name):
     """Get a handle to a detached actor.
 
@@ -1575,6 +1583,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
+@client_mode_hook
 def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
 
@@ -1690,7 +1699,7 @@ def make_decorator(num_returns=None,
 
     return decorator
 
-
+@client_mode_hook
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
 

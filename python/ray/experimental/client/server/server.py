@@ -23,19 +23,19 @@ from ray.experimental.client.server.server_pickler import loads_from_client
 from ray.experimental.client.server.dataservicer import DataServicer
 from ray.experimental.client.server.logservicer import LogstreamServicer
 from ray.experimental.client.server.server_stubs import current_remote
+from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
 
 
 class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
-    def __init__(self, test_mode=False):
+    def __init__(self):
         self.object_refs: Dict[str, Dict[bytes, ray.ObjectRef]] = defaultdict(
             dict)
         self.function_refs = {}
         self.actor_refs: Dict[bytes, ray.ActorHandle] = {}
         self.actor_owners: Dict[str, Set[bytes]] = defaultdict(set)
         self.registered_actor_classes = {}
-        self._test_mode = test_mode
         self._current_function_stub = None
 
     def ClusterInfo(self, request,
@@ -43,7 +43,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         resp = ray_client_pb2.ClusterInfoResponse()
         resp.type = request.type
         if request.type == ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES:
-            resources = ray.cluster_resources()
+            with disable_client_hook():
+                resources = ray.cluster_resources()
             # Normalize resources into floats
             # (the function may return values that are ints)
             float_resources = {k: float(v) for k, v in resources.items()}
@@ -52,7 +53,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                     table=float_resources))
         elif request.type == \
                 ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES:
-            resources = ray.available_resources()
+            with disable_client_hook():
+                resources = ray.available_resources()
             # Normalize resources into floats
             # (the function may return values that are ints)
             float_resources = {k: float(v) for k, v in resources.items()}
@@ -60,7 +62,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ray_client_pb2.ClusterInfoResponse.ResourceTable(
                     table=float_resources))
         else:
-            resp.json = self._return_debug_cluster_info(request, context)
+            with disable_client_hook():
+                resp.json = self._return_debug_cluster_info(request, context)
         return resp
 
     def _return_debug_cluster_info(self, request, context=None) -> str:
@@ -116,16 +119,18 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             try:
                 object_ref = \
                         self.object_refs[req.client_id][req.task_object.id]
-                ray.cancel(
-                    object_ref,
-                    force=req.task_object.force,
-                    recursive=req.task_object.recursive)
+                with disable_client_hook():
+                    ray.cancel(
+                        object_ref,
+                        force=req.task_object.force,
+                        recursive=req.task_object.recursive)
             except Exception as e:
                 return_exception_in_context(e, context)
         elif req.WhichOneof("terminate_type") == "actor":
             try:
                 actor_ref = self.actor_refs[req.actor.id]
-                ray.kill(actor_ref, no_restart=req.actor.no_restart)
+                with disable_client_hook():
+                    ray.kill(actor_ref, no_restart=req.actor.no_restart)
             except Exception as e:
                 return_exception_in_context(e, context)
         else:
@@ -143,7 +148,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         objectref = self.object_refs[client_id][request.id]
         logger.debug("get: %s" % objectref)
         try:
-            item = ray.get(objectref, timeout=request.timeout)
+            with disable_client_hook():
+                item = ray.get(objectref, timeout=request.timeout)
         except Exception as e:
             return ray_client_pb2.GetResponse(
                 valid=False, error=cloudpickle.dumps(e))
@@ -169,7 +175,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             context: gRPC context.
         """
         obj = loads_from_client(request.data, self)
-        objectref = ray.put(obj)
+        with disable_client_hook():
+            objectref = ray.put(obj)
         self.object_refs[client_id][objectref.binary()] = objectref
         logger.debug("put: %s" % objectref)
         return ray_client_pb2.PutResponse(id=objectref.binary())
@@ -185,11 +192,12 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         num_returns = request.num_returns
         timeout = request.timeout
         try:
-            ready_object_refs, remaining_object_refs = ray.wait(
-                object_refs,
-                num_returns=num_returns,
-                timeout=timeout if timeout != -1 else None,
-            )
+            with disable_client_hook():
+                ready_object_refs, remaining_object_refs = ray.wait(
+                    object_refs,
+                    num_returns=num_returns,
+                    timeout=timeout if timeout != -1 else None,
+                )
         except Exception as e:
             # TODO(ameer): improve exception messages.
             logger.error(f"Exception {e}")
@@ -214,20 +222,22 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                                  ray_client_pb2.ClientTask.RemoteExecType.Name(
                                      task.type)))
         try:
-            if task.type == ray_client_pb2.ClientTask.FUNCTION:
-                result = self._schedule_function(task, context)
-            elif task.type == ray_client_pb2.ClientTask.ACTOR:
-                result = self._schedule_actor(task, context)
-            elif task.type == ray_client_pb2.ClientTask.METHOD:
-                result = self._schedule_method(task, context)
-            elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
-                result = self._schedule_named_actor(task, context)
-            else:
-                raise NotImplementedError(
-                    "Unimplemented Schedule task type: %s" %
-                    ray_client_pb2.ClientTask.RemoteExecType.Name(task.type))
-            result.valid = True
-            return result
+            with disable_client_hook():
+                if task.type == ray_client_pb2.ClientTask.FUNCTION:
+                    result = self._schedule_function(task, context)
+                elif task.type == ray_client_pb2.ClientTask.ACTOR:
+                    result = self._schedule_actor(task, context)
+                elif task.type == ray_client_pb2.ClientTask.METHOD:
+                    result = self._schedule_method(task, context)
+                elif task.type == ray_client_pb2.ClientTask.NAMED_ACTOR:
+                    result = self._schedule_named_actor(task, context)
+                else:
+                    raise NotImplementedError(
+                        "Unimplemented Schedule task type: %s" %
+                        ray_client_pb2.ClientTask.RemoteExecType.Name(
+                            task.type))
+                result.valid = True
+                return result
         except Exception as e:
             logger.error(f"Caught schedule exception {e}")
             raise e
@@ -303,31 +313,33 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def lookup_or_register_func(
             self, id: bytes, client_id: str,
             options: Optional[Dict]) -> ray.remote_function.RemoteFunction:
-        if id not in self.function_refs:
-            funcref = self.object_refs[client_id][id]
-            func = ray.get(funcref)
-            if not inspect.isfunction(func):
-                raise Exception("Attempting to register function that "
-                                "isn't a function.")
-            if options is None or len(options) == 0:
-                self.function_refs[id] = ray.remote(func)
-            else:
-                self.function_refs[id] = ray.remote(**options)(func)
+        with disable_client_hook():
+            if id not in self.function_refs:
+                funcref = self.object_refs[client_id][id]
+                func = ray.get(funcref)
+                if not inspect.isfunction(func):
+                    raise Exception("Attempting to register function that "
+                                    "isn't a function.")
+                if options is None or len(options) == 0:
+                    self.function_refs[id] = ray.remote(func)
+                else:
+                    self.function_refs[id] = ray.remote(**options)(func)
         return self.function_refs[id]
 
     def lookup_or_register_actor(self, id: bytes, client_id: str,
                                  options: Optional[Dict]):
-        if id not in self.registered_actor_classes:
-            actor_class_ref = self.object_refs[client_id][id]
-            actor_class = ray.get(actor_class_ref)
-            if not inspect.isclass(actor_class):
-                raise Exception("Attempting to schedule actor that "
-                                "isn't a class.")
-            if options is None or len(options) == 0:
-                reg_class = ray.remote(actor_class)
-            else:
-                reg_class = ray.remote(**options)(actor_class)
-            self.registered_actor_classes[id] = reg_class
+        with disable_client_hook():
+            if id not in self.registered_actor_classes:
+                actor_class_ref = self.object_refs[client_id][id]
+                actor_class = ray.get(actor_class_ref)
+                if not inspect.isclass(actor_class):
+                    raise Exception("Attempting to schedule actor that "
+                                    "isn't a class.")
+                if options is None or len(options) == 0:
+                    reg_class = ray.remote(actor_class)
+                else:
+                    reg_class = ray.remote(**options)(actor_class)
+                self.registered_actor_classes[id] = reg_class
 
         return self.registered_actor_classes[id]
 
@@ -374,9 +386,9 @@ def _get_current_servicer():
     return _current_servicer
 
 
-def serve(connection_str, test_mode=False):
+def serve(connection_str):
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    task_servicer = RayletServicer(test_mode=test_mode)
+    task_servicer = RayletServicer()
     data_servicer = DataServicer(task_servicer)
     logs_servicer = LogstreamServicer()
     global _current_servicer
@@ -392,10 +404,18 @@ def serve(connection_str, test_mode=False):
     return server
 
 
-def init_and_serve(connection_str, test_mode=False, *args, **kwargs):
-    info = ray.init(*args, **kwargs)
-    server = serve(connection_str, test_mode)
+def init_and_serve(connection_str, *args, **kwargs):
+    with disable_client_hook():
+        # Disable client mode inside the worker's environment
+        info = ray.init(*args, **kwargs)
+    server = serve(connection_str)
     return (server, info)
+
+
+def shutdown_with_server(server, _exiting_interpreter=False):
+    server.stop(1)
+    with disable_client_hook():
+        ray.shutdown(_exiting_interpreter)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from ray.experimental.client import ray
 
 @contextmanager
 def ray_start_client_server():
-    server = ray_client_server.serve("localhost:50051", test_mode=True)
+    server = ray_client_server.serve("localhost:50051")
     ray.connect("localhost:50051")
     try:
         yield ray
