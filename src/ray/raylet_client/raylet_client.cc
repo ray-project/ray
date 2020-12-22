@@ -187,14 +187,12 @@ Status raylet::RayletClient::NotifyTaskUnblocked() {
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
-                                  const TaskID &current_task_id,
-                                  WaitResultPair *result) {
+                                  const TaskID &current_task_id, WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds,
-      to_flatbuf(fbb, current_task_id));
+      num_returns, timeout_milliseconds, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
   RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::WaitRequest,

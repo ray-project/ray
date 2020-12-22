@@ -1516,10 +1516,9 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   }
 }
 
-void NodeManager::ProcessTaskBlocked(
-    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
-  auto message =
-      flatbuffers::GetRoot<protocol::NotifyTaskBlocked>(message_data);
+void NodeManager::ProcessTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+                                     const uint8_t *message_data) {
+  auto message = flatbuffers::GetRoot<protocol::NotifyTaskBlocked>(message_data);
   bool release_resources = message->release_resources();
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   HandleTaskBlocked(worker, release_resources);
@@ -1558,8 +1557,8 @@ void NodeManager::ProcessWaitRequestMessage(
   // TODO Remove in the future since it should have already be done in other place
   ray::Status status = object_manager_.Wait(
       object_ids, owner_addresses, wait_ms, num_required_objects,
-      [this, resolve_objects, client, current_task_id](
-          std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+      [this, resolve_objects, client, current_task_id](std::vector<ObjectID> found,
+                                                       std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -2123,8 +2122,8 @@ void NodeManager::SubmitTask(const Task &task) {
   // resources locally.
 }
 
-void NodeManager::HandleTaskBlocked(
-    const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
+void NodeManager::HandleTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
+                                    bool release_resources) {
   if (new_scheduler_enabled_) {
     if (!worker || worker->IsBlocked() || !release_resources) {
       return;
