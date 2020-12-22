@@ -4,6 +4,8 @@
 #
 #    pip-compile requirements_tune.in
 #
+--find-links https://download.pytorch.org/whl/torch_stable.html
+
 absl-py==0.11.0           # via tensorboard
 alembic==1.4.1            # via mlflow, optuna
 appnope==0.1.2            # via ipykernel, ipython
@@ -45,6 +47,7 @@ cycler==0.10.0            # via matplotlib
 cython==0.29.0            # via -c ../requirements.txt, autogluon.core, configspace
 dask[complete]==2020.12.0  # via -c ../requirements.txt, autogluon.core, distributed
 databricks-cli==0.14.1    # via mlflow
+dataclasses==0.6          # via torch
 decorator==4.4.2          # via ipython, networkx, paramz, tensorflow-probability
 decord==0.4.0             # via gluoncv
 defusedxml==0.6.0         # via nbconvert
@@ -58,7 +61,7 @@ entrypoints==0.3          # via mlflow, nbconvert
 filelock==3.0.12          # via -c ../requirements.txt, transformers
 flask==1.1.2              # via -c ../requirements.txt, mlflow, prometheus-flask-exporter
 fsspec==0.8.5             # via dask, pytorch-lightning
-future==0.18.2            # via autograd, dragonfly-opt, hyperopt, pyglet, pytorch-lightning
+future==0.18.2            # via autograd, dragonfly-opt, hyperopt, pyglet, pytorch-lightning, torch
 gast==0.4.0               # via tensorflow-probability
 gitdb==4.0.5              # via gitpython
 gitpython==3.1.11         # via mlflow, wandb
@@ -204,8 +207,8 @@ testpath==0.4.4           # via nbconvert
 timm==0.3.2               # via -r requirements_tune.in
 tokenizers==0.8.1.rc2     # via transformers
 toolz==0.11.1             # via dask, distributed, partd
-torch==1.7.1              # via -r requirements_tune.in, botorch, pytorch-lightning, pytorch-lightning-bolts, timm, torchvision
-torchvision==0.8.2        # via -r requirements_tune.in, timm
+torch==1.7.0 ; sys_platform == "darwin"  # via -r requirements_tune.in, botorch, pytorch-lightning, pytorch-lightning-bolts, timm, torchvision
+torchvision==0.8.1 ; sys_platform == "darwin"  # via -r requirements_tune.in, timm
 tornado==6.1              # via autogluon.core, bokeh, distributed, ipykernel, jupyter-client, notebook, terminado
 tqdm==4.54.1              # via autogluon.core, gluoncv, hyperopt, optuna, pytorch-lightning, sacremoses, transformers
 traitlets==5.0.5          # via ipykernel, ipython, ipywidgets, jupyter-client, jupyter-core, nbclient, nbconvert, nbformat, notebook, qtconsole

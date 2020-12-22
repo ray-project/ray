@@ -249,13 +249,15 @@ install_dependencies() {
   pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
-    # PyTorch is installed first since we are using a "-f" directive to find the wheels.
-    # We want to install the CPU version only.
-    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-    case "${OSTYPE}" in
-      darwin*) pip install torch torchvision;;
-      *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
-    esac
+    if [ "${DOC_TESTING-}" = 0 ] && [ "${SGD_TESTING-}" = 0 ] && [ "${TUNE_TESTING-}" = 0 ]; then
+      # PyTorch is installed first since we are using a "-f" directive to find the wheels.
+      # We want to install the CPU version only.
+      local torch_url="https://download.pytorch.org/whl/torch_stable.html"
+      case "${OSTYPE}" in
+        darwin*) pip install torch torchvision;;
+        *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
+      esac
+    fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
@@ -309,18 +311,19 @@ install_dependencies() {
   fi
 
 
-  if [ "${DOC_TESTING-}" = 0 ] || [ "${SGD_TESTING-}" = 0 ] || [ "${TUNE_TESTING-}" = 0 ]
-  # If CI has deemed that a different version of Tensorflow or Torch
-  # should be installed, then upgrade/downgrade to that specific version.
-  if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
-    case "${TORCH_VERSION-1.7}" in
-      1.7) TORCHVISION_VERSION=0.8.1;;
-      1.5) TORCHVISION_VERSION=0.6.0;;
-      *) TORCHVISION_VERSION=0.5.0;;
-    esac
-    pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.7}" torchvision=="${TORCHVISION_VERSION}" \
-      tensorflow=="${TF_VERSION-2.2.0}" gym
+  if [ "${DOC_TESTING-}" = 0 ] && [ "${SGD_TESTING-}" = 0 ] && [ "${TUNE_TESTING-}" = 0 ]; then
+    # If CI has deemed that a different version of Tensorflow or Torch
+    # should be installed, then upgrade/downgrade to that specific version.
+    if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+      case "${TORCH_VERSION-1.7}" in
+        1.7) TORCHVISION_VERSION=0.8.1;;
+        1.5) TORCHVISION_VERSION=0.6.0;;
+        *) TORCHVISION_VERSION=0.5.0;;
+      esac
+      pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+        torch=="${TORCH_VERSION-1.7}" torchvision=="${TORCHVISION_VERSION}" \
+        tensorflow=="${TF_VERSION-2.2.0}" gym
+    fi
   fi
 
   # Additional Tune dependency for Horovod.
