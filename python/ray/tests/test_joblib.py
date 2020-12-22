@@ -1,6 +1,7 @@
 import joblib
 import sys
 import time
+import os
 
 import pickle
 import numpy as np
@@ -14,7 +15,6 @@ from sklearn.kernel_approximation import RBFSampler
 from sklearn.pipeline import make_pipeline
 from sklearn.svm import LinearSVC, SVC
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.utils import check_array
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.model_selection import cross_val_score
@@ -112,7 +112,10 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
     }
     # Load dataset.
     print("Loading dataset...")
-    unnormalized_X_train, y_train=pickle.load(open("mnist_784_100_samples.pkl", "rb"))
+    unnormalized_X_train, y_train = pickle.load(
+        open(
+            os.path.join(
+                os.path.dirname(__file__), "mnist_784_100_samples.pkl"), "rb"))
     # Normalize features.
     X_train = unnormalized_X_train / 255
 
