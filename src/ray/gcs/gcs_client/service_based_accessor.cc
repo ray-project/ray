@@ -361,7 +361,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
                  << ", address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
-  RAY_CHECK(local_node_info.state() == rpc::GcsNodeInfo::ALIVE);
+  RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
 
@@ -448,7 +448,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
   rpc::GetAllNodeInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request, [callback](const Status &status, const rpc::GetAllNodeInfoReply &reply) {
-        std::vector<rpc::GcsNodeInfo> result;
+        std::vector<GcsNodeInfo> result;
         result.reserve((reply.node_info_list_size()));
         for (int index = 0; index < reply.node_info_list_size(); ++index) {
           result.emplace_back(reply.node_info_list(index));
@@ -506,7 +506,7 @@ boost::optional<GcsNodeInfo> ServiceBasedNodeInfoAccessor::Get(
   return boost::none;
 }
 
-const std::unordered_map<NodeID, rpc::GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
+const std::unordered_map<NodeID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::GetAll()
     const {
   return node_cache_;
 }
@@ -626,7 +626,7 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
   } else {
     // If the entry is in the cache, then the notification is new if the node
     // was alive and is now dead or resources have been updated.
-    bool was_alive = (entry->second.state() == rpc::GcsNodeInfo::ALIVE);
+    bool was_alive = (entry->second.state() == GcsNodeInfo::ALIVE);
     is_notif_new = was_alive && !is_alive;
 
     // Once a node with a given ID has been removed, it should never be added
@@ -913,7 +913,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
                               subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [task_id, subscribe](const std::string &id,
                                              const std::string &data) {
-      rpc::TaskTableData task_data;
+      TaskTableData task_data;
       task_data.ParseFromString(data);
       subscribe(task_id, task_data);
     };
