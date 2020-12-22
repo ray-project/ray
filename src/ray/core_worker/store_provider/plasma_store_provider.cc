@@ -210,7 +210,7 @@ Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   // NOTE: for direct call actors, we still need to issue an unblock IPC to release
   // get subscriptions, even if the worker isn't blocked.
-  if (!ctx.GetCurrentActorID().IsNil()) {
+  if (ctx.ShouldReleaseResourcesOnBlockingCalls() || !ctx.GetCurrentActorID().IsNil()) {
     return client->NotifyTaskUnblocked();
   } else {
     return Status::OK();  // We don't need to release resources.

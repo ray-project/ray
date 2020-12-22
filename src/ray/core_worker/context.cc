@@ -114,7 +114,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
       current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
-      placement_group_capture_child_tasks_(true) {
+      placement_group_capture_child_tasks_(true),
+      main_thread_id_(boost::this_thread::get_id()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
