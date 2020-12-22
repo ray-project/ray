@@ -287,7 +287,7 @@ class NodeUpdater:
             init_required = self.cmd_runner.run_init(
                 as_head=self.is_head_node,
                 file_mounts=self.file_mounts,
-                runtime_hash_matched=True)
+                sync_run_yet=False)
             if init_required:
                 node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
@@ -367,7 +367,8 @@ class NodeUpdater:
                         _numbered=("[]", 5, NUM_SETUP_STEPS)):
                     self.cmd_runner.run_init(
                         as_head=self.is_head_node,
-                        file_mounts=self.file_mounts)
+                        file_mounts=self.file_mounts,
+                        sync_run_yet=True)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",

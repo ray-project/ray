@@ -749,7 +749,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                 "differ from those on the running container.")
         return re_init_required
 
-    def run_init(self, *, as_head, file_mounts, runtime_hash_matched=False):
+    def run_init(self, *, as_head, file_mounts, sync_run_yet):
         BOOTSTRAP_MOUNTS = [
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
@@ -806,7 +806,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         # Explicitly copy in ray bootstrap files.
         for mount in BOOTSTRAP_MOUNTS:
             if mount in file_mounts:
-                if runtime_hash_matched:
+                if not sync_run_yet:
                     # NOTE(ilr) This rsync is needed because when starting from
                     #  a stopped instance,  /tmp may be deleted and `run_init`
                     # is called before the first `file_sync` happens
