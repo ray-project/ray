@@ -395,7 +395,7 @@ class NCCLGroup(BaseGroup):
     def _destroy_store(group_name):
         store_name = get_nccl_store_name(group_name)
         store = ray.get_actor(store_name)
-        ray.wait([store.__ray_terminate__.remote()])
+        # ray.get([store.__ray_terminate__.remote()])
         ray.kill(store)
 
     def _generate_nccl_uid(self, name):
