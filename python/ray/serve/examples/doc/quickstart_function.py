@@ -7,7 +7,7 @@ client = serve.start()
 
 
 def say_hello(request):
-    return "hello " + request.query_params["name"]
+    return "hello " + request.query_params["name"] + "!"
 
 
 # Form a backend from our function and connect it to an endpoint.
