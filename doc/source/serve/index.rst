@@ -29,7 +29,7 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 
 .. note::
-  Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel, and on our `forum <https://discuss.ray.io/>`_!
+  Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel and on our `forum <https://discuss.ray.io/>`_!
 
 .. note::
   Starting with Ray version 1.3.0, Ray Serve backends take in a Starlette Request object instead of a Flask Request object.  
@@ -61,14 +61,13 @@ Why Ray Serve?
 ==============
 
 There are generally two ways of serving machine learning applications, both with serious limitations:
-you can use a **traditional webserver**---your own Flask app---or you can use a cloud-hosted solution.
+you can use a **traditional web server**---your own Flask app---or you can use a cloud-hosted solution.
 
 The first approach is easy to get started with, but it's hard to scale each component. The second approach
 requires vendor lock-in (SageMaker), framework-specific tooling (TFServing), and a general
 lack of flexibility.
 
-Ray Serve solves these problems by giving a user the ability to leverage the simplicity
-of deployment of a simple webserver while handling the complex routing, scaling, and testing logic
+Ray Serve solves these problems by giving you a simple web server (and the ability to use your own) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
 Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
