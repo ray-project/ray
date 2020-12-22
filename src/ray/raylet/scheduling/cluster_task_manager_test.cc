@@ -758,7 +758,8 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   EXPECT_CALL(dependency_manager_,
               SubscribeGetDependencies(task.GetTaskSpecification().TaskId(), _));
   EXPECT_CALL(dependency_manager_,
-              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId())).Times(0);
+              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()))
+      .Times(0);
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);

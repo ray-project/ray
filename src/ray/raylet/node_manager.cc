@@ -2631,44 +2631,48 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   }
   RAY_LOG(DEBUG) << result.str();
 
-  // Transition any tasks that were in the runnable state and are dependent on
-  // this object to the waiting state.
-  if (!waiting_task_ids.empty()) {
-    std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
-                                                   waiting_task_ids.end());
+  if (new_scheduler_enabled_) {
+    cluster_task_manager_->TasksBlocked(waiting_task_ids);
+  } else {
+    // Transition any tasks that were in the runnable state and are dependent on
+    // this object to the waiting state.
+    if (!waiting_task_ids.empty()) {
+      std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
+                                                     waiting_task_ids.end());
 
-    // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
-    // creation task ID, which will not be reset after the task finishes. And later tasks
-    // of this actor will reuse this task ID to require objects from plasma with
-    // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
-    // To support actor reconstruction for direct actor, raylet marks actor creation task
-    // as completed and removes it from `local_queues_` when it receives `TaskDone`
-    // message from worker. This is necessary because the actor creation task will be
-    // re-submitted during reconstruction, if the task is not removed previously, the new
-    // submitted task will be marked as duplicate and thus ignored.
-    // So here we check for direct actor creation task explicitly to allow this case.
-    auto iter = waiting_task_id_set.begin();
-    while (iter != waiting_task_id_set.end()) {
-      if (IsActorCreationTask(*iter)) {
-        RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
-                       << " when handling object missing for " << object_id;
-        iter = waiting_task_id_set.erase(iter);
-      } else {
-        ++iter;
+      // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
+      // creation task ID, which will not be reset after the task finishes. And later
+      // tasks of this actor will reuse this task ID to require objects from plasma with
+      // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
+      // To support actor reconstruction for direct actor, raylet marks actor creation
+      // task as completed and removes it from `local_queues_` when it receives `TaskDone`
+      // message from worker. This is necessary because the actor creation task will be
+      // re-submitted during reconstruction, if the task is not removed previously, the
+      // new submitted task will be marked as duplicate and thus ignored. So here we check
+      // for direct actor creation task explicitly to allow this case.
+      auto iter = waiting_task_id_set.begin();
+      while (iter != waiting_task_id_set.end()) {
+        if (IsActorCreationTask(*iter)) {
+          RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
+                         << " when handling object missing for " << object_id;
+          iter = waiting_task_id_set.erase(iter);
+        } else {
+          ++iter;
+        }
       }
-    }
 
-    // First filter out any tasks that can't be transitioned to READY. These
-    // are running workers or drivers, now blocked in a get.
-    local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
-    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
-    // Transition the tasks back to the waiting state. They will be made
-    // runnable once the deleted object becomes available again.
-    local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
-    RAY_CHECK(waiting_task_id_set.empty());
-    // Moving ready tasks to waiting may have changed the load, making space for placing
-    // new tasks locally.
-    ScheduleTasks(cluster_resource_map_);
+      // First filter out any tasks that can't be transitioned to READY. These
+      // are running workers or drivers, now blocked in a get.
+      local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
+      local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
+      // Transition the tasks back to the waiting state. They will be made
+      // runnable once the deleted object becomes available again.
+      local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
+      RAY_CHECK(waiting_task_id_set.empty());
+      // Moving ready tasks to waiting may have changed the load, making space for placing
+      // new tasks locally.
+      ScheduleTasks(cluster_resource_map_);
+    }
   }
 }
 
