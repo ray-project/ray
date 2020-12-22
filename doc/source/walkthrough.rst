@@ -422,7 +422,8 @@ Object Spilling
 
 Ray 1.2.0+ has *beta* support for spilling objects to external storage once the capacity
 of the object store is used up. Please file a `GitHub issue <https://github.com/ray-project/ray/issues/>`__
-if you encounter any problems with this new feature.
+if you encounter any problems with this new feature. Eventually, object spilling will be
+enabled by default, but for now you need to enable it manually:
 
 To enable object spilling to the local filesystem (single node clusters only):
 
