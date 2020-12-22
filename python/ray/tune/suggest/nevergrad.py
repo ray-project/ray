@@ -310,7 +310,7 @@ class NevergradSearch(Searcher):
                         exponent=sampler.base)
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
-            if isinstance(domain, Integer):
+            elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
                     return ng.p.Log(
                         lower=domain.lower,
@@ -320,11 +320,13 @@ class NevergradSearch(Searcher):
                     lower=domain.lower,
                     upper=domain.upper).set_integer_casting()
 
-            if isinstance(domain, Categorical):
+            elif isinstance(domain, Categorical):
                 return ng.p.Choice(choices=domain.categories)
 
-            raise ValueError("SkOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+            raise ValueError("Nevergrad does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         space = {

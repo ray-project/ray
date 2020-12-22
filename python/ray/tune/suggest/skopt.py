@@ -338,23 +338,23 @@ class SkOptSearch(Searcher):
                 if isinstance(domain.sampler, LogUniform):
                     return sko.space.Real(
                         domain.lower, domain.upper, prior="log-uniform")
-                elif isinstance(domain.sampler, Uniform):
-                    return sko.space.Real(
-                        domain.lower, domain.upper, prior="uniform")
+                return sko.space.Real(
+                    domain.lower, domain.upper, prior="uniform")
 
-            if isinstance(domain, Integer):
+            elif isinstance(domain, Integer):
                 if isinstance(domain.sampler, LogUniform):
                     return sko.space.Integer(
                         domain.lower, domain.upper, prior="log-uniform")
-                elif isinstance(domain.sampler, Uniform):
-                    return sko.space.Integer(
-                        domain.lower, domain.upper, prior="uniform")
+                return sko.space.Integer(
+                    domain.lower, domain.upper, prior="uniform")
 
-            if isinstance(domain, Categorical):
+            elif isinstance(domain, Categorical):
                 return domain.categories
 
             raise ValueError("SkOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         space = {
