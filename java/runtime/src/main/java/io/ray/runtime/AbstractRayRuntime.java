@@ -100,9 +100,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks) {
+  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly) {
     objectStore.delete(objectRefs.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId()).collect(
-        Collectors.toList()), localOnly, deleteCreatingTasks);
+        Collectors.toList()), localOnly);
   }
 
   @Override

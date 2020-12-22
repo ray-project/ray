@@ -170,6 +170,7 @@ table FetchOrReconstruct {
 }
 
 table NotifyTaskBlocked {
+  release_resources: bool;
 }
 
 table NotifyTaskUnblocked {
@@ -184,8 +185,6 @@ table WaitRequest {
   num_ready_objects: int;
   // timeout
   timeout: long;
-  // Whether to wait until objects appear locally.
-  wait_local: bool;
   // The current task ID.
   task_id: string;
 }
@@ -223,8 +222,6 @@ table FreeObjectsRequest {
   // Whether keep this request with local object store
   // or send it to all the object stores.
   local_only: bool;
-  // Whether also delete objects' creating tasks from GCS.
-  delete_creating_tasks: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
 }

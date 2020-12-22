@@ -164,6 +164,8 @@ class NodeResources {
   bool operator!=(const NodeResources &other);
   /// Returns human-readable string for these resources.
   std::string DebugString(StringIdMap string_to_int_map) const;
+  /// Returns compact dict-like string.
+  std::string DictString(StringIdMap string_to_int_map) const;
 };
 
 /// Total and available capacities of each resource instance.

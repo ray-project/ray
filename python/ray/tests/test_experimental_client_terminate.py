@@ -1,6 +1,6 @@
 import pytest
-import asyncio
-from ray.tests.test_experimental_client import ray_start_client_server
+from ray.experimental.client.ray_client_helpers import ray_start_client_server
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.test_utils import wait_for_condition
 from ray.exceptions import TaskCancelledError
 from ray.exceptions import RayTaskError
@@ -45,21 +45,7 @@ def test_kill_actor_immediately_after_creation(ray_start_regular):
 @pytest.mark.parametrize("use_force", [True, False])
 def test_cancel_chain(ray_start_regular, use_force):
     with ray_start_client_server() as ray:
-
-        @ray.remote
-        class SignalActor:
-            def __init__(self):
-                self.ready_event = asyncio.Event()
-
-            def send(self, clear=False):
-                self.ready_event.set()
-                if clear:
-                    self.ready_event.clear()
-
-            async def wait(self, should_wait=True):
-                if should_wait:
-                    await self.ready_event.wait()
-
+        SignalActor = create_remote_signal_actor(ray)
         signaler = SignalActor.remote()
 
         @ray.remote

@@ -89,6 +89,112 @@ The Ray debugger supports the
 `same commands as PDB
 <https://docs.python.org/3/library/pdb.html#debugger-commands>`_.
 
+Stepping between Ray tasks
+--------------------------
+
+You can use the debugger to step between Ray tasks. Let's take the
+following recursive function as an example:
+
+.. code-block:: python
+
+    import ray
+
+    ray.init()
+
+    @ray.remote
+    def fact(n):
+        if n == 1:
+            return n
+        else:
+            n_id = fact.remote(n - 1)
+            return n * ray.get(n_id)
+
+    ray.util.pdb.set_trace()
+    result_ref = fact.remote(5)
+    result = ray.get(result_ref)
+
+
+After running the program by executing the Python file and calling
+``ray debug``, you can select the breakpoint by pressing ``0`` and
+enter. This will result in the following output:
+
+.. code-block:: python
+
+    Enter breakpoint index or press enter to refresh: 0
+    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    -> result_ref = fact.remote(5)
+    (Pdb) 
+
+You can jump into the call with the ``remote`` command in Ray's debugger.
+Inside the function, print the value of `n` with ``p(n)``, resulting in
+the following output:
+
+.. code-block:: python
+
+    -> result_ref = fact.remote(5)
+    (Pdb) remote
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Call--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    -> @ray.remote
+    (Pdb) ll
+      5  ->	@ray.remote
+      6  	def fact(n):
+      7  	    if n == 1:
+      8  	        return n
+      9  	    else:
+     10  	        n_id = fact.remote(n - 1)
+     11  	        return n * ray.get(n_id)
+    (Pdb) p(n)
+    5
+    (Pdb) 
+
+Now step into the next remote call again with
+``remote`` and print `n`. You an now either continue recursing into
+the function by calling ``remote`` a few more times, or you can jump
+to the location where ``ray.get`` is called on the result by using the
+``get`` debugger comand. Use ``get`` again to jump back to the original
+call site and use ``p(result)`` to print the result:
+
+.. code-block:: python
+
+    Enter breakpoint index or press enter to refresh: 0
+    > /Users/pcmoritz/tmp/stepping.py(14)<module>()
+    -> result_ref = fact.remote(5)
+    (Pdb) remote
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Call--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    -> @ray.remote
+    (Pdb) p(n)
+    5
+    (Pdb) remote
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Call--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()
+    -> @ray.remote
+    (Pdb) p(n)
+    4
+    (Pdb) get
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Return--
+    > /Users/pcmoritz/tmp/stepping.py(5)fact()->120
+    -> @ray.remote
+    (Pdb) get
+    *** Connection closed by remote host ***
+    Continuing pdb session in different process...
+    --Return--
+    > /Users/pcmoritz/tmp/stepping.py(14)<module>()->None
+    -> result_ref = fact.remote(5)
+    (Pdb) p(result)
+    120
+    (Pdb) 
+
+
 Post Mortem Debugging
 ---------------------
 

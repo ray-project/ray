@@ -138,7 +138,7 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       create_request_queue_(
           RayConfig::instance().object_store_full_max_retries(),
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
-          object_store_full_callback) {
+          spill_objects_callback, object_store_full_callback) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 #ifdef PLASMA_CUDA
@@ -223,34 +223,7 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
     // More space is still needed. Try to spill objects to external storage to
     // make room.
     if (space_needed > 0) {
-      if (spill_objects_callback_) {
-        // If the space needed is too small, we'd like to bump up to the minimum spilling
-        // size. Cap the max size to be lower than the plasma store limit.
-        int64_t byte_to_spill =
-            std::min(PlasmaAllocator::GetFootprintLimit(),
-                     std::max(space_needed, RayConfig::instance().min_spilling_size()));
-        // Object spilling is asynchronous so that we do not block the plasma
-        // store thread. Therefore the client must try again, even if enough
-        // space will be made after the spill is complete.
-        // TODO(swang): Only respond to the client with OutOfMemory if we could not
-        // make enough space through spilling. If we could make enough space,
-        // respond to the plasma client once spilling is complete.
-        space_needed = spill_objects_callback_(byte_to_spill, space_needed);
-      }
-      if (space_needed > 0) {
-        // There is still not enough space, even once all evictable objects
-        // were evicted and all pending object spills have finished.  The
-        // client may choose to try again, or throw an OutOfMemory error to
-        // the application immediately.
-        *error = PlasmaError::OutOfMemory;
-      } else {
-        // Once all pending object spills have finished, there should be
-        // enough space for this allocation. Return a transient error to the
-        // client so that they try again soon.
-        *error = PlasmaError::TransientOutOfMemory;
-      }
-      // Return an error to the client if not enough space could be freed to
-      // create the object.
+      *error = PlasmaError::OutOfMemory;
       break;
     }
   }
@@ -311,9 +284,8 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                             owner_worker_id, evict_if_full, data_size, metadata_size,
                             device_num, client, object);
   if (error == PlasmaError::OutOfMemory) {
-    RAY_LOG(WARNING) << "Not enough memory to create the object " << object_id
-                     << ", data_size=" << data_size
-                     << ", metadata_size=" << metadata_size;
+    RAY_LOG(DEBUG) << "Not enough memory to create the object " << object_id
+                   << ", data_size=" << data_size << ", metadata_size=" << metadata_size;
   }
   return error;
 }
@@ -551,8 +523,8 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
   std::vector<ObjectID> evicted_ids;
   std::vector<ObjectTableEntry *> evicted_entries;
   for (auto object_id : object_ids) {
-    // Check if this object is already present locally. If so, record that the
-    // object is being used and mark it as accounted for.
+    // Check if this object is already present
+    // locally. If so, record that the object is being used and mark it as accounted for.
     auto entry = GetObjectTableEntry(&store_info_, object_id);
     if (entry && entry->state == ObjectState::PLASMA_SEALED) {
       // Update the get request to take into account the present object.
@@ -972,6 +944,9 @@ void PlasmaStore::SubscribeToUpdates(const std::shared_ptr<Client> &client) {
 Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
                                    fb::MessageType type,
                                    const std::vector<uint8_t> &message) {
+  // Global lock is used here so that we allow raylet to access some of methods
+  // that are required for object spilling directly without releasing a lock.
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
   // TODO(suquark): We should convert these interfaces to const later.
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
@@ -1116,9 +1091,7 @@ void PlasmaStore::ProcessCreateRequests() {
 
   auto status = create_request_queue_.ProcessRequests();
   uint32_t retry_after_ms = 0;
-  if (status.IsTransientObjectStoreFull()) {
-    retry_after_ms = delay_on_transient_oom_ms_;
-  } else if (status.IsObjectStoreFull()) {
+  if (!status.ok()) {
     retry_after_ms = delay_on_oom_ms_;
   }
 
@@ -1149,6 +1122,14 @@ void PlasmaStore::ReplyToCreateClient(const std::shared_ptr<Client> &client,
   } else {
     static_cast<void>(SendUnfinishedCreateReply(client, object_id, req_id));
   }
+}
+
+bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
+  // The lock is acquired when a request is received to the plasma store.
+  // recursive mutex is used here to allow
+  std::lock_guard<std::recursive_mutex> guard(mutex_);
+  auto entry = GetObjectTableEntry(&store_info_, object_id);
+  return entry->ref_count == 1;
 }
 
 }  // namespace plasma

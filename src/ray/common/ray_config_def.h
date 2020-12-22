@@ -113,7 +113,7 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
 RAY_CONFIG(bool, new_scheduler_enabled,
-           getenv("RAY_ENABLE_NEW_SCHEDULER") != nullptr &&
+           getenv("RAY_ENABLE_NEW_SCHEDULER") == nullptr ||
                getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
@@ -243,16 +243,18 @@ RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
+RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
 /// Duration to sleep after failing to put an object in plasma because it is full.
-/// This will be exponentially increased for each retry.
-RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 
 /// The amount of time to wait between logging plasma space usage debug messages.
 RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
 
 /// The amount of time between automatic local Python GC triggers.
 RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+
+/// The min amount of time between local GCs (whether auto or mem pressure triggered).
+RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
@@ -266,8 +268,15 @@ RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
 
+/// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
 /// Whether start the Plasma Store as a Raylet thread.
 RAY_CONFIG(bool, plasma_store_as_thread, false)
+
+/// Whether to release worker CPUs during plasma fetches.
+/// See https://github.com/ray-project/ray/issues/12912 for further discussion.
+RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
 
 /// The interval at which the gcs client will check if the address of gcs service has
 /// changed. When the address changed, we will resubscribe again.

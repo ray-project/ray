@@ -200,8 +200,8 @@ void ResourceSet::AddResourcesCapacityConstrained(const ResourceSet &other,
     const FractionalResourceQuantity &to_add_resource_capacity = resource_pair.second;
     if (total_resource_map.count(to_add_resource_label) != 0) {
       // If resource exists in total map, add to the local capacity map.
-      // If the new capacity will be greater the total capacity, set the new capacity to
-      // total capacity (capping to the total)
+      // If the new capacity is less than the total capacity, set the new capacity to
+      // the local capacity (capping to the total).
       const FractionalResourceQuantity &total_capacity =
           total_resource_map.at(to_add_resource_label);
       resource_capacity_[to_add_resource_label] =

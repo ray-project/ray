@@ -7,6 +7,7 @@ import ray
 from ray.serve.context import TaskContext
 from ray.serve.router import RequestMetadata, Router
 from ray.serve.utils import get_random_letters
+from ray.serve.exceptions import RayServeException
 
 global_async_loop = None
 
@@ -95,7 +96,7 @@ class RayServeHandle:
 
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
-        """Issue an asynchrounous request to the endpoint.
+        """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get, respectively.
@@ -105,20 +106,29 @@ class RayServeHandle:
         Args:
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.data``.
+                Otherwise, it will be available in ``request.body()``.
             ``**kwargs``: All keyword arguments will be available in
-                ``request.args``.
+                ``request.query_params``.
         """
-        assert self.sync, "handle.remote() should be called from sync handle."
+        if not self.sync:
+            raise RayServeException(
+                "You are trying to call handle.remote() with async handle. "
+                "Please use `await handle.remote_async()` instead.")
+
         coro = self._remote(request_data, kwargs)
         future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
             coro, self.async_loop)
+
         # Block until the result is ready.
         return future.result()
 
-    async def _remote_async(self, request_data, **kwargs) -> ray.ObjectRef:
+    async def remote_async(self,
+                           request_data: Optional[Union[Dict, Any]] = None,
+                           **kwargs) -> ray.ObjectRef:
         """Experimental API for enqueue a request in async context."""
-        assert not self.sync, "_remote_async must be called inside async loop."
+        if not asyncio.get_event_loop().is_running():
+            raise RayServeException(
+                "remote_async must be called from a running event loop.")
         return await self._remote(request_data, kwargs)
 
     def options(self,

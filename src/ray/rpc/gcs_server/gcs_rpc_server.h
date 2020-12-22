@@ -375,10 +375,6 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
                              SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleDeleteTasks(const DeleteTasksRequest &request,
-                                 DeleteTasksReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
                                   AddTaskLeaseReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -410,7 +406,6 @@ class TaskInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTask);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTask);
-    TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks);
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTaskLease);
     TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction);

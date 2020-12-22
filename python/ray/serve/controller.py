@@ -93,33 +93,16 @@ class BackendInfo(BaseModel):
         arbitrary_types_allowed = True
 
 
-@dataclass
-class SystemState:
-    backends: Dict[BackendTag, BackendInfo] = field(default_factory=dict)
-    traffic_policies: Dict[EndpointTag, TrafficPolicy] = field(
-        default_factory=dict)
-    routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = field(
-        default_factory=dict)
+class EndpointState:
+    def __init__(self, checkpoint: bytes = None):
+        self.routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = dict()
+        self.traffic_policies: Dict[EndpointTag, TrafficPolicy] = dict()
 
-    backend_goal_ids: Dict[BackendTag, GoalId] = field(default_factory=dict)
-    traffic_goal_ids: Dict[EndpointTag, GoalId] = field(default_factory=dict)
-    route_goal_ids: Dict[BackendTag, GoalId] = field(default_factory=dict)
+        if checkpoint is not None:
+            self.routes, self.traffic_policies = pickle.loads(checkpoint)
 
-    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
-        return {
-            tag: info.backend_config
-            for tag, info in self.backends.items()
-        }
-
-    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
-        return self.backends.get(backend_tag)
-
-    def add_backend(self,
-                    backend_tag: BackendTag,
-                    backend_info: BackendInfo,
-                    goal_id: GoalId = 0) -> None:
-        self.backends[backend_tag] = backend_info
-        self.backend_goal_ids = goal_id
+    def checkpoint(self):
+        return pickle.dumps((self.routes, self.traffic_policies))
 
     def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
         endpoints = {}
@@ -141,6 +124,32 @@ class SystemState:
         return endpoints
 
 
+class BackendState:
+    def __init__(self, checkpoint: bytes = None):
+        self.backends: Dict[BackendTag, BackendInfo] = dict()
+
+        if checkpoint is not None:
+            self.backends = pickle.loads(checkpoint)
+
+    def checkpoint(self):
+        return pickle.dumps(self.backends)
+
+    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
+        return {
+            tag: info.backend_config
+            for tag, info in self.backends.items()
+        }
+
+    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
+        return self.backends.get(backend_tag)
+
+    def add_backend(self,
+                    backend_tag: BackendTag,
+                    backend_info: BackendInfo,
+                    goal_id: GoalId = 0) -> None:
+        self.backends[backend_tag] = backend_info
+
+
 @dataclass
 class ActorStateReconciler:
     controller_name: str = field(init=True)
@@ -154,7 +163,24 @@ class ActorStateReconciler:
     backend_replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
     backends_to_remove: List[BackendTag] = field(default_factory=list)
-    endpoints_to_remove: List[EndpointTag] = field(default_factory=list)
+
+    # NOTE(ilr): These are not checkpointed, but will be recreated by
+    # `_enqueue_pending_scale_changes_loop`.
+    currently_starting_replicas: Dict[asyncio.Future, Tuple[
+        BackendTag, ReplicaTag, ActorHandle]] = field(default_factory=dict)
+    currently_stopping_replicas: Dict[asyncio.Future, Tuple[
+        BackendTag, ReplicaTag]] = field(default_factory=dict)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["currently_stopping_replicas"]
+        del state["currently_starting_replicas"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.currently_stopping_replicas = {}
+        self.currently_starting_replicas = {}
 
     # TODO(edoakes): consider removing this and just using the names.
 
@@ -175,43 +201,7 @@ class ActorStateReconciler:
                 for replica_dict in self.backend_replicas.values()
             ]))
 
-    async def _start_pending_backend_replicas(
-            self, current_state: SystemState) -> None:
-        """Starts the pending backend replicas in self.backend_replicas_to_start.
-
-        Waits for replicas to start up, then removes them from
-        self.backend_replicas_to_start.
-        """
-        fut_to_replica_info = {}
-        for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
-                items():
-            for replica_tag in replicas_to_create:
-                replica_handle = await self._start_backend_replica(
-                    current_state, backend_tag, replica_tag)
-                ready_future = replica_handle.ready.remote().as_future()
-                fut_to_replica_info[ready_future] = (backend_tag, replica_tag,
-                                                     replica_handle)
-
-        start = time.time()
-        prev_warning = start
-        while fut_to_replica_info:
-            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
-                prev_warning = time.time()
-                logger.warning("Waited {:.2f}s for replicas to start up. Make "
-                               "sure there are enough resources to create the "
-                               "replicas.".format(time.time() - start))
-
-            done, pending = await asyncio.wait(
-                list(fut_to_replica_info.keys()), timeout=1)
-            for fut in done:
-                (backend_tag, replica_tag,
-                 replica_handle) = fut_to_replica_info.pop(fut)
-                self.backend_replicas[backend_tag][
-                    replica_tag] = replica_handle
-
-        self.backend_replicas_to_start.clear()
-
-    async def _start_backend_replica(self, current_state: SystemState,
+    async def _start_backend_replica(self, backend_state: BackendState,
                                      backend_tag: BackendTag,
                                      replica_tag: ReplicaTag) -> ActorHandle:
         """Start a replica and return its actor handle.
@@ -229,7 +219,7 @@ class ActorStateReconciler:
         except ValueError:
             logger.debug("Starting replica '{}' for backend '{}'.".format(
                 replica_tag, backend_tag))
-            backend_info = current_state.get_backend(backend_tag)
+            backend_info = backend_state.get_backend(backend_tag)
 
             replica_handle = ray.remote(backend_info.worker_class).options(
                 name=replica_name,
@@ -255,6 +245,7 @@ class ActorStateReconciler:
         intended replicas. This avoids inconsistencies with starting/stopping a
         replica and then crashing before writing a checkpoint.
         """
+
         logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
         assert (backend_tag in backends
@@ -301,32 +292,102 @@ class ActorStateReconciler:
 
                 self.backend_replicas_to_stop[backend_tag].append(replica_tag)
 
-    async def _stop_pending_backend_replicas(self) -> None:
-        """Stops the pending backend replicas in self.backend_replicas_to_stop.
+    async def _enqueue_pending_scale_changes_loop(self,
+                                                  backend_state: BackendState):
+        for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
+                items():
+            for replica_tag in replicas_to_create:
+                replica_handle = await self._start_backend_replica(
+                    backend_state, backend_tag, replica_tag)
+                ready_future = replica_handle.ready.remote().as_future()
+                self.currently_starting_replicas[ready_future] = (
+                    backend_tag, replica_tag, replica_handle)
 
-        Removes backend_replicas from the http_proxy, kills them, and clears
-        self.backend_replicas_to_stop.
-        """
-        for backend_tag, replicas_list in self.backend_replicas_to_stop.items(
-        ):
-            for replica_tag in replicas_list:
-                # NOTE(edoakes): the replicas may already be stopped if we
-                # failed after stopping them but before writing a checkpoint.
+        for backend_tag, replicas_to_stop in self.backend_replicas_to_stop.\
+                items():
+            for replica_tag in replicas_to_stop:
                 replica_name = format_actor_name(replica_tag,
                                                  self.controller_name)
-                try:
-                    replica = ray.get_actor(replica_name)
-                except ValueError:
-                    continue
 
-                # TODO(edoakes): this logic isn't ideal because there may be
-                # pending tasks still executing on the replica. However, if we
-                # use replica.__ray_terminate__, we may send it while the
-                # replica is being restarted and there's no way to tell if it
-                # successfully killed the worker or not.
-                ray.kill(replica, no_restart=True)
+                async def kill_actor(replica_name_to_use):
+                    # NOTE: the replicas may already be stopped if we failed
+                    # after stopping them but before writing a checkpoint.
+                    try:
+                        replica = ray.get_actor(replica_name_to_use)
+                    except ValueError:
+                        return
 
-        self.backend_replicas_to_stop.clear()
+                    # TODO(edoakes): this logic isn't ideal because there may
+                    # be pending tasks still executing on the replica. However,
+                    # if we use replica.__ray_terminate__, we may send it while
+                    # the replica is being restarted and there's no way to tell
+                    # if it successfully killed the worker or not.
+                    ray.kill(replica, no_restart=True)
+
+                self.currently_stopping_replicas[asyncio.ensure_future(
+                    kill_actor(replica_name))] = (backend_tag, replica_tag)
+
+    async def _check_currently_starting_replicas(self) -> bool:
+        """Returns a boolean specifying if there are more replicas to start"""
+        in_flight = list()
+
+        if self.currently_starting_replicas:
+            done, in_flight = await asyncio.wait(
+                list(self.currently_starting_replicas.keys()), timeout=0)
+            for fut in done:
+                (backend_tag, replica_tag,
+                 replica_handle) = self.currently_starting_replicas.pop(fut)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = replica_handle
+
+                backend = self.backend_replicas_to_start.get(backend_tag)
+                if backend:
+                    try:
+                        backend.remove(replica_tag)
+                    except ValueError:
+                        pass
+                    if len(backend) == 0:
+                        del self.backend_replicas_to_start[backend_tag]
+        return len(in_flight) > 0
+
+    async def _check_currently_stopping_replicas(self) -> bool:
+        """Returns a boolean specifying if there are more replicas to stop"""
+        in_flight = list()
+        if self.currently_stopping_replicas:
+            done_stoppping, in_flight = await asyncio.wait(
+                list(self.currently_stopping_replicas.keys()), timeout=0)
+            for fut in done_stoppping:
+                (backend_tag,
+                 replica_tag) = self.currently_stopping_replicas.pop(fut)
+
+                backend = self.backend_replicas_to_stop.get(backend_tag)
+
+                if backend:
+                    try:
+                        backend.remove(replica_tag)
+                    except ValueError:
+                        pass
+                    if len(backend) == 0:
+                        del self.backend_replicas_to_stop[backend_tag]
+
+        return len(in_flight) > 0
+
+    async def backend_control_loop(self):
+        start = time.time()
+        prev_warning = start
+        need_to_continue = True
+        while need_to_continue:
+            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
+                prev_warning = time.time()
+                logger.warning("Waited {:.2f}s for replicas to start up. Make "
+                               "sure there are enough resources to create the "
+                               "replicas.".format(time.time() - start))
+
+            need_to_continue = (
+                await self._check_currently_starting_replicas()
+                or await self._check_currently_stopping_replicas())
+
+            asyncio.sleep(1)
 
     def _start_http_proxies_if_needed(self, http_host: str, http_port: str,
                                       http_middlewares: List[Any]) -> None:
@@ -404,20 +465,20 @@ class ActorStateReconciler:
                     replica_tag] = ray.get_actor(replica_name)
 
     async def _recover_from_checkpoint(
-            self, current_state: SystemState, controller: "ServeController"
+            self, backend_state: BackendState, controller: "ServeController"
     ) -> Dict[BackendTag, BasicAutoscalingPolicy]:
         self._recover_actor_handles()
         autoscaling_policies = dict()
 
-        for backend, info in current_state.backends.items():
+        for backend, info in backend_state.backends.items():
             metadata = info.backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 autoscaling_policies[backend] = BasicAutoscalingPolicy(
                     backend, metadata.autoscaling_config)
 
         # Start/stop any pending backend replicas.
-        await self._start_pending_backend_replicas(current_state)
-        await self._stop_pending_backend_replicas()
+        await self._enqueue_pending_scale_changes_loop(backend_state)
+        await self.backend_control_loop()
 
         return autoscaling_policies
 
@@ -430,8 +491,8 @@ class FutureResult:
 
 @dataclass
 class Checkpoint:
-    goal_state: SystemState
-    current_state: SystemState
+    endpoint_state_checkpoint: bytes
+    backend_state_checkpoint: bytes
     reconciler: ActorStateReconciler
     # TODO(ilr) Rename reconciler to PendingState
     inflight_reqs: Dict[uuid4, FutureResult]
@@ -471,13 +532,6 @@ class ServeController:
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
-        # Current State
-        self.current_state = SystemState()
-        # Goal State
-        # TODO(ilr) This is currently *unused* until the refactor of the serve
-        # controller.
-        self.goal_state = SystemState()
-        # ActorStateReconciler
         self.actor_reconciler = ActorStateReconciler(controller_name, detached)
 
         # backend -> AutoscalingPolicy
@@ -504,25 +558,18 @@ class ServeController:
         self.inflight_results: Dict[UUID, asyncio.Event] = dict()
         self._serializable_inflight_results: Dict[UUID, FutureResult] = dict()
 
-        # NOTE(edoakes): unfortunately, we can't completely recover from a
-        # checkpoint in the constructor because we block while waiting for
-        # other actors to start up, and those actors fetch soft state from
-        # this actor. Because no other tasks will start executing until after
-        # the constructor finishes, if we were to run this logic in the
-        # constructor it could lead to deadlock between this actor and a child.
-        # However we do need to guarantee that we have fully recovered from a
-        # checkpoint before any other state-changing calls run. We address this
-        # by acquiring the write_lock and then posting the task to recover from
-        # a checkpoint to the event loop. Other state-changing calls acquire
-        # this lock and will be blocked until recovering from the checkpoint
-        # finishes.
-        checkpoint = self.kv_store.get(CHECKPOINT_KEY)
-        if checkpoint is None:
+        checkpoint_bytes = self.kv_store.get(CHECKPOINT_KEY)
+        if checkpoint_bytes is None:
             logger.debug("No checkpoint found")
+            self.backend_state = BackendState()
+            self.endpoint_state = EndpointState()
         else:
-            await self.write_lock.acquire()
-            asyncio.get_event_loop().create_task(
-                self._recover_from_checkpoint(checkpoint))
+            checkpoint: Checkpoint = pickle.loads(checkpoint_bytes)
+            self.backend_state = BackendState(
+                checkpoint=checkpoint.backend_state_checkpoint)
+            self.endpoint_state = EndpointState(
+                checkpoint=checkpoint.endpoint_state_checkpoint)
+            await self._recover_from_checkpoint(checkpoint)
 
         # NOTE(simon): Currently we do all-to-all broadcast. This means
         # any listeners will receive notification for all changes. This
@@ -530,6 +577,10 @@ class ServeController:
         # will send over the entire configs. In the future, we should
         # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
+
+        # The configs pushed out here get updated by
+        # self._recover_from_checkpoint in the failure scenario, so that must
+        # be run before we notify the changes.
         self.notify_backend_configs_changed()
         self.notify_replica_handles_changed()
         self.notify_traffic_policies_changed()
@@ -576,17 +627,17 @@ class ServeController:
     def notify_traffic_policies_changed(self):
         self.long_poll_host.notify_changed(
             LongPollKey.TRAFFIC_POLICIES,
-            self.current_state.traffic_policies,
+            self.endpoint_state.traffic_policies,
         )
 
     def notify_backend_configs_changed(self):
         self.long_poll_host.notify_changed(
             LongPollKey.BACKEND_CONFIGS,
-            self.current_state.get_backend_configs())
+            self.backend_state.get_backend_configs())
 
     def notify_route_table_changed(self):
         self.long_poll_host.notify_changed(LongPollKey.ROUTE_TABLE,
-                                           self.current_state.routes)
+                                           self.endpoint_state.routes)
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -610,58 +661,66 @@ class ServeController:
         start = time.time()
 
         checkpoint = pickle.dumps(
-            Checkpoint(self.goal_state, self.current_state,
-                       self.actor_reconciler,
+            Checkpoint(self.endpoint_state.checkpoint(),
+                       self.backend_state.checkpoint(), self.actor_reconciler,
                        self._serializable_inflight_results))
 
         self.kv_store.put(CHECKPOINT_KEY, checkpoint)
-        logger.debug("Wrote checkpoint in {:.2f}".format(time.time() - start))
+        logger.debug("Wrote checkpoint in {:.3f}s".format(time.time() - start))
 
         if random.random(
         ) < _CRASH_AFTER_CHECKPOINT_PROBABILITY and self.detached:
             logger.warning("Intentionally crashing after checkpoint")
             os._exit(0)
 
-    async def _recover_from_checkpoint(self, checkpoint_bytes: bytes) -> None:
+    async def _recover_from_checkpoint(self, checkpoint: Checkpoint) -> None:
         """Recover the instance state from the provided checkpoint.
+
+        This should be called in the constructor to ensure that the internal
+        state is updated before any other operations run. After running this,
+        internal state will be updated and long-poll clients may be notified.
 
         Performs the following operations:
             1) Deserializes the internal state from the checkpoint.
-            2) Pushes the latest configuration to the HTTP proxies
-               in case we crashed before updating them.
-            3) Starts/stops any replicas that are pending creation or
+            2) Starts/stops any replicas that are pending creation or
                deletion.
-
-        NOTE: this requires that self.write_lock is already acquired and will
-        release it before returning.
         """
-        assert self.write_lock.locked()
-
         start = time.time()
         logger.info("Recovering from checkpoint")
 
-        restored_checkpoint: Checkpoint = pickle.loads(checkpoint_bytes)
-        # Restore SystemState
-        self.current_state = restored_checkpoint.current_state
+        self.actor_reconciler = checkpoint.reconciler
 
-        # Restore ActorStateReconciler
-        self.actor_reconciler = restored_checkpoint.reconciler
-
-        # Recreate self.inflight_requests!
-        self._serializable_inflight_results = restored_checkpoint.inflight_reqs
+        self._serializable_inflight_results = checkpoint.inflight_reqs
         for uuid, fut_result in self._serializable_inflight_results.items():
             self._create_event_with_result(fut_result.requested_goal, uuid)
 
-        self.autoscaling_policies = await self.actor_reconciler.\
-            _recover_from_checkpoint(self.current_state, self)
+        # NOTE(edoakes): unfortunately, we can't completely recover from a
+        # checkpoint in the constructor because we block while waiting for
+        # other actors to start up, and those actors fetch soft state from
+        # this actor. Because no other tasks will start executing until after
+        # the constructor finishes, if we were to run this logic in the
+        # constructor it could lead to deadlock between this actor and a child.
+        # However, we do need to guarantee that we have fully recovered from a
+        # checkpoint before any other state-changing calls run. We address this
+        # by acquiring the write_lock and then posting the task to recover from
+        # a checkpoint to the event loop. Other state-changing calls acquire
+        # this lock and will be blocked until recovering from the checkpoint
+        # finishes. This can be removed once we move to the async control loop.
 
-        logger.info(
-            "Recovered from checkpoint in {:.3f}s".format(time.time() - start))
+        async def finish_recover_from_checkpoint():
+            assert self.write_lock.locked()
+            self.autoscaling_policies = await self.actor_reconciler.\
+                _recover_from_checkpoint(self.backend_state, self)
+            self.write_lock.release()
+            logger.info(
+                "Recovered from checkpoint in {:.3f}s".format(time.time() -
+                                                              start))
 
-        self.write_lock.release()
+        await self.write_lock.acquire()
+        asyncio.get_event_loop().create_task(finish_recover_from_checkpoint())
 
     async def do_autoscale(self) -> None:
-        for backend, info in self.current_state.backends.items():
+        for backend, info in self.backend_state.backends.items():
             if backend not in self.autoscaling_policies:
                 continue
 
@@ -670,6 +729,9 @@ class ServeController:
             if new_num_replicas > 0:
                 await self.update_backend_config(
                     backend, BackendConfig(num_replicas=new_num_replicas))
+
+    async def reconcile_current_and_goal_backends(self):
+        pass
 
     async def run_control_loop(self) -> None:
         while True:
@@ -691,15 +753,15 @@ class ServeController:
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
-        return self.current_state.get_backend_configs()
+        return self.backend_state.get_backend_configs()
 
     def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
         """Returns a dictionary of backend tag to backend config."""
-        return self.current_state.get_endpoints()
+        return self.endpoint_state.get_endpoints()
 
     async def _set_traffic(self, endpoint_name: str,
                            traffic_dict: Dict[str, float]) -> UUID:
-        if endpoint_name not in self.current_state.get_endpoints():
+        if endpoint_name not in self.endpoint_state.get_endpoints():
             raise ValueError("Attempted to assign traffic for an endpoint '{}'"
                              " that is not registered.".format(endpoint_name))
 
@@ -707,13 +769,13 @@ class ServeController:
                           dict), "Traffic policy must be a dictionary."
 
         for backend in traffic_dict:
-            if self.current_state.get_backend(backend) is None:
+            if self.backend_state.get_backend(backend) is None:
                 raise ValueError(
                     "Attempted to assign traffic to a backend '{}' that "
                     "is not registered.".format(backend))
 
         traffic_policy = TrafficPolicy(traffic_dict)
-        self.current_state.traffic_policies[endpoint_name] = traffic_policy
+        self.endpoint_state.traffic_policies[endpoint_name] = traffic_policy
 
         return_uuid = self._create_event_with_result({
             endpoint_name: traffic_policy
@@ -736,20 +798,21 @@ class ServeController:
                              proportion: float) -> UUID:
         """Shadow traffic from the endpoint to the backend."""
         async with self.write_lock:
-            if endpoint_name not in self.current_state.get_endpoints():
+            if endpoint_name not in self.endpoint_state.get_endpoints():
                 raise ValueError("Attempted to shadow traffic from an "
                                  "endpoint '{}' that is not registered."
                                  .format(endpoint_name))
 
-            if self.current_state.get_backend(backend_tag) is None:
+            if self.backend_state.get_backend(backend_tag) is None:
                 raise ValueError(
                     "Attempted to shadow traffic to a backend '{}' that "
                     "is not registered.".format(backend_tag))
 
-            self.current_state.traffic_policies[endpoint_name].set_shadow(
+            self.endpoint_state.traffic_policies[endpoint_name].set_shadow(
                 backend_tag, proportion)
 
-            traffic_policy = self.current_state.traffic_policies[endpoint_name]
+            traffic_policy = self.endpoint_state.traffic_policies[
+                endpoint_name]
 
             return_uuid = self._create_event_with_result({
                 endpoint_name: traffic_policy
@@ -780,10 +843,10 @@ class ServeController:
 
             # TODO(edoakes): move this to client side.
             err_prefix = "Cannot create endpoint."
-            if route in self.current_state.routes:
+            if route in self.endpoint_state.routes:
 
                 # Ensures this method is idempotent
-                if self.current_state.routes[route] == (endpoint, methods):
+                if self.endpoint_state.routes[route] == (endpoint, methods):
                     return
 
                 else:
@@ -791,7 +854,7 @@ class ServeController:
                         "{} Route '{}' is already registered.".format(
                             err_prefix, route))
 
-            if endpoint in self.current_state.get_endpoints():
+            if endpoint in self.endpoint_state.get_endpoints():
                 raise ValueError(
                     "{} Endpoint '{}' is already registered.".format(
                         err_prefix, endpoint))
@@ -800,7 +863,7 @@ class ServeController:
                 "Registering route '{}' to endpoint '{}' with methods '{}'.".
                 format(route, endpoint, methods))
 
-            self.current_state.routes[route] = (endpoint, methods)
+            self.endpoint_state.routes[route] = (endpoint, methods)
 
             # NOTE(edoakes): checkpoint is written in self._set_traffic.
             return_uuid = await self._set_traffic(endpoint, traffic_dict)
@@ -817,7 +880,7 @@ class ServeController:
             # This method must be idempotent. We should validate that the
             # specified endpoint exists on the client.
             for route, (route_endpoint,
-                        _) in self.current_state.routes.items():
+                        _) in self.endpoint_state.routes.items():
                 if route_endpoint == endpoint:
                     route_to_delete = route
                     break
@@ -826,13 +889,11 @@ class ServeController:
                 return
 
             # Remove the routing entry.
-            del self.current_state.routes[route_to_delete]
+            del self.endpoint_state.routes[route_to_delete]
 
             # Remove the traffic policy entry if it exists.
-            if endpoint in self.current_state.traffic_policies:
-                del self.current_state.traffic_policies[endpoint]
-
-            self.actor_reconciler.endpoints_to_remove.append(endpoint)
+            if endpoint in self.endpoint_state.traffic_policies:
+                del self.endpoint_state.traffic_policies[endpoint]
 
             return_uuid = self._create_event_with_result({
                 route_to_delete: None,
@@ -851,7 +912,7 @@ class ServeController:
         """Register a new backend under the specified tag."""
         async with self.write_lock:
             # Ensures this method is idempotent.
-            backend_info = self.current_state.get_backend(backend_tag)
+            backend_info = self.backend_state.get_backend(backend_tag)
             if backend_info is not None:
                 if (backend_info.backend_config == backend_config
                         and backend_info.replica_config == replica_config):
@@ -866,7 +927,7 @@ class ServeController:
                 worker_class=backend_replica,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            self.current_state.add_backend(backend_tag, backend_info)
+            self.backend_state.add_backend(backend_tag, backend_info)
             metadata = backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
@@ -874,11 +935,12 @@ class ServeController:
                         backend_tag, metadata.autoscaling_config)
 
             try:
+                # This call should be to run control loop
                 self.actor_reconciler._scale_backend_replicas(
-                    self.current_state.backends, backend_tag,
+                    self.backend_state.backends, backend_tag,
                     backend_config.num_replicas)
             except RayServeException as e:
-                del self.current_state.backends[backend_tag]
+                del self.backend_state.backends[backend_tag]
                 raise e
 
             return_uuid = self._create_event_with_result({
@@ -888,8 +950,9 @@ class ServeController:
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
             self._checkpoint()
-            await self.actor_reconciler._start_pending_backend_replicas(
-                self.current_state)
+            await self.actor_reconciler._enqueue_pending_scale_changes_loop(
+                self.backend_state)
+            await self.actor_reconciler.backend_control_loop()
 
             self.notify_replica_handles_changed()
 
@@ -902,11 +965,11 @@ class ServeController:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
-            if self.current_state.get_backend(backend_tag) is None:
+            if self.backend_state.get_backend(backend_tag) is None:
                 return
 
             # Check that the specified backend isn't used by any endpoints.
-            for endpoint, traffic_policy in self.current_state.\
+            for endpoint, traffic_policy in self.endpoint_state.\
                     traffic_policies.items():
                 if (backend_tag in traffic_policy.traffic_dict
                         or backend_tag in traffic_policy.shadow_dict):
@@ -916,13 +979,15 @@ class ServeController:
                                      "again.".format(backend_tag, endpoint))
 
             # Scale its replicas down to 0. This will also remove the backend
-            # from self.current_state.backends and
+            # from self.backend_state.backends and
             # self.actor_reconciler.backend_replicas.
+
+            # This should be a call to the control loop
             self.actor_reconciler._scale_backend_replicas(
-                self.current_state.backends, backend_tag, 0)
+                self.backend_state.backends, backend_tag, 0)
 
             # Remove the backend's metadata.
-            del self.current_state.backends[backend_tag]
+            del self.backend_state.backends[backend_tag]
             if backend_tag in self.autoscaling_policies:
                 del self.autoscaling_policies[backend_tag]
 
@@ -934,7 +999,9 @@ class ServeController:
             # backend from the routers to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
-            await self.actor_reconciler._stop_pending_backend_replicas()
+            await self.actor_reconciler._enqueue_pending_scale_changes_loop(
+                self.backend_state)
+            await self.actor_reconciler.backend_control_loop()
 
             self.notify_replica_handles_changed()
             return return_uuid
@@ -943,22 +1010,24 @@ class ServeController:
                                     config_options: BackendConfig) -> UUID:
         """Set the config for the specified backend."""
         async with self.write_lock:
-            assert (self.current_state.get_backend(backend_tag)
+            assert (self.backend_state.get_backend(backend_tag)
                     ), "Backend {} is not registered.".format(backend_tag)
             assert isinstance(config_options, BackendConfig)
 
-            stored_backend_config = self.current_state.get_backend(
+            stored_backend_config = self.backend_state.get_backend(
                 backend_tag).backend_config
             backend_config = stored_backend_config.copy(
                 update=config_options.dict(exclude_unset=True))
             backend_config._validate_complete()
-            self.current_state.get_backend(
+            self.backend_state.get_backend(
                 backend_tag).backend_config = backend_config
-            backend_info = self.current_state.get_backend(backend_tag)
+            backend_info = self.backend_state.get_backend(backend_tag)
 
             # Scale the replicas with the new configuration.
+
+            # This should be to run the control loop
             self.actor_reconciler._scale_backend_replicas(
-                self.current_state.backends, backend_tag,
+                self.backend_state.backends, backend_tag,
                 backend_config.num_replicas)
 
             return_uuid = self._create_event_with_result({
@@ -972,9 +1041,9 @@ class ServeController:
             # Inform the routers about change in configuration
             # (particularly for setting max_batch_size).
 
-            await self.actor_reconciler._start_pending_backend_replicas(
-                self.current_state)
-            await self.actor_reconciler._stop_pending_backend_replicas()
+            await self.actor_reconciler._enqueue_pending_scale_changes_loop(
+                self.backend_state)
+            await self.actor_reconciler.backend_control_loop()
 
             self.notify_replica_handles_changed()
             self.notify_backend_configs_changed()
@@ -982,9 +1051,9 @@ class ServeController:
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
         """Get the current config for the specified backend."""
-        assert (self.current_state.get_backend(backend_tag)
+        assert (self.backend_state.get_backend(backend_tag)
                 ), "Backend {} is not registered.".format(backend_tag)
-        return self.current_state.get_backend(backend_tag).backend_config
+        return self.backend_state.get_backend(backend_tag).backend_config
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""

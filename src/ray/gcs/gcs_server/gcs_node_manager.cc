@@ -240,7 +240,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     for (auto &listener : node_added_listeners_) {
       listener(node);
     }
-    gcs_resource_manager_->OnNodeAdd(node_id);
+    gcs_resource_manager_->OnNodeAdd(*node);
   }
 }
 
@@ -258,6 +258,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     // Remove from cluster resources.
     gcs_resource_manager_->OnNodeDead(node_id);
     resources_buffer_.erase(node_id);
+    node_resource_usages_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -317,7 +318,7 @@ void GcsNodeManager::UpdateNodeRealtimeResources(
   if (!light_report_resource_usage_enabled_ ||
       gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
       resource_data.resources_available_changed()) {
-    gcs_resource_manager_->UpdateResources(
+    gcs_resource_manager_->SetAvailableResources(
         node_id, ResourceSet(MapFromProtobuf(resource_data.resources_available())));
   }
 }

@@ -170,9 +170,9 @@ Status raylet::RayletClient::FetchOrReconstruct(
   return conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
 }
 
-Status raylet::RayletClient::NotifyTaskBlocked() {
+Status raylet::RayletClient::NotifyTaskBlocked(bool release_resources) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyTaskBlocked(fbb);
+  auto message = protocol::CreateNotifyTaskBlocked(fbb, release_resources);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyTaskBlocked, &fbb);
 }
@@ -187,13 +187,14 @@ Status raylet::RayletClient::NotifyTaskUnblocked() {
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
-                                  bool wait_local, const TaskID &current_task_id,
+                                  const TaskID &current_task_id,
                                   WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds, wait_local, to_flatbuf(fbb, current_task_id));
+      num_returns, timeout_milliseconds,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
   RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::WaitRequest,
@@ -254,10 +255,10 @@ Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_e
 }
 
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
-                                         bool local_only, bool delete_creating_tasks) {
+                                         bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateFreeObjectsRequest(
-      fbb, local_only, delete_creating_tasks, to_flatbuf(fbb, object_ids));
+  auto message =
+      protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }

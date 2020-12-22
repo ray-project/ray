@@ -37,7 +37,7 @@ def memory_summary():
     return reply.memory_summary
 
 
-def free(object_refs, local_only=False, delete_creating_tasks=False):
+def free(object_refs, local_only=False):
     """Free a list of IDs from the in-process and plasma object stores.
 
     This function is a low-level API which should be used in restricted
@@ -59,8 +59,6 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
         object_refs (List[ObjectRef]): List of object refs to delete.
         local_only (bool): Whether only deleting the list of objects in local
             object store or all object stores.
-        delete_creating_tasks (bool): Whether also delete the object creating
-            tasks.
     """
     worker = ray.worker.global_worker
 
@@ -83,5 +81,4 @@ def free(object_refs, local_only=False, delete_creating_tasks=False):
         if len(object_refs) == 0:
             return
 
-        worker.core_worker.free_objects(object_refs, local_only,
-                                        delete_creating_tasks)
+        worker.core_worker.free_objects(object_refs, local_only)
