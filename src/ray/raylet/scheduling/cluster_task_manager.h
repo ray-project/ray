@@ -92,6 +92,13 @@ class ClusterTaskManager {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> ready_ids);
 
+  /// Move tasks from ready for dispatch to waiting. Called
+  /// when a task's dependencies were resolved, but one was
+  /// evicted.
+  ///
+  /// \param ready_ids: The tasks which are now waiting for arguments.
+  void TasksBlocked(const std::vector<TaskID> ready_ids);
+
   /// (Step 5) Call once a task finishes (i.e. a worker is returned).
   ///
   /// \param worker: The worker which was running the task.
@@ -163,6 +170,11 @@ class ClusterTaskManager {
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
+  /// Tasks can also move from dispatch -> waiting if one of their arguments is
+  /// evicted.
+  /// All tasks in this map that have dependencies should be registered with
+  /// the dependency manager, so that they can be moved to waiting if one of
+  /// their dependencies is evicted.
   std::unordered_map<SchedulingClass, std::list<Work>> tasks_to_dispatch_;
 
   /// An index to speed up looking up a request from the dispatch queue.
@@ -171,6 +183,11 @@ class ClusterTaskManager {
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
+  /// Tasks can also move from dispatch -> waiting if one of their arguments is
+  /// evicted.
+  /// All tasks in this map that have dependencies should be registered with
+  /// the dependency manager, so that they can be moved to dispatch once their
+  /// dependencies are local.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Queue of lease requests that are infeasible.

@@ -240,6 +240,8 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
   EXPECT_CALL(dependency_manager_,
               SubscribeGetDependencies(task.GetTaskSpecification().TaskId(), _));
+  EXPECT_CALL(dependency_manager_,
+              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()));
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
@@ -733,6 +735,62 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   ASSERT_FALSE(*callback_occurred2);
   ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
                                             &pending_actor_creations, &pending_tasks));
+}
+
+TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
+  /*
+    Test the task's dependencies becoming local, then one of the arguments is
+    evicted. The task should go from waiting -> dispatch -> waiting.
+  */
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  int *num_callbacks_ptr = &num_callbacks;
+  auto callback = [num_callbacks_ptr]() {
+    (*num_callbacks_ptr) = *num_callbacks_ptr + 1;
+  };
+
+  /* Blocked on dependencies */
+  auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 2);
+  EXPECT_CALL(dependency_manager_,
+              SubscribeGetDependencies(task.GetTaskSpecification().TaskId(), _));
+  EXPECT_CALL(dependency_manager_,
+              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId())).Times(0);
+  task_manager_.QueueTask(task, &reply, callback);
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  /* Task is unblocked now */
+  pool_.workers.clear();
+  auto id = task.GetTaskSpecification().TaskId();
+  task_manager_.TasksUnblocked({id});
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  /* Task argument gets evicted */
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  task_manager_.TasksBlocked({id});
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(num_callbacks, 0);
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  /* Worker available and arguments available */
+  EXPECT_CALL(dependency_manager_,
+              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()));
+  task_manager_.TasksUnblocked({id});
+  task_manager_.SchedulePendingTasks();
+  task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(num_callbacks, 1);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  AssertNoLeaks();
 }
 
 int main(int argc, char **argv) {

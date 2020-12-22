@@ -106,9 +106,6 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
     bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
         task.GetTaskSpecification().TaskId(), task.GetDependencies());
     if (args_ready) {
-      task_dependency_manager_.UnsubscribeGetDependencies(
-          task.GetTaskSpecification().TaskId());
-
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << spec.TaskId();
       auto &queue = tasks_to_dispatch_[scheduling_key];
       queue.push_back(work);
@@ -163,6 +160,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
         RAY_CHECK(tasks_to_dispatch_index_.erase(spec.TaskId()));
+        if (!spec.GetDependencies().empty()) {
+          task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
+        }
         work_it = dispatch_queue.erase(work_it);
       } else {
         bool worker_leased;
@@ -176,6 +176,9 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         if (remove) {
           RAY_CHECK(tasks_to_dispatch_index_.erase(spec.TaskId()));
+          if (!spec.GetDependencies().empty()) {
+            task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
+          }
           work_it = dispatch_queue.erase(work_it);
         } else {
           break;
@@ -270,6 +273,24 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
+void ClusterTaskManager::TasksBlocked(const std::vector<TaskID> ready_ids) {
+  for (const auto &task_id : ready_ids) {
+    auto it = tasks_to_dispatch_index_.find(task_id);
+    if (it != tasks_to_dispatch_index_.end()) {
+      // Move the task from ready for dispatch to waiting.
+      auto &work_it = it->second.second;
+      waiting_tasks_[task_id] = std::move(*work_it);
+
+      auto &work_queue = tasks_to_dispatch_[it->second.first];
+      work_queue.erase(work_it);
+      if (work_queue.empty()) {
+        tasks_to_dispatch_.erase(it->second.first);
+      }
+      tasks_to_dispatch_index_.erase(it);
+    }
+  }
+}
+
 void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
   cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
@@ -313,6 +334,9 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     RemoveFromBacklogTracker(task);
     ReplyCancelled(*work_it);
 
+    if (!task.GetTaskSpecification().GetDependencies().empty()) {
+      task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+    }
     auto &work_queue = tasks_to_dispatch_[dispatch_it->second.first];
     work_queue.erase(work_it);
     if (work_queue.empty()) {
@@ -345,6 +369,9 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     const auto &task = std::get<0>(iter->second);
     RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
+    if (!task.GetTaskSpecification().GetDependencies().empty()) {
+      task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+    }
     waiting_tasks_.erase(iter);
     return true;
   }
