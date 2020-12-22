@@ -19,6 +19,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED, STATUS_WAITING_FOR_SSH,
     STATUS_SYNCING_FILES, STATUS_SETTING_UP, STATUS_UP_TO_DATE,
     NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
+from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.providers import _get_node_provider
 from ray.autoscaler._private.updater import NodeUpdaterThread
 from ray.autoscaler._private.node_launcher import NodeLauncher
@@ -279,6 +280,8 @@ class StandardAutoscaler:
             self.recover_if_needed(node_id, now)
 
         logger.info(self.info_string())
+        legacy_log_info_string(self, nodes)
+
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:

@@ -22,6 +22,7 @@ RAY_SCHEMA_PATH = os.path.join(
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
 logger = logging.getLogger(__name__)
 

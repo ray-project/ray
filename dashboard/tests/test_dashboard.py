@@ -20,6 +20,7 @@ from ray.test_utils import (format_web_url, wait_for_condition,
                             wait_until_server_available, run_string_as_driver,
                             wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
@@ -463,6 +464,13 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
+        # assert "cluster_status" in response.json()["data"]
+        # assert "load_metrics_report" in response.json()["data"]["cluster_status"]
+        # TODO (Alex): emulate the autoscaler so the autoscaler report is
+        # populated.
+        # assert "autoscaler_report" in \
+        # response.json()["data"]["cluster_status"]
+
 
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
@@ -478,7 +486,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
 
-    client.hset(DEBUG_AUTOSCALING_STATUS, "value", "hello")
+    client.hset(DEBUG_AUTOSCALING_STATUS_LEGACY, "value", "hello")
     client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
@@ -488,6 +496,10 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingStatus"] == "hello"
     assert "autoscalingError" in response.json()["data"]
     assert response.json()["data"]["autoscalingError"] == "world"
+    # assert "cluster_status" in response.json()["data"]["autoscalingError"]
+    # assert "load_metrics_report" in response.json()["data"]["autoscalingError"]
+
+
 
 
 def test_immutable_types():
