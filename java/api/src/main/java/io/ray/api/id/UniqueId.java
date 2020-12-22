@@ -11,7 +11,7 @@ import java.util.Random;
  */
 public class UniqueId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 20;
+  public static final int LENGTH = 28;
   public static final UniqueId NIL = genNil();
 
   /**

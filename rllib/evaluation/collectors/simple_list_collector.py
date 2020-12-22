@@ -35,9 +35,6 @@ def to_float_np_array(v: List[Any]) -> np.ndarray:
     return arr
 
 
-_INIT_COLS = [SampleBatch.OBS]
-
-
 class _AgentCollector:
     """Collects samples for one agent in one trajectory (episode).
 
@@ -55,8 +52,9 @@ class _AgentCollector:
         # or internal state inputs.
         self.shift_before = -min(
             (int(vr.shift.split(":")[0])
-             if isinstance(vr.shift, str) else vr.shift) +
-            (-1 if vr.data_col in _INIT_COLS or k in _INIT_COLS else 0)
+             if isinstance(vr.shift, str) else vr.shift) -
+            (1
+             if vr.data_col == SampleBatch.OBS or k == SampleBatch.OBS else 0)
             for k, vr in view_reqs.items())
         # The actual data buffers (lists holding each timestep's data).
         self.buffers: Dict[str, List] = {}
