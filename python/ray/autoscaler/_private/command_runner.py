@@ -732,9 +732,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             if unfulfilled_mounts:
                 try:
                     re_init_required = cli_logger.confirm(
-                        False, "This Docker Container is already Running, Do "
+                        False, "This Docker Container is already running, Do "
                         "you want to restart the Docker container on "
-                        "this node?")
+                        "this node? to pick up the following file_mounts {}",
+                        unfulfilled_mounts)
                 except ValueError as e:
                     cli_logger.print(str(e))
                     re_init_required = True
@@ -742,7 +743,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                     cli_logger.error(
                         "Please ray stop & restart cluster to "
                         "allow the following mounts to be picked up "
-                        f"[{unfulfilled_mounts}]")
+                        "{}", unfulfilled_mounts)
         except json.JSONDecodeError:
             cli_logger.verbose(
                 "Unable to check if file_mounts specified in the YAML "
