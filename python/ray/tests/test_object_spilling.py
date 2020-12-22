@@ -563,5 +563,59 @@ def test_fusion_objects(tmp_path, shutdown_only):
     assert is_test_passing
 
 
+# https://github.com/ray-project/ray/issues/12912
+def do_test_release_resource(tmp_path, expect_released):
+    temp_folder = tmp_path / "spill"
+    ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 1,
+            "release_resources_during_plasma_fetch": expect_released,
+            "automatic_object_spilling_enabled": True,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+        })
+    plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))
+    for _ in range(5):
+        ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))  # Force spilling
+
+    @ray.remote
+    def sneaky_task_tries_to_steal_released_resources():
+        print("resources were released!")
+
+    @ray.remote
+    def f(dep):
+        while True:
+            try:
+                ray.get(dep[0], timeout=0.001)
+            except ray.exceptions.GetTimeoutError:
+                pass
+
+    done = f.remote([plasma_obj])  # noqa
+    canary = sneaky_task_tries_to_steal_released_resources.remote()
+    ready, _ = ray.wait([canary], timeout=2)
+    if expect_released:
+        assert ready
+    else:
+        assert not ready
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_no_release_during_plasma_fetch(tmp_path, shutdown_only):
+    do_test_release_resource(tmp_path, expect_released=False)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_release_during_plasma_fetch(tmp_path, shutdown_only):
+    do_test_release_resource(tmp_path, expect_released=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
