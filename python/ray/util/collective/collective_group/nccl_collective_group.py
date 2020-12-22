@@ -427,6 +427,7 @@ class NCCLGroup(BaseGroup):
     #     """Private method to encapsulate all collective calls"""
     #     pass
 
+
 def _flatten_for_scatter_gather(tensor_list, copy=False):
     """Flatten the tensor for gather/scatter operations.
 
