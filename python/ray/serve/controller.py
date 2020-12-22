@@ -14,7 +14,8 @@ import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
-                                 LongPollKey)
+                                 LongPollKey,
+                                 DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
@@ -308,12 +309,21 @@ class ActorStateReconciler:
                     except ValueError:
                         return
 
-                    # TODO(edoakes): this logic isn't ideal because there may
-                    # be pending tasks still executing on the replica. However,
-                    # if we use replica.__ray_terminate__, we may send it while
-                    # the replica is being restarted and there's no way to tell
-                    # if it successfully killed the worker or not.
-                    ray.kill(replica, no_restart=True)
+                    try:
+                        await asyncio.wait_for(
+                            replica.shutdown.remote(),
+                            timeout=DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S
+                        )
+                    except ray.exceptions.RayActorError:
+                        # Actor should have exited.
+                        return
+                    except asyncio.TimeoutError:
+                        # Graceful period passed, kill it forcefully.
+                        logger.debug(
+                            f"{replica_name_to_use} did not shutdown after "
+                            "{DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S}, "
+                            "killing.")
+                        ray.kill(replica, no_restart=True)
 
                 self.currently_stopping_replicas[asyncio.ensure_future(
                     kill_actor(replica_name))] = (backend_tag, replica_tag)

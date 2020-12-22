@@ -17,11 +17,9 @@ from ray.util import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Query
-from ray.serve.constants import (
-    BACKEND_RECONFIGURE_METHOD,
-    DEFAULT_LATENCY_BUCKET_MS,
-    LongPollKey,
-)
+from ray.serve.constants import (BACKEND_RECONFIGURE_METHOD,
+                                 DEFAULT_LATENCY_BUCKET_MS, LongPollKey,
+                                 DEFAULT_GRACEFUL_SHUTDOWN_LOOP_WAIT_S)
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -125,6 +123,9 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
 
         def ready(self):
             pass
+
+        async def shutdown(self):
+            return await self.backend.shutdown()
 
     RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
         func_or_class.__name__)
@@ -410,3 +411,27 @@ class RayServeReplica:
 
         self.num_ongoing_requests -= 1
         return result
+
+    async def shutdown(self):
+        """Perform graceful shutdown.
+
+        Trigger a graceful shutdown protocol that will wait for all the queued
+        tasks to be completed and then exit.
+        """
+        while True:
+            # Sleep first because we want to make sure all the routers receive
+            # the notification to remove this replica first.
+            await asyncio.sleep(DEFAULT_GRACEFUL_SHUTDOWN_LOOP_WAIT_S)
+
+            num_queries_waiting = self.batch_queue.qsize()
+            if (num_queries_waiting == 0) and (self.num_ongoing_requests == 0):
+                break
+            else:
+                logger.debug(
+                    f"Waiting for {DEFAULT_GRACEFUL_SHUTDOWN_LOOP_WAIT_S} "
+                    f"more to shutdown {self.replica_tag} because "
+                    f"num_queries_waiting {num_queries_waiting} and "
+                    f"num_ongoing_requests {self.num_ongoing_requests}")
+
+        logger.debug(f"Shutting down replica {self.replica_tag}")
+        ray.actor.exit_actor()

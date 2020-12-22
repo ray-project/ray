@@ -871,6 +871,26 @@ def test_serve_metrics(serve_instance):
         verify_metrics()
 
 
+def test_serve_forceful_shutdown(serve_instance):
+    # Test that Serve will eventually shutdown the backends even though it runs
+    # forever. Graceful shutdown is tested in unit test test_backend_worker.py
+    client = serve_instance
+
+    def sleeper(_):
+        while True:
+            time.sleep(1000)
+
+    client.create_backend("sleeper", sleeper)
+    client.create_endpoint("sleeper", backend="sleeper")
+    handle = client.get_handle("sleeper")
+    ref = handle.remote()
+    client.delete_endpoint("sleeper")
+    client.delete_backend("sleeper")
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))

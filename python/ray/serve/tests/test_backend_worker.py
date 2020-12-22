@@ -40,6 +40,9 @@ def setup_worker(name,
         def update_config(self, new_config):
             return self.worker.update_config(new_config)
 
+        async def shutdown(self):
+            return await self.worker.shutdown()
+
     worker = WorkerActor.remote()
     ray.get(worker.ready.remote())
     return worker
@@ -310,6 +313,54 @@ async def test_user_config_update(serve_instance, router,
 
     for i in done:
         assert await i == "new_val"
+
+
+async def test_graceful_shutdown(serve_instance, router,
+                                 mock_controller_with_name):
+    class KeepInflight:
+        def __init__(self):
+            self.events = []
+
+        def reconfigure(self, config):
+            if config["release"]:
+                [event.set() for event in self.events]
+
+        async def __call__(self, _):
+            e = asyncio.Event()
+            self.events.append(e)
+            await e.wait()
+
+    backend_worker = await add_servable_to_router(
+        KeepInflight,
+        router,
+        mock_controller_with_name[0],
+        backend_config=BackendConfig(
+            num_replicas=1,
+            internal_metadata=BackendMetadata(is_blocking=False),
+            user_config={"release": False}))
+
+    query_param = make_request_param()
+
+    refs = [(await router.assign_request.remote(query_param))
+            for _ in range(6)]
+
+    shutdown_ref = backend_worker.shutdown.remote()
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        # Shutdown should block because there are still inflight queries.
+        ray.get(shutdown_ref, timeout=2)
+
+    config = BackendConfig()
+    config.user_config = {"release": True}
+    await mock_controller_with_name[1].update_backend.remote("backend", config)
+
+    # All queries should complete successfully
+    ray.get(refs)
+
+    # The replica should shutdown after that
+    ray.get(shutdown_ref)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(backend_worker.ready.remote())
 
 
 if __name__ == "__main__":
