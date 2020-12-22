@@ -1253,8 +1253,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testSummary(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
-        config["available_node_types"]["m4.large"]["min_workers"] = \
-            config["min_workers"]
+        config["available_node_types"]["m4.large"]["min_workers"] = 2
         config["max_workers"] = 10
         config["docker"] = {}
         config_path = self.write_config(config)
@@ -1262,7 +1261,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
+            TAG_RAY_USER_NODE_TYPE: "empty_node",
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
@@ -1321,7 +1320,7 @@ class AutoscalingTest(unittest.TestCase):
         summary = autoscaler.summary()
 
         assert summary.active_nodes["m4.large"] == 2
-        assert summary.active_nodes["m4.4xlarge"] == 1
+        assert summary.active_nodes["empty_node"] == 1
         assert len(summary.active_nodes) == 2, summary.active_nodes
 
         assert summary.pending_nodes == [("172.0.0.3", "p2.xlarge")]
@@ -1406,12 +1405,6 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
-        self.provider.create_node({}, {
-            TAG_RAY_NODE_KIND: "head",
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-            TAG_RAY_USER_NODE_TYPE: "m4.4xlarge",
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
-        }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
         assert len(self.provider.non_terminated_nodes({})) == 1
         autoscaler.update()
@@ -1984,13 +1977,13 @@ class AutoscalingTest(unittest.TestCase):
             }])
         autoscaler.update()
         # this fits on request_resources()!
-        self.waitForNodes(1)
+        self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.load_metrics.set_resource_requests([{
             "CPU": 0.2,
             "WORKER": 1.0
         }] * 2)
         autoscaler.update()
-        self.waitForNodes(2)
+        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.load_metrics.set_resource_requests([{
             "CPU": 0.2,
             "WORKER": 1.0
