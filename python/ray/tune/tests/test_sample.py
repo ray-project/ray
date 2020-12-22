@@ -60,17 +60,21 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertGreaterEqual(out["randint"], -9)
             self.assertLess(out["randint"], 15)
+            self.assertTrue(isinstance(out["randint"], int))
 
             self.assertGreaterEqual(out["lograndint"], 1)
             self.assertLess(out["lograndint"], 10)
+            self.assertTrue(isinstance(out["lograndint"], int))
 
             self.assertGreaterEqual(out["qrandint"], -21)
             self.assertLessEqual(out["qrandint"], 12)
             self.assertEqual(out["qrandint"] % 3, 0)
+            self.assertTrue(isinstance(out["qrandint"], int))
 
             self.assertGreaterEqual(out["qlograndint"], 2)
             self.assertLessEqual(out["qlograndint"], 20)
             self.assertEqual(out["qlograndint"] % 2, 0)
+            self.assertTrue(isinstance(out["qlograndint"], int))
 
             # Very improbable
             self.assertGreater(out["randn"], 0)
