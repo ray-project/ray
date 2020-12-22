@@ -19,6 +19,8 @@ class RayAPIStub:
         self.api = ClientAPI()
         self.client_worker = None
         self._server = None
+        self._connected_with_init = False
+        self._inside_client_test = False
 
     def connect(self,
                 conn_str: str,
@@ -34,9 +36,16 @@ class RayAPIStub:
         """
         # Delay imports until connect to avoid circular imports.
         from ray.experimental.client.worker import Worker
+        import ray._private.client_mode_hook
         if self.client_worker is not None:
+            if self._connected_with_init:
+                return
             raise Exception(
                 "ray.connect() called, but ray client is already connected")
+        if not self._inside_client_test:
+            # If we're calling a client connect specifically and we're not
+            # currently in client mode, ensure we are.
+            ray._private.client_mode_hook._explicitly_enable_client_mode()
         self.client_worker = Worker(conn_str, secure=secure, metadata=metadata)
         self.api.worker = self.client_worker
 
@@ -79,6 +88,7 @@ class RayAPIStub:
         self._server, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self.connect("localhost:50051")
+        self._connected_with_init = True
         return address_info
 
     def shutdown(self, _exiting_interpreter=False):

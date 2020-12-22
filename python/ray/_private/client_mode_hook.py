@@ -18,6 +18,10 @@ def _disable_client_hook():
     _client_hook_enabled = False
     return out
 
+def _explicitly_enable_client_mode():
+    global client_mode_enabled
+    client_mode_enabled = True
+
 
 @contextmanager
 def disable_client_hook():
@@ -32,14 +36,10 @@ def client_mode_hook(func):
     """
     Decorator for ray module methods to delegate to ray client
     """
-    if not client_mode_enabled:
-        return func
-
     def wrapper(*args, **kwargs):
         global _client_hook_enabled
-        if _client_hook_enabled:
+        if client_mode_enabled and _client_hook_enabled:
             return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
 
-    wrapper.__client_hook_func = func
     return wrapper
