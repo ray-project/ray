@@ -20,9 +20,9 @@
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/util/filesystem.h"
 #include "src/ray/protobuf/common.pb.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
