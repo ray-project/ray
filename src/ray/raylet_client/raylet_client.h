@@ -260,8 +260,8 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::vector<rpc::Address> &owner_addresses, int num_returns,
-                   int64_t timeout_milliseconds, bool mark_worker_blocked,
-                   const TaskID &current_task_id, WaitResultPair *result);
+                   int64_t timeout_milliseconds, const TaskID &current_task_id,
+                   WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
