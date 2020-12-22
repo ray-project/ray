@@ -23,11 +23,8 @@ from ray.autoscaler._private.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 import ray.new_dashboard.memory_utils as memory_utils
-<<<<<<< HEAD
 import ray.new_dashboard.modules.stats_collector.stats_collector_head \
     as stats_collector
-=======
->>>>>>> Add click options for sort_by and group_by
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 

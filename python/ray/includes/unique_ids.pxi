@@ -252,7 +252,7 @@ cdef class JobID(BaseID):
 cdef class WorkerID(UniqueID):
 
     def __init__(self, id):
-        check_id(id)
+        # check_id(id)
         self.data = CWorkerID.FromBinary(<c_string>id)
 
     cdef CWorkerID native(self):
