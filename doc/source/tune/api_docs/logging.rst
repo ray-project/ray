@@ -70,11 +70,7 @@ An example of creating a custom logger can be found in :doc:`/tune/examples/logg
 Trainable Logging
 -----------------
 
-By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if:
-
- * you're using `Weights and Biases <https://www.wandb.com/>`_
- * you're using `MLFlow <https://github.com/mlflow/mlflow/>`__
- * you're trying to log images to Tensorboard.
+By default, Tune only logs the *training result dictionaries* from your Trainable. However, you may want to visualize the model weights, model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if you're trying to log images to Tensorboard.
 
 You can do this in the trainable, as shown below:
 
@@ -163,12 +159,17 @@ CSVLogger
 
 .. autoclass:: ray.tune.logger.CSVLoggerCallback
 
-MLFLowLogger
+MLFlowLogger
 ------------
 
-Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``. An example can be found in :doc:`/tune/examples/mlflow_example`. Note that this currently does not include artifact logging support. For this, you can use the native MLFlow APIs inside your Trainable definition.
+Tune also provides a default logger for `MLFlow <https://mlflow.org>`_. You can install MLFlow via ``pip install mlflow``.
+You can see the :doc:`tutorial here </tune/tutorials/tune-mlflow>`.
 
-.. autoclass:: ray.tune.logger.MLFLowLogger
+WandbLogger
+-----------
+
+Tune also provides a default logger for `Weights & Biases <https://www.wandb.com/>`_. You can install Wandb via ``pip install wandb``.
+You can see the :doc:`tutorial here </tune/tutorials/tune-wandb>`
 
 
 .. _logger-interface:
