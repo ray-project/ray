@@ -62,6 +62,9 @@ def convert_to_torch_tensor(x, device=None):
             return RepeatedValues(
                 tree.map_structure(mapping, item.values), item.lengths,
                 item.max_len)
+        # np.object_ type (e.g. info dicts in train batch): leave as-is.
+        elif item.dtype == np.object_:
+            return item
         tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:
