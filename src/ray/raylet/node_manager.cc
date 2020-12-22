@@ -2631,9 +2631,10 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   }
   RAY_LOG(DEBUG) << result.str();
 
-  if (new_scheduler_enabled_) {
-    cluster_task_manager_->TasksBlocked(waiting_task_ids);
-  } else {
+  // We don't need to do anything if the new scheduler is enabled because tasks
+  // will get moved back to waiting once they reach the front of the dispatch
+  // queue.
+  if (!new_scheduler_enabled_) {
     // Transition any tasks that were in the runnable state and are dependent on
     // this object to the waiting state.
     if (!waiting_task_ids.empty()) {

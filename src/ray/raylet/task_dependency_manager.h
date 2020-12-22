@@ -37,6 +37,7 @@ class TaskDependencyManagerInterface {
   virtual bool SubscribeGetDependencies(
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
+  virtual bool IsTaskReady(const TaskID &task_id) const = 0;
   virtual bool UnsubscribeGetDependencies(const TaskID &task_id) = 0;
   virtual ~TaskDependencyManagerInterface() {}
 };
@@ -81,6 +82,14 @@ class TaskDependencyManager : public TaskDependencyManagerInterface {
   /// local.
   bool SubscribeGetDependencies(
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects);
+
+  /// Check whether a task is ready to run. The task ID must
+  /// have been previously subscribed by the caller.
+  ///
+  /// \param task_id The ID of the task to check.
+  /// \return Whether all of the dependencies for the task are
+  /// local.
+  bool IsTaskReady(const TaskID &task_id) const;
 
   /// Subscribe to object depedencies required by the worker. This should be called for
   /// ray.wait calls during task execution.

@@ -100,6 +100,12 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
                bool(const TaskID &task_id,
                     const std::vector<rpc::ObjectReference> &required_objects));
   MOCK_METHOD1(UnsubscribeGetDependencies, bool(const TaskID &task_id));
+
+  bool IsTaskReady(const TaskID &task_id) const {
+    return task_ready_;
+  }
+
+  bool task_ready_ = true;
 };
 
 class ClusterTaskManagerTest : public ::testing::Test {

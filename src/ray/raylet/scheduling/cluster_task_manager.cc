@@ -259,24 +259,6 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
   }
 }
 
-void ClusterTaskManager::TasksBlocked(const std::vector<TaskID> ready_ids) {
-  for (const auto &task_id : ready_ids) {
-    auto it = tasks_to_dispatch_index_.find(task_id);
-    if (it != tasks_to_dispatch_index_.end()) {
-      // Move the task from ready for dispatch to waiting.
-      auto &work_it = it->second.second;
-      waiting_tasks_[task_id] = std::move(*work_it);
-
-      auto &work_queue = tasks_to_dispatch_[it->second.first];
-      work_queue.erase(work_it);
-      if (work_queue.empty()) {
-        tasks_to_dispatch_.erase(it->second.first);
-      }
-      tasks_to_dispatch_index_.erase(it);
-    }
-  }
-}
-
 void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker) {
   cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
