@@ -25,6 +25,7 @@ import ray.ray_constants as ray_constants
 import ray.utils
 import ray.new_dashboard.memory_utils as memory_utils
 import ray.new_dashboard.datacenter as datacenter
+import ray.new_dashboard.modules.stats_collector.stats_collector_head as stats_collector
 
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
@@ -1368,6 +1369,7 @@ def timeline(address):
     type=str,
     default=memory_utils.GroupByType.NODE_ADDRESS,
     help="Group object references by a GroupByType (e.g. NODE_ADDRESS or STACK_TRACE).")
+# Old version: https://github.com/ray-project/ray/blob/master/python/ray/scripts/scripts.py
 def memory(address, redis_password, sort_by, group_by):
     """Print object references held in a Ray cluster."""
     if not address:
@@ -1375,12 +1377,16 @@ def memory(address, redis_password, sort_by, group_by):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
 
-    print("woah there, how is it going?")
-    # memory_information = asyncio.run(datacenter.DataOrganizer.get_memory_table())
-    # print("memory table:", memory_information)
+    # Step 1: Fetch core memory worker stats
+    stats = ray.internal.internal_api.node_stats()
+    stats = stats_collector.node_stats_to_dict(stats)
 
-    print("We shall sort by ", sort_by, "then group by ", group_by)
-    print(ray.internal.internal_api.memory_summary())
+    # Step 2: Build memory table with "group_by" and "sort_by" parameters
+    memory_table = memory_utils.construct_memory_table(stats['coreWorkersStats'], group_by, sort_by)
+
+    # Step 3: Display
+    print(memory_table)
+
     
 
 
