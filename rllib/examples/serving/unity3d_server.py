@@ -35,7 +35,7 @@ from ray.tune import register_env
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.env.policy_server_input import PolicyServerInput
 from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-from ray.rllib.examples.env.unity3d_env import Unity3DEnv
+from ray.rllib.env.unity3d_env import Unity3DEnv
 
 SERVER_ADDRESS = "localhost"
 SERVER_PORT = 9900
