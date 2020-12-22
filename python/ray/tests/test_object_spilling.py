@@ -596,7 +596,7 @@ def do_test_release_resource(tmp_path, expect_released):
             except ray.exceptions.GetTimeoutError:
                 pass
 
-    done = f.remote([plasma_obj])
+    done = f.remote([plasma_obj])  # noqa
     canary = sneaky_task_tries_to_steal_released_resources.remote()
     ready, _ = ray.wait([canary], timeout=2)
     if expect_released:
