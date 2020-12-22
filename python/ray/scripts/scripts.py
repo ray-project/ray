@@ -1,17 +1,17 @@
-import asyncio
 import click
 import copy
 from datetime import datetime
 import json
 import logging
 import os
+from socket import socket
 import subprocess
 import sys
+from tabulate import tabulate
 import time
 import urllib
 import urllib.parse
 import yaml
-from socket import socket
 
 import ray
 import psutil
@@ -23,11 +23,11 @@ from ray.autoscaler._private.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 import ray.new_dashboard.memory_utils as memory_utils
-import ray.new_dashboard.datacenter as datacenter
 import ray.new_dashboard.modules.stats_collector.stats_collector_head as stats_collector
 
 
 from ray.autoscaler._private.cli_logger import cli_logger, cf
+
 
 logger = logging.getLogger(__name__)
 
@@ -1359,7 +1359,7 @@ def timeline(address):
     required=False,
     type=str,
     default=memory_utils.SortingType.OBJECT_SIZE,
-    help="Sort object references in descending order by a SortingType (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
+    help="Sort object references in ascending order by a SortingType (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 @click.option(
     "--group-by",
     required=False,
@@ -1367,14 +1367,15 @@ def timeline(address):
     default=memory_utils.GroupByType.NODE_ADDRESS,
     help="Group object references by a GroupByType (e.g. NODE_ADDRESS or STACK_TRACE).")
 # Old version: https://github.com/ray-project/ray/blob/master/python/ray/scripts/scripts.py
-def memory(address, redis_password, sort_by, group_by):
+# print(ray.internal.internal_api.memory_summary())
+def memory(address, redis_password, group_by, sort_by):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
 
-    # Step 1: Fetch core memory worker stats
+    # Step 1: Fetch core memory worker stats and convert into a dictionary
     stats = ray.internal.internal_api.node_stats()
     stats = stats_collector.node_stats_to_dict(stats)
 
@@ -1382,7 +1383,22 @@ def memory(address, redis_password, sort_by, group_by):
     memory_table = memory_utils.construct_memory_table(stats['coreWorkersStats'], group_by, sort_by)
 
     # Step 3: Display
-    print(memory_table)
+    print("Grouping by", group_by, "Sorting by", sort_by, "\n")
+    for key, group in memory_table.as_dict()["group"].items():
+        # Part A: Group summary
+        summary = group["summary"]
+        print("Summary for node at IP Address:", key)
+        print(tabulate([summary.values()], headers=["Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct", "Used by Pending Tasks Ct", "Captured in Objects Ct", "Actor Handle Ct"], tablefmt="psql"))
+
+        # Part B: Memory table
+        rows = []
+        print("Object references for node at IP Address:", key)
+        for entry in group["entries"]: 
+            rows.append([entry["node_ip_address"], entry["pid"], entry["type"], entry["object_ref"], str(entry["object_size"]) + " MiB", entry["reference_type"], entry["call_site"]])
+        print(tabulate(rows, headers=["IP Address", "PID", "Type", "Object Ref", "Object Size", "Reference Type", "Call Site"], tablefmt="psql"))
+        print()
+
+    # print(memory_table)
 
     
 
