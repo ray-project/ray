@@ -1,3 +1,5 @@
+-c ../requirements.txt
+
 ax-platform
 bayesian-optimization
 ConfigSpace==0.4.10
@@ -27,12 +29,15 @@ sigopt
 smart_open
 tensorflow-probability
 timm
-torch>=1.6.0
-torchvision>=0.6.0
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==1.7.0+cpu
+-f https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.8.1+cpu
+#torchvision>=0.6.0+cpu
 # transformers
-git+git://github.com/huggingface/transformers.git@bdcc4b78a27775d1ec8f3fd297cb679c257289db#transformers
-git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
-git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
+transformers==3.1
+#git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
+#git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
 wandb
 xgboost
 zoopt>=0.4.1

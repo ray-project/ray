@@ -294,21 +294,22 @@ install_dependencies() {
 
   # Additional Tune test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
   # Additional RaySGD test dependencies.
   if [ "${SGD_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
     # TODO: eventually have a separate requirements file for Ray SGD.
   fi
 
   # Additional Doc test dependencies.
   if [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
 
+  if [ "${DOC_TESTING-}" = 0 ] || [ "${SGD_TESTING-}" = 0 ] || [ "${TUNE_TESTING-}" = 0 ]
   # If CI has deemed that a different version of Tensorflow or Torch
   # should be installed, then upgrade/downgrade to that specific version.
   if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
