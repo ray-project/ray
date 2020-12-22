@@ -159,11 +159,15 @@ class ClusterTaskManager {
 
   /// Queue of lease requests that are waiting for resources to become available.
   /// Tasks move from scheduled -> dispatch | waiting.
-  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_schedule_;
+  std::unordered_map<SchedulingClass, std::list<Work>> tasks_to_schedule_;
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
-  std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
+  std::unordered_map<SchedulingClass, std::list<Work>> tasks_to_dispatch_;
+
+  /// An index to speed up looking up a request from the dispatch queue.
+  std::unordered_map<TaskID, std::pair<SchedulingClass, std::list<Work>::iterator>>
+      tasks_to_dispatch_index_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
@@ -171,7 +175,7 @@ class ClusterTaskManager {
 
   /// Queue of lease requests that are infeasible.
   /// Tasks go between scheduling <-> infeasible.
-  std::unordered_map<SchedulingClass, std::deque<Work>> infeasible_tasks_;
+  std::unordered_map<SchedulingClass, std::list<Work>> infeasible_tasks_;
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
   std::unordered_map<SchedulingClass, int> backlog_tracker_;
@@ -192,6 +196,8 @@ class ClusterTaskManager {
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
+
+  friend class ClusterTaskManagerTest;
 };
 }  // namespace raylet
 }  // namespace ray

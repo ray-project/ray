@@ -80,7 +80,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       RAY_CHECK(!work_queue.empty());
       // Only announce the first item as infeasible.
       auto &work_queue = shapes_it->second;
-      const auto &work = work_queue[0];
+      const auto &work = work_queue.front();
       const Task task = std::get<0>(work);
       announce_infeasible_task_(task);
 
@@ -98,26 +98,32 @@ bool ClusterTaskManager::SchedulePendingTasks() {
 
 bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   const auto &task = std::get<0>(work);
-  const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
-  auto object_ids = task.GetTaskSpecification().GetDependencies();
+  const auto &spec = task.GetTaskSpecification();
+  const auto &scheduling_key = spec.GetSchedulingClass();
+  auto object_ids = spec.GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
     bool args_ready = fulfills_dependencies_func_(task);
     if (args_ready) {
-      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "
-                     << task.GetTaskSpecification().TaskId();
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << spec.TaskId();
+      auto &queue = tasks_to_dispatch_[scheduling_key];
+      queue.push_back(work);
+      auto it = --queue.end();
+      RAY_CHECK(
+          tasks_to_dispatch_index_.insert({spec.TaskId(), {scheduling_key, it}}).second);
     } else {
-      RAY_LOG(DEBUG) << "Waiting for args for task: "
-                     << task.GetTaskSpecification().TaskId();
+      RAY_LOG(DEBUG) << "Waiting for args for task: " << spec.TaskId();
       can_dispatch = false;
-      TaskID task_id = task.GetTaskSpecification().TaskId();
+      TaskID task_id = spec.TaskId();
       waiting_tasks_[task_id] = work;
     }
   } else {
-    RAY_LOG(DEBUG) << "No args, task can be dispatched "
-                   << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].push_back(work);
+    RAY_LOG(DEBUG) << "No args, task can be dispatched " << spec.TaskId();
+    auto &queue = tasks_to_dispatch_[scheduling_key];
+    queue.push_back(work);
+    auto it = --queue.end();
+    RAY_CHECK(
+        tasks_to_dispatch_index_.insert({spec.TaskId(), {scheduling_key, it}}).second);
   }
   return can_dispatch;
 }
@@ -152,6 +158,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
+        RAY_CHECK(tasks_to_dispatch_index_.erase(spec.TaskId()));
         work_it = dispatch_queue.erase(work_it);
       } else {
         bool worker_leased;
@@ -164,6 +171,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           worker_pool.PushWorker(worker);
         }
         if (remove) {
+          RAY_CHECK(tasks_to_dispatch_index_.erase(spec.TaskId()));
           work_it = dispatch_queue.erase(work_it);
         } else {
           break;
@@ -246,7 +254,13 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> ready_ids) {
       const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      auto &queue = tasks_to_dispatch_[scheduling_key];
+      queue.push_back(work);
+      auto dispatch_it = --queue.end();
+      RAY_CHECK(tasks_to_dispatch_index_
+                    .insert({task.GetTaskSpecification().TaskId(),
+                             {scheduling_key, dispatch_it}})
+                    .second);
       waiting_tasks_.erase(it);
     }
   }
@@ -287,21 +301,22 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       }
     }
   }
-  for (auto shapes_it = tasks_to_dispatch_.begin(); shapes_it != tasks_to_dispatch_.end();
-       shapes_it++) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
-      const auto &task = std::get<0>(*work_it);
-      if (task.GetTaskSpecification().TaskId() == task_id) {
-        RemoveFromBacklogTracker(task);
-        ReplyCancelled(*work_it);
-        work_queue.erase(work_it);
-        if (work_queue.empty()) {
-          tasks_to_dispatch_.erase(shapes_it);
-        }
-        return true;
-      }
+
+  auto dispatch_it = tasks_to_dispatch_index_.find(task_id);
+  if (dispatch_it != tasks_to_dispatch_index_.end()) {
+    auto &work_it = dispatch_it->second.second;
+    const auto &task = std::get<0>(*work_it);
+    RemoveFromBacklogTracker(task);
+    ReplyCancelled(*work_it);
+
+    auto &work_queue = tasks_to_dispatch_[dispatch_it->second.first];
+    work_queue.erase(work_it);
+    if (work_queue.empty()) {
+      tasks_to_dispatch_.erase(dispatch_it->second.first);
     }
+
+    tasks_to_dispatch_index_.erase(dispatch_it);
+    return true;
   }
 
   for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
@@ -393,9 +408,9 @@ void ClusterTaskManager::FillResourceUsage(
     if (it != tasks_to_schedule_.end()) {
       count += it->second.size();
     }
-    it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_dispatch_.end()) {
-      count += it->second.size();
+    auto dispatch_it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
+    if (dispatch_it != tasks_to_dispatch_.end()) {
+      count += dispatch_it->second.size();
     }
 
     if (count > 0) {
@@ -584,7 +599,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
         << "Empty work queue shouldn't have been added as a infeasible shape.";
     // We only need to check the first item because every task has the same shape.
     // If the first entry is infeasible, that means everything else is the same.
-    const auto work = work_queue[0];
+    const auto work = work_queue.front();
     Task task = std::get<0>(work);
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
