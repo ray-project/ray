@@ -9,7 +9,6 @@ import subprocess
 import ray
 from ray.cluster_utils import Cluster
 from ray.test_utils import init_error_pubsub
-from ray.test_utils import client_test_enabled
 
 
 @pytest.fixture

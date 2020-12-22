@@ -1,7 +1,6 @@
 from typing import List, Tuple
 
 import logging
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +86,12 @@ class RayAPIStub:
         import ray.experimental.client.server.server as ray_client_server
         if self._server is None:
             return
-        ray_client_server.shutdown_with_server(
-            self._server, _exiting_interpreter)
+        ray_client_server.shutdown_with_server(self._server,
+                                               _exiting_interpreter)
         self._server = None
 
 
 ray = RayAPIStub()
-
 
 # Someday we might add methods in this module so that someone who
 # tries to `import ray_client as ray` -- as a module, instead of
