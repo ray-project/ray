@@ -192,6 +192,9 @@ class EndpointState:
         self.routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = dict()
         self.traffic_policies: Dict[EndpointTag, TrafficPolicy] = dict()
 
+        if checkpoint is not None:
+            self.routes, self.traffic_policies = pickle.loads(checkpoint)
+
     def checkpoint(self):
         return pickle.dumps((self.routes, self.traffic_policies))
 
