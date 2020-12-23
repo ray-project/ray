@@ -225,7 +225,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
 }
 
 bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
-  auto data_ptr = std::make_shared<WorkerTableData>();
+  auto data_ptr = std::make_shared<rpc::WorkerTableData>();
   data_ptr->ParseFromString(serialized_string);
   std::promise<bool> promise;
   RAY_CHECK_OK(

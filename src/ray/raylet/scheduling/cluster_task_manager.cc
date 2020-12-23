@@ -105,14 +105,6 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
     bool args_ready = task_dependency_manager_.AddTaskDependencies(
         task.GetTaskSpecification().TaskId(), task.GetDependencies());
     if (args_ready) {
-      // TODO(swang): We should actually cancel the task dependencies later, to
-      // prevent them from getting evicted before the worker gets a ref to the
-      // object values.
-      task_dependency_manager_.RemoveTaskDependencies(
-          task.GetTaskSpecification().TaskId());
-    }
-
-    if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
@@ -147,6 +139,16 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       auto &task = std::get<0>(work);
       auto &spec = task.GetTaskSpecification();
 
+      // An argument was evicted since this task was added to the dispatch
+      // queue. Move it back to the waiting queue. The caller is responsible
+      // for notifying us when the task is unblocked again.
+      if (!spec.GetDependencies().empty() &&
+          !task_dependency_manager_.IsTaskReady(spec.TaskId())) {
+        waiting_tasks_[spec.TaskId()] = std::move(*work_it);
+        work_it = dispatch_queue.erase(work_it);
+        continue;
+      }
+
       std::shared_ptr<WorkerInterface> worker = worker_pool.PopWorker(spec);
       if (!worker) {
         // No worker available, we won't be able to schedule any kind of task.
@@ -161,6 +163,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "Task: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
+        if (!spec.GetDependencies().empty()) {
+          task_dependency_manager_.RemoveTaskDependencies(
+              task.GetTaskSpecification().TaskId());
+        }
         work_it = dispatch_queue.erase(work_it);
       } else {
         bool worker_leased;
@@ -173,6 +179,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           worker_pool.PushWorker(worker);
         }
         if (remove) {
+          if (!spec.GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(
+                task.GetTaskSpecification().TaskId());
+          }
           work_it = dispatch_queue.erase(work_it);
         } else {
           break;
@@ -304,6 +314,10 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
+        if (!task.GetTaskSpecification().GetDependencies().empty()) {
+          task_dependency_manager_.RemoveTaskDependencies(
+              task.GetTaskSpecification().TaskId());
+        }
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_dispatch_.erase(shapes_it);
@@ -335,6 +349,9 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     const auto &task = std::get<0>(iter->second);
     RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
+    if (!task.GetTaskSpecification().GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(task_id);
+    }
     waiting_tasks_.erase(iter);
 
     task_dependency_manager_.RemoveTaskDependencies(task_id);

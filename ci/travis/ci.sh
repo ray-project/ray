@@ -120,7 +120,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:redis_gcs_client_test
         -//:core_worker_test
         -//:event_test
         -//:gcs_pub_sub_test
@@ -260,6 +259,11 @@ _bazel_build_before_install() {
   fi
   # NOTE: Do not add build flags here. Use .bazelrc and --config instead.
   bazel build "${target}"
+}
+
+
+_bazel_build_protobuf() {
+  bazel build "//:install_py_proto"
 }
 
 install_ray() {
@@ -457,6 +461,8 @@ init() {
 build() {
   if [ "${LINT-}" != 1 ]; then
     _bazel_build_before_install
+  else
+    _bazel_build_protobuf
   fi
 
   if ! need_wheels; then
