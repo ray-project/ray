@@ -39,6 +39,8 @@ using rpc::GcsNodeInfo;
 static inline void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
+  freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
+  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
 }
 
@@ -489,5 +491,6 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[3]);
   return RUN_ALL_TESTS();
 }

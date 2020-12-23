@@ -33,10 +33,24 @@ namespace ray {
 
 using rpc::GcsNodeInfo;
 
-static inline void flushall_redis(void) {
+static inline bool flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
+  if (context == nullptr || context->err) {
+    return false;
+  }
   freeReplyObject(redisCommand(context, "FLUSHALL"));
+  freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
+  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
+
+  redisContext *shard_context = redisConnect("127.0.0.1", 6380);
+  if (shard_context == nullptr || shard_context->err) {
+    return false;
+  }
+  freeReplyObject(redisCommand(shard_context, "FLUSHALL"));
+  redisFree(shard_context);
+
+  return true;
 }
 
 int64_t current_time_ms() {
@@ -72,6 +86,7 @@ class MockServer {
     node_info.set_object_manager_port(object_manager_port);
 
     ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info, nullptr);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return status;
   }
 
@@ -86,7 +101,7 @@ class MockServer {
 class TestObjectManagerBase : public ::testing::Test {
  public:
   void SetUp() {
-    flushall_redis();
+    WaitForCondition(flushall_redis, 7000);
 
     // start store
     socket_name_1 = TestSetupUtil::StartObjectStore();
@@ -99,7 +114,7 @@ class TestObjectManagerBase : public ::testing::Test {
     // start first server
     gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
-                                         /*is_test_client=*/true);
+                                         /*is_test_client=*/false);
     gcs_client_1 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
@@ -428,5 +443,6 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[2]);
   return RUN_ALL_TESTS();
 }
