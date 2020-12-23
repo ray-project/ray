@@ -488,7 +488,7 @@ class AutoscalingTest(unittest.TestCase):
             assert first_rsync < first_cp
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
-    def testDockerFileMountsChange(self):
+    def testDockerFileMountsAdded(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {"source": "/dev/null"}
         config_path = self.write_config(config)
@@ -523,6 +523,55 @@ class AutoscalingTest(unittest.TestCase):
         self.assertEqual(self.provider.mock_nodes[0].node_type, None)
         runner.assert_has_call("1.2.3.4", pattern="docker stop")
         runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
+        runner.assert_not_has_call(
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+
+    def testDockerFileMountsRemoved(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["file_mounts"] = {}
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        mounts = [{
+            "Type": "bind",
+            "Source": "/sys",
+            "Destination": "/sys",
+            "Mode": "ro",
+            "RW": False,
+            "Propagation": "rprivate"
+        }]
+        runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
+        # Two initial calls to docker cp, +1 more call during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "true", "true"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        # We only removed amount from the YAML, no changes should happen.
+        runner.assert_not_has_call("1.2.3.4", pattern="docker stop")
+        runner.assert_not_has_call("1.2.3.4", pattern="docker run")
 
         docker_mount_prefix = get_docker_host_mount_location(
             SMALL_CLUSTER["cluster_name"])
