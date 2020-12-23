@@ -709,9 +709,10 @@ class DockerCommandRunner(CommandRunnerInterface):
             with_output=True,
             run_env="host").decode("utf-8").strip()
         if running_image != image:
-            logger.error(f"A container with name {self.container_name} " +
-                         f"is running image {running_image} instead " +
-                         f"of {image} (which was provided in the YAML")
+            cli_logger.error(
+                "A container with name {} is running image {} instead " +
+                "of {} (which was provided in the YAML)", self.container_name,
+                running_image, image)
         mounts = self.run(
             check_bind_mounts_cmd(self.container_name),
             with_output=True,
