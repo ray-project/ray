@@ -3,7 +3,8 @@
 import asyncio
 import logging
 from ray._private.ray_microbenchmark_helpers import timeit
-from ray._private.ray_client_microbenchmark import main as client_microbenchmark_main
+from ray._private.ray_client_microbenchmark import (main as
+                                                    client_microbenchmark_main)
 import numpy as np
 import multiprocessing
 import ray
@@ -70,15 +71,13 @@ def small_value_batch(n):
 
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
-        msg = (
-            "WARNING: Unoptimized build! "
-            "To benchmark an optimized build, try:\n"
-            "\tbazel build -c opt //:ray_pkg\n"
-            "You can also make this permanent by adding\n"
-            "\tbuild --compilation_mode=opt\n"
-            "to your user-wide ~/.bazelrc file. "
-            "(Do not add this to the project-level .bazelrc file.)"
-        )
+        msg = ("WARNING: Unoptimized build! "
+               "To benchmark an optimized build, try:\n"
+               "\tbazel build -c opt //:ray_pkg\n"
+               "You can also make this permanent by adding\n"
+               "\tbuild --compilation_mode=opt\n"
+               "to your user-wide ~/.bazelrc file. "
+               "(Do not add this to the project-level .bazelrc file.)")
         logger.warning(msg)
 
 
@@ -208,7 +207,8 @@ def main():
     def actor_multi2_direct_arg():
         ray.get([c.small_value_batch_arg.remote(n) for c in clients])
 
-    timeit("n:n actor calls with arg async", actor_multi2_direct_arg, n * len(clients))
+    timeit("n:n actor calls with arg async", actor_multi2_direct_arg,
+           n * len(clients))
 
     a = AsyncActor.remote()
 
