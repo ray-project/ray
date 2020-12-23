@@ -400,7 +400,7 @@ Demands:
 def format_info_string_no_node_types(lm_summary, time=None):
     if time is None:
         time = datetime.now()
-    header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
+    header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
     separator = "-" * len(header)
 
     node_lines = []

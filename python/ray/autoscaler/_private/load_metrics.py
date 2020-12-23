@@ -241,7 +241,9 @@ class LoadMetrics:
     def set_resource_requests(self, requested_resources):
         if requested_resources is not None:
             assert isinstance(requested_resources, list), requested_resources
-        self.resource_requests = requested_resources
+        self.resource_requests = [
+            request for request in requested_resources if len(request) > 0
+        ]
 
     def info_string(self):
         return " - " + "\n - ".join(
