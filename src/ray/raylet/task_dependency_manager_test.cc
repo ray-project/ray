@@ -21,8 +21,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_accessor.h"
-#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -70,7 +68,7 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                             JobID::Nil(), RandomTaskId(), 0, RandomTaskId(), address,
                             num_returns, {}, {},
                             std::make_pair(PlacementGroupID::Nil(), -1), true, "");
-  builder.SetActorCreationTaskSpec(ActorID::Nil(), 1, {}, 1, false, "", false);
+  builder.SetActorCreationTaskSpec(ActorID::Nil(), 1, 1, {}, 1, false, "", false);
   for (const auto &arg : arguments) {
     builder.AddArg(TaskArgByReference(arg, rpc::Address()));
   }

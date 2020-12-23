@@ -94,8 +94,13 @@ def test_local_scheduling_first(ray_start_cluster):
         assert local()
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="flakes more often")
-def test_load_balancing_with_dependencies(ray_start_cluster):
+@pytest.mark.parametrize("fast", [True, False])
+def test_load_balancing_with_dependencies(ray_start_cluster, fast):
+    if fast and new_scheduler_enabled:
+        # Load-balancing on new scheduler can be inefficient if (task
+        # duration:heartbeat interval) is small enough.
+        pytest.skip()
+
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
     cluster = ray_start_cluster
@@ -106,7 +111,10 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
     @ray.remote
     def f(x):
-        time.sleep(0.010)
+        if fast:
+            time.sleep(0.010)
+        else:
+            time.sleep(0.1)
         return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
@@ -276,14 +284,14 @@ def test_workers(shutdown_only):
 
 
 def test_object_ref_properties():
-    id_bytes = b"00112233445566778899"
+    id_bytes = b"0011223344556677889900001111"
     object_ref = ray.ObjectRef(id_bytes)
     assert object_ref.binary() == id_bytes
     object_ref = ray.ObjectRef.nil()
     assert object_ref.is_nil()
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(id_bytes + b"1234")
-    with pytest.raises(ValueError, match=r".*needs to have length 20.*"):
+    with pytest.raises(ValueError, match=r".*needs to have length.*"):
         ray.ObjectRef(b"0123456789")
     object_ref = ray.ObjectRef.from_random()
     assert not object_ref.is_nil()

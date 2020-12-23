@@ -15,10 +15,13 @@ from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollerAsyncClient
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Query
-from ray.serve.constants import (DEFAULT_LATENCY_BUCKET_MS,
-                                 BACKEND_RECONFIGURE_METHOD)
+from ray.serve.constants import (
+    BACKEND_RECONFIGURE_METHOD,
+    DEFAULT_LATENCY_BUCKET_MS,
+    LongPollKey,
+)
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -169,8 +172,8 @@ class RayServeReplica:
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollerAsyncClient(controller_handle, {
-            "backend_configs": self._update_backend_configs,
+        self.long_poll_client = LongPollAsyncClient(controller_handle, {
+            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
         self.error_counter = metrics.Count(
@@ -184,10 +187,10 @@ class RayServeReplica:
             "backend_replica_starts",
             description=("The number of time this replica "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.restart_counter.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.queuing_latency_tracker = metrics.Histogram(
@@ -196,39 +199,39 @@ class RayServeReplica:
                 "The latency for queries waiting in the replica's queue "
                 "waiting to be processed or batched."),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.queuing_latency_tracker.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.processing_latency_tracker = metrics.Histogram(
             "backend_processing_latency_ms",
             description="The latency for queries to be processed",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag", "batch_size"))
+            tag_keys=("backend", "replica", "batch_size"))
         self.processing_latency_tracker.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.num_queued_items = metrics.Gauge(
             "replica_queued_queries",
             description=("Current number of queries queued in the "
                          "the backend replicas"),
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.num_queued_items.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.num_processing_items = metrics.Gauge(
             "replica_processing_queries",
             description="Current number of queries being processed",
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.num_processing_items.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.restart_counter.record(1)

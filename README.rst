@@ -6,6 +6,9 @@
 .. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
     :target: https://forms.gle/9TSdDYUgxYs8SA9e8
 
+.. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
+    :target: https://discuss.ray.io/
+
 |
 
 
@@ -155,7 +158,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install "ray[rllib]"  # also recommended: ray[debug]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 

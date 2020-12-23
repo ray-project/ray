@@ -77,7 +77,8 @@ class DataOrganizer:
         job_workers = {}
         node_workers = {}
         core_worker_stats = {}
-        for node_id in DataSource.nodes.keys():
+        # await inside for loop, so we create a copy of keys().
+        for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
                 job_id = worker["jobId"]
@@ -238,7 +239,7 @@ class DataOrganizer:
         pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
-        actor_process_gpu_stats = None
+        actor_process_gpu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -248,14 +249,11 @@ class DataOrganizer:
             for gpu_stats in node_physical_stats.get("gpus", []):
                 for process in gpu_stats.get("processes", []):
                     if process["pid"] == pid:
-                        actor_process_gpu_stats = gpu_stats
+                        actor_process_gpu_stats.append(gpu_stats)
                         break
-                if actor_process_gpu_stats is not None:
-                    break
 
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
-
         return actor
 
     @classmethod

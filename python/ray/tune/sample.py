@@ -53,6 +53,14 @@ class Domain:
     def is_function(self):
         return False
 
+    def is_valid(self, value: Any):
+        """Returns True if `value` is a valid value in this domain."""
+        raise NotImplementedError
+
+    @property
+    def domain_str(self):
+        return "(unknown)"
+
 
 class Sampler:
     def sample(self,
@@ -203,6 +211,13 @@ class Float(Domain):
         new.set_sampler(Quantized(new.get_sampler(), q), allow_override=True)
         return new
 
+    def is_valid(self, value: float):
+        return self.lower <= value <= self.upper
+
+    @property
+    def domain_str(self):
+        return f"({self.lower}, {self.upper})"
+
 
 class Integer(Domain):
     class _Uniform(Uniform):
@@ -211,6 +226,22 @@ class Integer(Domain):
                    spec: Optional[Union[List[Dict], Dict]] = None,
                    size: int = 1):
             items = np.random.randint(domain.lower, domain.upper, size=size)
+            return items if len(items) > 1 else domain.cast(items[0])
+
+    class _LogUniform(LogUniform):
+        def sample(self,
+                   domain: "Integer",
+                   spec: Optional[Union[List[Dict], Dict]] = None,
+                   size: int = 1):
+            assert domain.lower > 0, \
+                "LogUniform needs a lower bound greater than 0"
+            assert 0 < domain.upper < float("inf"), \
+                "LogUniform needs a upper bound greater than 0"
+            logmin = np.log(domain.lower) / np.log(self.base)
+            logmax = np.log(domain.upper) / np.log(self.base)
+
+            items = self.base**(np.random.uniform(logmin, logmax, size=size))
+            items = np.round(items).astype(int)
             return items if len(items) > 1 else domain.cast(items[0])
 
     default_sampler_cls = _Uniform
@@ -231,6 +262,30 @@ class Integer(Domain):
         new = copy(self)
         new.set_sampler(self._Uniform())
         return new
+
+    def loguniform(self, base: float = 10):
+        if not self.lower > 0:
+            raise ValueError(
+                "LogUniform requires a lower bound greater than 0."
+                f"Got: {self.lower}. Did you pass a variable that has "
+                "been log-transformed? If so, pass the non-transformed value "
+                "instead.")
+        if not 0 < self.upper < float("inf"):
+            raise ValueError(
+                "LogUniform requires a upper bound greater than 0. "
+                f"Got: {self.lower}. Did you pass a variable that has "
+                "been log-transformed? If so, pass the non-transformed value "
+                "instead.")
+        new = copy(self)
+        new.set_sampler(self._LogUniform(base))
+        return new
+
+    def is_valid(self, value: int):
+        return self.lower <= value <= self.upper
+
+    @property
+    def domain_str(self):
+        return f"({self.lower}, {self.upper})"
 
 
 class Categorical(Domain):
@@ -264,6 +319,13 @@ class Categorical(Domain):
     def __getitem__(self, item):
         return self.categories[item]
 
+    def is_valid(self, value: Any):
+        return value in self.categories
+
+    @property
+    def domain_str(self):
+        return f"{self.categories}"
+
 
 class Function(Domain):
     class _CallSampler(BaseSampler):
@@ -294,6 +356,13 @@ class Function(Domain):
 
     def is_function(self):
         return True
+
+    def is_valid(self, value: Any):
+        return True  # This is user-defined, so lets not assume anything
+
+    @property
+    def domain_str(self):
+        return f"{self.func}()"
 
 
 class Quantized(Sampler):
@@ -409,6 +478,16 @@ def randint(lower: int, upper: int):
     return Integer(lower, upper).uniform()
 
 
+def lograndint(lower: int, upper: int, base: float = 10):
+    """Sample an integer value log-uniformly between ``lower`` and ``upper``,
+    with ``base`` being the base of logarithm.
+
+    ``lower`` is inclusive, ``upper`` is exclusive.
+
+    """
+    return Integer(lower, upper).loguniform(base)
+
+
 def qrandint(lower: int, upper: int, q: int = 1):
     """Sample an integer value uniformly between ``lower`` and ``upper``.
 
@@ -417,11 +496,21 @@ def qrandint(lower: int, upper: int, q: int = 1):
     The value will be quantized, i.e. rounded to an integer increment of ``q``.
     Quantization makes the upper bound inclusive.
 
-    Sampling from ``tune.randint(10)`` is equivalent to sampling from
-    ``np.random.randint(10)``
-
     """
     return Integer(lower, upper).uniform().quantized(q)
+
+
+def qlograndint(lower: int, upper: int, q: int, base: float = 10):
+    """Sample an integer value log-uniformly between ``lower`` and ``upper``,
+    with ``base`` being the base of logarithm.
+
+    ``lower`` is inclusive, ``upper`` is also inclusive (!).
+
+    The value will be quantized, i.e. rounded to an integer increment of ``q``.
+    Quantization makes the upper bound inclusive.
+
+    """
+    return Integer(lower, upper).loguniform(base).quantized(q)
 
 
 def randn(mean: float = 0., sd: float = 1.):

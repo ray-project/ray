@@ -417,6 +417,8 @@ actors.
     to the object ref returned by the put exists. This only applies to the specific
     ref returned by put, not refs in general or copies of that refs.
 
+See also: `object spilling <advanced.html#object-spilling>`__.
+
 Remote Classes (Actors)
 -----------------------
 

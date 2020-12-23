@@ -10,7 +10,7 @@ class Counter:
     def __init__(self):
         self.count = 0
 
-    def __call__(self, flask_request):
+    def __call__(self, starlette_request):
         self.count += 1
         return {"current_counter": self.count}
 

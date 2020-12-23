@@ -111,9 +111,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
                              const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
-      current_job_id_(RayConfig::instance().enable_multi_tenancy()
-                          ? job_id
-                          : (worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil())),
+      current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(true),
@@ -163,29 +161,17 @@ const std::unordered_map<std::string, std::string>
   return override_environment_variables_;
 }
 
-void WorkerContext::SetCurrentJobId(const JobID &job_id) {
-  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
-  current_job_id_ = job_id;
-}
-
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
+  RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      RAY_CHECK(current_job_id_.IsNil());
-      SetCurrentJobId(task_spec.JobId());
-    }
     current_task_is_direct_call_ = true;
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      RAY_CHECK(current_job_id_.IsNil());
-      SetCurrentJobId(task_spec.JobId());
-    }
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = true;
@@ -196,21 +182,13 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
     override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
-    if (!RayConfig::instance().enable_multi_tenancy()) {
-      RAY_CHECK(current_job_id_ == task_spec.JobId());
-    }
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
     RAY_CHECK(false);
   }
 }
 
-void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
-  GetThreadContext().ResetCurrentTask();
-  if (!RayConfig::instance().enable_multi_tenancy() && task_spec.IsNormalTask()) {
-    SetCurrentJobId(JobID::Nil());
-  }
-}
+void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
 
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();

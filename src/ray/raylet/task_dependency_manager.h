@@ -17,7 +17,6 @@
 // clang-format off
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
 // clang-format on
@@ -30,6 +29,18 @@ using rpc::TaskLeaseData;
 
 class ReconstructionPolicy;
 
+/// Used for unit-testing the ClusterTaskManager, which calls these methods for
+/// locally queued tasks that have dependencies.
+class TaskDependencyManagerInterface {
+ public:
+  virtual bool SubscribeGetDependencies(
+      const TaskID &task_id,
+      const std::vector<rpc::ObjectReference> &required_objects) = 0;
+  virtual bool IsTaskReady(const TaskID &task_id) const = 0;
+  virtual bool UnsubscribeGetDependencies(const TaskID &task_id) = 0;
+  virtual ~TaskDependencyManagerInterface() {}
+};
+
 /// \class TaskDependencyManager
 ///
 /// Responsible for managing object dependencies for tasks.  The caller can
@@ -40,7 +51,7 @@ class ReconstructionPolicy;
 /// made available locally, either by object transfer from a remote node or
 /// reconstruction. The task manager will also cancel these objects if they are
 /// no longer needed by any task.
-class TaskDependencyManager {
+class TaskDependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
   TaskDependencyManager(ObjectManagerInterface &object_manager,
@@ -70,6 +81,14 @@ class TaskDependencyManager {
   /// local.
   bool SubscribeGetDependencies(
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects);
+
+  /// Check whether a task is ready to run. The task ID must
+  /// have been previously subscribed by the caller.
+  ///
+  /// \param task_id The ID of the task to check.
+  /// \return Whether all of the dependencies for the task are
+  /// local.
+  bool IsTaskReady(const TaskID &task_id) const;
 
   /// Subscribe to object depedencies required by the worker. This should be called for
   /// ray.wait calls during task execution.
