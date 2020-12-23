@@ -30,7 +30,9 @@ void DependencyManager::RemoveObjectIfNotNeeded(
                      << " request: " << required_object_it->second.wait_request_id;
       object_manager_.CancelPull(required_object_it->second.wait_request_id);
     }
-    reconstruction_policy_.Cancel(required_object_it->first);
+    if (!local_objects_.count(object_id)) {
+      reconstruction_policy_.Cancel(object_id);
+    }
     required_objects_.erase(required_object_it);
   }
 }
@@ -263,7 +265,12 @@ std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &ob
     // Remove the dependency from all workers that called `ray.wait` on the
     // newly available object.
     for (const auto &worker_id : object_entry->second.dependent_wait_requests) {
-      RAY_CHECK(wait_requests_[worker_id].erase(object_id) > 0);
+      auto worker_it = wait_requests_.find(worker_id);
+      RAY_CHECK(worker_it != wait_requests_.end());
+      RAY_CHECK(worker_it->second.erase(object_id) > 0);
+      if (worker_it->second.empty()) {
+        wait_requests_.erase(worker_it);
+      }
     }
     // Clear all workers that called `ray.wait` on this object, since the
     // `ray.wait` calls can now return the object as ready.

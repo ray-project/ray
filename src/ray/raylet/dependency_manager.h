@@ -254,6 +254,8 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// The set of locally available objects. This is used to determine which
   /// tasks are ready to run and which `ray.wait` requests can be finished.
   std::unordered_set<ray::ObjectID> local_objects_;
+
+  friend class DependencyManagerTest;
 };
 
 }  // namespace raylet
