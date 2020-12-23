@@ -363,7 +363,10 @@ def format_info_string(lm_summary, autoscaler_summary, time=None):
     for ip, node_type in autoscaler_summary.pending_nodes:
         line = f" {ip}: {node_type}, setting up"
         pending_lines.append(line)
-    pending_report = "\n".join(pending_lines)
+    if pending_lines:
+        pending_report = "\n".join(pending_lines)
+    else:
+        pending_report = " (no pending nodes)"
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
