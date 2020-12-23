@@ -474,7 +474,7 @@ class SampleBatch:
         }
 
         input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
+        for view_col, view_req in view_requirements.items():
             # Create batches of size 1 (single-agent input-dict).
             data_col = view_req.data_col or view_col
             if index == "last":
