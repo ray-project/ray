@@ -307,8 +307,6 @@ def try_schedule_resources_on_nodes(
                 for key, count in resource_dict.items():
                     #fix legacy behaviour in memory
                     if "memory" in key: 
-                        import pdb 
-                        pdb.set_trace()
                         memory_resource = node_resource.get(key, 0)
                         if memory_resource > 0:
                             #convert from chunks of 50mb to bytes 
