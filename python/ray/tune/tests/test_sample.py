@@ -430,7 +430,7 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(-15, -10).quantized(2),
+                "x": tune.sample.Integer(-15, -10),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -439,7 +439,7 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.randint("x", -15, -10),
+                "x": hp.uniformint("x", -15, -10),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
@@ -638,17 +638,22 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
+        from skopt.space import Real, Integer
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": tune.sample.Integer(0, 5),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
         }
         converted_config = SkOptSearch.convert_search_space(config)
-        skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
+        skopt_config = {
+            "a": [2, 3, 4],
+            "b/x": Integer(0, 5),
+            "b/z": Real(1e-4, 1e-2, prior="log-uniform")
+        }
 
         searcher1 = SkOptSearch(space=converted_config, metric="a", mode="max")
         searcher2 = SkOptSearch(space=skopt_config, metric="a", mode="max")
