@@ -7,7 +7,6 @@ from uuid import UUID
 import threading
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
 
-
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)

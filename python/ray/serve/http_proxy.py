@@ -119,11 +119,14 @@ class HTTPProxy:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
-        handle = self.client.get_handle(endpoint_name, sync=False).options(
-            method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
-            http_method=scope["method"].upper(),
-            http_headers=headers)
+        handle = self.client.get_handle(
+            endpoint_name, sync=False).options(
+                method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
+                                        DEFAULT.VALUE),
+                shard_key=headers.get("X-SERVE-SHARD-KEY".lower(),
+                                      DEFAULT.VALUE),
+                http_method=scope["method"].upper(),
+                http_headers=headers)
 
         request = build_starlette_request(scope, http_body_bytes)
 
