@@ -373,7 +373,7 @@ def test_get_nodes_to_launch_with_min_workers():
 
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD
     }, 1)
 
@@ -396,7 +396,7 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
         provider, new_types, 10, head_node_type="p2.8xlarge")
     provider.create_node({}, {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"
     }, 1)
     provider.create_node({}, {
@@ -435,8 +435,9 @@ def test_get_nodes_to_launch_limits():
         provider, TYPES_A, 3, head_node_type="p2.8xlarge")
 
     provider.create_node({}, {
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-        TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"
+    }, 2)
 
     nodes = provider.non_terminated_nodes({})
 
@@ -455,8 +456,9 @@ def test_calculate_node_resources():
         provider, TYPES_A, 10, head_node_type="p2.8xlarge")
 
     provider.create_node({}, {
-            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-        TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
+        TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"
+    }, 2)
 
     nodes = provider.non_terminated_nodes({})
 
@@ -1957,7 +1959,10 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        autoscaler.load_metrics.set_resource_requests([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.load_metrics.set_resource_requests([{
+            "CPU": 0.2,
+            "WORKER": 1.0
+        }])
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         non_terminated_nodes = autoscaler.provider.non_terminated_nodes({})
@@ -2099,12 +2104,18 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # 2 requested_resource, 1 min worker, 1 free node -> 2 nodes total
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        autoscaler.load_metrics.set_resource_requests([{"CPU": 0.2, "WORKER": 1.0}])
+        autoscaler.load_metrics.set_resource_requests([{
+            "CPU": 0.2,
+            "WORKER": 1.0
+        }])
         autoscaler.update()
         # Still 2 because the second one is not connected and hence
         # request_resources occupies the connected node.
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        autoscaler.load_metrics.set_resource_requests([{"CPU": 0.2, "WORKER": 1.0}] * 3)
+        autoscaler.load_metrics.set_resource_requests([{
+            "CPU": 0.2,
+            "WORKER": 1.0
+        }] * 3)
         lm.update(
             node_ip,
             config["available_node_types"]["def_worker"]["resources"], {}, {},
@@ -2396,3 +2407,4 @@ Demands:
 
 if __name__ == "__main__":
     import sys
+    sys.exit(pytest.main(["-v", __file__]))

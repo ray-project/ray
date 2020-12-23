@@ -114,15 +114,19 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         """
 
         aioredis_client = self._dashboard_head.aioredis_client
-        legacy_status = await aioredis_client.hget(DEBUG_AUTOSCALING_STATUS_LEGACY, "value")
-        formatted_status = await aioredis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+        legacy_status = await aioredis_client.hget(
+            DEBUG_AUTOSCALING_STATUS_LEGACY, "value")
+        formatted_status = await aioredis_client.hget(DEBUG_AUTOSCALING_STATUS,
+                                                      "value")
         error = await aioredis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
         return dashboard_utils.rest_response(
             success=True,
             message="Got cluster status.",
-            autoscaling_status=legacy_status.decode() if legacy_status else None,
+            autoscaling_status=legacy_status.decode()
+            if legacy_status else None,
             autoscaling_error=error.decode() if error else None,
-            cluster_status = formatted_status.decode() if formatted_status else None,
+            cluster_status=formatted_status.decode()
+            if formatted_status else None,
         )
 
     async def run(self, server):

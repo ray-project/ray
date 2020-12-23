@@ -216,7 +216,6 @@ class StandardAutoscaler:
             self.provider.terminate_nodes(nodes_to_terminate)
             nodes = self.workers()
 
-
         to_launch = self.resource_demand_scheduler.get_nodes_to_launch(
             self.provider.non_terminated_nodes(tag_filters={}),
             self.pending_launches.breakdown(),
@@ -281,7 +280,6 @@ class StandardAutoscaler:
 
         logger.info(self.info_string())
         legacy_log_info_string(self, nodes)
-
 
     def _sort_based_on_last_used(self, nodes: List[NodeID],
                                  last_used: Dict[str, float]) -> List[NodeID]:

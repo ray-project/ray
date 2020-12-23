@@ -19,8 +19,7 @@ from ray import ray_constants
 from ray.test_utils import (format_web_url, wait_for_condition,
                             wait_until_server_available, run_string_as_driver,
                             wait_until_succeeded_without_exception)
-from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
-                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
@@ -465,7 +464,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
         assert "clusterStatus" in response.json()["data"]
-        assert "load_metrics_report" in response.json()["data"]["clusterStatus"]
+        assert "load_metrics_report" in response.json()["data"][
+            "clusterStatus"]
 
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
