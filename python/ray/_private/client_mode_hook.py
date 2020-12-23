@@ -36,9 +36,9 @@ def client_mode_hook(func):
     """
     Decorator for ray module methods to delegate to ray client
     """
-    from ray.experimental.client import ray
 
     def wrapper(*args, **kwargs):
+        from ray.experimental.client import ray
         global _client_hook_enabled
         if client_mode_enabled and _client_hook_enabled:
             return getattr(ray, func.__name__)(*args, **kwargs)
