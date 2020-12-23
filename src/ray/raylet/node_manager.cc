@@ -205,16 +205,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
             self_node_id_.Binary(),
             local_resources.GetTotalResources().GetResourceMap()));
-    std::function<bool(const Task &)> fulfills_dependencies_func =
-        [this](const Task &task) {
-          bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
-              task.GetTaskSpecification().TaskId(), task.GetDependencies());
-          if (args_ready) {
-            task_dependency_manager_.UnsubscribeGetDependencies(
-                task.GetTaskSpecification().TaskId());
-          }
-          return args_ready;
-        };
 
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
@@ -228,8 +218,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, new_resource_scheduler_, fulfills_dependencies_func,
-        is_owner_alive, get_node_info_func, announce_infeasible_task));
+        self_node_id_, new_resource_scheduler_, task_dependency_manager_, is_owner_alive,
+        get_node_info_func, announce_infeasible_task));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler_);
   } else {
@@ -2644,44 +2634,49 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   }
   RAY_LOG(DEBUG) << result.str();
 
-  // Transition any tasks that were in the runnable state and are dependent on
-  // this object to the waiting state.
-  if (!waiting_task_ids.empty()) {
-    std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
-                                                   waiting_task_ids.end());
+  // We don't need to do anything if the new scheduler is enabled because tasks
+  // will get moved back to waiting once they reach the front of the dispatch
+  // queue.
+  if (!new_scheduler_enabled_) {
+    // Transition any tasks that were in the runnable state and are dependent on
+    // this object to the waiting state.
+    if (!waiting_task_ids.empty()) {
+      std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
+                                                     waiting_task_ids.end());
 
-    // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
-    // creation task ID, which will not be reset after the task finishes. And later tasks
-    // of this actor will reuse this task ID to require objects from plasma with
-    // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
-    // To support actor reconstruction for direct actor, raylet marks actor creation task
-    // as completed and removes it from `local_queues_` when it receives `TaskDone`
-    // message from worker. This is necessary because the actor creation task will be
-    // re-submitted during reconstruction, if the task is not removed previously, the new
-    // submitted task will be marked as duplicate and thus ignored.
-    // So here we check for direct actor creation task explicitly to allow this case.
-    auto iter = waiting_task_id_set.begin();
-    while (iter != waiting_task_id_set.end()) {
-      if (IsActorCreationTask(*iter)) {
-        RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
-                       << " when handling object missing for " << object_id;
-        iter = waiting_task_id_set.erase(iter);
-      } else {
-        ++iter;
+      // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
+      // creation task ID, which will not be reset after the task finishes. And later
+      // tasks of this actor will reuse this task ID to require objects from plasma with
+      // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
+      // To support actor reconstruction for direct actor, raylet marks actor creation
+      // task as completed and removes it from `local_queues_` when it receives `TaskDone`
+      // message from worker. This is necessary because the actor creation task will be
+      // re-submitted during reconstruction, if the task is not removed previously, the
+      // new submitted task will be marked as duplicate and thus ignored. So here we check
+      // for direct actor creation task explicitly to allow this case.
+      auto iter = waiting_task_id_set.begin();
+      while (iter != waiting_task_id_set.end()) {
+        if (IsActorCreationTask(*iter)) {
+          RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
+                         << " when handling object missing for " << object_id;
+          iter = waiting_task_id_set.erase(iter);
+        } else {
+          ++iter;
+        }
       }
-    }
 
-    // First filter out any tasks that can't be transitioned to READY. These
-    // are running workers or drivers, now blocked in a get.
-    local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
-    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
-    // Transition the tasks back to the waiting state. They will be made
-    // runnable once the deleted object becomes available again.
-    local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
-    RAY_CHECK(waiting_task_id_set.empty());
-    // Moving ready tasks to waiting may have changed the load, making space for placing
-    // new tasks locally.
-    ScheduleTasks(cluster_resource_map_);
+      // First filter out any tasks that can't be transitioned to READY. These
+      // are running workers or drivers, now blocked in a get.
+      local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
+      local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
+      // Transition the tasks back to the waiting state. They will be made
+      // runnable once the deleted object becomes available again.
+      local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
+      RAY_CHECK(waiting_task_id_set.empty());
+      // Moving ready tasks to waiting may have changed the load, making space for placing
+      // new tasks locally.
+      ScheduleTasks(cluster_resource_map_);
+    }
   }
 }
 
