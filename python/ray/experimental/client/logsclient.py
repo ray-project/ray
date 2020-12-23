@@ -1,5 +1,4 @@
-"""
-This file implements a threaded stream controller to return logs back from
+"""This file implements a threaded stream controller to return logs back from
 the ray clientserver.
 """
 import sys
@@ -12,6 +11,10 @@ import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 
 logger = logging.getLogger(__name__)
+# TODO(barakmich): Running a logger in a logger causes loopback.
+# The client logger need its own root -- possibly this one.
+# For the moment, let's just not propogate beyond this point.
+logger.propagate = False
 
 
 class LogstreamClient:
@@ -45,8 +48,7 @@ class LogstreamClient:
                 raise e
 
     def log(self, level: int, msg: str):
-        """
-        Log the message from the log stream.
+        """Log the message from the log stream.
         By default, calls logger.log but this can be overridden.
 
         Args:
@@ -56,8 +58,7 @@ class LogstreamClient:
         logger.log(level=level, msg=msg)
 
     def stdstream(self, level: int, msg: str):
-        """
-        Log the stdout/stderr entry from the log stream.
+        """Log the stdout/stderr entry from the log stream.
         By default, calls print but this can be overridden.
 
         Args:
@@ -68,6 +69,7 @@ class LogstreamClient:
         print(msg, file=print_file)
 
     def set_logstream_level(self, level: int):
+        logger.setLevel(level)
         req = ray_client_pb2.LogSettingsRequest()
         req.enabled = True
         req.loglevel = level

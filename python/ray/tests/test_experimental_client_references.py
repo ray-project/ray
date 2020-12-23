@@ -2,11 +2,11 @@ from ray.experimental.client.ray_client_helpers import ray_start_client_server
 from ray.test_utils import wait_for_condition
 import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
-from ray.experimental.client import _get_server_instance
+from ray.experimental.client.server.server import _get_current_servicer
 
 
 def server_object_ref_count(n):
-    server = _get_server_instance()
+    server = _get_current_servicer()
     assert server is not None
 
     def test_cond():
@@ -20,7 +20,7 @@ def server_object_ref_count(n):
 
 
 def server_actor_ref_count(n):
-    server = _get_server_instance()
+    server = _get_current_servicer()
     assert server is not None
 
     def test_cond():
