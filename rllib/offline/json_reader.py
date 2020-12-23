@@ -80,7 +80,8 @@ class JsonReader(InputReader):
             raise ValueError(
                 "Failed to read valid experience batch from file: {}".format(
                     self.cur_file))
-        return self._postprocess_if_needed(batch)
+        batch = self._postprocess_if_needed(batch)
+        return batch
 
     def _postprocess_if_needed(self,
                                batch: SampleBatchType) -> SampleBatchType:

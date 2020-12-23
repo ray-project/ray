@@ -315,65 +315,6 @@ class ModelV2:
         """
         return self.time_major is True
 
-    # TODO: (sven) Experimental method.
-    def get_input_dict(self, sample_batch,
-                       index: Union[int, str] = "last") -> ModelInputDict:
-        """Creates single ts input-dict at given index from a SampleBatch.
-
-        Args:
-            sample_batch (SampleBatch): A single-trajectory SampleBatch object
-                to generate the compute_actions input dict from.
-            index (Union[int, str]): An integer index value indicating the
-                position in the trajectory for which to generate the
-                compute_actions input dict. Set to "last" to generate the dict
-                at the very end of the trajectory (e.g. for value estimation).
-                Note that "last" is different from -1, as "last" will use the
-                final NEXT_OBS as observation input.
-
-        Returns:
-            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
-        """
-        last_mappings = {
-            SampleBatch.OBS: SampleBatch.NEXT_OBS,
-            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
-            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
-        }
-
-        input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
-            # Create batches of size 1 (single-agent input-dict).
-            data_col = view_req.data_col or view_col
-            if index == "last":
-                data_col = last_mappings.get(data_col, data_col)
-                if view_req.shift_from is not None:
-                    data = sample_batch[view_col][-1]
-                    traj_len = len(sample_batch[data_col])
-                    missing_at_end = traj_len % view_req.batch_repeat_value
-                    input_dict[view_col] = np.array([
-                        np.concatenate([
-                            data, sample_batch[data_col][-missing_at_end:]
-                        ])[view_req.shift_from:view_req.shift_to +
-                           1 if view_req.shift_to != -1 else None]
-                    ])
-                else:
-                    data = sample_batch[data_col][-1]
-                    input_dict[view_col] = np.array([data])
-            else:
-                # Index range.
-                if isinstance(index, tuple):
-                    data = sample_batch[data_col][index[0]:index[1] + 1
-                                                  if index[1] != -1 else None]
-                    input_dict[view_col] = np.array([data])
-                # Single index.
-                else:
-                    input_dict[view_col] = sample_batch[data_col][
-                        index:index + 1 if index != -1 else None]
-
-        # Add valid `seq_lens`, just in case RNNs need it.
-        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
-
-        return input_dict
-
 
 class NullContextManager:
     """No-op context manager"""

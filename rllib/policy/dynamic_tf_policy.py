@@ -17,7 +17,6 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_ops import get_placeholder
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
@@ -498,26 +497,24 @@ class DynamicTFPolicy(TFPolicy):
                 dummy_batch[k] = fake_array(v)
             dummy_batch = SampleBatch(dummy_batch)
 
-        batch_for_postproc = UsageTrackingDict(dummy_batch)
-        batch_for_postproc.count = dummy_batch.count
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
-        self.exploration.postprocess_trajectory(self, batch_for_postproc,
+        self.exploration.postprocess_trajectory(self, dummy_batch,
                                                 self._sess)
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        postprocessed_batch = self.postprocess_trajectory(dummy_batch)
         # Add new columns automatically to (loss) input_dict.
         if self.config["_use_trajectory_view_api"]:
-            for key in batch_for_postproc.added_keys:
+            for key in dummy_batch.added_keys:
                 if key not in self._input_dict:
                     self._input_dict[key] = get_placeholder(
-                        value=batch_for_postproc[key], name=key)
+                        value=dummy_batch[key], name=key)
                 if key not in self.view_requirements:
                     self.view_requirements[key] = \
                         ViewRequirement(space=gym.spaces.Box(
-                            -1.0, 1.0, shape=batch_for_postproc[key].shape[1:],
-                            dtype=batch_for_postproc[key].dtype))
+                            -1.0, 1.0, shape=dummy_batch[key].shape[1:],
+                            dtype=dummy_batch[key].dtype))
 
         if not self.config["_use_trajectory_view_api"]:
-            train_batch = UsageTrackingDict(
+            train_batch = SampleBatch(
                 dict({
                     SampleBatch.CUR_OBS: self._obs_input,
                 }, **self._loss_input_dict))
@@ -543,7 +540,7 @@ class DynamicTFPolicy(TFPolicy):
             for i, si in enumerate(self._state_inputs):
                 train_batch["state_in_{}".format(i)] = si
         else:
-            train_batch = UsageTrackingDict(
+            train_batch = SampleBatch(
                 dict(self._input_dict, **self._loss_input_dict))
 
         if self._state_inputs:

@@ -15,7 +15,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space, \
     unbatch
-from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import AgentID, ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict, Tuple, Union
 
@@ -625,10 +624,8 @@ class Policy(metaclass=ABCMeta):
                 self.view_requirements[key] = \
                     ViewRequirement(space=gym.spaces.Box(
                         -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype))
-        batch_for_postproc = UsageTrackingDict(self._dummy_batch)
-        batch_for_postproc.count = self._dummy_batch.count
-        self.exploration.postprocess_trajectory(self, batch_for_postproc)
-        postprocessed_batch = self.postprocess_trajectory(batch_for_postproc)
+        self.exploration.postprocess_trajectory(self, self._dummy_batch)
+        postprocessed_batch = self.postprocess_trajectory(self._dummy_batch)
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]

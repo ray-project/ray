@@ -4,10 +4,12 @@ import sys
 import itertools
 from typing import Any, Dict, Iterable, List, Optional, Set, Union
 
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModelInputDict, TensorType, \
+    ViewRequirementsDict
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
@@ -69,6 +71,12 @@ class SampleBatch:
         # The actual data, accessible by column name (str).
         self.data = dict(*args, **kwargs)
 
+        self.accessed_keys = set()
+        self.added_keys = set()
+        self.deleted_keys = set()
+        self.intercepted_values = {}
+        self.get_interceptor = None
+
         lengths = []
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
@@ -85,9 +93,6 @@ class SampleBatch:
             self.count = sum(self.seq_lens)
         else:
             self.count = len(next(iter(self.data.values())))
-
-        # Keeps track of new columns added after initial ones.
-        self.new_columns = []
 
     @staticmethod
     @PublicAPI
@@ -158,10 +163,12 @@ class SampleBatch:
         Returns:
             SampleBatch: A (deep) copy of this SampleBatch object.
         """
-        return SampleBatch(
+        copy_ = SampleBatch(
             {k: np.array(v, copy=True)
              for (k, v) in self.data.items()},
             _seq_lens=self.seq_lens)
+        copy_.set_get_interceptor(self.get_interceptor)
+        return copy_
 
     @PublicAPI
     def rows(self) -> Dict[str, TensorType]:
@@ -224,18 +231,26 @@ class SampleBatch:
             List[SampleBatch]: List of batches, one per distinct episode.
         """
 
+        # No eps_id in data -> Make sure there are no "dones" in the middle
+        # and add eps_id automatically.
+        if SampleBatch.EPS_ID not in self.data:
+            if SampleBatch.DONES in self.data:
+                assert not any(self.data[SampleBatch.DONES][:-1])
+            self.data[SampleBatch.EPS_ID] = np.repeat(0, self.count)
+            return [self]
+
         slices = []
-        cur_eps_id = self.data["eps_id"][0]
+        cur_eps_id = self.data[SampleBatch.EPS_ID][0]
         offset = 0
         for i in range(self.count):
-            next_eps_id = self.data["eps_id"][i]
+            next_eps_id = self.data[SampleBatch.EPS_ID][i]
             if next_eps_id != cur_eps_id:
                 slices.append(self.slice(offset, i))
                 offset = i
                 cur_eps_id = next_eps_id
         slices.append(self.slice(offset, self.count))
         for s in slices:
-            slen = len(set(s["eps_id"]))
+            slen = len(set(s[SampleBatch.EPS_ID]))
             assert slen == 1, (s, slen)
         assert sum(s.count for s in slices) == self.count, (slices, self.count)
         return slices
@@ -355,7 +370,13 @@ class SampleBatch:
         Returns:
             TensorType: The data under the given key.
         """
-        return self.data[key]
+        self.accessed_keys.add(key)
+        value = self.data[key]
+        if self.get_interceptor is not None:
+            if key not in self.intercepted_values:
+                self.intercepted_values[key] = self.get_interceptor(value)
+            value = self.intercepted_values[key]
+        return value
 
     @PublicAPI
     def __setitem__(self, key, item) -> None:
@@ -365,9 +386,17 @@ class SampleBatch:
             key (str): The column name to set a value for.
             item (TensorType): The data to insert.
         """
-        if key not in self.data:
-            self.new_columns.append(key)
+        if key not in self:
+            self.added_keys.add(key)
+
         self.data[key] = item
+        if key in self.intercepted_values:
+            self.intercepted_values[key] = item
+
+    @PublicAPI
+    def __delitem__(self, key):
+        self.deleted_keys.add(key)
+        del self.data[key]
 
     @DeveloperAPI
     def compress(self,
@@ -412,6 +441,72 @@ class SampleBatch:
                     self.data[key] = np.array(
                         [unpack(o) for o in self.data[key]])
         return self
+
+    @DeveloperAPI
+    def set_get_interceptor(self, fn):
+        self.get_interceptor = fn
+
+    # Experimental method.
+    @DeveloperAPI
+    def get_single_timestep_input_dict(
+            self,
+            view_requirements: ViewRequirementsDict,
+            index: Union[int, str] = "last") -> ModelInputDict:
+        """Creates single ts input-dict at given index from a SampleBatch.
+
+        Args:
+            view_requirements (ViewRequirementsDict): The view requirements
+                according to which to build the single-timestep input_dict.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
+
+        Returns:
+            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
+
+        input_dict = {}
+        for view_col, view_req in self.inference_view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                if view_req.shift_from is not None:
+                    data = self.data[view_col][-1]
+                    traj_len = len(self.data[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    input_dict[view_col] = np.array([
+                        np.concatenate([
+                            data, self.data[data_col][-missing_at_end:]
+                        ])[view_req.shift_from:view_req.shift_to +
+                           1 if view_req.shift_to != -1 else None]
+                    ])
+                else:
+                    data = self.data[data_col][-1]
+                    input_dict[view_col] = np.array([data])
+            else:
+                # Index range.
+                if isinstance(index, tuple):
+                    data = self.data[data_col][index[0]:index[1] + 1
+                                               if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = self.data[data_col][
+                        index:index + 1 if index != -1 else None]
+
+        # Add valid `seq_lens`, just in case RNNs need it.
+        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
+
+        return input_dict
 
     def __str__(self):
         return "SampleBatch({})".format(str(self.data))
