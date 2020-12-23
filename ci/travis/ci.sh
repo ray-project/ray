@@ -262,6 +262,11 @@ _bazel_build_before_install() {
   bazel build "${target}"
 }
 
+
+_bazel_build_protobuf() {
+  bazel build "//:install_py_proto"
+}
+
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
@@ -457,6 +462,8 @@ init() {
 build() {
   if [ "${LINT-}" != 1 ]; then
     _bazel_build_before_install
+  else
+    _bazel_build_protobuf
   fi
 
   if ! need_wheels; then
