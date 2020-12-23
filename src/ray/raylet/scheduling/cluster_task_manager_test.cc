@@ -96,8 +96,8 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  bool AddTaskDependencies(
-      const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+  bool AddTaskDependencies(const TaskID &task_id,
+                           const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     return task_ready_;
   }
