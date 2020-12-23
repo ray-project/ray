@@ -49,11 +49,3 @@ class LongPollKey(Enum):
     TRAFFIC_POLICIES = auto()
     BACKEND_CONFIGS = auto()
     ROUTE_TABLE = auto()
-
-
-#: Backend worker waits for this duration after no work to do then shutdown.
-DEFAULT_GRACEFUL_SHUTDOWN_LOOP_WAIT_S = 2
-
-#: Controller waits for this duration to forcefully kill the replica for
-#  shutdown.
-DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S = 10

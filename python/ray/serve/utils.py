@@ -7,7 +7,7 @@ import logging
 import random
 import string
 import time
-from typing import List, Dict
+from typing import Iterable, List, Dict, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
@@ -382,3 +382,41 @@ class MockImportedBackend:
 
     def other_method(self, request):
         return request.data
+
+
+def compute_iterable_delta(old: Iterable,
+                           new: Iterable) -> Tuple[set, set, set]:
+    """Given two iterables, return the entries that's (added, removed, updated).
+
+    Usage:
+        >>> old = {"a", "b"}
+        >>> new = {"a", "d"}
+        >>> compute_dict_delta(old, new)
+        ({"d"}, {"b"}, {"a"})
+    """
+    old_keys, new_keys = set(old), set(new)
+    added_keys = new_keys - old_keys
+    removed_keys = old_keys - new_keys
+    updated_keys = old_keys.intersection(new_keys)
+    return added_keys, removed_keys, updated_keys
+
+
+def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
+    """Given two dicts, return the entries that's (added, removed, updated).
+
+    Usage:
+        >>> old = {"a": 1, "b": 2}
+        >>> new = {"a": 3, "d": 4}
+        >>> compute_dict_delta(old, new)
+        ({"d": 4}, {"b": 2}, {"a": 3})
+    """
+    added_keys, removed_keys, updated_keys = compute_iterable_delta(
+        old_dict.keys(), new_dict.keys())
+    return (
+        {k: new_dict[k]
+         for k in added_keys},
+        {k: old_dict[k]
+         for k in removed_keys},
+        {k: new_dict[k]
+         for k in updated_keys},
+    )

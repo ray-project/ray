@@ -1,11 +1,12 @@
 import asyncio
+from asyncio.futures import Future
 from collections import defaultdict
 from itertools import chain
 import os
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple
 from uuid import uuid4, UUID
 from pydantic import BaseModel
 
@@ -13,9 +14,11 @@ import ray
 import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_replica
-from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
-                                 LongPollKey,
-                                 DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S)
+from ray.serve.constants import (
+    ASYNC_CONCURRENCY,
+    SERVE_PROXY_NAME,
+    LongPollKey,
+)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
@@ -47,6 +50,7 @@ EndpointTag = str
 ReplicaTag = str
 NodeId = str
 GoalId = int
+Duration = float
 
 
 class TrafficPolicy:
@@ -152,8 +156,9 @@ class ActorStateReconciler:
         default_factory=lambda: defaultdict(dict))
     backend_replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
-    backend_replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
-        default_factory=lambda: defaultdict(list))
+    backend_replicas_to_stop: Dict[BackendTag, List[Tuple[
+        ReplicaTag, Duration]]] = field(
+            default_factory=lambda: defaultdict(list))
     backends_to_remove: List[BackendTag] = field(default_factory=list)
 
     # NOTE(ilr): These are not checkpointed, but will be recreated by
@@ -248,7 +253,7 @@ class ActorStateReconciler:
         current_num_replicas = len(self.backend_replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
-        backend_info = backends[backend_tag]
+        backend_info: BackendInfo = backends[backend_tag]
         if delta_num_replicas > 0:
             can_schedule = try_schedule_resources_on_nodes(requirements=[
                 backend_info.replica_config.resource_dict
@@ -282,7 +287,11 @@ class ActorStateReconciler:
                 if len(self.backend_replicas[backend_tag]) == 0:
                     del self.backend_replicas[backend_tag]
 
-                self.backend_replicas_to_stop[backend_tag].append(replica_tag)
+                self.backend_replicas_to_stop[backend_tag].append((
+                    replica_tag,
+                    (backend_info.backend_config.
+                     experimental_graceful_shutdown_timeout_s),
+                ))
 
     async def _enqueue_pending_scale_changes_loop(self,
                                                   current_state: SystemState):
@@ -295,9 +304,9 @@ class ActorStateReconciler:
                 self.currently_starting_replicas[ready_future] = (
                     backend_tag, replica_tag, replica_handle)
 
-        for backend_tag, replicas_to_stop in self.backend_replicas_to_stop.\
-                items():
-            for replica_tag in replicas_to_stop:
+        for backend_tag, replicas_to_stop in (
+                self.backend_replicas_to_stop.items()):
+            for replica_tag, shutdown_timeout in replicas_to_stop:
                 replica_name = format_actor_name(replica_tag,
                                                  self.controller_name)
 
@@ -311,26 +320,22 @@ class ActorStateReconciler:
 
                     try:
                         await asyncio.wait_for(
-                            replica.shutdown.remote(),
-                            timeout=DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S
-                        )
-                    except ray.exceptions.RayActorError:
-                        # Actor should have exited.
-                        return
+                            replica.drain_pending_queries.remote(),
+                            timeout=shutdown_timeout)
                     except asyncio.TimeoutError:
                         # Graceful period passed, kill it forcefully.
                         logger.debug(
                             f"{replica_name_to_use} did not shutdown after "
-                            "{DEFAULT_GRACEFUL_SHUTDOWN_CONTROLLER_WAIT_S}, "
-                            "killing.")
+                            f"{shutdown_timeout}, killing.")
+                    finally:
                         ray.kill(replica, no_restart=True)
 
                 self.currently_stopping_replicas[asyncio.ensure_future(
                     kill_actor(replica_name))] = (backend_tag, replica_tag)
 
-    async def _check_currently_starting_replicas(self) -> bool:
-        """Returns a boolean specifying if there are more replicas to start"""
-        in_flight = list()
+    async def _check_currently_starting_replicas(self) -> int:
+        """Returns the number of pending replicas waiting to start"""
+        in_flight: Set[Future[Any]] = set()
 
         if self.currently_starting_replicas:
             done, in_flight = await asyncio.wait(
@@ -349,11 +354,12 @@ class ActorStateReconciler:
                         pass
                     if len(backend) == 0:
                         del self.backend_replicas_to_start[backend_tag]
-        return len(in_flight) > 0
+        return len(in_flight)
 
-    async def _check_currently_stopping_replicas(self) -> bool:
-        """Returns a boolean specifying if there are more replicas to stop"""
-        in_flight = list()
+    async def _check_currently_stopping_replicas(self) -> int:
+        """Returns the number of replicas waiting to stop"""
+        in_flight: Set[Future[Any]] = set()
+
         if self.currently_stopping_replicas:
             done_stoppping, in_flight = await asyncio.wait(
                 list(self.currently_stopping_replicas.keys()), timeout=0)
@@ -371,22 +377,27 @@ class ActorStateReconciler:
                     if len(backend) == 0:
                         del self.backend_replicas_to_stop[backend_tag]
 
-        return len(in_flight) > 0
+        return len(in_flight)
 
     async def backend_control_loop(self):
         start = time.time()
         prev_warning = start
         need_to_continue = True
+        num_pending_starts, num_pending_stops = 0, 0
         while need_to_continue:
             if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
                 prev_warning = time.time()
-                logger.warning("Waited {:.2f}s for replicas to start up. Make "
-                               "sure there are enough resources to create the "
-                               "replicas.".format(time.time() - start))
+                delta = time.time() - start
+                logger.warning(
+                    f"Waited {delta:.2f}s for {num_pending_starts} replicas "
+                    f"to start up or {num_pending_stops} replicas to shutdown."
+                    " Make sure there are enough resources to create the "
+                    "replicas.")
 
-            need_to_continue = (
-                await self._check_currently_starting_replicas()
-                or await self._check_currently_stopping_replicas())
+            num_pending_starts = await self._check_currently_starting_replicas(
+            )
+            num_pending_stops = await self._check_currently_stopping_replicas()
+            need_to_continue = num_pending_starts or num_pending_stops
 
             asyncio.sleep(1)
 

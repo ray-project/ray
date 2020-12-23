@@ -344,7 +344,7 @@ async def test_graceful_shutdown(serve_instance, router,
     refs = [(await router.assign_request.remote(query_param))
             for _ in range(6)]
 
-    shutdown_ref = backend_worker.shutdown.remote()
+    shutdown_ref = backend_worker.drain_pending_queries.remote()
 
     with pytest.raises(ray.exceptions.GetTimeoutError):
         # Shutdown should block because there are still inflight queries.
