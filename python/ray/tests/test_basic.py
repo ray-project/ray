@@ -15,10 +15,7 @@ from ray.test_utils import (
     wait_for_pid_to_exit,
 )
 
-if client_test_enabled():
-    from ray.experimental.client import ray
-else:
-    import ray
+import ray
 
 logger = logging.getLogger(__name__)
 

@@ -211,6 +211,12 @@ bool TaskDependencyManager::SubscribeGetDependencies(
   return (task_entry.num_missing_get_dependencies == 0);
 }
 
+bool TaskDependencyManager::IsTaskReady(const TaskID &task_id) const {
+  auto task_entry = task_dependencies_.find(task_id);
+  RAY_CHECK(task_entry != task_dependencies_.end());
+  return task_entry->second.num_missing_get_dependencies == 0;
+}
+
 void TaskDependencyManager::SubscribeWaitDependencies(
     const WorkerID &worker_id,
     const std::vector<rpc::ObjectReference> &required_objects) {

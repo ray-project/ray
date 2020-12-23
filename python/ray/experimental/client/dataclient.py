@@ -1,5 +1,4 @@
-"""
-This file implements a threaded stream controller to abstract a data stream
+"""This file implements a threaded stream controller to abstract a data stream
 back to the ray clientserver.
 """
 import logging
