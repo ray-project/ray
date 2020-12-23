@@ -31,5 +31,4 @@ public class ActorTaskCaller<R> {
   public ObjectRef<R> remote() {
     return Ray.internal().callActor(actor, func, args);
   }
-
 }

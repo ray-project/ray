@@ -40,5 +40,4 @@ public class ActorCreator<A> extends BaseActorCreator<ActorCreator<A>> {
   public ActorHandle<A> remote() {
     return Ray.internal().createActor(func, args, buildOptions());
   }
-
 }

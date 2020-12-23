@@ -8,10 +8,8 @@ package io.ray.api;
 public interface ObjectRef<T> {
 
   /**
-   * Fetch the object from the object store, this method will block
-   * until the object is locally available.
+   * Fetch the object from the object store, this method will block until the object is locally
+   * available.
    */
   T get();
-
 }
-

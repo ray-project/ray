@@ -5,6 +5,4 @@ package io.ray.api.function;
  *
  * @param <R> Type of function return value
  */
-public interface RayFuncR<R> extends RayFunc {
-
-}
+public interface RayFuncR<R> extends RayFunc {}

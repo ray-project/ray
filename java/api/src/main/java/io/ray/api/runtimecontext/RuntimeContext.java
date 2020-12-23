@@ -4,14 +4,10 @@ import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import java.util.List;
 
-/**
- * A class used for getting information of Ray runtime.
- */
+/** A class used for getting information of Ray runtime. */
 public interface RuntimeContext {
 
-  /**
-   * Get the current Job ID.
-   */
+  /** Get the current Job ID. */
   JobId getCurrentJobId();
 
   /**
@@ -33,8 +29,6 @@ public interface RuntimeContext {
    */
   boolean isSingleProcess();
 
-  /**
-   * Get all node information in Ray cluster.
-   */
+  /** Get all node information in Ray cluster. */
   List<NodeInfo> getAllNodeInfo();
 }

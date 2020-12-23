@@ -22,14 +22,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
-/**
- * Base interface of a Ray runtime.
- */
+/** Base interface of a Ray runtime. */
 public interface RayRuntime {
 
-  /**
-   * Shutdown the runtime.
-   */
+  /** Shutdown the runtime. */
   void shutdown();
 
   /**
@@ -88,9 +84,9 @@ public interface RayRuntime {
 
   /**
    * Get a handle to a named actor.
-   * <p>
-   * Gets a handle to a named actor with the given name. The actor must
-   * have been created with name specified.
+   *
+   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
+   * name specified.
    *
    * @param name The name of the named actor.
    * @param global Whether the named actor is global.
@@ -155,8 +151,8 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc, Object[] args,
-                                 ActorCreationOptions options);
+  <T> ActorHandle<T> createActor(
+      RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options);
 
   /**
    * Create a Python actor on a remote node.
@@ -166,14 +162,13 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
-                            ActorCreationOptions options);
+  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args, ActorCreationOptions options);
 
-  PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
-                                      PlacementStrategy strategy);
+  PlacementGroup createPlacementGroup(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy);
 
-  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-                                      PlacementStrategy strategy);
+  PlacementGroup createPlacementGroup(
+      List<Map<String, Double>> bundles, PlacementStrategy strategy);
 
   RuntimeContext getRuntimeContext();
 
@@ -197,9 +192,7 @@ public interface RayRuntime {
    */
   <T> Callable<T> wrapCallable(Callable<T> callable);
 
-  /**
-   * Intentionally exit the current actor.
-   */
+  /** Intentionally exit the current actor. */
   void exitActor();
 
   /**

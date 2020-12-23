@@ -12,16 +12,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
-/**
- * This class contains all public APIs of Ray.
- */
+/** This class contains all public APIs of Ray. */
 public final class Ray extends RayCall {
 
   private static RayRuntime runtime = null;
 
-  /**
-   * Initialize Ray runtime with the default runtime implementation.
-   */
+  /** Initialize Ray runtime with the default runtime implementation. */
   public static void init() {
     try {
       Class clz = Class.forName("io.ray.runtime.DefaultRayRuntimeFactory");
@@ -30,7 +26,6 @@ public final class Ray extends RayCall {
     } catch (Exception e) {
       throw new RuntimeException("Failed to initialize Ray runtime.", e);
     }
-
   }
 
   /**
@@ -45,9 +40,7 @@ public final class Ray extends RayCall {
     }
   }
 
-  /**
-   * Shutdown Ray runtime.
-   */
+  /** Shutdown Ray runtime. */
   public static synchronized void shutdown() {
     if (runtime != null) {
       internal().shutdown();
@@ -95,22 +88,21 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Wait for a list of RayObjects to be locally available,
-   * until specified number of objects are ready, or specified timeout has passed.
+   * Wait for a list of RayObjects to be locally available, until specified number of objects are
+   * ready, or specified timeout has passed.
    *
    * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns,
-                                       int timeoutMs) {
+  public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
     return internal().wait(waitList, numReturns, timeoutMs);
   }
 
   /**
-   * A convenient helper method for Ray.wait. It will wait infinitely until
-   * specified number of objects are locally available.
+   * A convenient helper method for Ray.wait. It will wait infinitely until specified number of
+   * objects are locally available.
    *
    * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
@@ -121,8 +113,8 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * A convenient helper method for Ray.wait. It will wait infinitely until
-   * all objects are locally available.
+   * A convenient helper method for Ray.wait. It will wait infinitely until all objects are locally
+   * available.
    *
    * @param waitList A list of object references to wait for.
    * @return Two lists, one containing locally available objects, one containing the rest.
@@ -134,8 +126,8 @@ public final class Ray extends RayCall {
   /**
    * Get a handle to a named actor of current job.
    *
-   * <p>Gets a handle to a named actor with the given name. The actor must
-   * have been created with name specified.
+   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
+   * name specified.
    *
    * @param name The name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
@@ -148,8 +140,8 @@ public final class Ray extends RayCall {
   /**
    * Get a handle to a global named actor.
    *
-   * <p>Gets a handle to a global named actor with the given name. The actor must
-   * have been created with global name specified.
+   * <p>Gets a handle to a global named actor with the given name. The actor must have been created
+   * with global name specified.
    *
    * @param name The global name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists or an
@@ -205,9 +197,7 @@ public final class Ray extends RayCall {
     return internal().wrapCallable(callable);
   }
 
-  /**
-   * Get the underlying runtime instance.
-   */
+  /** Get the underlying runtime instance. */
   public static RayRuntime internal() {
     if (runtime == null) {
       throw new IllegalStateException(
@@ -216,36 +206,27 @@ public final class Ray extends RayCall {
     return runtime;
   }
 
-  /**
-   * Update the resource for the specified client.
-   * Set the resource for the specific node.
-   */
+  /** Update the resource for the specified client. Set the resource for the specific node. */
   public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
     internal().setResource(resourceName, capacity, nodeId);
   }
 
-  /**
-   * Set the resource for local node.
-   */
+  /** Set the resource for local node. */
   public static void setResource(String resourceName, double capacity) {
     internal().setResource(resourceName, capacity, UniqueId.NIL);
   }
 
-  /**
-   * Get the runtime context.
-   */
+  /** Get the runtime context. */
   public static RuntimeContext getRuntimeContext() {
     return internal().getRuntimeContext();
   }
 
   /**
-   * Create a placement group.
-   * A placement group is used to place actors according to a specific strategy
-   * and resource constraints.
-   * It will sends a request to GCS to preallocate the specified resources, which is asynchronous.
-   * If the specified resource cannot be allocated, it will wait for the resource
-   * to be updated and rescheduled.
-   * This function only works when gcs actor manager is turned on.
+   * Create a placement group. A placement group is used to place actors according to a specific
+   * strategy and resource constraints. It will sends a request to GCS to preallocate the specified
+   * resources, which is asynchronous. If the specified resource cannot be allocated, it will wait
+   * for the resource to be updated and rescheduled. This function only works when gcs actor manager
+   * is turned on.
    *
    * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
@@ -257,8 +238,8 @@ public final class Ray extends RayCall {
     return internal().createPlacementGroup(name, bundles, strategy);
   }
 
-  public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-                                                    PlacementStrategy strategy) {
+  public static PlacementGroup createPlacementGroup(
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
     return internal().createPlacementGroup(bundles, strategy);
   }
 
@@ -267,8 +248,8 @@ public final class Ray extends RayCall {
    *
    * <p>This method is used to disconnect an actor and exit the worker.
    *
-   * @throws RuntimeException An exception is raised if this is a driver or this  worker is not
-   *                          an actor.
+   * @throws RuntimeException An exception is raised if this is a driver or this worker is not an
+   *     actor.
    */
   public static void exitActor() {
     runtime.exitActor();
@@ -294,8 +275,7 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Remove a placement group by id.
-   * Throw RayException if remove failed.
+   * Remove a placement group by id. Throw RayException if remove failed.
    *
    * @param id Id of the placement group.
    */

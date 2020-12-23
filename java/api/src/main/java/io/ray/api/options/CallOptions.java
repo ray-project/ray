@@ -3,9 +3,7 @@ package io.ray.api.options;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * The options for RayCall.
- */
+/** The options for RayCall. */
 public class CallOptions extends BaseTaskOptions {
 
   public final String name;
@@ -15,9 +13,7 @@ public class CallOptions extends BaseTaskOptions {
     this.name = name;
   }
 
-  /**
-   * This inner class for building CallOptions.
-   */
+  /** This inner class for building CallOptions. */
   public static class Builder {
 
     private String name;
