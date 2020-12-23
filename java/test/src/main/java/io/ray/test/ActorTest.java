@@ -64,7 +64,7 @@ public class ActorTest extends BaseTest {
   /**
    * Test getting an object twice from the local memory store.
    *
-   * Objects are stored in core worker's local memory. And it will be removed after the first
+   * <p>Objects are stored in core worker's local memory. And it will be removed after the first
    * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
    */
   public void testGetObjectTwice() {

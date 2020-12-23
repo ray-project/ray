@@ -49,7 +49,7 @@ public class ReferenceCountingTest extends BaseTest {
       Method finalizeReferentMethod = referenceClass.getDeclaredMethod("finalizeReferent");
       finalizeReferentMethod.setAccessible(true);
       for (Object reference : references) {
-        if (obj.equals(((Reference<?>)reference).get())) {
+        if (obj.equals(((Reference<?>) reference).get())) {
           finalizeReferentMethod.invoke(reference);
           break;
         }
@@ -91,7 +91,8 @@ public class ReferenceCountingTest extends BaseTest {
     checkRefCounts(ImmutableMap.of(objectId, new long[] {localRefCount, submittedTaskRefCount}));
   }
 
-  private void checkRefCounts(ObjectId objectId1, long localRefCount1, long submittedTaskRefCount1,
+  private void checkRefCounts(
+      ObjectId objectId1, long localRefCount1, long submittedTaskRefCount1,
       ObjectId objectId2, long localRefCount2, long submittedTaskRefCount2) {
     checkRefCounts(ImmutableMap.of(objectId1, new long[] {localRefCount1, submittedTaskRefCount1},
         objectId2, new long[] {localRefCount2, submittedTaskRefCount2}));
@@ -102,7 +103,7 @@ public class ReferenceCountingTest extends BaseTest {
   }
 
   private static void fillObjectStoreAndGet(ObjectId objectId, boolean succeed, int objectSize,
-      int numObjects) {
+                                            int numObjects) {
     for (int i = 0; i < numObjects; i++) {
       Ray.put(new TestUtils.LargeObject(objectSize));
     }

@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
  * This class contains demo code of the Ray introduction doc
  * (https://docs.ray.io/en/master/index.html and  https://docs.ray.io/en/master/ray-overview/index.html).
  *
- * Please keep them in sync.
+ * <p>Please keep them in sync.
  */
 public class RayDemo {
 

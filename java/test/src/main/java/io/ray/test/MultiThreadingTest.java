@@ -140,7 +140,7 @@ public class MultiThreadingTest extends BaseTest {
   static Runnable[] generateRunnables() {
     final ObjectRef<Integer> fooObject = Ray.put(1);
     final ActorHandle<Echo> fooActor = Ray.actor(Echo::new).remote();
-    return new Runnable[]{
+    return new Runnable[] {
         () -> Ray.put(1),
         () -> Ray.get(ImmutableList.of(fooObject)),
         fooObject::get,

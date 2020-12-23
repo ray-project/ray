@@ -28,8 +28,8 @@ public class MicroBenchmarks {
   /**
    * Benchmark task submission.
    *
-   * Note, this benchmark is supposed to measure the elapased time in Java worker, we should disable
-   * submitting tasks to raylet in `raylet_client.cc` before running this benchmark.
+   * <p>Note, this benchmark is supposed to measure the elapased time in Java worker, we should
+   * disable submitting tasks to raylet in `raylet_client.cc` before running this benchmark.
    */
   public static void benchmarkTaskSubmission() {
     final int numRepeats = 1_000_000;

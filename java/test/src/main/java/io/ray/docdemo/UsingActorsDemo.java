@@ -2,7 +2,6 @@ package io.ray.docdemo;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.docdemo.WalkthroughDemo.Counter;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -10,7 +9,7 @@ import org.testng.Assert;
 /**
  * This class contains demo code of the Ray core Using Actors doc (https://docs.ray.io/en/master/actors.html).
  *
- * Please keep them in sync.
+ * <p>Please keep them in sync.
  */
 public class UsingActorsDemo {
 

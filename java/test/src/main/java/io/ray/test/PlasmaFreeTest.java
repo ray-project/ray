@@ -22,7 +22,7 @@ public class PlasmaFreeTest extends BaseTest {
 
     final boolean result = TestUtils.waitForCondition(() ->
         !TestUtils.getRuntime().getObjectStore()
-          .wait(ImmutableList.of(((ObjectRefImpl<String>) helloId).getId()), 1, 0).get(0), 50);
+            .wait(ImmutableList.of(((ObjectRefImpl<String>) helloId).getId()), 1, 0).get(0), 50);
     if (TestUtils.isSingleProcessMode()) {
       Assert.assertTrue(result);
     } else {

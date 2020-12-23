@@ -35,7 +35,7 @@ public class ExitActorTest extends BaseTest {
       try {
         Field field = TaskExecutor.class.getDeclaredField("actorContextMap");
         field.setAccessible(true);
-        return ((Map<?, ?>)field.get(taskExecutor)).size();
+        return ((Map<?, ?>) field.get(taskExecutor)).size();
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
