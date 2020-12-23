@@ -22,14 +22,6 @@ class Actor:
     def small_value_batch(self, n):
         ray.get([small_value.remote() for _ in range(n)])
 
-    def large_arg_and_value(self, a, b):
-        return a + b
-
-    def large_arg_and_value_batch(self, n):
-        arr1 = np.ones((10, 1024, 1024))
-        arr2 = np.ones((10, 1024, 1024))
-        ray.get([large_arg_and_value.remote(arr1, arr2) for _ in range(n)])
-
 
 @ray.remote
 class AsyncActor:
@@ -41,14 +33,6 @@ class AsyncActor:
 
     async def small_value_batch(self, n):
         await asyncio.wait([small_value.remote() for _ in range(n)])
-
-    def large_arg_and_value(self, a, b):
-        return a + b
-
-    def large_arg_and_value_batch(self, n):
-        arr1 = np.ones((10, 1024, 1024))
-        arr2 = np.ones((10, 1024, 1024))
-        ray.get([large_arg_and_value.remote(arr1, arr2) for _ in range(n)])
 
 
 @ray.remote(num_cpus=0)
@@ -173,29 +157,6 @@ def main():
         ray.get(submitted)
 
     timeit("multi client tasks async", multi_task, n * m)
-
-    arr1 = np.ones((10, 1024, 1024))
-    arr2 = np.ones((10, 1024, 1024))
-
-    def data_intensive_task():
-        ray.get(large_arg_and_value.remote(arr1, arr2))
-
-    timeit("single client data-intensive tasks sync", data_intensive_task)
-
-    def data_intensive_task_async():
-        ray.get([large_arg_and_value.remote(arr1, arr2) for _ in range(10)])
-
-    timeit("single client data-intensive tasks async", data_intensive_task_async)
-
-    n = 10
-    m = 4
-    actors = [Actor.remote() for _ in range(m)]
-
-    def multi_task_data_intensive():
-        submitted = [a.large_arg_and_value_batch.remote(n) for a in actors]
-        ray.get(submitted)
-
-    timeit("multi client data-intensive tasks async", multi_task, n * m)
 
     a = Actor.remote()
 
