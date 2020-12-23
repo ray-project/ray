@@ -98,11 +98,16 @@ TEST_F(PullManagerTest, TestManyUpdates) {
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
 
+  pull_manager_.OnLocationChange(obj1, client_ids, "");
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
   for (int i = 0; i < 100; i++) {
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
-  ASSERT_EQ(num_send_pull_request_calls_, 100);
+  // There is already an in progress pull request, so there is no reason to send another request before the retry time.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
@@ -127,20 +132,11 @@ TEST_F(PullManagerTest, TestRetryTimer) {
 
   for (; fake_time_ <= 127 * 10; fake_time_ += 1.) {
     pull_manager_.Tick();
-  }
-
-  // Rapid set of location changes.
-  for (int i = 0; i < 127; i++) {
-    fake_time_ += 0.1;
+    // This OnLocationChange shouldn't trigger an additional pull request or update the retry time.
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
-  // We should make a pull request every tick (even if it's a duplicate to a node we're
-  // already pulling from).
-  // OnLocationChange also doesn't count towards the retry timer.
-  // To the casual observer, this may seem off-by-one, but this is due to floating point
-  // error (0.1 + 0.1 ... 10k times > 10 == True)
-  ASSERT_EQ(num_send_pull_request_calls_, 1 + 7 + 127);
+  ASSERT_EQ(num_send_pull_request_calls_, 1 + 7);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);

@@ -40,27 +40,30 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   if (it == pull_requests_.end()) {
     return;
   }
-  // Reset the list of clients that are now expected to have the object.
-  // NOTE(swang): Since we are overwriting the previous list of clients,
-  // we may end up sending a duplicate request to the same client as
-  // before.
-  it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
-  if (!spilled_url.empty()) {
-    RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
-                   << client_ids.size();
-    // Try to restore the spilled object.
-    restore_spilled_object_(object_id, spilled_url,
-                            [this, object_id](const ray::Status &status) {
-                              // Fall back to fetching from another object manager.
-                              if (!status.ok()) {
-                                TryPull(object_id);
-                              }
-                            });
-  } else {
-    // New object locations were found, so begin trying to pull from a
-    // client. This will be called every time a new client location
-    // appears.
-    TryPull(object_id);
+  auto &request = it->second;
+  if (!request.inflight_pull) {
+    // Reset the list of clients that are now expected to have the object.
+    // NOTE(swang): Since we are overwriting the previous list of clients,
+    // we may end up sending a duplicate request to the same client as
+    // before.
+    it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
+    if (!spilled_url.empty()) {
+      RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+                    << client_ids.size();
+      // Try to restore the spilled object.
+      restore_spilled_object_(object_id, spilled_url,
+                              [this, object_id](const ray::Status &status) {
+                                // Fall back to fetching from another object manager.
+                                if (!status.ok()) {
+                                  TryPull(object_id);
+                                }
+                              });
+    } else {
+      // New object locations were found, so begin trying to pull from a
+      // client. This will be called every time a new client location
+      // appears.
+        TryPull(object_id);
+    }
   }
 }
 
@@ -115,6 +118,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
   auto &request = it->second;
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
+  request.inflight_pull = true;
   send_pull_request_(object_id, node_id);
 }
 
