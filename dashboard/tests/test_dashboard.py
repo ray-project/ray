@@ -458,14 +458,14 @@ def test_get_cluster_status(ray_start_with_dashboard):
     def get_cluster_status():
         response = requests.get(f"{webui_url}/api/cluster_status")
         response.raise_for_status()
+        print(response.json())
         assert response.json()["result"]
         assert "autoscalingStatus" in response.json()["data"]
         assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
         assert "clusterStatus" in response.json()["data"]
-        assert "load_metrics_report" in response.json()["data"][
-            "clusterStatus"]
+        assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
@@ -492,7 +492,7 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert "autoscalingError" in response.json()["data"]
     assert response.json()["data"]["autoscalingError"] == "world"
     assert "clusterStatus" in response.json()["data"]
-    assert "load_metrics_report" in response.json()["data"]["clusterStatus"]
+    assert "loadMetricsReport" in response.json()["data"]["clusterStatus"]
 
 
 def test_immutable_types():
