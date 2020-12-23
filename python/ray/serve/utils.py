@@ -1,28 +1,27 @@
 import asyncio
-from functools import singledispatch
 import importlib
-from itertools import groupby
+import inspect
 import json
 import logging
+import os
 import random
 import string
 import time
-from typing import List, Dict
-import os
-from ray.serve.exceptions import RayServeException
 from collections import UserDict
+from functools import singledispatch
+from itertools import groupby
+from typing import Any, Dict, List
 
-import requests
 import numpy as np
 import pydantic
+import requests
 import starlette.requests
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
 from ray.serve.context import TaskContext
+from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import build_starlette_request
-
-ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
 class ServeMultiDict(UserDict):
@@ -382,3 +381,29 @@ class MockImportedBackend:
 
     def other_method(self, request):
         return request.data
+
+
+def validate_init_args(cls, init_args: List[Any]):
+    """Validate the provided ``init_args`` matches the constructor of ``cls``.
+
+    Specifically, it checks for the length of the ``init_args`` matches the
+    number of parameters in ``cls.__init__``.
+    """
+    init_method = cls.__init__
+    spec = inspect.getfullargspec(init_method)
+
+    if spec.varkw is not None:
+        raise ValueError("The __init__ method shouldn't take **kwargs")
+    if len(spec.kwonlyargs) > 0:
+        raise ValueError(
+            "The __init__ method shouldn't take keyword only arguments")
+    if spec.varargs is not None:
+        # Can't validate anything, the init takes wildcard via *args.
+        return
+
+    number_of_args = len(spec.args) - 1  # minus the first self argument
+    arg_names = list(spec.args)[1:]
+    if len(init_args) != number_of_args:
+        raise ValueError(
+            f"{init_method} takes {number_of_args} arguments {arg_names} but "
+            f"you passed in {len(init_args)} init arguments.")

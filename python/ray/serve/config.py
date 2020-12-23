@@ -5,6 +5,8 @@ from ray.serve.constants import ASYNC_CONCURRENCY
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
+from ray.serve.utils import validate_init_args
+
 
 def _callable_accepts_batch(func_or_class):
     if inspect.isfunction(func_or_class):
@@ -131,7 +133,9 @@ class ReplicaConfig:
             if len(self.actor_init_args) != 0:
                 raise ValueError(
                     "actor_init_args not supported for function backend.")
-        elif not inspect.isclass(self.func_or_class):
+        elif inspect.isclass(self.func_or_class):
+            validate_init_args(self.func_or_class, self.actor_init_args)
+        else:
             raise TypeError(
                 "Backend must be a function or class, it is {}.".format(
                     type(self.func_or_class)))
