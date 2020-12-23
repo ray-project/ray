@@ -27,9 +27,8 @@ namespace ray {
 class PullManager {
  public:
   /// PullManager is responsible for managing the policy around when to send pull requests
-  /// and to whom. It solves problems including de-duplication of pull requests. Notably,
-  /// it is _not_ responsible for controlling the object directory or any pubsub
-  /// communications.
+  /// and to whom. Notably, it is _not_ responsible for controlling the object directory
+  /// or any pubsub communications.
   ///
   /// \param self_node_id the current node
   /// \param object_is_local A callback which should return true if a given object is
@@ -82,10 +81,10 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
     PullRequest(double first_retry_time)
-        : client_locations(), next_pull_time(first_retry_time) {}
+        : client_locations(), next_pull_time(first_retry_time), num_retries(0) {}
     std::vector<NodeID> client_locations;
-    std::vector<NodeID> inflight;
     double next_pull_time;
+    uint8_t num_retries;
   };
 
   /// See the constructor's arguments.
@@ -94,7 +93,7 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
   const std::function<double()> get_time_;
-  int pull_timeout_ms_;
+  uint64_t pull_timeout_ms_;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
@@ -103,8 +102,12 @@ class PullManager {
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 
-  /// Try to Pull an object from one of its expected client locations. The client will be
-  /// picked at uniform random out of the clients which do not have inflight pulls.
+  /// Try to Pull an object from one of its expected client locations. If there
+  /// are more client locations to try after this attempt, then this method
+  /// will try each of the other clients in succession, with a timeout between
+  /// each attempt. If the object is received or if the Pull is Canceled before
+  /// the timeout, then no more Pull requests for this object will be sent
+  /// to other node managers until TryPull is called again.
   ///
   /// \param object_id The object's object id.
   /// \return Void.

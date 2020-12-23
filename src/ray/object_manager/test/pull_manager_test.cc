@@ -102,16 +102,7 @@ TEST_F(PullManagerTest, TestManyUpdates) {
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
-  // We shouldn't send multiple requests to the same node.
-  ASSERT_EQ(num_send_pull_request_calls_, 1);
-  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
-
-  for (int i = 0; i < 100; i++) {
-    client_ids.insert(NodeID::FromRandom());
-    pull_manager_.OnLocationChange(obj1, client_ids, "");
-  }
-
-  ASSERT_EQ(num_send_pull_request_calls_, 1 + 100);
+  ASSERT_EQ(num_send_pull_request_calls_, 100);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
@@ -126,9 +117,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
   std::unordered_set<NodeID> client_ids;
-  for (int i = 0; i < 127 * 2; i++) {
-    client_ids.insert(NodeID::FromRandom());
-  }
+  client_ids.insert(NodeID::FromRandom());
 
   // We need to call OnLocationChange at least once, to population the list of nodes with
   // the object.
@@ -136,7 +125,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  for (; fake_time_ <= 127 * 10; fake_time_ += 0.1) {
+  for (; fake_time_ <= 127 * 10; fake_time_ += 1.) {
     pull_manager_.Tick();
   }
 
@@ -151,7 +140,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   // OnLocationChange also doesn't count towards the retry timer.
   // To the casual observer, this may seem off-by-one, but this is due to floating point
   // error (0.1 + 0.1 ... 10k times > 10 == True)
-  ASSERT_EQ(num_send_pull_request_calls_, 127 * 2);
+  ASSERT_EQ(num_send_pull_request_calls_, 1 + 7 + 127);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);
