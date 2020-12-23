@@ -126,7 +126,7 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
         elif isinstance(action_space, MultiDiscrete):
-            self.action_dim = np.product(action_space.nvec)
+            self.action_dim = np.sum(action_space.nvec)
         elif action_space.shape is not None:
             self.action_dim = int(np.product(action_space.shape))
         else:

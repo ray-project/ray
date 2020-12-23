@@ -42,6 +42,8 @@ class JsonReader(InputReader):
         """
 
         self.ioctx = ioctx or IOContext()
+        self.default_policy = \
+            self.ioctx.worker.policy_map.get("default_policy")
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
@@ -88,8 +90,8 @@ class JsonReader(InputReader):
         if isinstance(batch, SampleBatch):
             out = []
             for sub_batch in batch.split_by_episode():
-                out.append(self.ioctx.worker.policy_map[DEFAULT_POLICY_ID]
-                           .postprocess_trajectory(sub_batch))
+                out.append(
+                    self.default_policy.postprocess_trajectory(sub_batch))
             return SampleBatch.concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
