@@ -20,9 +20,12 @@ public class MicroBenchmarks {
     }
     final long duration = System.nanoTime() - start;
     LOGGER.info(
-        "Benchmark \"{}\" finished, repeated {} times, total duration {} ms," +
-            " average duration {} ns.",
-        name, numRepeats, duration / 1_000_000, duration / numRepeats);
+        "Benchmark \"{}\" finished, repeated {} times, total duration {} ms,"
+            + " average duration {} ns.",
+        name,
+        numRepeats,
+        duration / 1_000_000,
+        duration / numRepeats);
   }
 
   /**
@@ -35,9 +38,12 @@ public class MicroBenchmarks {
     final int numRepeats = 1_000_000;
     Ray.init();
     try {
-      time(() -> {
-        Ray.task(MicroBenchmarks::simpleFunction).remote();
-      }, numRepeats, "task submission");
+      time(
+          () -> {
+            Ray.task(MicroBenchmarks::simpleFunction).remote();
+          },
+          numRepeats,
+          "task submission");
     } finally {
       Ray.shutdown();
     }

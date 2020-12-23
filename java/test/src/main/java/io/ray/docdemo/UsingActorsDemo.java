@@ -7,7 +7,8 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 /**
- * This class contains demo code of the Ray core Using Actors doc (https://docs.ray.io/en/master/actors.html).
+ * This class contains demo code of the Ray core Using Actors doc
+ * (https://docs.ray.io/en/master/actors.html).
  *
  * <p>Please keep them in sync.
  */
@@ -39,9 +40,7 @@ public class UsingActorsDemo {
     }
   }
 
-  public static class GpuActor {
-
-  }
+  public static class GpuActor {}
 
   public static class MyRayApp {
 
@@ -81,12 +80,12 @@ public class UsingActorsDemo {
     }
 
     {
-      ActorHandle<Counter> a1 = Ray.actor(Counter::new).setResource("CPU", 1.0)
-          .setResource("Custom1", 1.0).remote();
-      ActorHandle<Counter> a2 = Ray.actor(Counter::new).setResource("CPU", 2.0)
-          .setResource("Custom2", 1.0).remote();
-      ActorHandle<Counter> a3 = Ray.actor(Counter::new).setResource("CPU", 3.0)
-          .setResource("Custom3", 1.0).remote();
+      ActorHandle<Counter> a1 =
+          Ray.actor(Counter::new).setResource("CPU", 1.0).setResource("Custom1", 1.0).remote();
+      ActorHandle<Counter> a2 =
+          Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("Custom2", 1.0).remote();
+      ActorHandle<Counter> a3 =
+          Ray.actor(Counter::new).setResource("CPU", 3.0).setResource("Custom3", 1.0).remote();
     }
 
     {
