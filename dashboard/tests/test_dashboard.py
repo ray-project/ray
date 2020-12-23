@@ -464,13 +464,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
         assert response.json()["data"]["autoscalingStatus"] is None
         assert "autoscalingError" in response.json()["data"]
         assert response.json()["data"]["autoscalingError"] is None
-        # assert "cluster_status" in response.json()["data"]
-        # assert "load_metrics_report" in response.json()["data"]["cluster_status"]
-        # TODO (Alex): emulate the autoscaler so the autoscaler report is
-        # populated.
-        # assert "autoscaler_report" in \
-        # response.json()["data"]["cluster_status"]
-
+        assert "clusterStatus" in response.json()["data"]
+        assert "load_metrics_report" in response.json()["data"]["clusterStatus"]
 
     wait_until_succeeded_without_exception(get_cluster_status,
                                            (requests.RequestException, ))
@@ -496,10 +491,8 @@ def test_get_cluster_status(ray_start_with_dashboard):
     assert response.json()["data"]["autoscalingStatus"] == "hello"
     assert "autoscalingError" in response.json()["data"]
     assert response.json()["data"]["autoscalingError"] == "world"
-    # assert "cluster_status" in response.json()["data"]["autoscalingError"]
-    # assert "load_metrics_report" in response.json()["data"]["autoscalingError"]
-
-
+    assert "clusterStatus" in response.json()["data"]
+    assert "load_metrics_report" in response.json()["data"]["clusterStatus"]
 
 
 def test_immutable_types():
