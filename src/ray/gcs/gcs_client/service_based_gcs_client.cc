@@ -25,7 +25,9 @@ namespace ray {
 namespace gcs {
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
-    : GcsClient(options) {}
+    : GcsClient(options),
+      last_reconnect_timestamp_ms_(0),
+      last_reconnect_address_(std::make_pair("", -1)) {}
 
 Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -35,21 +37,23 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  // Connect to gcs.
-  redis_gcs_client_.reset(new RedisGcsClient(options_));
-  RAY_CHECK_OK(redis_gcs_client_->Connect(io_service));
+  // Connect to redis.
+  RedisClientOptions redis_client_options(options_.server_ip_, options_.server_port_,
+                                          options_.password_, options_.is_test_client_);
+  redis_client_.reset(new RedisClient(redis_client_options));
+  RAY_CHECK_OK(redis_client_->Connect(io_service));
 
   // Init gcs pub sub instance.
-  gcs_pub_sub_.reset(new GcsPubSub(redis_gcs_client_->GetRedisClient()));
+  gcs_pub_sub_.reset(new GcsPubSub(redis_client_));
 
   // Get gcs service address.
   get_server_address_func_ = [this](std::pair<std::string, int> *address) {
     return GetGcsServerAddressFromRedis(
-        redis_gcs_client_->primary_context()->sync_context(), address);
+        redis_client_->GetPrimaryContext()->sync_context(), address);
   };
   std::pair<std::string, int> address;
   RAY_CHECK(GetGcsServerAddressFromRedis(
-      redis_gcs_client_->primary_context()->sync_context(), &address,
+      redis_client_->GetPrimaryContext()->sync_context(), &address,
       RayConfig::instance().gcs_service_connect_retries()))
       << "Failed to get gcs server address when init gcs client.";
 
@@ -94,8 +98,8 @@ void ServiceBasedGcsClient::Disconnect() {
   is_connected_ = false;
   detect_timer_->cancel();
   gcs_pub_sub_.reset();
-  redis_gcs_client_->Disconnect();
-  redis_gcs_client_.reset();
+  redis_client_->Disconnect();
+  redis_client_.reset();
   RAY_LOG(DEBUG) << "ServiceBasedGcsClient Disconnected.";
 }
 
@@ -175,7 +179,7 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
     ReconnectGcsServer();
     // NOTE(ffbin): Currently we don't support the case where the pub-sub server restarts,
     // because we use the same Redis server for both GCS storage and pub-sub. So the
-    // following flag is alway false.
+    // following flag is always false.
     resubscribe_func_(false);
     // Resend resource usage after reconnected, needed by resource view in GCS.
     node_accessor_->AsyncReReportResourceUsage();
@@ -191,11 +195,31 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
     if (get_server_address_func_(&address)) {
+      // After GCS is restarted, the gcs client will reestablish the connection. At
+      // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to
+      // avoid repeated connections in a short period of time, we add a protection
+      // mechanism: if the address does not change (meaning gcs server doesn't restart),
+      // the connection can be made at most once in
+      // `minimum_gcs_reconnect_interval_milliseconds` milliseconds.
+      if (last_reconnect_address_ == address &&
+          (current_sys_time_ms() - last_reconnect_timestamp_ms_) <
+              RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()) {
+        RAY_LOG(INFO)
+            << "Repeated reconnection in "
+            << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
+            << "milliseconds, return directly.";
+        return;
+      }
+
       RAY_LOG(DEBUG) << "Attemptting to reconnect to GCS server: " << address.first << ":"
                      << address.second;
       if (Ping(address.first, address.second, 100)) {
-        RAY_LOG(DEBUG) << "Reconnected to GCS server: " << address.first << ":"
-                       << address.second;
+        // If `last_reconnect_address_` port is -1, it means that this is the first
+        // connection and no log will be printed.
+        if (last_reconnect_address_.second != -1) {
+          RAY_LOG(INFO) << "Reconnected to GCS server: " << address.first << ":"
+                        << address.second;
+        }
         break;
       }
     }
@@ -205,6 +229,8 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
 
   if (index < RayConfig::instance().ping_gcs_rpc_server_max_retries()) {
     gcs_rpc_client_->Reset(address.first, address.second, *client_call_manager_);
+    last_reconnect_address_ = address;
+    last_reconnect_timestamp_ms_ = current_sys_time_ms();
   } else {
     RAY_LOG(FATAL) << "Couldn't reconnect to GCS server. The last attempted GCS "
                       "server address was "

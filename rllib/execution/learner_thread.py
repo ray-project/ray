@@ -1,4 +1,3 @@
-from typing import Dict
 import threading
 import copy
 
@@ -9,7 +8,6 @@ from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.window_stat import WindowStat
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 
 tf1, tf, tfv = try_import_tf()
 
@@ -23,9 +21,8 @@ class LearnerThread(threading.Thread):
     improves overall throughput.
     """
 
-    def __init__(self, local_worker: RolloutWorker, minibatch_buffer_size: int,
-                 num_sgd_iter: int, learner_queue_size: int,
-                 learner_queue_timeout: int):
+    def __init__(self, local_worker, minibatch_buffer_size, num_sgd_iter,
+                 learner_queue_size, learner_queue_timeout):
         """Initialize the learner thread.
 
         Args:
@@ -60,14 +57,14 @@ class LearnerThread(threading.Thread):
         self.stopped = False
         self.num_steps = 0
 
-    def run(self) -> None:
+    def run(self):
         # Switch on eager mode if configured.
         if self.local_worker.policy_config.get("framework") in ["tf2", "tfe"]:
             tf1.enable_eager_execution()
         while not self.stopped:
             self.step()
 
-    def step(self) -> None:
+    def step(self):
         with self.queue_timer:
             batch, _ = self.minibatch_buffer.get()
 
@@ -80,7 +77,7 @@ class LearnerThread(threading.Thread):
         self.outqueue.put((batch.count, self.stats))
         self.learner_queue_size.push(self.inqueue.qsize())
 
-    def add_learner_metrics(self, result: Dict) -> Dict:
+    def add_learner_metrics(self, result):
         """Add internal metrics to a trainer result dict."""
 
         def timer_to_ms(timer):

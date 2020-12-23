@@ -19,6 +19,8 @@
 namespace ray {
 namespace gcs {
 
+using namespace ray::rpc;
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -90,17 +92,23 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for job info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all job information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_operation_(
-          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+      RAY_CHECK_OK(subscribe_operation_([this, fetch_all_done](const Status &status) {
+        fetch_all_data_operation_(fetch_all_done);
+      }));
     }
   } else {
     if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(nullptr);
+      fetch_all_data_operation_(fetch_all_done);
     }
   }
 }
@@ -301,14 +309,20 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) 
 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
     if (subscribe_all_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_all_operation_(
-          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+      RAY_CHECK_OK(subscribe_all_operation_([this, fetch_all_done](const Status &status) {
+        fetch_all_data_operation_(fetch_all_done);
+      }));
     }
     for (auto &item : subscribe_operations_) {
       auto &actor_id = item.first;
@@ -325,7 +339,7 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
     }
   } else {
     if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(nullptr);
+      fetch_all_data_operation_(fetch_all_done);
     }
     for (auto &item : fetch_data_operations_) {
       item.second(nullptr);
@@ -651,20 +665,27 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 
 void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_node_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_node_operation_(
-          [this](const Status &status) { fetch_node_data_operation_(nullptr); }));
+      RAY_CHECK_OK(
+          subscribe_node_operation_([this, fetch_all_done](const Status &status) {
+            fetch_node_data_operation_(fetch_all_done);
+          }));
     }
     if (subscribe_batch_resource_usage_operation_ != nullptr) {
       RAY_CHECK_OK(subscribe_batch_resource_usage_operation_(nullptr));
     }
   } else {
     if (fetch_node_data_operation_ != nullptr) {
-      fetch_node_data_operation_(nullptr);
+      fetch_node_data_operation_(fetch_all_done);
     }
   }
 }
@@ -863,25 +884,6 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting task, status = " << status
                        << ", task id = " << task_id << ", job id = " << task_id.JobId();
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                                 const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Deleting tasks, task id list size = " << task_ids.size();
-  rpc::DeleteTasksRequest request;
-  for (auto &task_id : task_ids) {
-    request.add_task_id_list(task_id.Binary());
-  }
-  client_impl_->GetGcsRpcClient().DeleteTasks(
-      request,
-      [task_ids, callback](const Status &status, const rpc::DeleteTasksReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << status
-                       << ", task id list size = " << task_ids.size();
       });
   return Status::OK();
 }

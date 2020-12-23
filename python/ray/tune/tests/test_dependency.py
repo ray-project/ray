@@ -23,3 +23,4 @@ if __name__ == "__main__":
         }
     })
     assert "ray.rllib" not in sys.modules, "RLlib should not be imported"
+    assert "mlflow" not in sys.modules, "MLFlow should not be imported"

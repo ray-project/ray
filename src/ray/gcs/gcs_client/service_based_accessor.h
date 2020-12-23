@@ -16,7 +16,6 @@
 
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
-#include "ray/gcs/subscription_executor.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
@@ -38,12 +37,12 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
   virtual ~ServiceBasedJobInfoAccessor() = default;
 
-  Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
+  Status AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
                   const StatusCallback &callback) override;
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
-  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
                            const StatusCallback &done) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback) override;
@@ -71,7 +70,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   virtual ~ServiceBasedActorInfoAccessor() = default;
 
-  Status GetAll(std::vector<ActorTableData> *actor_table_data_list) override;
+  Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override;
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
@@ -136,30 +135,30 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~ServiceBasedNodeInfoAccessor() = default;
 
-  Status RegisterSelf(const GcsNodeInfo &local_node_info,
+  Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                       const StatusCallback &callback) override;
 
   Status UnregisterSelf() override;
 
   const NodeID &GetSelfId() const override;
 
-  const GcsNodeInfo &GetSelfInfo() const override;
+  const rpc::GcsNodeInfo &GetSelfInfo() const override;
 
   Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                        const StatusCallback &callback) override;
 
   Status AsyncUnregister(const NodeID &node_id, const StatusCallback &callback) override;
 
-  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
+  Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback) override;
 
   Status AsyncSubscribeToNodeChange(
-      const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe,
+      const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  boost::optional<GcsNodeInfo> Get(const NodeID &node_id,
-                                   bool filter_dead_nodes = false) const override;
+  boost::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
+                                        bool filter_dead_nodes = false) const override;
 
-  const std::unordered_map<NodeID, GcsNodeInfo> &GetAll() const override;
+  const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override;
 
   bool IsRemoved(const NodeID &node_id) const override;
 
@@ -207,21 +206,21 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// from a failure.
   rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
 
-  void HandleNotification(const GcsNodeInfo &node_info);
+  void HandleNotification(const rpc::GcsNodeInfo &node_info);
 
   ServiceBasedGcsClient *client_impl_;
 
   using NodeChangeCallback =
-      std::function<void(const NodeID &id, const GcsNodeInfo &node_info)>;
+      std::function<void(const NodeID &id, const rpc::GcsNodeInfo &node_info)>;
 
-  GcsNodeInfo local_node_info_;
+  rpc::GcsNodeInfo local_node_info_;
   NodeID local_node_id_;
 
   /// The callback to call when a new node is added or a node is removed.
   NodeChangeCallback node_change_callback_{nullptr};
 
   /// A cache for information about all nodes.
-  std::unordered_map<NodeID, GcsNodeInfo> node_cache_;
+  std::unordered_map<NodeID, rpc::GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
   std::unordered_set<NodeID> removed_nodes_;
 };
@@ -277,9 +276,6 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
   Status AsyncGet(const TaskID &task_id,
                   const OptionalItemCallback<rpc::TaskTableData> &callback) override;
-
-  Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                     const StatusCallback &callback) override;
 
   Status AsyncSubscribe(const TaskID &task_id,
                         const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,

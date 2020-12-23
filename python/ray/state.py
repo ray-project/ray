@@ -9,6 +9,7 @@ import ray
 from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
 from ray._private import services
+from ray._private.client_mode_hook import client_mode_hook
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -851,6 +852,7 @@ def jobs():
     return state.job_table()
 
 
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -964,6 +966,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -977,6 +980,7 @@ def cluster_resources():
     return state.cluster_resources()
 
 
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 
