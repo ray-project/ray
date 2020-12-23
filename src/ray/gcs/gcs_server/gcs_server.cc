@@ -133,7 +133,7 @@ void GcsServer::Stop() {
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(redis_client_ && gcs_table_storage_ && gcs_pub_sub_);
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, gcs_pub_sub_, gcs_table_storage_, gcs_resource_manager_);
+      main_service_, gcs_pub_sub_, gcs_table_storage_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -291,6 +291,7 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
+    gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
@@ -300,9 +301,16 @@ void GcsServer::InstallEventListeners() {
         auto node_id = NodeID::FromBinary(node->node_id());
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
+        gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
+      });
+  gcs_node_manager_->AddNodeResourceChangedListener(
+      [this](const NodeID &node_id,
+             const std::unordered_map<std::string, double> &resource_changed) {
+        gcs_resource_manager_->SetAvailableResources(node_id,
+                                                     ResourceSet(resource_changed));
       });
 
   // Install worker event listener.

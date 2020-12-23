@@ -1711,10 +1711,14 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
+        auto worker = std::static_pointer_cast<Worker>(granted);
+        uint32_t worker_pid = static_cast<uint32_t>(worker->GetProcess().GetId());
+
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
         reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+        reply->set_worker_pid(worker_pid);
         for (const auto &mapping : resource_ids.AvailableResources()) {
           auto resource = reply->add_resource_mapping();
           resource->set_name(mapping.first);
@@ -1743,7 +1747,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
-        auto worker = std::static_pointer_cast<Worker>(granted);
         leased_workers_[worker_id] = worker;
       });
   task.OnSpillbackInstead(
