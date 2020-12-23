@@ -421,6 +421,73 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
     @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
+    def testGetOrCreateHeadNodeFromStopped(self):
+        self.testGetOrCreateHeadNode()
+        self.provider.cache_stopped = True
+        existing_nodes = self.provider.non_terminated_nodes({})
+        assert len(existing_nodes) == 1
+        self.provider.terminate_node(existing_nodes[0])
+        config_path = self.write_config(SMALL_CLUSTER)
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Mounts", ["[]"])
+        # Two initial calls to docker cp, + 2 more calls during run_init
+        runner.respond_to_call(".State.Running",
+                               ["false", "false", "false", "false"])
+        runner.respond_to_call("json .Config.Env", ["[]"])
+        commands.get_or_create_head_node(
+            SMALL_CLUSTER,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner)
+        self.waitForNodes(1)
+        # Init & Setup commands msut be run for Docker!
+        runner.assert_has_call("1.2.3.4", "init_cmd")
+        runner.assert_has_call("1.2.3.4", "head_setup_cmd")
+        runner.assert_has_call("1.2.3.4", "start_ray_head")
+        self.assertEqual(self.provider.mock_nodes[0].node_type, None)
+        runner.assert_has_call("1.2.3.4", pattern="docker run")
+
+        docker_mount_prefix = get_docker_host_mount_location(
+            SMALL_CLUSTER["cluster_name"])
+        runner.assert_not_has_call(
+            "1.2.3.4",
+            pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        runner.assert_has_call(
+            "1.2.3.4",
+            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
+        pattern_to_assert = \
+            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
+        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+
+        # This next section of code ensures that the following order of
+        # commands are executed:
+        # 1. mkdir -p {docker_mount_prefix}
+        # 2. rsync bootstrap files
+        # 3. docker cp bootstrap files into container
+        commands_with_mount = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if docker_mount_prefix in cmd
+        ]
+        rsync_commands = [x for x in commands_with_mount if "rsync" in x[1]]
+        docker_cp_commands = [
+            x for x in commands_with_mount if "docker cp" in x[1]
+        ]
+        first_mkdir = min(x[0] for x in commands_with_mount if "mkdir" in x[1])
+        for file_to_check in [
+                "ray_bootstrap_config.yaml", "ray_bootstrap_key.pem"
+        ]:
+            first_rsync = min(x[0] for x in rsync_commands
+                              if "ray_bootstrap_config.yaml" in x[1])
+            first_cp = min(
+                x[0] for x in docker_cp_commands if file_to_check in x[1])
+            assert first_mkdir < first_rsync
+            assert first_rsync < first_cp
+
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testDockerFileMountsChange(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {"source": "/dev/null"}
