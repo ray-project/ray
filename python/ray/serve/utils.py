@@ -301,23 +301,23 @@ def try_schedule_resources_on_nodes(
         for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
-            
-            #legacy memory is treated in 50 byte chunks 
-            if int(ray.__version__.split('.')[0]) >= 1:
+
+            # Legacy memory is treated in 50 byte chunks
+            if int(ray.__version__.split(".")[0]) >= 1:
                 for key, count in resource_dict.items():
-                    #fix legacy behaviour in memory
-                    if "memory" in key: 
+                    # Fix legacy behaviour in memory
+                    if "memory" in key:
                         memory_resource = node_resource.get(key, 0)
                         if memory_resource > 0:
-                            #convert from chunks of 50mb to bytes 
+                            # Convert from chunks of 50mb to bytes
                             memory_resource = memory_resource * 5e+7
-                        if memory_resource - count < 0: 
-                            feasible = False 
-                            
+                        if memory_resource - count < 0:
+                            feasible = False
+
                     elif node_resource.get(key, 0) - count < 0:
                         feasible = False
 
-            else: 
+            else:
                 for key, count in resource_dict.items():
                     if node_resource.get(key, 0) - count < 0:
                         feasible = False

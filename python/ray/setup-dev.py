@@ -46,7 +46,9 @@ def do_link(package, force=False, local_path=None):
             print("You don't have write permission "
                   f"to {package_home}, using sudo:")
             sudo = ["sudo"]
-        print (f"Creating symbolic link from \n {local_home} to \n {package_home}")
+        print(
+            f"Creating symbolic link from \n {local_home} to \n {package_home}"
+        )
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
 
