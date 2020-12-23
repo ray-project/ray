@@ -20,7 +20,7 @@ public class BinaryFileUtil {
    * Note that this a process-safe operation. If multi processes extract the file to same
    * directory concurrently, this operation will be protected by a file lock.
    *
-   * @param destDir  a directory to extract resource file to
+   * @param destDir a directory to extract resource file to
    * @param fileName resource file name
    * @return extracted resource file
    */

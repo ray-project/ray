@@ -57,6 +57,7 @@ public final class Ray extends RayCall {
 
   /**
    * Check if {@link #init} has been called yet.
+   *
    * @return True if {@link #init} has already been called and false otherwise.
    */
   public static boolean isInitialized() {
@@ -132,8 +133,8 @@ public final class Ray extends RayCall {
 
   /**
    * Get a handle to a named actor of current job.
-   * <p>
-   * Gets a handle to a named actor with the given name. The actor must
+   *
+   * <p>Gets a handle to a named actor with the given name. The actor must
    * have been created with name specified.
    *
    * @param name The name of the named actor.
@@ -146,8 +147,8 @@ public final class Ray extends RayCall {
 
   /**
    * Get a handle to a global named actor.
-   * <p>
-   * Gets a handle to a global named actor with the given name. The actor must
+   *
+   * <p>Gets a handle to a global named actor with the given name. The actor must
    * have been created with global name specified.
    *
    * @param name The global name of the named actor.
@@ -251,20 +252,20 @@ public final class Ray extends RayCall {
    * @param strategy Actor placement strategy.
    * @return A handle to the created placement group.
    */
-  public static PlacementGroup createPlacementGroup(String name,
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+  public static PlacementGroup createPlacementGroup(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
     return internal().createPlacementGroup(name, bundles, strategy);
   }
 
   public static PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
+                                                    PlacementStrategy strategy) {
     return internal().createPlacementGroup(bundles, strategy);
   }
 
   /**
    * Intentionally exit the current actor.
-   * <p>
-   * This method is used to disconnect an actor and exit the worker.
+   *
+   * <p>This method is used to disconnect an actor and exit the worker.
    *
    * @throws RuntimeException An exception is raised if this is a driver or this  worker is not
    *                          an actor.
@@ -275,6 +276,7 @@ public final class Ray extends RayCall {
 
   /**
    * Get a placement group by placement group Id.
+   *
    * @param id placement group id.
    * @return The placement group.
    */
@@ -284,6 +286,7 @@ public final class Ray extends RayCall {
 
   /**
    * Get all placement groups in this cluster.
+   *
    * @return All placement groups.
    */
   public static List<PlacementGroup> getAllPlacementGroups() {
@@ -293,6 +296,7 @@ public final class Ray extends RayCall {
   /**
    * Remove a placement group by id.
    * Throw RayException if remove failed.
+   *
    * @param id Id of the placement group.
    */
   public static void removePlacementGroup(PlacementGroupId id) {

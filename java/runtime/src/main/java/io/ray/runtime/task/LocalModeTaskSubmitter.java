@@ -147,7 +147,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                     .setSignature(functionDescriptorList.get(2))))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .setObjectRef(ObjectReference.newBuilder().setObjectId(
-                    ByteString.copyFrom(arg.id.getBytes()))).build()
+                ByteString.copyFrom(arg.id.getBytes()))).build()
             : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
             .setMetadata(arg.value.metadata != null ? ByteString
                 .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
@@ -171,7 +171,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       ActorCreationOptions options) throws IllegalArgumentException {
     if (options != null) {
       if (options.group != null) {
-        PlacementGroupImpl group = (PlacementGroupImpl)options.group;
+        PlacementGroupImpl group = (PlacementGroupImpl) options.group;
         Preconditions.checkArgument(options.bundleIndex >= 0
                 && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
@@ -227,7 +227,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
+                                             PlacementStrategy strategy) {
     PlacementGroupImpl placementGroup = new PlacementGroupImpl.Builder()
         .setId(PlacementGroupId.fromRandom()).setName(name)
         .setBundles(bundles).setStrategy(strategy).build();
@@ -399,7 +399,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (arg.getObjectRef().getObjectId() != ByteString.EMPTY) {
         functionArgs.add(FunctionArg
             .passByReference(new ObjectId(arg.getObjectRef().getObjectId().toByteArray()),
-            Address.getDefaultInstance()));
+                Address.getDefaultInstance()));
       } else {
         functionArgs.add(FunctionArg.passByValue(
             new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));

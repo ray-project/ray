@@ -16,7 +16,7 @@ public class NativeJavaActorHandle extends NativeActorHandle implements ActorHan
   }
 
   /**
-   * Required by FST
+   * Required by FST.
    */
   public NativeJavaActorHandle() {
     super();

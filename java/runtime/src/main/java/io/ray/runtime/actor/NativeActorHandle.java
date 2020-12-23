@@ -30,7 +30,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   }
 
   /**
-   * Required by FST
+   * Required by FST.
    */
   NativeActorHandle() {
   }
@@ -76,7 +76,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   /**
    * Serialize this actor handle to bytes.
    *
-   * @return  the bytes of the actor handle
+   * @return the bytes of the actor handle
    */
   public byte[] toBytes() {
     return nativeSerialize(actorId);
@@ -85,7 +85,7 @@ public abstract class NativeActorHandle implements BaseActorHandle, Externalizab
   /**
    * Deserialize an actor handle from bytes.
    *
-   * @return  the bytes of an actor handle
+   * @return the bytes of an actor handle
    */
   public static NativeActorHandle fromBytes(byte[] bytes) {
     byte[] actorId = nativeDeserialize(bytes);

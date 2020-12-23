@@ -3,9 +3,9 @@ package io.ray.api;
 import io.ray.api.id.ActorId;
 
 /**
- * A handle to an actor. <p>
+ * A handle to an actor.
  *
- * A handle can be used to invoke a remote actor method.
+ * <p>A handle can be used to invoke a remote actor method.
  */
 public interface BaseActorHandle {
 

@@ -8,7 +8,6 @@ import java.util.List;
 
 /**
  * `GlobalStateAccessor` is used for accessing information from GCS.
- *
  **/
 public class GlobalStateAccessor {
   // NOTE(lingxuan.zlx): this is a singleton, it can not be changed during a Ray session.
@@ -33,7 +32,7 @@ public class GlobalStateAccessor {
 
   private GlobalStateAccessor(String redisAddress, String redisPassword) {
     globalStateAccessorNativePointer =
-      nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
+        nativeCreateGlobalStateAccessor(redisAddress, redisPassword);
     validateGlobalStateAccessorPointer();
     connect();
   }
@@ -84,7 +83,7 @@ public class GlobalStateAccessor {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       return nativeGetPlacementGroupInfo(globalStateAccessorNativePointer,
-        placementGroupId.getBytes());
+          placementGroupId.getBytes());
     }
   }
 
@@ -153,7 +152,7 @@ public class GlobalStateAccessor {
   private native byte[] nativeGetActorInfo(long nativePtr, byte[] actorId);
 
   private native byte[] nativeGetPlacementGroupInfo(long nativePtr,
-      byte[] placementGroupId);
+                                                    byte[] placementGroupId);
 
   private native List<byte[]> nativeGetAllPlacementGroupInfo(long nativePtr);
 }

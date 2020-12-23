@@ -5,7 +5,7 @@ import io.ray.api.id.ActorId;
 /**
  * Indicates that the actor died unexpectedly before finishing a task.
  *
- * This exception could happen either because the actor process dies while executing a task, or
+ * <p>This exception could happen either because the actor process dies while executing a task, or
  * because a task is submitted to a dead actor.
  */
 public class RayActorException extends RayException {

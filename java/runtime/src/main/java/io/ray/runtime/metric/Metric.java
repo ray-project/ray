@@ -69,7 +69,7 @@ public abstract class Metric {
    * Update gauge value with dynamic tag values.
    *
    * @param value latest value for updating
-   * @param tags  tag map
+   * @param tags tag map
    */
   public void update(double value, Map<TagKey, String> tags) {
     update(value);

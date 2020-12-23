@@ -66,7 +66,7 @@ public class FunctionManager {
    * Construct a FunctionManager with the specified code search path.
    *
    * @param codeSearchPath The specified job resource that can store the job's
-   *                        resources.
+   *     resources.
    */
   public FunctionManager(List<String> codeSearchPath) {
     this.codeSearchPath = codeSearchPath;
@@ -76,7 +76,7 @@ public class FunctionManager {
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
    * @param jobId current job id.
-   * @param func  The lambda.
+   * @param func The lambda.
    * @return A RayFunction object.
    */
   public RayFunction getFunction(JobId jobId, RayFunc func) {
@@ -97,7 +97,7 @@ public class FunctionManager {
   /**
    * Get the RayFunction from a function descriptor.
    *
-   * @param jobId              Current job id.
+   * @param jobId Current job id.
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
@@ -187,11 +187,11 @@ public class FunctionManager {
       if (func == null) {
         if (classFunctions.containsKey(key)) {
           throw new RuntimeException(
-                  String.format("RayFunction %s is overloaded, the signature can't be empty.",
-                          descriptor.toString()));
+              String.format("RayFunction %s is overloaded, the signature can't be empty.",
+                  descriptor.toString()));
         } else {
           throw new RuntimeException(
-                  String.format("RayFunction %s not found", descriptor.toString()));
+              String.format("RayFunction %s not found", descriptor.toString()));
         }
       }
       return func;

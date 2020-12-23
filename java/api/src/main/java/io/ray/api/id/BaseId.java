@@ -17,7 +17,7 @@ public abstract class BaseId implements Serializable {
   protected BaseId(byte[] id) {
     if (id.length != size()) {
       throw new IllegalArgumentException("Failed to construct BaseId, expect " + size()
-              + " bytes, but got " + id.length + " bytes.");
+          + " bytes, but got " + id.length + " bytes.");
     }
     this.id = id;
   }
@@ -55,6 +55,7 @@ public abstract class BaseId implements Serializable {
 
   /**
    * Derived class should implement this function.
+   *
    * @return The length of this id in bytes.
    */
   public abstract int size();

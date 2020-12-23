@@ -16,7 +16,7 @@ public class NativePyActorHandle extends NativeActorHandle implements PyActorHan
   }
 
   /**
-   * Required by FST
+   * Required by FST.
    */
   public NativePyActorHandle() {
     super();

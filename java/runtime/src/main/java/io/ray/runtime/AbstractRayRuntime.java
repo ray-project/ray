@@ -78,7 +78,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public <T> ObjectRef<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
 
   @Override
@@ -167,14 +167,14 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(String name,
-      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+  public PlacementGroup createPlacementGroup(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
     boolean bundleResourceValid = bundles.stream().allMatch(
         bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
 
     if (bundles.isEmpty() || !bundleResourceValid) {
       throw new IllegalArgumentException(
-        "Bundles cannot be empty or bundle's resource must be positive.");
+          "Bundles cannot be empty or bundle's resource must be positive.");
     }
     return taskSubmitter.createPlacementGroup(name, bundles, strategy);
   }

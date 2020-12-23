@@ -17,14 +17,14 @@ public interface RuntimeContext {
   /**
    * Get the current actor ID.
    *
-   * Note, this can only be called in actors.
+   * <p>Note, this can only be called in actors.
    */
   ActorId getCurrentActorId();
 
   /**
    * Returns true if the current actor was restarted, false if it's created for the first time.
    *
-   * Note, this method should only be called from an actor creation task.
+   * <p>Note, this method should only be called from an actor creation task.
    */
   boolean wasCurrentActorRestarted();
 

@@ -52,11 +52,11 @@ public class ArgumentsBuilder {
         if (language != Language.JAVA) {
           boolean isCrossData =
               Bytes.indexOf(value.metadata,
-                    ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) == 0 ||
+                  ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) == 0 ||
                   Bytes.indexOf(value.metadata,
-                    ObjectSerializer.OBJECT_METADATA_TYPE_RAW) == 0 ||
+                      ObjectSerializer.OBJECT_METADATA_TYPE_RAW) == 0 ||
                   Bytes.indexOf(value.metadata,
-                    ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE) == 0;
+                      ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE) == 0;
           if (!isCrossData) {
             throw new IllegalArgumentException(String.format("Can't transfer %s data to %s",
                 Arrays.toString(value.metadata), language.getValueDescriptor().getName()));

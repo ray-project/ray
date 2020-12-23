@@ -114,8 +114,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the JVM options for the Java worker that this actor is running in.
-     * <p>
-     * Note, if this is set, this actor won't share Java worker with other actors or tasks.
+     *
+     * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
      *
      * @param jvmOptions JVM options for the Java worker that this actor is running in.
      * @return self
@@ -127,8 +127,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     /**
      * Set the max number of concurrent calls to allow for this actor.
-     * <p>
-     * The max concurrency defaults to 1 for threaded execution.
+     *
+     * <p>The max concurrency defaults to 1 for threaded execution.
      * Note that the execution order is not guaranteed when {@code max_concurrency > 1}.
      *
      * @param maxConcurrency The max number of concurrent calls to allow for this actor.

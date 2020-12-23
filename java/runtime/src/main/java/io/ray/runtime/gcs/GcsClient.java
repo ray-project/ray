@@ -36,6 +36,7 @@ public class GcsClient {
 
   /**
    * Get placement group by {@link PlacementGroupId}
+   *
    * @param placementGroupId Id of placement group.
    * @return The placement group.
    */
@@ -46,6 +47,7 @@ public class GcsClient {
 
   /**
    * Get all placement groups in this cluster.
+   *
    * @return All placement groups.
    */
   public List<PlacementGroup> getAllPlacementGroupInfo() {

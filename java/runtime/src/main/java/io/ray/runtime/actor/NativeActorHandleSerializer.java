@@ -13,14 +13,15 @@ import org.nustaq.serialization.FSTObjectOutput;
 public class NativeActorHandleSerializer extends FSTBasicObjectSerializer {
 
   @Override
-  public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
+  public void writeObject(
+      FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
       FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
     ((NativeActorHandle) toWrite).writeExternal(out);
   }
 
   @Override
   public void readObject(FSTObjectInput in, Object toRead, FSTClazzInfo clzInfo,
-      FSTFieldInfo referencedBy) throws Exception {
+                         FSTFieldInfo referencedBy) throws Exception {
     super.readObject(in, toRead, clzInfo, referencedBy);
     ((NativeActorHandle) toRead).readExternal(in);
   }

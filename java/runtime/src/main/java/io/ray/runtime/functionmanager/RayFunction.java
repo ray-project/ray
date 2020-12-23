@@ -26,7 +26,7 @@ public class RayFunction {
   public final JavaFunctionDescriptor functionDescriptor;
 
   public RayFunction(Executable executable, ClassLoader classLoader,
-      JavaFunctionDescriptor functionDescriptor) {
+                     JavaFunctionDescriptor functionDescriptor) {
     this.executable = executable;
     this.classLoader = classLoader;
     this.functionDescriptor = functionDescriptor;

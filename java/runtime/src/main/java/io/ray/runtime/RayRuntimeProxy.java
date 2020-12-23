@@ -31,8 +31,8 @@ public class RayRuntimeProxy implements InvocationHandler {
    */
   static RayRuntimeInternal newInstance(AbstractRayRuntime obj) {
     return (RayRuntimeInternal) java.lang.reflect.Proxy
-        .newProxyInstance(obj.getClass().getClassLoader(), new Class<?>[]{RayRuntimeInternal.class},
-            new RayRuntimeProxy(obj));
+        .newProxyInstance(obj.getClass().getClassLoader(),
+            new Class<?>[] {RayRuntimeInternal.class}, new RayRuntimeProxy(obj));
   }
 
   @Override

@@ -39,7 +39,7 @@ public class SystemUtil {
   public static boolean isProcessAlive(int pid) {
     Process process;
     try {
-      process = Runtime.getRuntime().exec(new String[]{"ps", "-p", String.valueOf(pid)});
+      process = Runtime.getRuntime().exec(new String[] {"ps", "-p", String.valueOf(pid)});
       process.waitFor();
     } catch (InterruptedException | IOException e) {
       throw new RuntimeException(e);

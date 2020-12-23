@@ -170,10 +170,10 @@ public interface RayRuntime {
                             ActorCreationOptions options);
 
   PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
-      PlacementStrategy strategy);
+                                      PlacementStrategy strategy);
 
   PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy);
+                                      PlacementStrategy strategy);
 
   RuntimeContext getRuntimeContext();
 
@@ -204,6 +204,7 @@ public interface RayRuntime {
 
   /**
    * Get a placement group by id.
+   *
    * @param id placement group id.
    * @return The placement group.
    */
@@ -211,18 +212,21 @@ public interface RayRuntime {
 
   /**
    * Get all placement groups in this cluster.
+   *
    * @return All placement groups.
    */
   List<PlacementGroup> getAllPlacementGroups();
 
   /**
    * Remove a placement group by id.
+   *
    * @param id Id of the placement group.
    */
   void removePlacementGroup(PlacementGroupId id);
 
   /**
    * Wait for the placement group to be ready within the specified time.
+   *
    * @param id Id of placement group.
    * @param timeoutMs Timeout in milliseconds.
    * @return True if the placement group is created. False otherwise.

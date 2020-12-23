@@ -62,6 +62,7 @@ public class PlacementGroupUtils {
 
   /**
    * Generate a PlacementGroupImpl from placementGroupTableData protobuf data.
+   *
    * @param placementGroupTableData protobuf data.
    * @return placement group info {@link PlacementGroupImpl}
    */
@@ -80,13 +81,14 @@ public class PlacementGroupUtils {
         placementGroupTableData.getPlacementGroupId().asReadOnlyByteBuffer());
 
     return new PlacementGroupImpl.Builder()
-      .setId(placementGroupId).setName(placementGroupTableData.getName())
-      .setState(state).setStrategy(strategy).setBundles(bundles)
-      .build();
+        .setId(placementGroupId).setName(placementGroupTableData.getName())
+        .setState(state).setStrategy(strategy).setBundles(bundles)
+        .build();
   }
 
   /**
    * Generate a PlacementGroupImpl from byte array.
+   *
    * @param placementGroupByteArray bytes array from native method.
    * @return placement group info {@link PlacementGroupImpl}
    */
@@ -100,7 +102,7 @@ public class PlacementGroupUtils {
       placementGroupTableData = PlacementGroupTableData.parseFrom(placementGroupByteArray);
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException(
-        "Received invalid placement group table protobuf data from GCS.", e);
+          "Received invalid placement group table protobuf data from GCS.", e);
     }
 
     return generatePlacementGroupFromPbData(placementGroupTableData);

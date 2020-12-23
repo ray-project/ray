@@ -1,7 +1,6 @@
 package io.ray.runtime.metric;
 
 import com.google.common.base.Preconditions;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;

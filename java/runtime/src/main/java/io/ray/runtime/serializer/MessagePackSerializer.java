@@ -174,13 +174,13 @@ public class MessagePackSerializer {
   interface TypePacker {
 
     void pack(Object object, MessagePacker packer,
-        JavaSerializer javaSerializer) throws IOException;
+              JavaSerializer javaSerializer) throws IOException;
   }
 
   interface TypeUnpacker {
 
     Object unpack(Value value, Class<?> targetClass,
-        JavaDeserializer javaDeserializer);
+                  JavaDeserializer javaDeserializer);
   }
 
   private static boolean checkTypeCompatible(List<Class<?>> expected, Class<?> actual) {

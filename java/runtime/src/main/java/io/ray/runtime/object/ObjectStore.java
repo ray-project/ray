@@ -58,7 +58,7 @@ public abstract class ObjectStore {
   /**
    * Serialize and put an object to the object store, with the given object id.
    *
-   * This method is only used for testing.
+   * <p>This method is only used for testing.
    *
    * @param object The object to put.
    * @param objectId Object id.
@@ -100,7 +100,7 @@ public abstract class ObjectStore {
         try {
           ObjectSerializer.setOuterObjectId(ids.get(i));
           object = ObjectSerializer
-            .deserialize(dataAndMeta, ids.get(i), elementType);
+              .deserialize(dataAndMeta, ids.get(i), elementType);
         } finally {
           ObjectSerializer.resetOuterObjectId();
         }
@@ -204,10 +204,10 @@ public abstract class ObjectStore {
    *
    * @param objectId The object ID to deserialize.
    * @param outerObjectId The object ID that contained objectId, if any. This may be nil if the
-   *                      object ID was inlined directly in a task spec or if it was passed
-   *                      out-of-band by the application (deserialized from a byte string).
+   *     object ID was inlined directly in a task spec or if it was passed
+   *     out-of-band by the application (deserialized from a byte string).
    * @param ownerAddress The address of the object's owner.
    */
-  public abstract void registerOwnershipInfoAndResolveFuture(ObjectId objectId,
-      ObjectId outerObjectId, byte[] ownerAddress);
+  public abstract void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress);
 }

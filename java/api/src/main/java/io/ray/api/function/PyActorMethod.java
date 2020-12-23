@@ -2,8 +2,8 @@ package io.ray.api.function;
 
 /**
  * A class that represents a method of a Python actor.
- * <p>
- * Note, information about the actor will be inferred from the actor handle,
+ *
+ * <p>Note, information about the actor will be inferred from the actor handle,
  * so it's not specified in this class.
  *
  * <pre>

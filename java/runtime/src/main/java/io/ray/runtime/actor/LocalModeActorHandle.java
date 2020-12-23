@@ -24,7 +24,7 @@ public class LocalModeActorHandle implements ActorHandle, Externalizable {
   }
 
   /**
-   * Required by FST
+   * Required by FST.
    */
   public LocalModeActorHandle() {
   }

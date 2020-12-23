@@ -41,7 +41,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
                                      ActorCreationOptions options) throws IllegalArgumentException {
     if (options != null) {
       if (options.group != null) {
-        PlacementGroupImpl group = (PlacementGroupImpl)options.group;
+        PlacementGroupImpl group = (PlacementGroupImpl) options.group;
         Preconditions.checkArgument(options.bundleIndex >= 0
                 && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
@@ -79,11 +79,11 @@ public class NativeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
+                                             PlacementStrategy strategy) {
     byte[] bytes = nativeCreatePlacementGroup(name, bundles, strategy.value());
     return new PlacementGroupImpl.Builder()
-      .setId(PlacementGroupId.fromBytes(bytes))
-      .setName(name).setBundles(bundles).setStrategy(strategy).build();
+        .setId(PlacementGroupId.fromBytes(bytes))
+        .setName(name).setBundles(bundles).setStrategy(strategy).build();
   }
 
   @Override
@@ -96,22 +96,23 @@ public class NativeTaskSubmitter implements TaskSubmitter {
     return nativeWaitPlacementGroupReady(id.getBytes(), timeoutMs);
   }
 
-  private static native List<byte[]> nativeSubmitTask(FunctionDescriptor functionDescriptor,
-      int functionDescriptorHash, List<FunctionArg> args, int numReturns, CallOptions callOptions);
+  private static native List<byte[]> nativeSubmitTask(
+      FunctionDescriptor functionDescriptor, int functionDescriptorHash,
+      List<FunctionArg> args, int numReturns, CallOptions callOptions);
 
-  private static native byte[] nativeCreateActor(FunctionDescriptor functionDescriptor,
-      int functionDescriptorHash, List<FunctionArg> args,
+  private static native byte[] nativeCreateActor(
+      FunctionDescriptor functionDescriptor, int functionDescriptorHash, List<FunctionArg> args,
       ActorCreationOptions actorCreationOptions);
 
-  private static native List<byte[]> nativeSubmitActorTask(byte[] actorId,
-      FunctionDescriptor functionDescriptor, int functionDescriptorHash, List<FunctionArg> args,
-      int numReturns, CallOptions callOptions);
+  private static native List<byte[]> nativeSubmitActorTask(
+      byte[] actorId, FunctionDescriptor functionDescriptor, int functionDescriptorHash,
+      List<FunctionArg> args, int numReturns, CallOptions callOptions);
 
-  private static native byte[] nativeCreatePlacementGroup(String name,
-      List<Map<String, Double>> bundles, int strategy);
+  private static native byte[] nativeCreatePlacementGroup(
+      String name, List<Map<String, Double>> bundles, int strategy);
 
   private static native void nativeRemovePlacementGroup(byte[] placementGroupId);
 
   private static native boolean nativeWaitPlacementGroupReady(byte[] placementGroupId,
-      int timeoutMs);
+                                                              int timeoutMs);
 }

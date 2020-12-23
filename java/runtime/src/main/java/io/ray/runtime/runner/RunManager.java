@@ -74,8 +74,8 @@ public class RunManager {
     // NOTE(kfstorm): This method depends on an internal Python API of ray to get the
     // address info of the local node.
     String script = String.format("import ray;"
-        + " print(ray._private.services.get_address_info_from_redis("
-        + "'%s', '%s', redis_password='%s'))",
+            + " print(ray._private.services.get_address_info_from_redis("
+            + "'%s', '%s', redis_password='%s'))",
         rayConfig.getRedisAddress(), rayConfig.nodeIp, rayConfig.redisPassword);
     List<String> command = Arrays.asList("python", "-c", script);
 

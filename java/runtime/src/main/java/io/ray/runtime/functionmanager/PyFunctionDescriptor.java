@@ -37,8 +37,8 @@ public class PyFunctionDescriptor implements FunctionDescriptor {
     }
     PyFunctionDescriptor that = (PyFunctionDescriptor) o;
     return Objects.equal(moduleName, that.moduleName) &&
-      Objects.equal(className, that.className) &&
-      Objects.equal(functionName, that.functionName);
+        Objects.equal(className, that.className) &&
+        Objects.equal(functionName, that.functionName);
   }
 
   @Override

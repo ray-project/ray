@@ -36,7 +36,7 @@ public class ResourceUtil {
    * @return The map whose key represents the resource name
    *     and the value represents the resource quantity.
    * @throws IllegalArgumentException If the resources string's format does match,
-   *     it will throw an IllegalArgumentException.
+   *                                  it will throw an IllegalArgumentException.
    */
   public static Map<String, Double> getResourcesMapFromString(String resources)
       throws IllegalArgumentException {

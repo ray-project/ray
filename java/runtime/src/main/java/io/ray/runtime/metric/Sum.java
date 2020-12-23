@@ -1,7 +1,6 @@
 package io.ray.runtime.metric;
 
 import com.google.common.base.Preconditions;
-
 import java.util.Map;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.stream.Collectors;

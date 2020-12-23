@@ -24,7 +24,7 @@ public class NodeInfo {
 
   public final Map<String, Double> resources;
 
-  public NodeInfo(UniqueId nodeId,  String nodeAddress, String nodeHostname, int nodeManagerPort,
+  public NodeInfo(UniqueId nodeId, String nodeAddress, String nodeHostname, int nodeManagerPort,
                   String objectStoreSocketName, String rayletSocketName,
                   boolean isAlive, Map<String, Double> resources) {
     this.nodeId = nodeId;

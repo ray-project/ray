@@ -20,9 +20,9 @@ public class PlacementGroupImpl implements PlacementGroup {
   private final PlacementGroupState state;
 
   private PlacementGroupImpl(PlacementGroupId id, String name,
-                            List<Map<String, Double>> bundles,
-                            PlacementStrategy strategy,
-                            PlacementGroupState state) {
+                             List<Map<String, Double>> bundles,
+                             PlacementStrategy strategy,
+                             PlacementGroupState state) {
     this.id = id;
     this.name = name;
     this.bundles = bundles;
@@ -52,6 +52,7 @@ public class PlacementGroupImpl implements PlacementGroup {
 
   /**
    * Wait for the placement group to be ready within the specified time.
+   *
    * @param timeoutSeconds Timeout in seconds.
    * @return True if the placement group is created. False otherwise.
    */
@@ -71,6 +72,7 @@ public class PlacementGroupImpl implements PlacementGroup {
 
     /**
      * Set the Id of the placement group.
+     *
      * @param id Id of the placement group.
      * @return self.
      */
@@ -81,6 +83,7 @@ public class PlacementGroupImpl implements PlacementGroup {
 
     /**
      * Set the name of the placement group.
+     *
      * @param name Name of the placement group.
      * @return self.
      */
@@ -91,6 +94,7 @@ public class PlacementGroupImpl implements PlacementGroup {
 
     /**
      * Set the bundles of the placement group.
+     *
      * @param bundles the bundles of the placement group.
      * @return self.
      */
@@ -101,6 +105,7 @@ public class PlacementGroupImpl implements PlacementGroup {
 
     /**
      * Set the placement strategy of the placement group.
+     *
      * @param strategy the placement strategy of the placement group.
      * @return self.
      */
@@ -111,6 +116,7 @@ public class PlacementGroupImpl implements PlacementGroup {
 
     /**
      * Set the placement state of the placement group.
+     *
      * @param state the state of the placement group.
      * @return self.
      */

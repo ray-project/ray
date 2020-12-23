@@ -59,7 +59,7 @@ public class ObjectSerializer {
    * @return The deserialized object.
    */
   public static Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId,
-      Class<?> objectType) {
+                                   Class<?> objectType) {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
 
@@ -142,7 +142,7 @@ public class ObjectSerializer {
       // any other type should be the MessagePack serialized bytes.
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else if (object instanceof NativeActorHandle) {
-      NativeActorHandle actorHandle = (NativeActorHandle)object;
+      NativeActorHandle actorHandle = (NativeActorHandle) object;
       byte[] serializedBytes = Serializer.encode(actorHandle.toBytes()).getLeft();
       // serializedBytes is MessagePack serialized bytes
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
