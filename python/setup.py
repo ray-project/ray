@@ -1,6 +1,5 @@
 import argparse
 import errno
-import glob
 import io
 import logging
 import os
@@ -8,9 +7,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
-import zipfile
 
 from itertools import chain
 from itertools import takewhile
@@ -33,19 +29,15 @@ SUPPORTED_BAZEL = (3, 2, 0)
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 
-PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
-CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
+CLEANABLE_SUBDIRS = [THIRDPARTY_SUBDIR]
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
 # .pyd is the extension Python requires on Windows for shared libraries.
 # https://docs.python.org/3/faq/windows.html#is-a-pyd-file-the-same-as-a-dll
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
-
-pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
@@ -146,6 +138,7 @@ install_requires = [
     "redis >= 3.5.0",
     "opencensus",
     "prometheus_client >= 0.7.1",
+    "pickle5-wheels-helper",
 ]
 
 
@@ -196,31 +189,6 @@ def download(url):
     return result
 
 
-# Installs pickle5-backport into the local subdirectory.
-def download_pickle5(pickle5_dir):
-    pickle5_file = urllib.parse.unquote(
-        urllib.parse.urlparse(pickle5_url).path)
-    pickle5_name = re.sub("\\.tar\\.gz$", ".tgz", pickle5_file, flags=re.I)
-    url_path_parts = os.path.splitext(pickle5_name)[0].split("/")
-    (project, commit) = (url_path_parts[2], url_path_parts[4])
-    pickle5_archive = download(pickle5_url)
-    with tempfile.TemporaryDirectory() as work_dir:
-        tf = tarfile.open(None, "r", io.BytesIO(pickle5_archive))
-        try:
-            tf.extractall(work_dir)
-        finally:
-            tf.close()
-        src_dir = os.path.join(work_dir, project + "-" + commit)
-        args = [sys.executable, "setup.py", "-q", "bdist_wheel"]
-        subprocess.check_call(args, cwd=src_dir)
-        for wheel in glob.glob(os.path.join(src_dir, "dist", "*.whl")):
-            wzf = zipfile.ZipFile(wheel, "r")
-            try:
-                wzf.extractall(pickle5_dir)
-            finally:
-                wzf.close()
-
-
 def build(build_python, build_java):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
@@ -251,19 +219,6 @@ def build(build_python, build_java):
                    " please explicitly set the {name!r}"
                    " environment variable for Bazel.").format(name="BAZEL_SH")
             raise RuntimeError(msg)
-
-    # Check if the current Python already has pickle5 (either comes with newer
-    # Python versions, or has been installed by us before).
-    pickle5 = None
-    if sys.version_info >= (3, 8, 2):
-        import pickle as pickle5
-    else:
-        try:
-            import pickle5
-        except ImportError:
-            pass
-    if not pickle5:
-        download_pickle5(os.path.join(ROOT_DIR, PICKLE5_SUBDIR))
 
     # Note: We are passing in sys.executable so that we use the same
     # version of Python to build packages inside the build.sh script. Note
@@ -338,12 +293,6 @@ def pip_run(build_ext):
     build(True, BUILD_JAVA)
 
     files_to_include = list(ray_files)
-
-    # We also need to install pickle5 along with Ray, so make sure that the
-    # relevant non-Python pickle5 files get copied.
-    pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
-    files_to_include += walk_directory(os.path.join(pickle5_dir, "pickle5"))
-
     thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
     files_to_include += walk_directory(thirdparty_dir)
 

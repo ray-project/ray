@@ -132,9 +132,8 @@ test_core() {
 }
 
 test_python() {
-  local pathsep=":" args=()
+  args=()
   if [ "${OSTYPE}" = msys ]; then
-    pathsep=";"
     args+=(
       python/ray/serve/...
       python/ray/tests/...
@@ -163,13 +162,9 @@ test_python() {
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
     install_ray
-    # TODO(mehrdadn): We set PYTHONPATH here to let Python find our pickle5 under pip install -e.
-    # It's unclear to me if this should be necessary, but this is to make tests run for now.
-    # Check why this issue doesn't arise on Linux/Mac.
-    # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    bazel test --config=ci --build_tests_only \
-      --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
-      "${args[@]}";
+    # pickle5-wheels-helper helps us ensuring pickle5 dependencies
+    pip install  --upgrade --force-reinstall --no-cache-dir pickle5-wheels-helper
+    bazel test --config=ci --build_tests_only -- "${args[@]}"
   fi
 }
 

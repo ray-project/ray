@@ -23,6 +23,7 @@ py-spy >= 0.2.0
 pyyaml
 redis >= 3.5.0
 requests
+pickle5-wheels-helper
 
 ## setup.py extras
 atari_py

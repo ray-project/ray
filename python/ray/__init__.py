@@ -4,10 +4,12 @@ from os.path import dirname
 import platform
 import sys
 
+import pickle5_wheels_helper
+
 logger = logging.getLogger(__name__)
 
-# MUST add pickle5 to the import path because it will be imported by some
-# raylet modules.
+# Check pickle5 status
+pickle5_wheels_helper.try_install_pickle5()
 
 if "pickle5" in sys.modules:
     import pkg_resources
@@ -30,12 +32,6 @@ if "OMP_NUM_THREADS" not in os.environ:
                  "degradation with many workers (issue #6998). You can "
                  "override this by explicitly setting OMP_NUM_THREADS.")
     os.environ["OMP_NUM_THREADS"] = "1"
-
-# Add the directory containing pickle5 to the Python path so that we find the
-# pickle5 version packaged with ray and not a pre-existing pickle5.
-pickle5_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
-sys.path.insert(0, pickle5_path)
 
 # Importing psutil & setproctitle. Must be before ray._raylet is initialized.
 thirdparty_files = os.path.join(
