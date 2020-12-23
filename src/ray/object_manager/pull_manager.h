@@ -81,7 +81,10 @@ class PullManager {
   /// A helper structure for tracking information about each ongoing object pull.
   struct PullRequest {
     PullRequest(double first_retry_time)
-      : client_locations(), next_pull_time(first_retry_time), num_retries(0), inflight_pull(false) {}
+        : client_locations(),
+          next_pull_time(first_retry_time),
+          num_retries(0),
+          inflight_pull(false) {}
     std::vector<NodeID> client_locations;
     double next_pull_time;
     uint8_t num_retries;

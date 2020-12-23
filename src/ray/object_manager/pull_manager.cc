@@ -46,10 +46,11 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     // NOTE(swang): Since we are overwriting the previous list of clients,
     // we may end up sending a duplicate request to the same client as
     // before.
-    it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
+    it->second.client_locations =
+        std::vector<NodeID>(client_ids.begin(), client_ids.end());
     if (!spilled_url.empty()) {
       RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
-                    << client_ids.size();
+                     << client_ids.size();
       // Try to restore the spilled object.
       restore_spilled_object_(object_id, spilled_url,
                               [this, object_id](const ray::Status &status) {
@@ -62,7 +63,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
       // New object locations were found, so begin trying to pull from a
       // client. This will be called every time a new client location
       // appears.
-        TryPull(object_id);
+      TryPull(object_id);
     }
   }
 }

@@ -106,7 +106,8 @@ TEST_F(PullManagerTest, TestManyUpdates) {
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
-  // There is already an in progress pull request, so there is no reason to send another request before the retry time.
+  // There is already an in progress pull request, so there is no reason to send another
+  // request before the retry time.
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
@@ -132,7 +133,8 @@ TEST_F(PullManagerTest, TestRetryTimer) {
 
   for (; fake_time_ <= 127 * 10; fake_time_ += 1.) {
     pull_manager_.Tick();
-    // This OnLocationChange shouldn't trigger an additional pull request or update the retry time.
+    // This OnLocationChange shouldn't trigger an additional pull request or update the
+    // retry time.
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
