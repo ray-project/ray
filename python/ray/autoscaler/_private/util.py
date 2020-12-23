@@ -1,13 +1,15 @@
 import collections
+from datetime import datetime
 import logging
 import hashlib
 import json
 import jsonschema
 import os
 import threading
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import ray
+import ray.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler._private.docker import validate_docker_config
@@ -20,6 +22,7 @@ RAY_SCHEMA_PATH = os.path.join(
 # Internal kv keys for storing debug status.
 DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
+DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +249,47 @@ def hash_runtime_conf(file_mounts,
     return (_hash_cache[conf_str], file_mounts_contents_hash)
 
 
+def add_resources(dict1: Dict[str, float],
+                  dict2: Dict[str, float]) -> Dict[str, float]:
+    """Add the values in two dictionaries.
+
+    Returns:
+        dict: A new dictionary (inputs remain unmodified).
+    """
+    new_dict = dict1.copy()
+    for k, v in dict2.items():
+        new_dict[k] = v + new_dict.get(k, 0)
+    return new_dict
+
+
+def freq_of_dicts(dicts: List[Dict],
+                  serializer=lambda d: frozenset(d.items()),
+                  deserializer=dict):
+    """Count a list of dictionaries (or unhashable types).
+
+    This is somewhat annoying because mutable data structures aren't hashable,
+    and set/dict keys must be hashable.
+
+    Args:
+        dicts (List[D]): A list of dictionaries to be counted.
+        serializer (D -> S): A custom serailization function. The output type S
+            must be hashable. The default serializer converts a dictionary into
+            a frozenset of KV pairs.
+        deserializer (S -> U): A custom deserialization function. See the
+            serializer for information about type S. For dictionaries U := D.
+
+    Returns:
+        List[Tuple[U, int]]: Returns a list of tuples. Each entry in the list
+            is a tuple containing a unique entry from `dicts` and its
+            corresponding frequency count.
+    """
+    freqs = collections.Counter(map(lambda d: serializer(d), dicts))
+    as_list = []
+    for as_set, count in freqs.items():
+        as_list.append((deserializer(as_set), count))
+    return as_list
+
+
 def add_prefix(info_string, prefix):
     """Prefixes each line of info_string, except the first, by prefix."""
     lines = info_string.split("\n")
@@ -255,3 +299,132 @@ def add_prefix(info_string, prefix):
         prefixed_lines.append(prefixed_line)
     prefixed_info_string = "\n".join(prefixed_lines)
     return prefixed_info_string
+
+
+def format_pg(pg):
+    strategy = pg["strategy"]
+    bundles = pg["bundles"]
+    shape_strs = []
+    for bundle, count in bundles:
+        shape_strs.append(f"{bundle} * {count}")
+    bundles_str = ", ".join(shape_strs)
+    return f"{bundles_str} ({strategy})"
+
+
+def get_usage_report(lm_summary):
+    usage_lines = []
+    for resource, (used, total) in lm_summary.usage.items():
+        line = f" {used}/{total} {resource}"
+        if resource in ["memory", "object_store_memory"]:
+            to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
+            used *= to_GiB
+            total *= to_GiB
+            line = f" {used:.2f}/{total:.3f} GiB {resource}"
+        usage_lines.append(line)
+    usage_report = "\n".join(usage_lines)
+    return usage_report
+
+
+def get_demand_report(lm_summary):
+    demand_lines = []
+    for bundle, count in lm_summary.resource_demand:
+        line = f" {bundle}: {count}+ pending tasks/actors"
+        demand_lines.append(line)
+    for entry in lm_summary.pg_demand:
+        pg, count = entry
+        pg_str = format_pg(pg)
+        line = f" {pg_str}: {count}+ pending placement groups"
+        demand_lines.append(line)
+    for bundle, count in lm_summary.request_demand:
+        line = f" {bundle}: {count}+ from request_resources()"
+        demand_lines.append(line)
+    if len(demand_lines) > 0:
+        demand_report = "\n".join(demand_lines)
+    else:
+        demand_report = " (no resource demands)"
+    return demand_report
+
+
+def format_info_string(lm_summary, autoscaler_summary, time=None):
+    if time is None:
+        time = datetime.now()
+    header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
+    separator = "-" * len(header)
+    available_node_report_lines = []
+    for node_type, count in autoscaler_summary.active_nodes.items():
+        line = f" {count} {node_type}"
+        available_node_report_lines.append(line)
+    available_node_report = "\n".join(available_node_report_lines)
+
+    pending_lines = []
+    for node_type, count in autoscaler_summary.pending_launches.items():
+        line = f" {node_type}, {count} launching"
+        pending_lines.append(line)
+    for ip, node_type in autoscaler_summary.pending_nodes:
+        line = f" {ip}: {node_type}, setting up"
+        pending_lines.append(line)
+    if pending_lines:
+        pending_report = "\n".join(pending_lines)
+    else:
+        pending_report = " (no pending nodes)"
+
+    failure_lines = []
+    for ip, node_type in autoscaler_summary.failed_nodes:
+        line = f" {ip}: {node_type}"
+    failure_report = "Recent failures:\n"
+    if failure_lines:
+        failure_report += "\n".join(failure_lines)
+    else:
+        failure_report += " (no failures)"
+
+    usage_report = get_usage_report(lm_summary)
+    demand_report = get_demand_report(lm_summary)
+
+    formatted_output = f"""{header}
+Node status
+{separator}
+Healthy:
+{available_node_report}
+Pending:
+{pending_report}
+{failure_report}
+
+Resources
+{separator}
+
+Usage:
+{usage_report}
+
+Demands:
+{demand_report}"""
+    return formatted_output
+
+
+def format_info_string_no_node_types(lm_summary, time=None):
+    if time is None:
+        time = datetime.now()
+    header = "=" * 8 + f" Cluster status: {time} " + "=" * 8
+    separator = "-" * len(header)
+
+    node_lines = []
+    for node_type, count in lm_summary.node_types:
+        line = f" {count} node(s) with resources: {node_type}"
+        node_lines.append(line)
+    node_report = "\n".join(node_lines)
+
+    usage_report = get_usage_report(lm_summary)
+    demand_report = get_demand_report(lm_summary)
+
+    formatted_output = f"""{header}
+Node status
+{separator}
+{node_report}
+
+Resources
+{separator}
+Usage:
+{usage_report}
+
+Demands:
+{demand_report}"""
+    return formatted_output
