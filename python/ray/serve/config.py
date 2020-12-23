@@ -31,26 +31,26 @@ class BackendConfig(BaseModel):
     """Configuration options for a backend, to be set by the user.
 
     Args:
-    num_replicas (Optional[int]): The number of processes to start up that
-      will handle requests to this backend. Defaults to 0.
-    max_batch_size (Optional[int]): The maximum number of requests that
-      will be processed in one batch by this backend. Defaults to None (no
-      maximium).
-    batch_wait_timeout (Optional[float]): The time in seconds that backend
-      replicas will wait for a full batch of requests before processing a
-      partial batch. Defaults to 0.
-    max_concurrent_queries (Optional[int]): The maximum number of queries
-      that will be sent to a replica of this backend without receiving a
-      response. Defaults to None (no maximum).
-    user_config (Optional[Any]): Arguments to pass to the reconfigure
-      method of the backend. The reconfigure method is called if user_config
-      is not None.
-    experimental_graceful_shutdown_wait_loop_s (Optional[float]): Duration
-      that backend workers will wait until there is no more work to be done
-      before shutting down. Defaults to 2s.
-    experimental_graceful_shutdown_timeout_s (Optional[float]):
-      Controller waits for this duration to forcefully kill the replica for
-      shutdown. Defaults to 20s.
+        num_replicas (Optional[int]): The number of processes to start up that
+            will handle requests to this backend. Defaults to 0.
+        max_batch_size (Optional[int]): The maximum number of requests that
+            will be processed in one batch by this backend. Defaults to None
+            (no maximium).
+        batch_wait_timeout (Optional[float]): The time in seconds that backend
+            replicas will wait for a full batch of requests before processing a
+            partial batch. Defaults to 0.
+        max_concurrent_queries (Optional[int]): The maximum number of queries
+            that will be sent to a replica of this backend without receiving a
+            response. Defaults to None (no maximum).
+        user_config (Optional[Any]): Arguments to pass to the reconfigure
+            method of the backend. The reconfigure method is called if
+            user_config is not None.
+        experimental_graceful_shutdown_wait_loop_s (Optional[float]): Duration
+            that backend workers will wait until there is no more work to be
+            done before shutting down. Defaults to 2s.
+        experimental_graceful_shutdown_timeout_s (Optional[float]):
+            Controller waits for this duration to forcefully kill the replica
+            for shutdown. Defaults to 20s.
     """
 
     internal_metadata: BackendMetadata = BackendMetadata()
