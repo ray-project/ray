@@ -77,7 +77,8 @@ class DataOrganizer:
         job_workers = {}
         node_workers = {}
         core_worker_stats = {}
-        for node_id in DataSource.nodes.keys():
+        # await inside for loop, so we create a copy of keys().
+        for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
                 job_id = worker["jobId"]

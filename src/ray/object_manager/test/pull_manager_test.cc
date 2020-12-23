@@ -125,7 +125,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  for (; fake_time_ <= 127 * 10; fake_time_ += 0.1) {
+  for (; fake_time_ <= 127 * 10; fake_time_ += 1.) {
     pull_manager_.Tick();
   }
 
@@ -140,7 +140,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   // OnLocationChange also doesn't count towards the retry timer.
   // To the casual observer, this may seem off-by-one, but this is due to floating point
   // error (0.1 + 0.1 ... 10k times > 10 == True)
-  ASSERT_EQ(num_send_pull_request_calls_, 127 * 2);
+  ASSERT_EQ(num_send_pull_request_calls_, 1 + 7 + 127);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   pull_manager_.CancelPull(obj1);

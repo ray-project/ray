@@ -306,7 +306,7 @@ ray::Status NodeManager::RegisterGcs() {
   // node failure. These workers can be identified by comparing the raylet_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
-      [this](const WorkerID &id, const gcs::WorkerTableData &worker_failure_data) {
+      [this](const WorkerID &id, const rpc::WorkerTableData &worker_failure_data) {
         HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
@@ -1711,10 +1711,14 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
+        auto worker = std::static_pointer_cast<Worker>(granted);
+        uint32_t worker_pid = static_cast<uint32_t>(worker->GetProcess().GetId());
+
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
         reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+        reply->set_worker_pid(worker_pid);
         for (const auto &mapping : resource_ids.AvailableResources()) {
           auto resource = reply->add_resource_mapping();
           resource->set_name(mapping.first);
@@ -1743,7 +1747,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
 
-        auto worker = std::static_pointer_cast<Worker>(granted);
         leased_workers_[worker_id] = worker;
       });
   task.OnSpillbackInstead(
@@ -1981,8 +1984,8 @@ void NodeManager::ProcessSetResourceRequest(
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
         node_id, {resource_name}, nullptr));
   } else {
-    std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> data_map;
-    auto resource_table_data = std::make_shared<gcs::ResourceTableData>();
+    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> data_map;
+    auto resource_table_data = std::make_shared<rpc::ResourceTableData>();
     resource_table_data->set_resource_capacity(capacity);
     data_map.emplace(resource_name, resource_table_data);
     RAY_CHECK_OK(

@@ -267,6 +267,26 @@ That's it. Let's take a look at an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
 
+
+.. _serve-sync-async-handles:
+
+Sync and Async Handles
+======================
+
+Ray Serve offers two types of ``ServeHandle``. You can use the ``client.get_handle(..., sync=True|False)``
+flag to toggle between them.
+
+- When you set ``sync=True`` (the default), a synchronous handle is returned.
+  Calling ``handle.remote()`` should return a Ray ObjectRef.
+- When you set ``sync=False``, an asyncio based handle is returned. You need to
+  Call it with ``await handle.remote()`` to return a Ray ObjectRef. To use ``await``,
+  you have to run ``client.get_handle`` and ``handle.remote`` in Python asyncio event loop.
+
+The async handle has performance advantage because it uses asyncio directly; as compared
+to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
+the reasoning behind these, checkout our `architecture documentation <./architecture.html>`_.
+
+
 Monitoring
 ==========
 

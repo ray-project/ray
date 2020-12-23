@@ -20,6 +20,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/filesystem.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -32,10 +33,24 @@ namespace ray {
 
 using rpc::GcsNodeInfo;
 
-static inline void flushall_redis(void) {
+static inline bool flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
+  if (context == nullptr || context->err) {
+    return false;
+  }
   freeReplyObject(redisCommand(context, "FLUSHALL"));
+  freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
+  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
+
+  redisContext *shard_context = redisConnect("127.0.0.1", 6380);
+  if (shard_context == nullptr || shard_context->err) {
+    return false;
+  }
+  freeReplyObject(redisCommand(shard_context, "FLUSHALL"));
+  redisFree(shard_context);
+
+  return true;
 }
 
 int64_t current_time_ms() {
@@ -71,6 +86,7 @@ class MockServer {
     node_info.set_object_manager_port(object_manager_port);
 
     ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info, nullptr);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return status;
   }
 
@@ -85,7 +101,7 @@ class MockServer {
 class TestObjectManagerBase : public ::testing::Test {
  public:
   void SetUp() {
-    flushall_redis();
+    WaitForCondition(flushall_redis, 7000);
 
     // start store
     socket_name_1 = TestSetupUtil::StartObjectStore();
@@ -96,9 +112,10 @@ class TestObjectManagerBase : public ::testing::Test {
     int push_timeout_ms = 10000;
 
     // start first server
+    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
-                                         /*is_test_client=*/true);
-    gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
+                                         /*is_test_client=*/false);
+    gcs_client_1 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = socket_name_1;
@@ -110,7 +127,7 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
+    gcs_client_2 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = socket_name_2;
@@ -139,6 +156,10 @@ class TestObjectManagerBase : public ::testing::Test {
 
     TestSetupUtil::StopObjectStore(socket_name_1);
     TestSetupUtil::StopObjectStore(socket_name_2);
+
+    if (!gcs_server_socket_name_.empty()) {
+      TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
+    }
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -172,6 +193,7 @@ class TestObjectManagerBase : public ::testing::Test {
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
 
+  std::string gcs_server_socket_name_;
   std::string socket_name_1;
   std::string socket_name_2;
 };
@@ -421,5 +443,6 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[2]);
   return RUN_ALL_TESTS();
 }
