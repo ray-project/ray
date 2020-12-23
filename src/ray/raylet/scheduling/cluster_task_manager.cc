@@ -102,7 +102,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    bool args_ready = task_dependency_manager_.AddTaskDependencies(
+    bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task.GetTaskSpecification().TaskId(), task.GetDependencies());
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "

@@ -157,7 +157,7 @@ void DependencyManager::CancelGetRequest(const WorkerID &worker_id) {
 }
 
 /// Request dependencies for a queued task.
-bool DependencyManager::AddTaskDependencies(
+bool DependencyManager::RequestTaskDependencies(
     const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Adding dependencies for task " << task_id;
   auto inserted = queued_task_requests_.emplace(task_id, required_objects);
@@ -214,7 +214,7 @@ void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
 
 std::vector<TaskID> DependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
-  RAY_CHECK(local_objects_.erase(object_id)) << object_id;
+  RAY_CHECK(local_objects_.erase(object_id)) << "Evicted object was not local " << object_id;
 
   // Find any tasks that are dependent on the missing object.
   std::vector<TaskID> waiting_task_ids;
@@ -249,7 +249,7 @@ std::vector<TaskID> DependencyManager::HandleObjectMissing(
 std::vector<TaskID> DependencyManager::HandleObjectLocal(const ray::ObjectID &object_id) {
   // Add the object to the table of locally available objects.
   auto inserted = local_objects_.insert(object_id);
-  RAY_CHECK(inserted.second) << object_id;
+  RAY_CHECK(inserted.second) << "Local object was already local " << object_id;
 
   // Find all tasks and workers that depend on the newly available object.
   std::vector<TaskID> ready_task_ids;

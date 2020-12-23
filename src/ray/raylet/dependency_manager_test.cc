@@ -86,7 +86,7 @@ TEST_F(DependencyManagerTest, TestSimpleTask) {
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id, _));
   }
   bool ready =
-      dependency_manager_.AddTaskDependencies(task_id, ObjectIdsToRefs(arguments));
+      dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs(arguments));
   ASSERT_FALSE(ready);
   ASSERT_EQ(object_manager_mock_.active_requests.size(), 1);
   ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
@@ -125,7 +125,7 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
     bool ready =
-        dependency_manager_.AddTaskDependencies(task_id, ObjectIdsToRefs({argument_id}));
+        dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs({argument_id}));
     ASSERT_FALSE(ready);
     ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
     // The object should be requested from the object manager once for each task.
@@ -164,7 +164,7 @@ TEST_F(DependencyManagerTest, TestTaskArgEviction) {
     EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(argument_id, _));
   }
   bool ready =
-      dependency_manager_.AddTaskDependencies(task_id, ObjectIdsToRefs(arguments));
+      dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs(arguments));
   ASSERT_FALSE(ready);
   ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
 

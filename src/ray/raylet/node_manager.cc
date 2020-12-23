@@ -390,18 +390,6 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
       KillWorker(worker);
     }
   }
-
-  if (!new_scheduler_enabled_) {
-    // Remove all tasks for this job from the scheduling queues, mark
-    // the results for these tasks as not required, cancel any attempts
-    // at reconstruction. Note that at this time the workers are likely
-    // alive because of the delay in killing workers.
-    // auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-    // dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-    // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-    // call it last.
-    // local_queues_.RemoveTasks(tasks_to_remove);
-  }
 }
 
 void NodeManager::Heartbeat() {
@@ -2316,7 +2304,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
-  bool args_ready = dependency_manager_.AddTaskDependencies(
+  bool args_ready = dependency_manager_.RequestTaskDependencies(
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.

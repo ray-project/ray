@@ -34,7 +34,7 @@ class ReconstructionPolicy;
 /// for queued tasks.
 class TaskDependencyManagerInterface {
  public:
-  virtual bool AddTaskDependencies(
+  virtual bool RequestTaskDependencies(
       const TaskID &task_id,
       const std::vector<rpc::ObjectReference> &required_objects) = 0;
   virtual bool IsTaskReady(const TaskID &task_id) const = 0;
@@ -44,14 +44,12 @@ class TaskDependencyManagerInterface {
 
 /// \class DependencyManager
 ///
-/// Responsible for managing object dependencies for tasks.  The caller can
-/// subscribe to object dependencies for a task. The task manager will
-/// determine which object dependencies are remote. These are the objects that
-/// are neither in the local object store, nor will they be created by a
-/// locally queued task. The task manager will request that these objects be
-/// made available locally, either by object transfer from a remote node or
-/// reconstruction. The task manager will also cancel these objects if they are
-/// no longer needed by any task.
+/// Responsible for managing object dependencies for local workers calling
+/// `ray.get` or `ray.wait` and arguments of queued tasks. The caller can
+/// request object dependencies for a task or worker. The task manager will
+/// determine which object dependencies are remote and will request that these
+/// objects be made available locally, either via the object manager or by
+/// storing an error if the object is lost.
 class DependencyManager : public TaskDependencyManagerInterface {
  public:
   /// Create a task dependency manager.
@@ -130,7 +128,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \param task_id The task that requires the objects.
   /// \param required_objects The objects required by the task.
   /// \return Void.
-  bool AddTaskDependencies(const TaskID &task_id,
+  bool RequestTaskDependencies(const TaskID &task_id,
                            const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Check whether a task is ready to run. The task ID must have been
