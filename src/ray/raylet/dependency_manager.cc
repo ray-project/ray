@@ -194,7 +194,7 @@ bool DependencyManager::IsTaskReady(const TaskID &task_id) const {
 void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Removing dependencies for task " << task_id;
   auto task_entry = queued_task_requests_.find(task_id);
-  RAY_CHECK(task_entry != queued_task_requests_.end());
+  RAY_CHECK(task_entry != queued_task_requests_.end()) << "Can't remove dependencies of tasks that are not queued.";
 
   if (task_entry->second.pull_request_id > 0) {
     RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
