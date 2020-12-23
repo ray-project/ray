@@ -13,6 +13,7 @@ from ray.serve.utils import _get_logger
 from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Router
+from ray.serve.handle import DEFAULT
 
 logger = _get_logger()
 
@@ -118,15 +119,15 @@ class HTTPProxy:
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
-        handle = self.client.get_handle(endpoint_name).options(
-            method_name=headers.get("X-SERVE-CALL-METHOD".lower(), None),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
+        handle = self.client.get_handle(endpoint_name, sync=False).options(
+            method_name=headers.get("X-SERVE-CALL-METHOD".lower(), DEFAULT.VALUE),
+            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), DEFAULT.VALUE),
             http_method=scope["method"].upper(),
             http_headers=headers)
 
         request = build_starlette_request(scope, http_body_bytes)
 
-        result = await handle.remote(request)
+        result = ray.get(await handle.remote(request))
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
