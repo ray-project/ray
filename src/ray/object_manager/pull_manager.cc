@@ -78,10 +78,10 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
 
-  TryFetch(object_id);
+  TryToMakeObjectLocal(object_id);
 }
 
-void PullManager::TryFetch(const ObjectID &object_id) {
+void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (object_is_local_(object_id)) {
     return;
   }
@@ -97,14 +97,14 @@ void PullManager::TryFetch(const ObjectID &object_id) {
                             [this, object_id](const ray::Status &status) {
                               // Fall back to fetching from another object manager.
                               if (!status.ok()) {
-                                TryPull(object_id);
+                                PullFromRandomLocation(object_id);
                               }
                             });
   } else {
     // New object locations were found, so begin trying to pull from a
     // client. This will be called every time a new client location
     // appears.
-    TryPull(object_id);
+    PullFromRandomLocation(object_id);
   }
 
   const auto time = get_time_();
@@ -115,7 +115,7 @@ void PullManager::TryFetch(const ObjectID &object_id) {
   request.num_retries = std::min(request.num_retries + 1, 10);
 }
 
-void PullManager::TryPull(const ObjectID &object_id) {
+void PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
     return;
@@ -171,7 +171,7 @@ void PullManager::Tick() {
     auto &request = pair.second;
     const auto time = get_time_();
     if (time >= request.next_pull_time) {
-      TryFetch(object_id);
+      TryToMakeObjectLocal(object_id);
     }
   }
 }

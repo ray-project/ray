@@ -92,21 +92,17 @@ class PullManager {
     absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
 
-  /// Try to fetch an object immediately, by restoring the object from external
+  /// Try to make an object local, by restoring the object from external
   /// storage or by fetching the object from one of its expected client
-  /// locations.
-  void TryFetch(const ObjectID &object_id);
+  /// locations. This does nothing if the object is not needed by any pull
+  /// request or if it is already local. This also sets a timeout for when to
+  /// make the next attempt to make the object local.
+  void TryToMakeObjectLocal(const ObjectID &object_id);
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
-  /// will try each of the other clients in succession, with a timeout between
-  /// each attempt. If the object is received or if the Pull is Canceled before
-  /// the timeout, then no more Pull requests for this object will be sent
-  /// to other node managers until TryPull is called again.
-  ///
-  /// \param object_id The object's object id.
-  /// \return Void.
-  void TryPull(const ObjectID &object_id);
+  /// will try each of the other clients in succession.
+  void PullFromRandomLocation(const ObjectID &object_id);
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
