@@ -39,11 +39,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param main_io_service The main event loop.
   /// \param gcs_pub_sub GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  /// \param gcs_resource_manager GCS resource manager.
   explicit GcsNodeManager(boost::asio::io_service &main_io_service,
                           std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                          std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager);
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
@@ -135,15 +133,21 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
+  /// Add listener to monitor the resource change of nodes.
+  ///
+  /// \param listener The handler which process the resource change of nodes.
+  void AddNodeResourceChangedListener(
+      std::function<void(const NodeID &, const std::unordered_map<std::string, double> &)>
+          listener) {
+    RAY_CHECK(listener);
+    node_resource_changed_listeners_.emplace_back(std::move(listener));
+  }
+
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
-
-  // Update node realtime resources.
-  void UpdateNodeRealtimeResources(const NodeID &node_id,
-                                   const rpc::ResourcesData &heartbeat);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
@@ -185,12 +189,14 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Listeners which monitors the removal of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
+  /// Listeners which monitors the resource change of nodes.
+  std::vector<std::function<void(const NodeID &,
+                                 const std::unordered_map<std::string, double> &)>>
+      node_resource_changed_listeners_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Gcs resource manager.
-  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
 
