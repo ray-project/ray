@@ -338,7 +338,10 @@ def get_demand_report(lm_summary):
     for bundle, count in lm_summary.request_demand:
         line = f" {bundle}: {count}+ from request_resources()"
         demand_lines.append(line)
-    demand_report = "\n".join(demand_lines)
+    if len(demand_lines) > 0:
+        demand_report = "\n".join(demand_lines)
+    else:
+        demand_report = " (no resource demands)"
     return demand_report
 
 
