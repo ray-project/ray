@@ -200,7 +200,7 @@ For a high-level overview, see this example:
         # rounding to increments of 3 (includes 12)
         "qrandint": tune.qrandint(-21, 12, 3),
 
-        # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
+        # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
         # while sampling in log space and rounding to increments of 2
         "qlograndint": tune.qlograndint(1, 10, 2),
 
