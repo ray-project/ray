@@ -45,7 +45,7 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serial
 }
 
 ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
-    const ray::gcs::ActorTableData &actor_table_data) {
+    const ray::rpc::ActorTableData &actor_table_data) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
   inner.set_owner_id(actor_table_data.parent_id());
@@ -80,7 +80,7 @@ ActorHandle::ActorHandle(
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
 
-ActorHandle::ActorHandle(const gcs::ActorTableData &actor_table_data)
+ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data)
     : ActorHandle(CreateInnerActorHandleFromActorTableData(actor_table_data)) {}
 
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {

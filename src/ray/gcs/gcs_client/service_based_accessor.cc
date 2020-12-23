@@ -19,6 +19,8 @@
 namespace ray {
 namespace gcs {
 
+using namespace ray::rpc;
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}

@@ -21,8 +21,6 @@
 #include "gtest/gtest.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/redis_accessor.h"
-#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
