@@ -96,14 +96,21 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  MOCK_METHOD2(SubscribeGetDependencies,
-               bool(const TaskID &task_id,
-                    const std::vector<rpc::ObjectReference> &required_objects));
-  MOCK_METHOD1(UnsubscribeGetDependencies, bool(const TaskID &task_id));
+  bool SubscribeGetDependencies(
+      const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
+    RAY_CHECK(subscribed_tasks.insert(task_id).second);
+    return task_ready_;
+  }
+
+  bool UnsubscribeGetDependencies(const TaskID &task_id) {
+    return subscribed_tasks.erase(task_id);
+  }
 
   bool IsTaskReady(const TaskID &task_id) const { return task_ready_; }
 
   bool task_ready_ = true;
+
+  std::unordered_set<TaskID> subscribed_tasks;
 };
 
 class ClusterTaskManagerTest : public ::testing::Test {
@@ -145,6 +152,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.tasks_to_dispatch_.empty());
     ASSERT_TRUE(task_manager_.waiting_tasks_.empty());
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
+    ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
   }
 
   NodeID id_;
@@ -240,14 +248,14 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   };
 
   /* Blocked on dependencies */
+  dependency_manager_.task_ready_ = false;
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 1);
-  EXPECT_CALL(dependency_manager_,
-              SubscribeGetDependencies(task.GetTaskSpecification().TaskId(), _));
-  EXPECT_CALL(dependency_manager_,
-              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()));
+  std::unordered_set<TaskID> expected_subscribed_tasks = {
+      task.GetTaskSpecification().TaskId()};
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
@@ -258,17 +266,20 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   task_manager_.QueueTask(task2, &reply, callback);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 1);
 
   /* First task is unblocked now, but resources are no longer available */
+  dependency_manager_.task_ready_ = true;
   auto id = task.GetTaskSpecification().TaskId();
   std::vector<TaskID> unblocked = {id};
   task_manager_.TasksUnblocked(unblocked);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
 
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
@@ -280,6 +291,7 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
 
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
 
   // Task2 is now done so task can run.
   ASSERT_EQ(num_callbacks, 2);
@@ -757,24 +769,25 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   };
 
   /* Blocked on dependencies */
+  dependency_manager_.task_ready_ = false;
   auto task = CreateTask({{ray::kCPU_ResourceLabel, 5}}, 2);
-  EXPECT_CALL(dependency_manager_,
-              SubscribeGetDependencies(task.GetTaskSpecification().TaskId(), _));
-  EXPECT_CALL(dependency_manager_,
-              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()))
-      .Times(0);
+  std::unordered_set<TaskID> expected_subscribed_tasks = {
+      task.GetTaskSpecification().TaskId()};
   task_manager_.QueueTask(task, &reply, callback);
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
 
   /* Task is unblocked now */
+  dependency_manager_.task_ready_ = true;
   pool_.workers.clear();
   auto id = task.GetTaskSpecification().TaskId();
   task_manager_.TasksUnblocked({id});
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
 
@@ -783,12 +796,11 @@ TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
   pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
   task_manager_.SchedulePendingTasks();
   task_manager_.DispatchScheduledTasksToWorkers(pool_, leased_workers_);
+  ASSERT_EQ(dependency_manager_.subscribed_tasks, expected_subscribed_tasks);
   ASSERT_EQ(num_callbacks, 0);
   ASSERT_EQ(leased_workers_.size(), 0);
 
   /* Worker available and arguments available */
-  EXPECT_CALL(dependency_manager_,
-              UnsubscribeGetDependencies(task.GetTaskSpecification().TaskId()));
   task_manager_.TasksUnblocked({id});
   dependency_manager_.task_ready_ = true;
   task_manager_.SchedulePendingTasks();

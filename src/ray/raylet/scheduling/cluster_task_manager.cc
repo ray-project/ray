@@ -142,7 +142,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // An argument was evicted since this task was added to the dispatch
       // queue. Move it back to the waiting queue. The caller is responsible
       // for notifying us when the task is unblocked again.
-      if (!task_dependency_manager_.IsTaskReady(spec.TaskId())) {
+      if (!spec.GetDependencies().empty() &&
+          !task_dependency_manager_.IsTaskReady(spec.TaskId())) {
         waiting_tasks_[spec.TaskId()] = std::move(*work_it);
         work_it = dispatch_queue.erase(work_it);
         continue;
@@ -163,7 +164,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
         if (!spec.GetDependencies().empty()) {
-          task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
+          RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
@@ -178,7 +179,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         if (remove) {
           if (!spec.GetDependencies().empty()) {
-            task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
+            RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
           }
           work_it = dispatch_queue.erase(work_it);
         } else {
@@ -312,7 +313,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
         RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
-          task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+          RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(task_id));
         }
         work_queue.erase(work_it);
         if (work_queue.empty()) {
