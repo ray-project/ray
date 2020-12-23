@@ -1,4 +1,3 @@
-import io
 import asyncio
 import socket
 from typing import List
@@ -9,12 +8,11 @@ import starlette.responses
 import ray
 from ray.exceptions import RayTaskError
 from ray.serve.constants import LongPollKey
-from ray.serve.context import TaskContext
 from ray.util import metrics
-from ray.serve.utils import _get_logger, get_random_letters
-from ray.serve.http_util import Response
+from ray.serve.utils import _get_logger
+from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollAsyncClient
-from ray.serve.router import Router, RequestMetadata
+from ray.serve.router import Router
 
 logger = _get_logger()
 

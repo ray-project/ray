@@ -12,14 +12,13 @@ import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
+import starlette.requests
 import requests
 import numpy as np
 import pydantic
-import starlette.requests
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.http_util import build_starlette_request
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -88,7 +87,7 @@ def parse_request_item(request_item):
 
     # If the input data from handle is web request, we don't need to wrap
     # it in ServeRequest.
-    if isinstance(arg, flask.Request):
+    if isinstance(arg, starlette.requests.Request):
         return arg
 
     return ServeRequest(

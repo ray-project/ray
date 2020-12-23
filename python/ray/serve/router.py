@@ -7,7 +7,6 @@ from typing import Any, DefaultDict, Dict, Iterable, List, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.serve.constants import LongPollKey
-from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.utils import logger
