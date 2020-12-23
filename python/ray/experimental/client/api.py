@@ -2,7 +2,6 @@
 and the overall ray module API.
 """
 from typing import TYPE_CHECKING
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
 if TYPE_CHECKING:
     from ray.experimental.client.common import ClientStub
     from ray.experimental.client.common import ClientActorHandle
@@ -169,6 +168,8 @@ class ClientAPI:
         Returns:
             Information about the Ray clients in the cluster.
         """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.NODES)
 
@@ -182,6 +183,8 @@ class ClientAPI:
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
 
@@ -197,6 +200,8 @@ class ClientAPI:
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 
