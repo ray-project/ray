@@ -129,7 +129,7 @@ class DependencyManager : public TaskDependencyManagerInterface {
   /// \param required_objects The objects required by the task.
   /// \return Void.
   bool RequestTaskDependencies(const TaskID &task_id,
-                           const std::vector<rpc::ObjectReference> &required_objects);
+                               const std::vector<rpc::ObjectReference> &required_objects);
 
   /// Check whether a task is ready to run. The task ID must have been
   /// previously added by the caller.

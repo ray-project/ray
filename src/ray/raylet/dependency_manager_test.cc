@@ -124,8 +124,8 @@ TEST_F(DependencyManagerTest, TestMultipleTasks) {
   for (int i = 0; i < num_dependent_tasks; i++) {
     TaskID task_id = RandomTaskId();
     dependent_tasks.push_back(task_id);
-    bool ready =
-        dependency_manager_.RequestTaskDependencies(task_id, ObjectIdsToRefs({argument_id}));
+    bool ready = dependency_manager_.RequestTaskDependencies(
+        task_id, ObjectIdsToRefs({argument_id}));
     ASSERT_FALSE(ready);
     ASSERT_FALSE(dependency_manager_.IsTaskReady(task_id));
     // The object should be requested from the object manager once for each task.

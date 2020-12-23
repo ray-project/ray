@@ -194,7 +194,8 @@ bool DependencyManager::IsTaskReady(const TaskID &task_id) const {
 void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Removing dependencies for task " << task_id;
   auto task_entry = queued_task_requests_.find(task_id);
-  RAY_CHECK(task_entry != queued_task_requests_.end()) << "Can't remove dependencies of tasks that are not queued.";
+  RAY_CHECK(task_entry != queued_task_requests_.end())
+      << "Can't remove dependencies of tasks that are not queued.";
 
   if (task_entry->second.pull_request_id > 0) {
     RAY_LOG(DEBUG) << "Canceling pull for dependencies of task " << task_id
@@ -214,7 +215,8 @@ void DependencyManager::RemoveTaskDependencies(const TaskID &task_id) {
 
 std::vector<TaskID> DependencyManager::HandleObjectMissing(
     const ray::ObjectID &object_id) {
-  RAY_CHECK(local_objects_.erase(object_id)) << "Evicted object was not local " << object_id;
+  RAY_CHECK(local_objects_.erase(object_id))
+      << "Evicted object was not local " << object_id;
 
   // Find any tasks that are dependent on the missing object.
   std::vector<TaskID> waiting_task_ids;
