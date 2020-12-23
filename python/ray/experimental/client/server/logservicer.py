@@ -1,5 +1,4 @@
-"""
-This file responds to log stream requests and forwards logs
+"""This file responds to log stream requests and forwards logs
 with its handler.
 """
 import io

@@ -54,8 +54,7 @@ class ClientStub:
 
 
 class ClientRemoteFunc(ClientStub):
-    """
-    A stub created on the Ray Client to represent a remote
+    """A stub created on the Ray Client to represent a remote
     function that can be exectued on the cluster.
 
     This class is allowed to be passed around between remote functions.
@@ -114,7 +113,7 @@ class ClientRemoteFunc(ClientStub):
 
 
 class ClientActorClass(ClientStub):
-    """ A stub created on the Ray Client to represent an actor class.
+    """A stub created on the Ray Client to represent an actor class.
 
     It is wrapped by ray.remote and can be executed on the cluster.
 

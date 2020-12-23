@@ -6,8 +6,7 @@ logger = logging.getLogger(__name__)
 
 
 class RayAPIStub:
-    """
-    This class stands in as the replacement API for the `import ray` module.
+    """This class stands in as the replacement API for the `import ray` module.
 
     Much like the ray module, this mostly delegates the work to the
     _client_worker. As parts of the ray API are covered, they are piped through
@@ -26,8 +25,7 @@ class RayAPIStub:
                 conn_str: str,
                 secure: bool = False,
                 metadata: List[Tuple[str, str]] = None) -> None:
-        """
-        Connect the Ray Client to a server.
+        """Connect the Ray Client to a server.
 
         Args:
             conn_str: Connection string, in the form "[host]:port"
@@ -50,8 +48,7 @@ class RayAPIStub:
         self.api.worker = self.client_worker
 
     def disconnect(self):
-        """
-        Disconnect the Ray Client.
+        """Disconnect the Ray Client.
         """
         if self.client_worker is not None:
             self.client_worker.close()
@@ -60,8 +57,7 @@ class RayAPIStub:
     # remote can be called outside of a connection, which is why it
     # exists on the same API layer as connect() itself.
     def remote(self, *args, **kwargs):
-        """
-        remote is the hook stub passed on to replace `ray.remote`.
+        """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
         but does not execute them.

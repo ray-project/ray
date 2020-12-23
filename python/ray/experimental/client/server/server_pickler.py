@@ -1,5 +1,4 @@
-"""
-Implements the client side of the client/server pickling protocol.
+"""Implements the client side of the client/server pickling protocol.
 
 These picklers are aware of the server internals and can find the
 references held for the client within the server.

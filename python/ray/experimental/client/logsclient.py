@@ -1,5 +1,4 @@
-"""
-This file implements a threaded stream controller to return logs back from
+"""This file implements a threaded stream controller to return logs back from
 the ray clientserver.
 """
 import sys
@@ -49,8 +48,7 @@ class LogstreamClient:
                 raise e
 
     def log(self, level: int, msg: str):
-        """
-        Log the message from the log stream.
+        """Log the message from the log stream.
         By default, calls logger.log but this can be overridden.
 
         Args:
@@ -60,8 +58,7 @@ class LogstreamClient:
         logger.log(level=level, msg=msg)
 
     def stdstream(self, level: int, msg: str):
-        """
-        Log the stdout/stderr entry from the log stream.
+        """Log the stdout/stderr entry from the log stream.
         By default, calls print but this can be overridden.
 
         Args:

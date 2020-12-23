@@ -1,5 +1,4 @@
-"""
-This file defines the interface between the ray client worker
+"""This file defines the interface between the ray client worker
 and the overall ray module API.
 """
 from typing import TYPE_CHECKING
@@ -11,8 +10,7 @@ if TYPE_CHECKING:
 
 
 class ClientAPI:
-    """
-    The Client-side methods corresponding to the ray API. Delegates
+    """The Client-side methods corresponding to the ray API. Delegates
     to the Client Worker that contains the connection to the ClientServer.
     """
 
@@ -20,8 +18,7 @@ class ClientAPI:
         self.worker = worker
 
     def get(self, vals, *, timeout=None):
-        """
-        get is the hook stub passed on to replace `ray.get`
+        """get is the hook stub passed on to replace `ray.get`
 
         Args:
             vals: [Client]ObjectRef or list of these refs to retrieve.
@@ -30,8 +27,7 @@ class ClientAPI:
         return self.worker.get(vals, timeout=timeout)
 
     def put(self, *args, **kwargs):
-        """
-        put is the hook stub passed on to replace `ray.put`
+        """put is the hook stub passed on to replace `ray.put`
 
         Args:
             vals: The value or list of values to `put`.
@@ -41,8 +37,7 @@ class ClientAPI:
         return self.worker.put(*args, **kwargs)
 
     def wait(self, *args, **kwargs):
-        """
-        wait is the hook stub passed on to replace `ray.wait`
+        """wait is the hook stub passed on to replace `ray.wait`
 
         Args:
             args: opaque arguments
@@ -51,8 +46,7 @@ class ClientAPI:
         return self.worker.wait(*args, **kwargs)
 
     def remote(self, *args, **kwargs):
-        """
-        remote is the hook stub passed on to replace `ray.remote`.
+        """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
         but does not execute them.
@@ -78,8 +72,7 @@ class ClientAPI:
         return remote_decorator(options=kwargs)
 
     def call_remote(self, instance: "ClientStub", *args, **kwargs):
-        """
-        call_remote is called by stub objects to execute them remotely.
+        """call_remote is called by stub objects to execute them remotely.
 
         This is used by stub objects in situations where they're called
         with .remote, eg, `f.remote()` or `actor_cls.remote()`.
@@ -95,8 +88,7 @@ class ClientAPI:
         return self.worker.call_remote(instance, *args, **kwargs)
 
     def call_release(self, id: bytes) -> None:
-        """
-        Attempts to release an object reference.
+        """Attempts to release an object reference.
 
         When client references are destructed, they release their reference,
         which can opportunistically send a notification through the datachannel
@@ -108,8 +100,7 @@ class ClientAPI:
         return self.worker.call_release(id)
 
     def call_retain(self, id: bytes) -> None:
-        """
-        Attempts to retain a client object reference.
+        """Attempts to retain a client object reference.
 
         Increments the reference count on the client side, to prevent
         the client worker from attempting to release the server reference.
@@ -120,15 +111,13 @@ class ClientAPI:
         return self.worker.call_retain(id)
 
     def close(self) -> None:
-        """
-        close cleans up an API connection by closing any channels or
+        """close cleans up an API connection by closing any channels or
         shutting down any servers gracefully.
         """
         return self.worker.close()
 
     def get_actor(self, name: str) -> "ClientActorHandle":
-        """
-        Returns a handle to an actor by name.
+        """Returns a handle to an actor by name.
 
         Args:
             name: The name passed to this actor by
@@ -137,8 +126,7 @@ class ClientAPI:
         return self.worker.get_actor(name)
 
     def kill(self, actor: "ClientActorHandle", *, no_restart=True):
-        """
-        kill forcibly stops an actor running in the cluster
+        """kill forcibly stops an actor running in the cluster
 
         Args:
             no_restart: Whether this actor should be restarted if it's a
@@ -147,8 +135,7 @@ class ClientAPI:
         return self.worker.terminate_actor(actor, no_restart)
 
     def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
-        """
-        Cancels a task on the cluster.
+        """Cancels a task on the cluster.
 
         If the specified task is pending execution, it will not be executed. If
         the task is currently executing, the behavior depends on the ``force``
@@ -169,8 +156,7 @@ class ClientAPI:
 
     # Various metadata methods for the client that are defined in the protocol.
     def is_initialized(self) -> bool:
-        """ True if our client is connected, and if the server is initialized.
-
+        """True if our client is connected, and if the server is initialized.
         Returns:
             A boolean determining if the client is connected and
             server initialized.

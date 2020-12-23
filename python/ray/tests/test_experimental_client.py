@@ -160,8 +160,7 @@ def test_basic_actor(ray_start_regular_shared):
 
 
 def test_pass_handles(ray_start_regular_shared):
-    """
-    Test that passing client handles to actors and functions to remote actors
+    """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
     caller.
     """
@@ -265,8 +264,7 @@ def test_stdout_log_stream(ray_start_regular_shared):
 
 
 def test_create_remote_before_start(ray_start_regular_shared):
-    """
-    Creates remote objects (as though in a library) before
+    """Creates remote objects (as though in a library) before
     starting the client.
     """
     from ray.experimental.client import ray
@@ -290,8 +288,7 @@ def test_create_remote_before_start(ray_start_regular_shared):
 
 
 def test_basic_named_actor(ray_start_regular_shared):
-    """
-    Test that ray.get_actor() can create and return a detached actor.
+    """Test that ray.get_actor() can create and return a detached actor.
     """
     with ray_start_client_server() as ray:
 

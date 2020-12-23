@@ -1,5 +1,4 @@
-"""
-Implements the client side of the client/server pickling protocol.
+"""Implements the client side of the client/server pickling protocol.
 
 All ray client client/server data transfer happens through this pickling
 protocol. The model is as follows:
