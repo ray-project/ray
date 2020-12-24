@@ -50,8 +50,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * this name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that
      * is accessible from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
      *
-     * @param name The name of the named actor.
-     * @return self
+     * @param name The name of the named actor. Returns self
      */
     public Builder setName(String name) {
       this.name = name;
@@ -64,8 +63,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
      * only accessible from this job, use {@link Builder#setName(java.lang.String)} instead.
      *
-     * @param name The name of the named actor.
-     * @return self
+     * @param name The name of the named actor. Returns self
      */
     public Builder setGlobalName(String name) {
       this.name = name;
@@ -79,8 +77,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * will be used.
      *
      * @param resourceName resource name
-     * @param resourceQuantity resource quantity
-     * @return self
+     * @param resourceQuantity resource quantity Returns self
      */
     public Builder setResource(String resourceName, Double resourceQuantity) {
       this.resources.put(resourceName, resourceQuantity);
@@ -92,8 +89,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * be called multiple times. If the same resource is set multiple times, the latest quantity
      * will be used.
      *
-     * @param resources requirements for multiple resources.
-     * @return self
+     * @param resources requirements for multiple resources. Returns self
      */
     public Builder setResources(Map<String, Double> resources) {
       this.resources.putAll(resources);
@@ -105,8 +101,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * unexpectedly. The minimum valid value is 0 (default), which indicates that the actor doesn't
      * need to be restarted. A value of -1 indicates that an actor should be restarted indefinitely.
      *
-     * @param maxRestarts max number of actor restarts
-     * @return self
+     * @param maxRestarts max number of actor restarts Returns self
      */
     public Builder setMaxRestarts(int maxRestarts) {
       this.maxRestarts = maxRestarts;
@@ -118,8 +113,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      *
      * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
      *
-     * @param jvmOptions JVM options for the Java worker that this actor is running in.
-     * @return self
+     * @param jvmOptions JVM options for the Java worker that this actor is running in. Returns self
      */
     public Builder setJvmOptions(String jvmOptions) {
       this.jvmOptions = jvmOptions;
@@ -132,8 +126,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
      * not guaranteed when {@code max_concurrency > 1}.
      *
-     * @param maxConcurrency The max number of concurrent calls to allow for this actor.
-     * @return self
+     * @param maxConcurrency The max number of concurrent calls to allow for this actor. Returns
+     *     self
      */
     public Builder setMaxConcurrency(int maxConcurrency) {
       if (maxConcurrency <= 0) {
@@ -148,8 +142,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
      * Set the placement group to place this actor in.
      *
      * @param group The placement group of the actor.
-     * @param bundleIndex The index of the bundle to place this actor in.
-     * @return self
+     * @param bundleIndex The index of the bundle to place this actor in. Returns self
      */
     public Builder setPlacementGroup(PlacementGroup group, int bundleIndex) {
       this.group = group;

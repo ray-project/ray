@@ -51,7 +51,7 @@ public final class Ray extends RayCall {
   /**
    * Check if {@link #init} has been called yet.
    *
-   * @return True if {@link #init} has already been called and false otherwise.
+   * <p>Returns True if {@link #init} has already been called and false otherwise.
    */
   public static boolean isInitialized() {
     return runtime != null;
@@ -60,8 +60,8 @@ public final class Ray extends RayCall {
   /**
    * Store an object in the object store.
    *
-   * @param obj The Java object to be stored.
-   * @return A ObjectRef instance that represents the in-store object.
+   * @param obj The Java object to be stored. Returns A ObjectRef instance that represents the
+   *     in-store object.
    */
   public static <T> ObjectRef<T> put(T obj) {
     return internal().put(obj);
@@ -70,8 +70,7 @@ public final class Ray extends RayCall {
   /**
    * Get an object by `ObjectRef` from the object store.
    *
-   * @param objectRef The reference of the object to get.
-   * @return The Java object.
+   * @param objectRef The reference of the object to get. Returns The Java object.
    */
   public static <T> T get(ObjectRef<T> objectRef) {
     return internal().get(objectRef);
@@ -80,8 +79,7 @@ public final class Ray extends RayCall {
   /**
    * Get a list of objects by `ObjectRef`s from the object store.
    *
-   * @param objectList A list of object references.
-   * @return A list of Java objects.
+   * @param objectList A list of object references. Returns A list of Java objects.
    */
   public static <T> List<T> get(List<ObjectRef<T>> objectList) {
     return internal().get(objectList);
@@ -93,8 +91,8 @@ public final class Ray extends RayCall {
    *
    * @param waitList A list of object references to wait for.
    * @param numReturns The number of objects that should be returned.
-   * @param timeoutMs The maximum time in milliseconds to wait before returning.
-   * @return Two lists, one containing locally available objects, one containing the rest.
+   * @param timeoutMs The maximum time in milliseconds to wait before returning. Returns Two lists,
+   *     one containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs) {
     return internal().wait(waitList, numReturns, timeoutMs);
@@ -105,8 +103,8 @@ public final class Ray extends RayCall {
    * objects are locally available.
    *
    * @param waitList A list of object references to wait for.
-   * @param numReturns The number of objects that should be returned.
-   * @return Two lists, one containing locally available objects, one containing the rest.
+   * @param numReturns The number of objects that should be returned. Returns Two lists, one
+   *     containing locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns) {
     return internal().wait(waitList, numReturns, Integer.MAX_VALUE);
@@ -116,8 +114,8 @@ public final class Ray extends RayCall {
    * A convenient helper method for Ray.wait. It will wait infinitely until all objects are locally
    * available.
    *
-   * @param waitList A list of object references to wait for.
-   * @return Two lists, one containing locally available objects, one containing the rest.
+   * @param waitList A list of object references to wait for. Returns Two lists, one containing
+   *     locally available objects, one containing the rest.
    */
   public static <T> WaitResult<T> wait(List<ObjectRef<T>> waitList) {
     return internal().wait(waitList, waitList.size(), Integer.MAX_VALUE);
@@ -129,9 +127,8 @@ public final class Ray extends RayCall {
    * <p>Gets a handle to a named actor with the given name. The actor must have been created with
    * name specified.
    *
-   * @param name The name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @param name The name of the named actor. Returns an ActorHandle to the actor if the actor of
+   *     specified name exists or an Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
     return internal().getActor(name, false);
@@ -143,9 +140,8 @@ public final class Ray extends RayCall {
    * <p>Gets a handle to a global named actor with the given name. The actor must have been created
    * with global name specified.
    *
-   * @param name The global name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @param name The global name of the named actor. Returns an ActorHandle to the actor if the
+   *     actor of specified name exists or an Optional.empty()
    */
   public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
     return internal().getActor(name, true);
@@ -155,7 +151,7 @@ public final class Ray extends RayCall {
    * If users want to use Ray API in their own threads, call this method to get the async context
    * and then call {@link #setAsyncContext} at the beginning of the new thread.
    *
-   * @return The async context.
+   * <p>Returns The async context.
    */
   public static Object getAsyncContext() {
     return internal().getAsyncContext();
@@ -179,8 +175,7 @@ public final class Ray extends RayCall {
    * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
    * objects with this method.
    *
-   * @param runnable The runnable to wrap.
-   * @return The wrapped runnable.
+   * @param runnable The runnable to wrap. Returns The wrapped runnable.
    */
   public static Runnable wrapRunnable(Runnable runnable) {
     return internal().wrapRunnable(runnable);
@@ -190,8 +185,7 @@ public final class Ray extends RayCall {
    * If users want to use Ray API in their own threads, they should wrap their {@link Callable}
    * objects with this method.
    *
-   * @param callable The callable to wrap.
-   * @return The wrapped callable.
+   * @param callable The callable to wrap. Returns The wrapped callable.
    */
   public static <T> Callable<T> wrapCallable(Callable<T> callable) {
     return internal().wrapCallable(callable);
@@ -230,8 +224,7 @@ public final class Ray extends RayCall {
    *
    * @param name Name of the placement group.
    * @param bundles Pre-allocated resource list.
-   * @param strategy Actor placement strategy.
-   * @return A handle to the created placement group.
+   * @param strategy Actor placement strategy. Returns A handle to the created placement group.
    */
   public static PlacementGroup createPlacementGroup(
       String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
@@ -258,8 +251,7 @@ public final class Ray extends RayCall {
   /**
    * Get a placement group by placement group Id.
    *
-   * @param id placement group id.
-   * @return The placement group.
+   * @param id placement group id. Returns The placement group.
    */
   public static PlacementGroup getPlacementGroup(PlacementGroupId id) {
     return internal().getPlacementGroup(id);
@@ -268,7 +260,7 @@ public final class Ray extends RayCall {
   /**
    * Get all placement groups in this cluster.
    *
-   * @return All placement groups.
+   * <p>Returns All placement groups.
    */
   public static List<PlacementGroup> getAllPlacementGroups() {
     return internal().getAllPlacementGroups();
