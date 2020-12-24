@@ -246,7 +246,7 @@ def choose_optimizer(policy, config):
         return torch.optim.Adam(
             params=policy.model.parameters(), lr=policy.cur_lr)
     else:
-        return torch.optim.RMSProp(
+        return torch.optim.RMSprop(
             params=policy.model.parameters(),
             lr=policy.cur_lr,
             weight_decay=config["decay"],

@@ -19,6 +19,8 @@
 namespace ray {
 namespace gcs {
 
+using namespace ray::rpc;
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -882,25 +884,6 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting task, status = " << status
                        << ", task id = " << task_id << ", job id = " << task_id.JobId();
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                                 const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Deleting tasks, task id list size = " << task_ids.size();
-  rpc::DeleteTasksRequest request;
-  for (auto &task_id : task_ids) {
-    request.add_task_id_list(task_id.Binary());
-  }
-  client_impl_->GetGcsRpcClient().DeleteTasks(
-      request,
-      [task_ids, callback](const Status &status, const rpc::DeleteTasksReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << status
-                       << ", task id list size = " << task_ids.size();
       });
   return Status::OK();
 }

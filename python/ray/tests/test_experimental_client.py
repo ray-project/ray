@@ -2,23 +2,9 @@ import pytest
 import time
 import sys
 import logging
-from contextlib import contextmanager
 
-import ray.experimental.client.server.server as ray_client_server
-from ray.experimental.client import ray, reset_api
 from ray.experimental.client.common import ClientObjectRef
-
-
-@contextmanager
-def ray_start_client_server():
-    server = ray_client_server.serve("localhost:50051", test_mode=True)
-    ray.connect("localhost:50051")
-    try:
-        yield ray
-    finally:
-        ray.disconnect()
-        server.stop(0)
-        reset_api()
+from ray.experimental.client.ray_client_helpers import ray_start_client_server
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
@@ -174,8 +160,7 @@ def test_basic_actor(ray_start_regular_shared):
 
 
 def test_pass_handles(ray_start_regular_shared):
-    """
-    Test that passing client handles to actors and functions to remote actors
+    """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
     caller.
     """
@@ -278,9 +263,32 @@ def test_stdout_log_stream(ray_start_regular_shared):
         assert all((msg.find("Hello world") for msg in log_msgs))
 
 
-def test_basic_named_actor(ray_start_regular_shared):
+def test_create_remote_before_start(ray_start_regular_shared):
+    """Creates remote objects (as though in a library) before
+    starting the client.
     """
-    Test that ray.get_actor() can create and return a detached actor.
+    from ray.experimental.client import ray
+
+    @ray.remote
+    class Returner:
+        def doit(self):
+            return "foo"
+
+    @ray.remote
+    def f(x):
+        return x + 20
+
+    # Prints in verbose tests
+    print("Created remote functions")
+
+    with ray_start_client_server() as ray:
+        assert ray.get(f.remote(3)) == 23
+        a = Returner.remote()
+        assert ray.get(a.doit.remote()) == "foo"
+
+
+def test_basic_named_actor(ray_start_regular_shared):
+    """Test that ray.get_actor() can create and return a detached actor.
     """
     with ray_start_client_server() as ray:
 

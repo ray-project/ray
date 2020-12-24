@@ -4,7 +4,8 @@ import pickle
 from typing import Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized
+from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
+    LogUniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -334,24 +335,26 @@ class SkOptSearch(Searcher):
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
-                if domain.sampler is not None:
-                    logger.warning(
-                        "SkOpt does not support specific sampling methods."
-                        " The {} sampler will be dropped.".format(sampler))
-                return domain.lower, domain.upper
+                if isinstance(domain.sampler, LogUniform):
+                    return sko.space.Real(
+                        domain.lower, domain.upper, prior="log-uniform")
+                return sko.space.Real(
+                    domain.lower, domain.upper, prior="uniform")
 
-            if isinstance(domain, Integer):
-                if domain.sampler is not None:
-                    logger.warning(
-                        "SkOpt does not support specific sampling methods."
-                        " The {} sampler will be dropped.".format(sampler))
-                return domain.lower, domain.upper
+            elif isinstance(domain, Integer):
+                if isinstance(domain.sampler, LogUniform):
+                    return sko.space.Integer(
+                        domain.lower, domain.upper, prior="log-uniform")
+                return sko.space.Integer(
+                    domain.lower, domain.upper, prior="uniform")
 
-            if isinstance(domain, Categorical):
+            elif isinstance(domain, Categorical):
                 return domain.categories
 
             raise ValueError("SkOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         space = {

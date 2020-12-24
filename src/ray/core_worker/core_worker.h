@@ -30,8 +30,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/gcs/subscription_executor.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -571,11 +570,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
-  /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects.
   /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
