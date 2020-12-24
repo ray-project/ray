@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <boost/bind.hpp>
 #include <chrono>
 #include <ctime>
 #include <deque>
@@ -42,8 +43,6 @@
 #include <utility>
 #include <vector>
 
-#include <boost/bind.hpp>
-
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -51,14 +50,6 @@
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/util/asio_util.h"
 #include "ray/util/util.h"
-
-#ifdef PLASMA_CUDA
-#include "arrow/gpu/cuda_api.h"
-
-using arrow::cuda::CudaBuffer;
-using arrow::cuda::CudaContext;
-using arrow::cuda::CudaDeviceManager;
-#endif
 
 namespace fb = plasma::flatbuf;
 
@@ -141,11 +132,6 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
           spill_objects_callback, object_store_full_callback) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
-#ifdef PLASMA_CUDA
-  auto maybe_manager = CudaDeviceManager::Instance();
-  DCHECK_OK(maybe_manager.status());
-  manager_ = *maybe_manager;
-#endif
 }
 
 // TODO(pcm): Get rid of this destructor by using RAII to clean up data.
@@ -243,25 +229,6 @@ uint8_t *PlasmaStore::AllocateMemory(size_t size, bool evict_if_full, MEMFD_TYPE
   return pointer;
 }
 
-#ifdef PLASMA_CUDA
-Status PlasmaStore::AllocateCudaMemory(
-    int device_num, int64_t size, uint8_t **out_pointer,
-    std::shared_ptr<CudaIpcMemHandle> *out_ipc_handle) {
-  DCHECK_NE(device_num, 0);
-  ARROW_ASSIGN_OR_RAISE(auto context, manager_->GetContext(device_num - 1));
-  ARROW_ASSIGN_OR_RAISE(auto cuda_buffer, context->Allocate(static_cast<int64_t>(size)));
-  *out_pointer = reinterpret_cast<uint8_t *>(cuda_buffer->address());
-  // The IPC handle will keep the buffer memory alive
-  return cuda_buffer->ExportForIpc().Value(out_ipc_handle);
-}
-
-Status PlasmaStore::FreeCudaMemory(int device_num, int64_t size, uint8_t *pointer) {
-  ARROW_ASSIGN_OR_RAISE(auto context, manager_->GetContext(device_num - 1));
-  RAY_RETURN_NOT_OK(context->Free(pointer, size));
-  return Status::OK();
-}
-#endif
-
 PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                                    const std::vector<uint8_t> &message,
                                                    bool evict_if_full,
@@ -318,19 +285,8 @@ PlasmaError PlasmaStore::CreateObject(
       return error;
     }
   } else {
-#ifdef PLASMA_CUDA
-    /// IPC GPU handle to share with clients.
-    std::shared_ptr<::arrow::cuda::CudaIpcMemHandle> ipc_handle;
-    auto st = AllocateCudaMemory(device_num, total_size, &pointer, &ipc_handle);
-    if (!st.ok()) {
-      RAY_LOG(ERROR) << "Failed to allocate CUDA memory: " << st.ToString();
-      return PlasmaError::OutOfMemory;
-    }
-    result->ipc_handle = ipc_handle;
-#else
     RAY_LOG(ERROR) << "device_num != 0 but CUDA not enabled";
     return PlasmaError::OutOfMemory;
-#endif
   }
 
   auto ptr = std::unique_ptr<ObjectTableEntry>(new ObjectTableEntry());
@@ -350,10 +306,6 @@ PlasmaError PlasmaStore::CreateObject(
   entry->owner_worker_id = owner_worker_id;
   entry->create_time = std::time(nullptr);
   entry->construct_duration = -1;
-
-#ifdef PLASMA_CUDA
-  entry->ipc_handle = result->ipc_handle;
-#endif
 
   result->store_fd = fd;
   result->data_offset = offset;
@@ -378,11 +330,6 @@ void PlasmaObject_init(PlasmaObject *object, ObjectTableEntry *entry) {
   RAY_DCHECK(object != nullptr);
   RAY_DCHECK(entry != nullptr);
   RAY_DCHECK(entry->state == ObjectState::PLASMA_SEALED);
-#ifdef PLASMA_CUDA
-  if (entry->device_num != 0) {
-    object->ipc_handle = entry->ipc_handle;
-  }
-#endif
   object->store_fd = entry->fd;
   object->data_offset = entry->offset;
   object->metadata_offset = entry->offset + entry->data_size;
@@ -641,10 +588,6 @@ void PlasmaStore::EraseFromObjectTable(const ObjectID &object_id) {
   auto buff_size = object->data_size + object->metadata_size;
   if (object->device_num == 0) {
     PlasmaAllocator::Free(object->pointer, buff_size);
-  } else {
-#ifdef PLASMA_CUDA
-    RAY_CHECK_OK(FreeCudaMemory(object->device_num, buff_size, object->pointer));
-#endif
   }
   store_info_.objects.erase(object_id);
 }
