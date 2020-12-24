@@ -4,8 +4,8 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/task_dependency_manager.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/grpc_client.h"
@@ -53,7 +53,7 @@ class ClusterTaskManager {
   /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     TaskDependencyManagerInterface &task_dependency_manager_,
+                     TaskDependencyManagerInterface &task_dependency_manager,
                      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info,
                      std::function<void(const Task &)> announce_infeasible_task);
