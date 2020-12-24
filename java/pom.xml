@@ -176,7 +176,14 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-checkstyle-plugin</artifactId>
-          <version>3.0.0</version>
+          <version>3.1.0</version>
+          <dependencies>
+            <dependency>
+              <groupId>com.puppycrawl.tools</groupId>
+              <artifactId>checkstyle</artifactId>
+              <version>8.19</version>
+            </dependency>
+          </dependencies>
           <executions>
             <execution>
               <id>validate</id>
@@ -235,7 +242,7 @@
                 <endWithNewline/>
                 <indent>
                   <tabs>true</tabs>
-                  <spacesPerTab>4</spacesPerTab>
+                  <spacesPerTab>2</spacesPerTab>
                 </indent>
               </format>
             </formats>

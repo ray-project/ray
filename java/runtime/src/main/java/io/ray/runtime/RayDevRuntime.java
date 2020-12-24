@@ -35,14 +35,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
     taskExecutor = new LocalModeTaskExecutor(this);
     workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
     objectStore = new LocalModeObjectStore(workerContext);
-    taskSubmitter = new LocalModeTaskSubmitter(this, taskExecutor,
-        (LocalModeObjectStore) objectStore);
-    ((LocalModeObjectStore) objectStore).addObjectPutCallback(
-        objectId -> {
-          if (taskSubmitter != null) {
-            ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId);
-          }
-        });
+    taskSubmitter =
+        new LocalModeTaskSubmitter(this, taskExecutor, (LocalModeObjectStore) objectStore);
+    ((LocalModeObjectStore) objectStore)
+        .addObjectPutCallback(
+            objectId -> {
+              if (taskSubmitter != null) {
+                ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId);
+              }
+            });
   }
 
   @Override
@@ -87,24 +88,21 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
-  public PlacementGroup getPlacementGroup(
-      PlacementGroupId id) {
-    //@TODO(clay4444): We need a LocalGcsClient before implements this.
+  public PlacementGroup getPlacementGroup(PlacementGroupId id) {
+    // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
         "Ray doesn't support placement group operations in local mode.");
   }
 
   @Override
   public List<PlacementGroup> getAllPlacementGroups() {
-    //@TODO(clay4444): We need a LocalGcsClient before implements this.
+    // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
         "Ray doesn't support placement group operations in local mode.");
   }
 
   @Override
-  public void exitActor() {
-
-  }
+  public void exitActor() {}
 
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());

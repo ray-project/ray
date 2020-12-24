@@ -75,6 +75,10 @@ popd
 
 
 pushd "$ROOT_DIR"
+
+echo "Check java code format."
+mvn -T16 spotless:check
+
 echo "Testing maven install."
 mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
 # Ensure mvn test works
