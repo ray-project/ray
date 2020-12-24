@@ -1,11 +1,11 @@
 import logging
 
 import ray
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.agents.dreamer.utils import FreezeParameters
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.policy.policy_template import build_policy_class
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 if torch:
@@ -236,8 +236,9 @@ def dreamer_optimizer_fn(policy, config):
     return (model_opt, actor_opt, critic_opt)
 
 
-DreamerTorchPolicy = build_torch_policy(
+DreamerTorchPolicy = build_policy_class(
     name="DreamerTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.dreamer.dreamer.DEFAULT_CONFIG,
     action_sampler_fn=action_sampler_fn,
     loss_fn=dreamer_loss,
