@@ -133,6 +133,8 @@ class LSTMWrapper(RecurrentNetwork):
         else:
             self.action_dim = int(len(action_space))
 
+        self.num_outputs = num_outputs
+
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action:
             self.num_outputs += self.action_dim
@@ -142,8 +144,6 @@ class LSTMWrapper(RecurrentNetwork):
         # Define input layers.
         input_layer = tf.keras.layers.Input(
             shape=(None, self.num_outputs), name="inputs")
-
-        self.num_outputs = num_outputs
 
         state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
         state_in_c = tf.keras.layers.Input(shape=(self.cell_size, ), name="c")
