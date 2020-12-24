@@ -90,7 +90,7 @@ class CoreWorkerPlasmaStoreProvider {
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception, bool release_resources = true);
+             bool *got_exception);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
@@ -98,8 +98,7 @@ class CoreWorkerPlasmaStoreProvider {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
-  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only);
 
   /// Lists objects in used (pinned) by the current client.
   ///

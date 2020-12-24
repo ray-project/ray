@@ -7,17 +7,39 @@ import unittest
 
 import ray
 from ray import tune
+from ray.rllib.agents.callbacks import DefaultCallbacks
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
-    EpisodeEnvAwareLSTMPolicy
+    EpisodeEnvAwareAttentionPolicy, EpisodeEnvAwareLSTMPolicy
+from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
+
+
+class MyCallbacks(DefaultCallbacks):
+    @override(DefaultCallbacks)
+    def on_learn_on_batch(self, *, policy, train_batch, **kwargs):
+        assert train_batch.count == 201
+        assert sum(train_batch.seq_lens) == 201
+        for k, v in train_batch.data.items():
+            if k == "state_in_0":
+                assert len(v) == len(train_batch.seq_lens)
+            else:
+                assert len(v) == 201
+        current = None
+        for o in train_batch[SampleBatch.OBS]:
+            if current:
+                assert o == current + 1
+            current = o
+            if o == 15:
+                current = None
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
@@ -114,6 +136,45 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
+            trainer.stop()
+
+    def test_traj_view_attention_net(self):
+        config = ppo.DEFAULT_CONFIG.copy()
+        # Setup attention net.
+        config["model"] = config["model"].copy()
+        config["model"]["max_seq_len"] = 50
+        config["model"]["custom_model"] = GTrXLNet
+        config["model"]["custom_model_config"] = {
+            "num_transformer_units": 1,
+            "attn_dim": 64,
+            "num_heads": 2,
+            "memory_inference": 50,
+            "memory_training": 50,
+            "head_dim": 32,
+            "ff_hidden_dim": 32,
+        }
+        # Test with odd batch numbers.
+        config["train_batch_size"] = 1031
+        config["sgd_minibatch_size"] = 201
+        config["num_sgd_iter"] = 5
+        config["num_workers"] = 0
+        config["callbacks"] = MyCallbacks
+        config["env_config"] = {
+            "config": {
+                "start_at_t": 1
+            }
+        }  # first obs is [1.0]
+
+        for _ in framework_iterator(config, frameworks="tf2"):
+            trainer = ppo.PPOTrainer(
+                config,
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
+            )
+            rw = trainer.workers.local_worker()
+            sample = rw.sample()
+            assert sample.count == config["rollout_fragment_length"]
+            results = trainer.train()
+            assert results["train_batch_size"] == config["train_batch_size"]
             trainer.stop()
 
     def test_traj_view_simple_performance(self):
@@ -297,6 +358,40 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             result = rollout_worker_wo_api.sample()
             pol_batch_wo = result.policy_batches["pol0"]
             check(pol_batch_w.data, pol_batch_wo.data)
+
+    def test_traj_view_attention_functionality(self):
+        action_space = Box(-float("inf"), float("inf"), shape=(3, ))
+        obs_space = Box(float("-inf"), float("inf"), (4, ))
+        max_seq_len = 50
+        rollout_fragment_length = 201
+        policies = {
+            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space,
+                     {}),
+        }
+
+        def policy_fn(agent_id):
+            return "pol0"
+
+        config = {
+            "multiagent": {
+                "policies": policies,
+                "policy_mapping_fn": policy_fn,
+            },
+            "model": {
+                "max_seq_len": max_seq_len,
+            },
+        },
+
+        rollout_worker_w_api = RolloutWorker(
+            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
+            policy_config=dict(config, **{"_use_trajectory_view_api": True}),
+            rollout_fragment_length=rollout_fragment_length,
+            policy_spec=policies,
+            policy_mapping_fn=policy_fn,
+            num_envs=1,
+        )
+        batch = rollout_worker_w_api.sample()
+        print(batch)
 
     def test_counting_by_agent_steps(self):
         """Test whether a PPOTrainer can be built with all frameworks."""

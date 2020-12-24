@@ -110,6 +110,8 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        self._state_inputs = self.model.get_initial_state()
+        self._is_recurrent = len(self._state_inputs) > 0
         # Auto-update model's inference view requirements, if recurrent.
         self._update_model_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
@@ -203,6 +205,11 @@ class TorchPolicy(Policy):
             Tuple:
                 - actions, state_out, extra_fetches, logp.
         """
+        self._is_recurrent = state_batches is not None and state_batches != []
+        # Switch to eval mode.
+        if self.model:
+            self.model.eval()
+
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
             state_out = state_batches
@@ -325,6 +332,9 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        # Set Model to train mode.
+        if self.model:
+            self.model.train()
         # Callback handling.
         self.callbacks.on_learn_on_batch(
             policy=self, train_batch=postprocessed_batch)
@@ -354,6 +364,9 @@ class TorchPolicy(Policy):
             view_requirements=self.view_requirements,
         )
 
+        # Mark the batch as "is_training" so the Model can use this
+        # information.
+        postprocessed_batch["is_training"] = True
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 
         # Calculate the actual policy loss.
@@ -448,7 +461,7 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def is_recurrent(self) -> bool:
-        return len(self.model.get_initial_state()) > 0
+        return self._is_recurrent
 
     @override(Policy)
     @DeveloperAPI

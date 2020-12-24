@@ -49,7 +49,8 @@ def ppo_surrogate_loss(
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        max_seq_len = torch.max(train_batch["seq_lens"])
+        B = len(train_batch["seq_lens"])
+        max_seq_len = logits.shape[0] // B
         mask = sequence_mask(
             train_batch["seq_lens"],
             max_seq_len,
@@ -244,7 +245,7 @@ class ValueNetworkMixin:
         # When not doing GAE, we do not require the value function's output.
         else:
 
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return 0.0
 
         self._value = value

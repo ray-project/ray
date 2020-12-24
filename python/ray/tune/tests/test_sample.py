@@ -26,7 +26,9 @@ class SearchSpaceTest(unittest.TestCase):
             "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
             "choice": tune.choice([2, 3, 4]),
             "randint": tune.randint(-9, 15),
+            "lograndint": tune.lograndint(1, 10),
             "qrandint": tune.qrandint(-21, 12, 3),
+            "qlograndint": tune.qlograndint(2, 20, 2),
             "randn": tune.randn(10, 2),
             "qrandn": tune.qrandn(10, 2, 0.2),
         }
@@ -58,10 +60,21 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertGreaterEqual(out["randint"], -9)
             self.assertLess(out["randint"], 15)
+            self.assertTrue(isinstance(out["randint"], int))
+
+            self.assertGreaterEqual(out["lograndint"], 1)
+            self.assertLess(out["lograndint"], 10)
+            self.assertTrue(isinstance(out["lograndint"], int))
 
             self.assertGreaterEqual(out["qrandint"], -21)
             self.assertLessEqual(out["qrandint"], 12)
             self.assertEqual(out["qrandint"] % 3, 0)
+            self.assertTrue(isinstance(out["qrandint"], int))
+
+            self.assertGreaterEqual(out["qlograndint"], 2)
+            self.assertLessEqual(out["qlograndint"], 20)
+            self.assertEqual(out["qlograndint"] % 2, 0)
+            self.assertTrue(isinstance(out["qlograndint"], int))
 
             # Very improbable
             self.assertGreater(out["randn"], 0)
@@ -417,7 +430,7 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(-15, -10).quantized(2),
+                "x": tune.sample.Integer(-15, -10),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -426,7 +439,7 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.randint("x", -15, -10),
+                "x": hp.uniformint("x", -15, -10),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
@@ -625,17 +638,22 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
+        from skopt.space import Real, Integer
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": tune.sample.Integer(0, 5),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
         }
         converted_config = SkOptSearch.convert_search_space(config)
-        skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
+        skopt_config = {
+            "a": [2, 3, 4],
+            "b/x": Integer(0, 5),
+            "b/z": Real(1e-4, 1e-2, prior="log-uniform")
+        }
 
         searcher1 = SkOptSearch(space=converted_config, metric="a", mode="max")
         searcher2 = SkOptSearch(space=skopt_config, metric="a", mode="max")
