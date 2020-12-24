@@ -1,6 +1,6 @@
 import os
 from contextlib import contextmanager
-from functoools import wraps
+from functools import wraps
 
 client_mode_enabled = os.environ.get("RAY_CLIENT_MODE", "0") == "1"
 
