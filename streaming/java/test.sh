@@ -57,12 +57,18 @@ if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
     exit $exit_code
 fi
 
+echo "Check java code format."
+# check google java style
+mvn -T16 spotless:check
+# check naming and others
+mvn -T16 checkstyle:check
+
 echo "Testing maven install."
 cd "$ROOT_DIR"/../../java
 echo "build ray maven deps"
 bazel build gen_maven_deps
 echo "maven install ray"
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
 cd "$ROOT_DIR"
 echo "maven install ray streaming"
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip

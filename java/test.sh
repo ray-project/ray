@@ -77,10 +77,13 @@ popd
 pushd "$ROOT_DIR"
 
 echo "Check java code format."
+# check google java style
 mvn -T16 spotless:check
+# check naming and others
+mvn -T16 checkstyle:check
 
 echo "Testing maven install."
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
 # Ensure mvn test works
 mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
 popd
