@@ -10,5 +10,5 @@ export const getActors = () => {
         [actorId: string]: Actor;
       };
     };
-  }>("actors");
+  }>("logical/actors");
 };
