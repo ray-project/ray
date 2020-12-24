@@ -6,7 +6,6 @@ from ray.rllib.models.jax.misc import SlimFC
 from ray.rllib.models.jax.modules.fc_stack import FCStack
 from ray.rllib.utils.framework import try_import_jax
 
-
 jax, flax = try_import_jax()
 jnp = None
 if jax:
@@ -14,7 +13,6 @@ if jax:
 
 
 class TestJAXModels(unittest.TestCase):
-
     def test_jax_slimfc(self):
         slimfc = SlimFC(5, 2)
         prng = jax.random.PRNGKey(0)
@@ -29,7 +27,6 @@ class TestJAXModels(unittest.TestCase):
 
     def test_jax_fcnet(self):
         """Tests the JAX FCNet class."""
-        batch_size = 1000
         obs_space = Box(-10.0, 10.0, shape=(4, ))
         action_space = Discrete(2)
         fc_net = FullyConnectedNetwork(
@@ -40,8 +37,7 @@ class TestJAXModels(unittest.TestCase):
                 "fcnet_hiddens": [10],
                 "fcnet_activation": "relu",
             },
-            name="jax_model"
-        )
+            name="jax_model")
         inputs = jnp.array([obs_space.sample()])
         print(fc_net({"obs": inputs}))
         fc_net.variables()

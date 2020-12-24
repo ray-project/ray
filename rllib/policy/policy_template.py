@@ -398,7 +398,6 @@ def build_policy_class(
         """
         return build_policy_class(**dict(original_kwargs, **overrides))
 
-
     policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name

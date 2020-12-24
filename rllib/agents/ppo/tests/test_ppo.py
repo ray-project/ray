@@ -45,6 +45,12 @@ class MyCallbacks(DefaultCallbacks):
                 assert p["lr"] == policy.cur_lr, "LR scheduling error!"
 
     @staticmethod
+    def _check_lr_jax(policy, policy_id):
+        for j, opt in enumerate(policy._optimizers):
+            assert opt.optimizer_def.hyper_params.learning_rate == \
+                   policy.cur_lr, "LR scheduling error!"
+
+    @staticmethod
     def _check_lr_tf(policy, policy_id):
         lr = policy.cur_lr
         sess = policy.get_session()
@@ -57,14 +63,16 @@ class MyCallbacks(DefaultCallbacks):
         assert lr == optim_lr, "LR scheduling error!"
 
     def on_train_result(self, *, trainer, result: dict, **kwargs):
-        trainer.workers.foreach_policy(self._check_lr_torch if trainer.config[
-            "framework"] == "torch" else self._check_lr_tf)
+        fw = trainer.config["framework"]
+        trainer.workers.foreach_policy(
+            self._check_lr_tf if fw.startswith("tf") else self._check_lr_torch
+            if fw == "torch" else self._check_lr_jax)
 
 
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -84,10 +92,11 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="jax"):#TODO
-            for env in ["CartPole-v0"]:#, "MsPacmanNoFrameskip-v4"]:
+        for _ in framework_iterator(
+                config, frameworks=("tf2", "tf", "torch", "jax")):
+            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False]:#True, False]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm

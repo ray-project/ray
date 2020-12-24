@@ -3,7 +3,6 @@ JAX policy class used for PPO.
 """
 import gym
 import logging
-import numpy as np
 from typing import List, Type, Union
 
 import ray
@@ -33,10 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 def ppo_surrogate_loss(
-        policy: Policy, model: ModelV2,
+        policy: Policy,
+        model: ModelV2,
         dist_class: Type[TorchDistributionWrapper],
         train_batch: SampleBatch,
-        vars=None,#TODO: test
+        vars=None,
 ) -> Union[TensorType, List[TensorType]]:
     """Constructs the loss for Proximal Policy Objective.
 
@@ -93,13 +93,13 @@ def ppo_surrogate_loss(
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
         value_fn_out = model.value_function()
-        vf_loss1 = jnp.square(
-            value_fn_out - train_batch[Postprocessing.VALUE_TARGETS])
+        vf_loss1 = jnp.square(value_fn_out -
+                              train_batch[Postprocessing.VALUE_TARGETS])
         vf_clipped = prev_value_fn_out + jnp.clip(
             value_fn_out - prev_value_fn_out, -policy.config["vf_clip_param"],
             policy.config["vf_clip_param"])
-        vf_loss2 = jnp.square(
-            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS])
+        vf_loss2 = jnp.square(vf_clipped -
+                              train_batch[Postprocessing.VALUE_TARGETS])
         vf_loss = jnp.maximum(vf_loss1, vf_loss2)
         mean_vf_loss = reduce_mean_valid(vf_loss)
         total_loss = reduce_mean_valid(
@@ -117,8 +117,8 @@ def ppo_surrogate_loss(
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
     policy._vf_explained_var = explained_variance(
-            train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function())
+        train_batch[Postprocessing.VALUE_TARGETS],
+        policy.model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
 

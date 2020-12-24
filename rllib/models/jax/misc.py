@@ -1,4 +1,3 @@
-import time
 from typing import Callable, Optional, Union
 
 from ray.rllib.models.utils import get_activation_fn, get_initializer
@@ -8,7 +7,6 @@ jax, flax = try_import_jax()
 nn = jnp = None
 if flax:
     import flax.linen as nn
-    import jax.numpy as jnp
 
 
 class SlimFC(nn.Module if nn else object):
@@ -36,8 +34,10 @@ class SlimFC(nn.Module if nn else object):
             self.initializer = "xavier_uniform"
 
         # Activation function (if any; default=None (linear)).
-        self.initializer_fn = get_initializer(self.initializer, framework="jax")
-        self.activation_fn = get_activation_fn(self.activation, framework="jax")
+        self.initializer_fn = get_initializer(
+            self.initializer, framework="jax")
+        self.activation_fn = get_activation_fn(
+            self.activation, framework="jax")
 
         # Create the flax dense layer.
         self.dense = nn.Dense(

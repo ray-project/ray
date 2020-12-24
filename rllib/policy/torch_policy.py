@@ -619,9 +619,11 @@ class LearningRateSchedule:
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
         self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-        for opt in self._optimizers:
-            for p in opt.param_groups:
-                p["lr"] = self.cur_lr
+        for i in range(len(self._optimizers)):
+            opt = self._optimizers[i]
+            new_hyperparams = opt.optimizer_def.update_hyper_params(
+                learning_rate=self.cur_lr)
+            opt.optimizer_def.hyper_params = new_hyperparams
 
 
 @DeveloperAPI

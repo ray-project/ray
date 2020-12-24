@@ -268,9 +268,10 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     Raises:
         ValueError: If name is an unknown activation function.
     """
-    deprecation_warning("rllib/utils/framework.py::get_activation_fn",
-                        "rllib/models/utils.py::get_activation_fn",
-                        error=False)
+    deprecation_warning(
+        "rllib/utils/framework.py::get_activation_fn",
+        "rllib/models/utils.py::get_activation_fn",
+        error=False)
     if framework == "torch":
         if name in ["linear", None]:
             return None

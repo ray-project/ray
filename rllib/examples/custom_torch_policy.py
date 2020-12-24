@@ -21,9 +21,7 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
 
 # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>
 MyTorchPolicy = build_policy_class(
-    name="MyTorchPolicy",
-    framework="torch",
-    loss_fn=policy_gradient_loss)
+    name="MyTorchPolicy", framework="torch", loss_fn=policy_gradient_loss)
 
 # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>
 MyTrainer = build_trainer(

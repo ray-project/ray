@@ -1089,6 +1089,13 @@ py_test(
     srcs = ["models/tests/test_distributions.py"]
 )
 
+py_test(
+    name = "test_jax_models",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_jax_models.py"]
+)
+
 # --------------------------------------------------------------------
 # Evaluation components
 # rllib/evaluation/

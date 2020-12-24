@@ -49,8 +49,7 @@ def sequence_mask(lengths, maxlen=None, dtype=None, time_major=False):
     if maxlen is None:
         maxlen = int(lengths.max())
 
-    mask = ~(jnp.ones(
-        (len(lengths), maxlen)).cumsum(axis=1).t() > lengths)
+    mask = ~(jnp.ones((len(lengths), maxlen)).cumsum(axis=1).t() > lengths)
     if not time_major:
         mask = mask.t()
     mask.type(dtype or jnp.bool_)

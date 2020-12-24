@@ -67,8 +67,8 @@ class StochasticSampling(Exploration):
                                timestep: Union[int, TensorType],
                                explore: bool = True):
         if self.framework in ["torch", "jax"]:
-            return self._get_exploration_action(action_distribution,
-                                                timestep, explore)
+            return self._get_exploration_action(action_distribution, timestep,
+                                                explore)
         else:
             return self._get_tf_exploration_action_op(action_distribution,
                                                       timestep, explore)

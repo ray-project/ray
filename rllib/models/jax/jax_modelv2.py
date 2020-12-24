@@ -8,7 +8,6 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
-
 jax, flax = try_import_jax()
 fd = None
 if flax:
@@ -44,8 +43,11 @@ class JAXModelV2(ModelV2):
     @override(ModelV2)
     def variables(self, as_dict: bool = False
                   ) -> Union[List[TensorType], Dict[str, TensorType]]:
-        params = fd({k: v["params"]._dict for k, v in self.__dict__.items() if
-                     isinstance(v, fd) and "params" in v})._dict
+        params = fd({
+            k: v["params"]._dict
+            for k, v in self.__dict__.items()
+            if isinstance(v, fd) and "params" in v
+        })._dict
         if as_dict:
             return params
         return tree.flatten(params)

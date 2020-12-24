@@ -2,7 +2,6 @@ import functools
 import gym
 import numpy as np
 import logging
-import time
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -15,7 +14,6 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.utils.jax_ops import convert_to_non_jax_type
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
@@ -97,13 +95,7 @@ class JAXPolicy(Policy):
         """
         self.framework = "jax"
         super().__init__(observation_space, action_space, config)
-        #if torch.cuda.is_available():
-        #    logger.info("TorchPolicy running on GPU.")
-        #    self.device = torch.device("cuda")
-        #else:
-        #    logger.info("TorchPolicy running on CPU.")
-        #    self.device = torch.device("cpu")
-        self.model = model#.to(self.device)
+        self.model = model
         # Auto-update model's inference view requirements, if recurrent.
         self._update_model_inference_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
@@ -127,6 +119,7 @@ class JAXPolicy(Policy):
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
 
+    @override(Policy)
     def compute_actions(
             self,
             obs_batch: Union[List[TensorType], TensorType],
@@ -139,7 +132,22 @@ class JAXPolicy(Policy):
             timestep: Optional[int] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-        raise NotImplementedError
+
+        input_dict = self._lazy_tensor_dict({
+            SampleBatch.CUR_OBS: np.asarray(obs_batch),
+            "is_training": False,
+        })
+        if prev_action_batch is not None:
+            input_dict[SampleBatch.PREV_ACTIONS] = \
+                np.asarray(prev_action_batch)
+        if prev_reward_batch is not None:
+            input_dict[SampleBatch.PREV_REWARDS] = \
+                np.asarray(prev_reward_batch)
+        for i, s in enumerate(state_batches or []):
+            input_dict["state_in_".format(i)] = s
+
+        return self.compute_actions_from_input_dict(input_dict, explore,
+                                                    timestep, **kwargs)
 
     @override(Policy)
     def compute_actions_from_input_dict(
@@ -268,8 +276,7 @@ class JAXPolicy(Policy):
         # Default action-dist inputs calculation.
         else:
             dist_class = self.dist_class
-            dist_inputs, _ = self.model(input_dict, state_batches,
-                                        seq_lens)
+            dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
 
         action_dist = dist_class(dist_inputs, self.model)
         log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
@@ -288,8 +295,9 @@ class JAXPolicy(Policy):
         grads, fetches = self.compute_gradients(postprocessed_batch)
 
         # Step the optimizer(s).
-        for i, opt in enumerate(self._optimizers):
-            opt.apply_gradients(grads)
+        for i in range(len(self._optimizers)):
+            opt = self._optimizers[i]
+            self._optimizers[i] = opt.apply_gradient(grads[i])
 
         if self.model:
             fetches["model"] = self.model.metrics()
@@ -311,44 +319,18 @@ class JAXPolicy(Policy):
 
         # Calculate the actual policy loss.
         all_grads = force_list(
-            self._gradient_loss(self, self.model, self.dist_class, train_batch, self.model.variables()))
-
-        # Call Model's custom-loss with Policy loss outputs and train_batch.
-        #if self.model:
-        #    loss_out = self.model.custom_loss(loss_out, train_batch)
-
-        # Give Exploration component that chance to modify the loss (or add
-        # its own terms).
-        #if hasattr(self, "exploration"):
-        #    loss_out = self.exploration.get_exploration_loss(
-        #        loss_out, train_batch)
-
-        #assert len(loss_out) == len(self._optimizers)
+            self._gradient_loss(
+                self,
+                self.model,
+                self.dist_class,
+                train_batch,
+                self.model.variables(as_dict=True)))
 
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
         grad_info = {"allreduce_latency": 0.0}
-
-        #all_grads = []
-        #for i, opt in enumerate(self._optimizers):
-        #    # Erase gradients in all vars of this optimizer.
-        #    opt.zero_grad()
-        #    # Recompute gradients of loss over all variables.
-        #    loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
-        #    grad_info.update(self.extra_grad_process(opt, loss_out[i]))
-
-        #    grads = []
-        #    # Note that return values are just references;
-        #    # Calling zero_grad would modify the values.
-        #    for param_group in opt.param_groups:
-        #        for p in param_group["params"]:
-        #            if p.grad is not None:
-        #                grads.append(p.grad)
-        #                all_grads.append(p.grad.data.cpu().numpy())
-        #            else:
-        #                all_grads.append(None)
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
@@ -360,11 +342,9 @@ class JAXPolicy(Policy):
     def apply_gradients(self, gradients: ModelGradients) -> None:
         # TODO(sven): Not supported for multiple optimizers yet.
         assert len(self._optimizers) == 1
-        for g, p in zip(gradients, self.model.parameters()):
-            if g is not None:
-                p.grad = torch.from_numpy(g).to(self.device)
 
-        self._optimizers[0].step()
+        # Step the optimizer(s).
+        self._optimizers[0] = self._optimizers[0].apply_gradient(gradients)
 
     @override(Policy)
     @DeveloperAPI
@@ -416,15 +396,13 @@ class JAXPolicy(Policy):
         optimizer_vars = state.pop("_optimizer_variables", None)
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
-            for o, s in zip(self._optimizers, optimizer_vars):
-                optim_state_dict = convert_to_torch_tensor(
-                    s, device=self.device)
-                o.load_state_dict(optim_state_dict)
+            for i, (o, s) in enumerate(zip(self._optimizers, optimizer_vars)):
+                self._optimizers[i].optimizer_def.state = s
         # Then the Policy's (NN) weights.
         super().set_state(state)
 
     @DeveloperAPI
-    def extra_grad_process(self, optimizer: "torch.optim.Optimizer",
+    def extra_grad_process(self, optimizer: "jax.optim.Optimizer",
                            loss: TensorType):
         """Called after each optimizer.zero_grad() + loss.backward() call.
 
@@ -498,10 +476,12 @@ class JAXPolicy(Policy):
                 The local FLAX optimizer(s) to use for this Policy.
         """
         if hasattr(self, "config"):
-            return flax.optim.Optimizer(flax.optim.Adam(
-                learning_rate=self.config["lr"]))
+            adam = flax.optim.Adam(learning_rate=self.config["lr"])
         else:
-            return flax.optim.Optimizer(flax.optim.Adam())
+            adam = flax.optim.Adam()
+        weights = self.get_weights()
+        adam_state = adam.init_state(weights)
+        return flax.optim.Optimizer(adam, adam_state, target=weights)
 
     @override(Policy)
     @DeveloperAPI
@@ -526,9 +506,3 @@ class JAXPolicy(Policy):
     def _lazy_tensor_dict(self, data):
         tensor_dict = UsageTrackingDict(data)
         return tensor_dict
-
-    #def _lazy_numpy_dict(self, postprocessed_batch):
-    #    train_batch = UsageTrackingDict(postprocessed_batch)
-    #    train_batch.set_get_interceptor(
-    #        functools.partial(convert_to_non_jax_type))
-    #    return train_batch
