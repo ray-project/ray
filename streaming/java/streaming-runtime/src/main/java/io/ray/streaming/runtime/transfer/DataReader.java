@@ -62,8 +62,8 @@ public class DataReader {
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
     ChannelCreationParametersBuilder initialParameters =
         new ChannelCreationParametersBuilder().buildInputQueueParameters(inputChannels, fromActors);
-    byte[][] inputChannelsBytes = inputChannels.stream()
-        .map(ChannelId::idStrToBytes).toArray(byte[][]::new);
+    byte[][] inputChannelsBytes =
+        inputChannels.stream().map(ChannelId::idStrToBytes).toArray(byte[][]::new);
 
     // get sequence ID and message ID from OffsetInfo
     long[] msgIds = new long[inputChannels.size()];
@@ -84,21 +84,23 @@ public class DataReader {
 
     // create native reader
     List<Integer> creationStatus = new ArrayList<>();
-    this.nativeReaderPtr = createDataReaderNative(
-        initialParameters,
-        inputChannelsBytes,
-        msgIds,
-        timerInterval,
-        creationStatus,
-        ChannelUtils.toNativeConf(workerConfig),
-        isMock
-    );
+    this.nativeReaderPtr =
+        createDataReaderNative(
+            initialParameters,
+            inputChannelsBytes,
+            msgIds,
+            timerInterval,
+            creationStatus,
+            ChannelUtils.toNativeConf(workerConfig),
+            isMock);
     for (int i = 0; i < inputChannels.size(); ++i) {
-      queueCreationStatusMap
-          .put(inputChannels.get(i), ChannelCreationStatus.fromInt(creationStatus.get(i)));
+      queueCreationStatusMap.put(
+          inputChannels.get(i), ChannelCreationStatus.fromInt(creationStatus.get(i)));
     }
-    LOG.info("Create DataReader succeed for worker: {}, creation status={}.",
-        workerConfig.workerInternalConfig.workerName(), queueCreationStatusMap);
+    LOG.info(
+        "Create DataReader succeed for worker: {}, creation status={}.",
+        workerConfig.workerInternalConfig.workerName(),
+        queueCreationStatusMap);
   }
 
   private static native long createDataReaderNative(
@@ -113,8 +115,7 @@ public class DataReader {
   /**
    * Read message from input channels, if timeout, return null.
    *
-   * @param timeoutMillis timeout
-   * @return message or null
+   * @param timeoutMillis timeout Returns message or null
    */
   public ChannelMessage read(long timeoutMillis) {
     if (buf.isEmpty()) {
@@ -183,8 +184,11 @@ public class DataReader {
   }
 
   private void getBundle(long timeoutMillis) {
-    getBundleNative(nativeReaderPtr, timeoutMillis,
-        Platform.getAddress(getBundleParams), Platform.getAddress(bundleMeta));
+    getBundleNative(
+        nativeReaderPtr,
+        timeoutMillis,
+        Platform.getAddress(getBundleParams),
+        Platform.getAddress(bundleMeta));
     bundleMeta.rewind();
     long bundleAddress = getBundleParams.getLong(0);
     int bundleSize = getBundleParams.getInt(8);
@@ -192,16 +196,12 @@ public class DataReader {
     Platform.wrapDirectBuffer(bundleData, bundleAddress, bundleSize);
   }
 
-  /**
-   * Stop reader
-   */
+  /** Stop reader */
   public void stop() {
     stopReaderNative(nativeReaderPtr);
   }
 
-  /**
-   * Close reader to release resource
-   */
+  /** Close reader to release resource */
   public void close() {
     if (nativeReaderPtr == 0) {
       return;
@@ -213,10 +213,7 @@ public class DataReader {
   }
 
   private native void getBundleNative(
-      long nativeReaderPtr,
-      long timeoutMillis,
-      long params,
-      long metaAddress);
+      long nativeReaderPtr, long timeoutMillis, long params, long metaAddress);
 
   private native byte[] getOffsetsInfoNative(long nativeQueueConsumerPtr);
 
@@ -378,5 +375,4 @@ public class DataReader {
       return barrierOffsetInfo;
     }
   }
-
 }

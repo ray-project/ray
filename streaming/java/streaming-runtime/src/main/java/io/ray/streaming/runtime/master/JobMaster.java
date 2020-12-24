@@ -67,8 +67,8 @@ public class JobMaster {
     runtimeContext = new JobMasterRuntimeContext(streamingConfig);
 
     // load checkpoint if is recover
-    if (!Ray.getRuntimeContext().isSingleProcess() && Ray.getRuntimeContext()
-        .wasCurrentActorRestarted()) {
+    if (!Ray.getRuntimeContext().isSingleProcess()
+        && Ray.getRuntimeContext().wasCurrentActorRestarted()) {
       loadMasterCheckpoint();
     }
 
@@ -101,7 +101,7 @@ public class JobMaster {
   /**
    * Init JobMaster. To initiate or recover other components(like metrics and extra coordinators).
    *
-   * @return init result
+   * <p>Returns init result
    */
   public Boolean init(boolean isRecover) {
     LOG.info("Initializing job master, isRecover={}.", isRecover);
@@ -128,15 +128,15 @@ public class JobMaster {
 
   /**
    * Submit job to run:
+   *
    * <ol>
-   * <li> Using GraphManager to build physical plan according to the logical plan.</li>
-   * <li> Using ResourceManager to manage and allocate the resources.</li>
-   * <li> Using JobScheduler to schedule the job to run.</li>
+   *   <li>Using GraphManager to build physical plan according to the logical plan.
+   *   <li>Using ResourceManager to manage and allocate the resources.
+   *   <li>Using JobScheduler to schedule the job to run.
    * </ol>
    *
    * @param jobMasterActor JobMaster actor
-   * @param jobGraph logical plan
-   * @return submit result
+   * @param jobGraph logical plan Returns submit result
    */
   public boolean submitJob(ActorHandle<JobMaster> jobMasterActor, JobGraph jobGraph) {
     LOG.info("Begin submitting job using logical plan: {}.", jobGraph);
@@ -168,8 +168,8 @@ public class JobMaster {
       LOG.debug("Save JobMaster context.");
 
       byte[] contextBytes = Serializer.encode(runtimeContext);
-      CheckpointStateUtil
-          .put(contextBackend, getJobMasterRuntimeContextKey(getConf()), contextBytes);
+      CheckpointStateUtil.put(
+          contextBackend, getJobMasterRuntimeContextKey(getConf()), contextBytes);
     }
   }
 
@@ -180,8 +180,11 @@ public class JobMaster {
       reportPb = RemoteCall.BaseWorkerCmd.parseFrom(reportBytes);
       ActorId actorId = ActorId.fromBytes(reportPb.getActorId().toByteArray());
       long remoteCallCost = System.currentTimeMillis() - reportPb.getTimestamp();
-      LOG.info("Vertex {}, request job worker commit cost {}ms, actorId={}.",
-          getExecutionVertex(actorId), remoteCallCost, actorId);
+      LOG.info(
+          "Vertex {}, request job worker commit cost {}ms, actorId={}.",
+          getExecutionVertex(actorId),
+          remoteCallCost,
+          actorId);
       RemoteCall.WorkerCommitReport commit =
           reportPb.getDetail().unpack(RemoteCall.WorkerCommitReport.class);
       WorkerCommitReport report = new WorkerCommitReport(actorId, commit.getCommitCheckpointId());
@@ -206,27 +209,31 @@ public class JobMaster {
         return RemoteCall.BoolResult.newBuilder().setBoolRes(false).build().toByteArray();
       }
       ExecutionVertex exeVertex = getExecutionVertex(actorId);
-      LOG.info("Vertex {}, request job worker rollback cost {}ms, actorId={}.",
-          exeVertex, remoteCallCost, actorId);
-      RemoteCall.WorkerRollbackRequest rollbackPb
-          = RemoteCall.WorkerRollbackRequest.parseFrom(requestPb.getDetail().getValue());
+      LOG.info(
+          "Vertex {}, request job worker rollback cost {}ms, actorId={}.",
+          exeVertex,
+          remoteCallCost,
+          actorId);
+      RemoteCall.WorkerRollbackRequest rollbackPb =
+          RemoteCall.WorkerRollbackRequest.parseFrom(requestPb.getDetail().getValue());
       exeVertex.setPid(rollbackPb.getWorkerPid());
       // To find old container where slot is located in.
       String hostname = "";
-      Optional<Container> container = ResourceUtil.getContainerById(
-          resourceManager.getRegisteredContainers(),
-          exeVertex.getContainerId()
-      );
+      Optional<Container> container =
+          ResourceUtil.getContainerById(
+              resourceManager.getRegisteredContainers(), exeVertex.getContainerId());
       if (container.isPresent()) {
         hostname = container.get().getHostname();
       }
-      WorkerRollbackRequest request = new WorkerRollbackRequest(
-          actorId, rollbackPb.getExceptionMsg(), hostname, exeVertex.getPid()
-      );
+      WorkerRollbackRequest request =
+          new WorkerRollbackRequest(
+              actorId, rollbackPb.getExceptionMsg(), hostname, exeVertex.getPid());
 
       ret = failoverCoordinator.requestJobWorkerRollback(request);
-      LOG.info("Vertex {} request rollback, exception msg : {}.",
-          exeVertex, rollbackPb.getExceptionMsg());
+      LOG.info(
+          "Vertex {} request rollback, exception msg : {}.",
+          exeVertex,
+          rollbackPb.getExceptionMsg());
 
     } catch (Throwable e) {
       LOG.error("Parse job worker rollback has exception.", e);
@@ -257,5 +264,4 @@ public class JobMaster {
   public StreamingMasterConfig getConf() {
     return conf;
   }
-
 }

@@ -28,7 +28,8 @@
     </module>
     <!-- exclude the generated files from being parsed, which make checkstyle check more fast -->
     <module name="BeforeExecutionExclusionFileFilter">
-        <property name="fileNamePattern" value="io[\\/]ray[\\/]runtime[\\/]generated[\\/]|RayCall.java|ActorCall.java"/>
+        <property name="fileNamePattern"
+                  value="io[\\/]ray[\\/].*runtime[\\/]generated[\\/]|RayCall.java|ActorCall.java"/>
     </module>
 
     <module name="TreeWalker">
@@ -62,20 +63,6 @@
                       value="LITERAL_TRY, LITERAL_FINALLY, LITERAL_IF, LITERAL_ELSE, LITERAL_SWITCH"/>
         </module>
         <module name="NeedBraces"/>
-        <module name="LeftCurly"/>
-        <module name="RightCurly">
-            <property name="id" value="RightCurlySame"/>
-            <property name="tokens"
-                      value="LITERAL_TRY, LITERAL_CATCH, LITERAL_FINALLY, LITERAL_IF, LITERAL_ELSE,
-                    LITERAL_DO"/>
-        </module>
-        <module name="RightCurly">
-            <property name="id" value="RightCurlyAlone"/>
-            <property name="option" value="alone"/>
-            <property name="tokens"
-                      value="CLASS_DEF, METHOD_DEF, CTOR_DEF, LITERAL_FOR, LITERAL_WHILE, STATIC_INIT,
-                    INSTANCE_INIT"/>
-        </module>
         <module name="WhitespaceAround">
             <property name="allowEmptyConstructors" value="true"/>
             <property name="allowEmptyMethods" value="true"/>
