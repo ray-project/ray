@@ -82,13 +82,13 @@ class PullManager {
   struct PullRequest {
     PullRequest(double first_retry_time)
         : client_locations(),
+          inflight_pulls(),
           next_pull_time(first_retry_time),
-          num_retries(0),
-          inflight_pull(false) {}
+          num_retries(0) {}
     std::vector<NodeID> client_locations;
+    std::unordered_set<NodeID> inflight_pulls;
     double next_pull_time;
     uint8_t num_retries;
-    bool inflight_pull;
   };
 
   /// See the constructor's arguments.

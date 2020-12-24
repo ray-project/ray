@@ -18,6 +18,7 @@ class PullManagerTest : public ::testing::Test {
                       [this](const ObjectID &object_id) { return object_is_local_; },
                       [this](const ObjectID &object_id, const NodeID &node_id) {
                         num_send_pull_request_calls_++;
+                        last_pulled_node_ = node_id;
                       },
                       [this](const ObjectID &, const std::string &,
                              std::function<void(const ray::Status &)>) {
@@ -31,6 +32,7 @@ class PullManagerTest : public ::testing::Test {
   int num_restore_spilled_object_calls_;
   double fake_time_;
   PullManager pull_manager_;
+  NodeID last_pulled_node_;
 };
 
 TEST_F(PullManagerTest, TestStaleSubscription) {
@@ -143,6 +145,57 @@ TEST_F(PullManagerTest, TestRetryTimer) {
 
   pull_manager_.CancelPull(obj1);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+}
+
+TEST_F(PullManagerTest, TestDedupe) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  rpc::Address addr1;
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  pull_manager_.Pull(obj1, addr1);
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+
+  std::unordered_set<NodeID> pulled_nodes;
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(obj1, client_ids, "");
+  pulled_nodes.insert(last_pulled_node_);
+
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  // 2 additional nodes have the object. We don't pull it yet though, because the retry
+  // timer hasn't gone off yet.
+  client_ids.insert(NodeID::FromRandom());
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(obj1, client_ids, "");
+
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+
+  fake_time_ += 10;
+  pull_manager_.Tick();
+  pulled_nodes.insert(last_pulled_node_);
+
+  fake_time_ += 20;
+  pull_manager_.Tick();
+  pulled_nodes.insert(last_pulled_node_);
+
+  // Now that 2 retry intervals have passed, we should've pulled from both of the other
+  // nodes.
+  ASSERT_EQ(num_send_pull_request_calls_, 3);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_EQ(pulled_nodes.size(), 3);
+
+  fake_time_ += 40;
+  pull_manager_.Tick();
+  pulled_nodes.insert(last_pulled_node_);
+
+  // Since we've sent a pull to every node we know about, we should now retry from a node
+  // we've already pulled from.
+  ASSERT_EQ(num_send_pull_request_calls_, 4);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  ASSERT_EQ(pulled_nodes.size(), 3);
 }
 
 TEST_F(PullManagerTest, TestBasic) {

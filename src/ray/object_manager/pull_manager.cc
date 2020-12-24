@@ -41,13 +41,12 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     return;
   }
   auto &request = it->second;
-  if (!request.inflight_pull) {
-    // Reset the list of clients that are now expected to have the object.
-    // NOTE(swang): Since we are overwriting the previous list of clients,
-    // we may end up sending a duplicate request to the same client as
-    // before.
-    it->second.client_locations =
-        std::vector<NodeID>(client_ids.begin(), client_ids.end());
+  // Reset the list of clients that are now expected to have the object.
+  // NOTE(swang): Since we are overwriting the previous list of clients,
+  // we may end up sending a duplicate request to the same client as
+  // before.
+  it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
+  if (request.inflight_pulls.size() == 0) {
     if (!spilled_url.empty()) {
       RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                      << client_ids.size();
@@ -75,6 +74,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
   }
 
   auto &node_vector = it->second.client_locations;
+  auto &inflight_pulls = it->second.inflight_pulls;
 
   // The timer should never fire if there are no expected client locations.
   if (node_vector.empty()) {
@@ -94,23 +94,45 @@ void PullManager::TryPull(const ObjectID &object_id) {
     return;
   }
 
-  // Choose a random client to pull the object from.
-  // Generate a random index.
-  std::uniform_int_distribution<int> distribution(0, node_vector.size() - 1);
-  int node_index = distribution(gen_);
-  NodeID node_id = node_vector[node_index];
-  // If the object manager somehow ended up choosing itself, choose a different
-  // object manager.
-  if (node_id == self_node_id_) {
-    std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
-    node_vector.pop_back();
-    RAY_LOG(WARNING)
-        << "The object manager with ID " << self_node_id_ << " is trying to pull object "
-        << object_id << " but the object table suggests that this object manager "
-        << "already has the object. It is most likely due to memory pressure, object "
-        << "pull has been requested before object location is updated.";
-    node_id = node_vector[node_index % node_vector.size()];
-    RAY_CHECK(node_id != self_node_id_);
+  NodeID node_id;
+  int num_candidates = 0;
+  for (NodeID potential : node_vector) {
+    if (inflight_pulls.count(potential) > 0) {
+      continue;
+    }
+    num_candidates++;
+    std::uniform_int_distribution<int> distribution(0, num_candidates - 1);
+    if (distribution(gen_) == 0) {
+      node_id = potential;
+    }
+  }
+
+  if (node_id.IsNil()) {
+    RAY_LOG(DEBUG)
+        << "Resending pull request for " << object_id << " to " << node_id
+        << " this means we've already tried pulling the object from all available nodes.";
+    // We've already tried all the nodes that we know about. Clear the set of inflight
+    // nodes and try again.
+    inflight_pulls.clear();
+    // Choose a random client to pull the object from.
+    // Generate a random index.
+    std::uniform_int_distribution<int> distribution(0, node_vector.size() - 1);
+    int node_index = distribution(gen_);
+    node_id = node_vector[node_index];
+    // If the object manager somehow ended up choosing itself, choose a different
+    // object manager.
+    if (node_id == self_node_id_) {
+      std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
+      node_vector.pop_back();
+      RAY_LOG(WARNING)
+          << "The object manager with ID " << self_node_id_
+          << " is trying to pull object " << object_id
+          << " but the object table suggests that this object manager "
+          << "already has the object. It is most likely due to memory pressure, object "
+          << "pull has been requested before object location is updated.";
+      node_id = node_vector[node_index % node_vector.size()];
+      RAY_CHECK(node_id != self_node_id_);
+    }
   }
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
@@ -119,7 +141,7 @@ void PullManager::TryPull(const ObjectID &object_id) {
   auto &request = it->second;
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
-  request.inflight_pull = true;
+  request.inflight_pulls.insert(node_id);
   send_pull_request_(object_id, node_id);
 }
 
