@@ -143,6 +143,8 @@ message ActorTableData {
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
   repeated ResourceMapEntry resource_mapping = 15;
+  // The process id of this actor.
+  uint32 pid = 16;
 }
 
 message ErrorTableData {

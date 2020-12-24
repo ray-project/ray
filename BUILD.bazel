@@ -880,7 +880,7 @@ cc_test(
 )
 
 cc_test(
-    name = "local_placement_group_manager_test",
+    name = "placement_group_resource_manager_test",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
     copts = COPTS,
     deps = [
@@ -956,8 +956,8 @@ cc_test(
 )
 
 cc_test(
-    name = "task_dependency_manager_test",
-    srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
+    name = "dependency_manager_test",
+    srcs = ["src/ray/raylet/dependency_manager_test.cc"],
     copts = COPTS,
     deps = [
         ":raylet_lib",
@@ -1020,7 +1020,6 @@ cc_test(
 cc_library(
     name = "gcs_test_util_lib",
     hdrs = [
-        "src/ray/gcs/test/accessor_test_base.h",
         "src/ray/gcs/test/gcs_test_util.h",
     ],
     copts = COPTS,
@@ -1618,111 +1617,6 @@ cc_library(
         ":stats_lib",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:asio",
-    ],
-)
-
-# TODO(micafan) Support test group in future. Use test group we can run all gcs test once.
-cc_test(
-    name = "redis_gcs_client_test",
-    srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "redis_actor_info_accessor_test",
-    srcs = ["src/ray/gcs/test/redis_actor_info_accessor_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "redis_object_info_accessor_test",
-    srcs = ["src/ray/gcs/test/redis_object_info_accessor_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "redis_job_info_accessor_test",
-    srcs = ["src/ray/gcs/test/redis_job_info_accessor_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "redis_node_info_accessor_test",
-    srcs = ["src/ray/gcs/test/redis_node_info_accessor_test.cc"],
-    args = [
-        "$(location redis-server)",
-        "$(location redis-cli)",
-        "$(location libray_redis_module.so)",
-    ],
-    copts = COPTS,
-    data = [
-        "//:libray_redis_module.so",
-        "//:redis-cli",
-        "//:redis-server",
-    ],
-    deps = [
-        ":gcs",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

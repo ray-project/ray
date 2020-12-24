@@ -256,8 +256,9 @@ class RayletClient : public RayletClientInterface {
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.
   ///
-  /// \return ray::Status.
-  ray::Status NotifyDirectCallTaskBlocked();
+  /// \param release_resources: true if the dirct call blocking needs to release
+  /// resources. \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked(bool release_resources);
 
   /// Notify the raylet that this client is unblocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Block calls is important.
@@ -272,7 +273,6 @@ class RayletClient : public RayletClientInterface {
   /// \param owner_addresses The addresses of the workers that own the objects.
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
-  /// \param wait_local Whether to wait for objects to appear on this node.
   /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
@@ -280,9 +280,8 @@ class RayletClient : public RayletClientInterface {
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids,
                    const std::vector<rpc::Address> &owner_addresses, int num_returns,
-                   int64_t timeout_milliseconds, bool wait_local,
-                   bool mark_worker_blocked, const TaskID &current_task_id,
-                   WaitResultPair *result);
+                   int64_t timeout_milliseconds, bool mark_worker_blocked,
+                   const TaskID &current_task_id, WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.
@@ -314,10 +313,8 @@ class RayletClient : public RayletClientInterface {
   /// \param object_ids A list of ObjectsIDs to be deleted.
   /// \param local_only Whether keep this request with local object store
   /// or send it to all the object stores.
-  /// \param delete_creating_tasks Whether also delete objects' creating tasks from GCS.
   /// \return ray::Status.
-  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only,
-                          bool deleteCreatingTasks);
+  ray::Status FreeObjects(const std::vector<ray::ObjectID> &object_ids, bool local_only);
 
   /// Sets a resource with the specified capacity and client id
   /// \param resource_name Name of the resource to be set

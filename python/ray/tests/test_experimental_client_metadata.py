@@ -1,9 +1,8 @@
-from ray.tests.test_experimental_client import ray_start_client_server
+from ray.experimental.client.ray_client_helpers import ray_start_client_server
 
 
 def test_get_ray_metadata(ray_start_regular_shared):
-    """
-    Test the ClusterInfo client data pathway and API surface
+    """Test the ClusterInfo client data pathway and API surface
     """
     with ray_start_client_server() as ray:
         ip_address = ray_start_regular_shared["node_ip_address"]

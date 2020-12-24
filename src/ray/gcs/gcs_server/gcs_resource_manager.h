@@ -72,8 +72,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// Handle a node registration.
   ///
-  /// \param node_id The specified node id.
-  void OnNodeAdd(const NodeID &node_id);
+  /// \param node The specified node to add.
+  void OnNodeAdd(const rpc::GcsNodeInfo &node);
 
   /// Handle a node death.
   ///
@@ -130,8 +130,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// Cluster resources.
-  absl::flat_hash_map<NodeID, rpc::ResourceMap> cluster_resources_;
   /// Map from node id to the scheduling resources of the node.
   absl::flat_hash_map<NodeID, SchedulingResources> cluster_scheduling_resources_;
 

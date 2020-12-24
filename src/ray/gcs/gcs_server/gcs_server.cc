@@ -43,23 +43,22 @@ GcsServer::~GcsServer() { Stop(); }
 
 void GcsServer::Start() {
   // Init backend client.
-  GcsClientOptions options(config_.redis_address, config_.redis_port,
-                           config_.redis_password, config_.is_test);
-  redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
-  auto status = redis_gcs_client_->Connect(main_service_);
+  RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
+                                          config_.redis_password, config_.is_test);
+  redis_client_ = std::make_shared<RedisClient>(redis_client_options);
+  auto status = redis_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
   // Init redis failure detector.
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-      main_service_, redis_gcs_client_->primary_context(), [this]() { Stop(); });
+      main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
 
   // Init gcs pub sub instance.
-  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_gcs_client_->GetRedisClient());
+  gcs_pub_sub_ = std::make_shared<gcs::GcsPubSub>(redis_client_);
 
   // Init gcs table storage.
-  gcs_table_storage_ =
-      std::make_shared<gcs::RedisGcsTableStorage>(redis_gcs_client_->GetRedisClient());
+  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
 
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
@@ -132,9 +131,9 @@ void GcsServer::Stop() {
 }
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(redis_gcs_client_ && gcs_table_storage_ && gcs_pub_sub_);
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      main_service_, gcs_pub_sub_, gcs_table_storage_, gcs_resource_manager_);
+  RAY_CHECK(redis_client_ && gcs_table_storage_ && gcs_pub_sub_);
+  gcs_node_manager_ =
+      std::make_shared<GcsNodeManager>(main_service_, gcs_pub_sub_, gcs_table_storage_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -151,9 +150,8 @@ void GcsServer::InitGcsHeartbeatManager(const GcsInitData &gcs_init_data) {
         main_service_.post(
             [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); });
       });
-  for (const auto &node : gcs_init_data.Nodes()) {
-    gcs_heartbeat_manager_->AddNode(node.first);
-  }
+  // Initialize by gcs tables data.
+  gcs_heartbeat_manager_->Initialize(gcs_init_data);
   // Register service.
   heartbeat_info_service_.reset(new rpc::HeartbeatInfoGrpcService(
       heartbeat_manager_io_service_, *gcs_heartbeat_manager_));
@@ -256,7 +254,7 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   std::string address = ip + ":" + std::to_string(GetPort());
   RAY_LOG(INFO) << "Gcs server address = " << address;
 
-  RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
+  RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
@@ -293,6 +291,7 @@ void GcsServer::InstallEventListeners() {
   gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
     // Because a new node has been added, we need to try to schedule the pending
     // placement groups and the pending actors.
+    gcs_resource_manager_->OnNodeAdd(*node);
     gcs_placement_group_manager_->SchedulePendingPlacementGroups();
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
@@ -302,9 +301,16 @@ void GcsServer::InstallEventListeners() {
         auto node_id = NodeID::FromBinary(node->node_id());
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
+        gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
+      });
+  gcs_node_manager_->AddNodeResourceChangedListener(
+      [this](const NodeID &node_id,
+             const std::unordered_map<std::string, double> &resource_changed) {
+        gcs_resource_manager_->SetAvailableResources(node_id,
+                                                     ResourceSet(resource_changed));
       });
 
   // Install worker event listener.

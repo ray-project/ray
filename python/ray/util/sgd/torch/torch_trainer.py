@@ -105,7 +105,9 @@ class TorchTrainer:
         wrap_ddp (bool): Whether to automatically wrap DistributedDataParallel
             over each model. If False, you are expected to call it yourself.
         timeout_s (float): Seconds before the torch process group
-            times out. Useful when machines are unreliable.
+            times out. Useful when machines are unreliable. If not set, default
+            to 30 min, which is the same default as
+            ``torch.init_process_group(...)``.
         add_dist_sampler (bool): Whether to automatically add a
             DistributedSampler to all created dataloaders. Only applicable
             if num_workers > 1.
@@ -143,7 +145,7 @@ class TorchTrainer:
             use_gpu="auto",
             backend="auto",
             wrap_ddp=True,
-            timeout_s=NCCL_TIMEOUT_S,
+            timeout_s=1800,
             use_fp16=False,
             use_tqdm=False,
             add_dist_sampler=True,
@@ -229,6 +231,9 @@ class TorchTrainer:
 
         if backend == "auto":
             backend = "nccl" if use_gpu else "gloo"
+
+        if backend == "nccl":
+            timeout_s = NCCL_TIMEOUT_S
 
         logger.debug(f"Using {backend} as backend.")
         self.backend = backend
@@ -713,7 +718,7 @@ class BaseTorchTrainable(Trainable):
                 "removed in "
                 "a future version of Ray. Override Trainable.step instead.")
 
-        train_stats = self.trainer.train(max_retries=10, profile=True)
+        train_stats = self.trainer.train(max_retries=0, profile=True)
         validation_stats = self.trainer.validate(profile=True)
         stats = merge_dicts(train_stats, validation_stats)
         return stats

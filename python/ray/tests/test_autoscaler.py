@@ -13,7 +13,6 @@ import sys
 from jsonschema.exceptions import ValidationError
 
 import ray
-import ray._private.services as services
 from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private import commands
 from ray.autoscaler.sdk import get_docker_host_mount_location
@@ -56,8 +55,11 @@ class MockProcessRunner:
         self.calls = []
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
+        self.ready_to_run = threading.Event()
+        self.ready_to_run.set()
 
     def check_call(self, cmd, *args, **kwargs):
+        self.ready_to_run.wait()
         for token in self.fail_cmds:
             if token in str(cmd):
                 raise CalledProcessError(1, token,
@@ -167,22 +169,28 @@ class MockProvider(NodeProvider):
             ]
 
     def is_running(self, node_id):
-        return self.mock_nodes[node_id].state == "running"
+        with self.lock:
+            return self.mock_nodes[node_id].state == "running"
 
     def is_terminated(self, node_id):
-        return self.mock_nodes[node_id].state in ["stopped", "terminated"]
+        with self.lock:
+            return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
-        return self.mock_nodes[node_id].tags
+        with self.lock:
+            return self.mock_nodes[node_id].tags
 
     def internal_ip(self, node_id):
-        return self.mock_nodes[node_id].internal_ip
+        with self.lock:
+            return self.mock_nodes[node_id].internal_ip
 
     def external_ip(self, node_id):
-        return self.mock_nodes[node_id].external_ip
+        with self.lock:
+            return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count):
-        self.ready_to_create.wait()
+    def create_node(self, node_config, tags, count, _skip_wait=False):
+        if not _skip_wait:
+            self.ready_to_create.wait()
         if self.fail_creates:
             return
         with self.lock:
@@ -202,7 +210,8 @@ class MockProvider(NodeProvider):
                 self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
-        self.mock_nodes[node_id].tags.update(tags)
+        with self.lock:
+            self.mock_nodes[node_id].tags.update(tags)
 
     def terminate_node(self, node_id):
         with self.lock:
@@ -701,7 +710,11 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "worker",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER
+        }, 10)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         autoscaler = StandardAutoscaler(
@@ -725,8 +738,14 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(11)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(12)])
         lm = LoadMetrics()
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
+        lm.update("172.0.0.0", {"CPU": 1}, {"CPU": 0}, {})
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -735,16 +754,16 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
-        self.waitForNodes(0)
+        self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.update()
-        self.waitForNodes(2)
+        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         # Update the config to reduce the cluster size
         new_config = SMALL_CLUSTER.copy()
         new_config["max_workers"] = 1
         self.write_config(new_config)
         autoscaler.update()
-        self.waitForNodes(1)
+        self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         # Update the config to reduce the cluster size
         new_config["min_workers"] = 10
@@ -753,12 +772,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # Because one worker already started, the scheduler waits for its
         # resources to be updated before it launches the remaining min_workers.
-        self.waitForNodes(1)
+        self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         worker_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, )[0]
         lm.update(worker_ip, {"CPU": 1}, {"CPU": 1}, {})
         autoscaler.update()
-        self.waitForNodes(10)
+        self.waitForNodes(
+            10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def testInitialWorkers(self):
         """initial_workers is deprecated, this tests that it is ignored."""
@@ -819,11 +839,15 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # 1 head node.
         self.waitForNodes(1)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         # still 1 head node because request_resources fits in the headnode.
         self.waitForNodes(1)
-        autoscaler.request_resources([{"CPU": 1}] + [{"CPU": 2}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{
+            "CPU": 1
+        }] + [{
+            "CPU": 2
+        }] * 9)
         autoscaler.update()
         self.waitForNodes(2)  # Adds a single worker to get its resources.
         autoscaler.update()
@@ -926,7 +950,11 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
 
@@ -975,7 +1003,11 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
 
@@ -1130,8 +1162,14 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(11)])
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
         lm = LoadMetrics()
+        lm.update("172.0.0.0", {"CPU": 1}, {"CPU": 0}, {})
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
@@ -1141,7 +1179,7 @@ class AutoscalingTest(unittest.TestCase):
             max_failures=0,
             update_interval_s=0)
         autoscaler.update()
-        self.waitForNodes(2)
+        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         # Write a corrupted config
         self.write_config("asdf", call_prepare_config=False)
@@ -1149,7 +1187,10 @@ class AutoscalingTest(unittest.TestCase):
             autoscaler.update()
         time.sleep(0.1)
         assert autoscaler.pending_launches.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 2
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 2
 
         # New a good config again
         new_config = SMALL_CLUSTER.copy()
@@ -1162,7 +1203,8 @@ class AutoscalingTest(unittest.TestCase):
         # resources to be updated before it launches the remaining min_workers.
         lm.update(worker_ip, {"CPU": 1}, {"CPU": 1}, {})
         autoscaler.update()
-        self.waitForNodes(10)
+        self.waitForNodes(
+            10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def testMaxFailures(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -1242,9 +1284,17 @@ class AutoscalingTest(unittest.TestCase):
                 2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
         except AssertionError:
             # The failed nodes might have been already terminated by autoscaler
-            assert len(self.provider.non_terminated_nodes({})) == 0
+            assert len(self.provider.non_terminated_nodes({})) < 2
 
     def testConfiguresOutdatedNodes(self):
+        from ray.autoscaler._private.cli_logger import cli_logger
+
+        def do_nothing(*args, **kwargs):
+            pass
+
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
+
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1279,53 +1329,61 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         lm = LoadMetrics()
         runner = MockProcessRunner()
-        runner.respond_to_call("json .Config.Env", ["[]" for i in range(5)])
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(6)])
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+        }, 1)
+        lm.update("172.0.0.0", {"CPU": 1}, {"CPU": 0}, {})
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 0
         autoscaler.update()
-        self.waitForNodes(1)
+        self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 1
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 1
 
-        # Scales up as nodes are reported as used
-        local_ip = services.get_node_ip_address()
-        lm.update(
-            local_ip, {"CPU": 2}, {"CPU": 0}, {},
-            waiting_bundles=2 * [{
-                "CPU": 2
-            }])  # head
         autoscaler.update()
         lm.update(
-            "172.0.0.0", {"CPU": 2}, {"CPU": 0}, {},
+            "172.0.0.1", {"CPU": 2}, {"CPU": 0}, {},
             waiting_bundles=2 * [{
                 "CPU": 2
             }])
         autoscaler.update()
-        self.waitForNodes(3)
+        self.waitForNodes(3, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         lm.update(
-            "172.0.0.1", {"CPU": 2}, {"CPU": 0}, {},
+            "172.0.0.2", {"CPU": 2}, {"CPU": 0}, {},
             waiting_bundles=3 * [{
                 "CPU": 2
             }])
         autoscaler.update()
-        self.waitForNodes(5)
+        self.waitForNodes(5, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         # Holds steady when load is removed
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
         lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
+        lm.update("172.0.0.2", {"CPU": 2}, {"CPU": 2}, {})
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 5
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 5
 
         # Scales down as nodes become unused
-        lm.last_used_time_by_ip["172.0.0.0"] = 0
         lm.last_used_time_by_ip["172.0.0.1"] = 0
+        lm.last_used_time_by_ip["172.0.0.2"] = 0
         autoscaler.update()
 
         assert autoscaler.pending_launches.value == 0
@@ -1333,18 +1391,21 @@ class AutoscalingTest(unittest.TestCase):
         # are not connected and hence we rely more on connected nodes for
         # min_workers. When the "pending" nodes show up as connected,
         # then we can terminate the ones connected before.
-        assert len(self.provider.non_terminated_nodes({})) == 4
-        lm.last_used_time_by_ip["172.0.0.2"] = 0
+        assert len(
+            self.provider.non_terminated_nodes({
+                TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+            })) == 4
         lm.last_used_time_by_ip["172.0.0.3"] = 0
+        lm.last_used_time_by_ip["172.0.0.4"] = 0
         autoscaler.update()
         assert autoscaler.pending_launches.value == 0
         # 2 nodes and not 1 because 1 is needed for min_worker and the other 1
         # is still not connected.
-        self.waitForNodes(2)
+        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         # when we connect it, we will see 1 node.
-        lm.last_used_time_by_ip["172.0.0.4"] = 0
+        lm.last_used_time_by_ip["172.0.0.5"] = 0
         autoscaler.update()
-        self.waitForNodes(1)
+        self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def testTargetUtilizationFraction(self):
         config = SMALL_CLUSTER.copy()

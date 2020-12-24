@@ -112,20 +112,16 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
     def check_mem_table():
         resp = requests.get(f"{webui_url}/memory/memory_table")
         resp_data = resp.json()
-        if not resp_data["result"]:
-            return False
+        assert resp_data["result"]
         latest_memory_table = resp_data["data"]["memoryTable"]
         summary = latest_memory_table["summary"]
-        try:
-            # 1 ref per handle and per object the actor has a ref to
-            assert summary["totalActorHandles"] == len(actors) * 2
-            # 1 ref for my_obj
-            assert summary["totalLocalRefCount"] == 1
-            return True
-        except AssertionError:
-            return False
+        # 1 ref per handle and per object the actor has a ref to
+        assert summary["totalActorHandles"] == len(actors) * 2
+        # 1 ref for my_obj
+        assert summary["totalLocalRefCount"] == 1
 
-    wait_for_condition(check_mem_table, 10)
+    wait_until_succeeded_without_exception(
+        check_mem_table, (AssertionError, ), timeout_ms=1000)
 
 
 def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):

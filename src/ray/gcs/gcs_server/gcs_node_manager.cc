@@ -23,16 +23,14 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(
-    boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager)
+GcsNodeManager::GcsNodeManager(boost::asio::io_service &main_io_service,
+                               std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
     : resource_timer_(main_io_service),
       light_report_resource_usage_enabled_(
           RayConfig::instance().light_report_resource_usage_enabled()),
       gcs_pub_sub_(gcs_pub_sub),
-      gcs_table_storage_(gcs_table_storage),
-      gcs_resource_manager_(gcs_resource_manager) {
+      gcs_table_storage_(gcs_table_storage) {
   SendBatchedResourceUsage();
 }
 
@@ -104,10 +102,19 @@ void GcsNodeManager::HandleReportResourceUsage(
   auto resources_data = std::make_shared<rpc::ResourcesData>();
   resources_data->CopyFrom(request.resources());
 
-  UpdateNodeResourceUsage(node_id, request);
+  // We use `node_resource_usages_` to filter out the nodes that report resource
+  // information for the first time. `UpdateNodeResourceUsage` will modify
+  // `node_resource_usages_`, so we need to do it before `UpdateNodeResourceUsage`.
+  if (!light_report_resource_usage_enabled_ ||
+      node_resource_usages_.count(node_id) == 0 ||
+      resources_data->resources_available_changed()) {
+    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
+    for (auto &listener : node_resource_changed_listeners_) {
+      listener(node_id, resource_changed);
+    }
+  }
 
-  // Update node realtime resources.
-  UpdateNodeRealtimeResources(node_id, *resources_data);
+  UpdateNodeResourceUsage(node_id, request);
 
   if (!light_report_resource_usage_enabled_ || resources_data->should_global_gc() ||
       resources_data->resources_total_size() > 0 ||
@@ -240,7 +247,6 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
     for (auto &listener : node_added_listeners_) {
       listener(node);
     }
-    gcs_resource_manager_->OnNodeAdd(node_id);
   }
 }
 
@@ -255,9 +261,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
-    // Remove from cluster resources.
-    gcs_resource_manager_->OnNodeDead(node_id);
     resources_buffer_.erase(node_id);
+    node_resource_usages_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -310,16 +315,6 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   sorted_dead_node_list_.sort(
       [](const std::pair<NodeID, int64_t> &left,
          const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
-}
-
-void GcsNodeManager::UpdateNodeRealtimeResources(
-    const NodeID &node_id, const rpc::ResourcesData &resource_data) {
-  if (!light_report_resource_usage_enabled_ ||
-      gcs_resource_manager_->GetClusterResources().count(node_id) == 0 ||
-      resource_data.resources_available_changed()) {
-    gcs_resource_manager_->SetAvailableResources(
-        node_id, ResourceSet(MapFromProtobuf(resource_data.resources_available())));
-  }
 }
 
 void GcsNodeManager::UpdatePlacementGroupLoad(
