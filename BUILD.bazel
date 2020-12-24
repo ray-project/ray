@@ -956,8 +956,8 @@ cc_test(
 )
 
 cc_test(
-    name = "task_dependency_manager_test",
-    srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
+    name = "dependency_manager_test",
+    srcs = ["src/ray/raylet/dependency_manager_test.cc"],
     copts = COPTS,
     deps = [
         ":raylet_lib",

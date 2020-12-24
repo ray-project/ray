@@ -158,7 +158,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
           },
           RayConfig::instance().object_timeout_milliseconds(), self_node_id_, gcs_client_,
           object_directory_),
-      task_dependency_manager_(object_manager, reconstruction_policy_),
+      dependency_manager_(object_manager, reconstruction_policy_),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
       agent_manager_service_handler_(
@@ -218,7 +218,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, new_resource_scheduler_, task_dependency_manager_, is_owner_alive,
+        self_node_id_, new_resource_scheduler_, dependency_manager_, is_owner_alive,
         get_node_info_func, announce_infeasible_task));
     placement_group_resource_manager_ =
         std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler_);
@@ -382,25 +382,13 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
   for (const auto &worker : workers) {
     if (!worker->IsDetachedActor()) {
       // Clean up any open ray.wait calls that the worker made.
-      task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+      dependency_manager_.CancelWaitRequest(worker->WorkerId());
       // Mark the worker as dead so further messages from it are ignored
       // (except DisconnectClient).
       worker->MarkDead();
       // Then kill the worker process.
       KillWorker(worker);
     }
-  }
-
-  if (!new_scheduler_enabled_) {
-    // Remove all tasks for this job from the scheduling queues, mark
-    // the results for these tasks as not required, cancel any attempts
-    // at reconstruction. Note that at this time the workers are likely
-    // alive because of the delay in killing workers.
-    auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-    task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-    // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-    // call it last.
-    local_queues_.RemoveTasks(tasks_to_remove);
   }
 }
 
@@ -1034,7 +1022,7 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
     if (state != TaskState::INFEASIBLE) {
       // Don't unsubscribe for infeasible tasks because we never subscribed in
       // the first place.
-      RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(task_id));
+      dependency_manager_.RemoveTaskDependencies(task_id);
     }
     // Attempt to forward the task. If this fails to forward the task,
     // the task will be resubmit locally.
@@ -1403,7 +1391,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       AsyncResolveObjectsFinish(client, task_id, true);
     }
     // Clean up any open ray.wait calls that the worker made.
-    task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+    dependency_manager_.CancelWaitRequest(worker->WorkerId());
   }
 
   // Erase any lease metadata.
@@ -1425,9 +1413,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         Task task;
-        if (local_queues_.RemoveTask(task_id, &task)) {
-          TreatTaskAsFailed(task, ErrorType::WORKER_DIED);
-        }
+        static_cast<void>(local_queues_.RemoveTask(task_id, &task));
       }
 
       if (!intentional_disconnect) {
@@ -1501,14 +1487,14 @@ void NodeManager::ProcessFetchOrReconstructMessage(
   const auto refs =
       FlatbufferToObjectReference(*message->object_ids(), *message->owner_addresses());
   if (message->fetch_only()) {
-    for (const auto &ref : refs) {
-      ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-      // If only a fetch is required, then do not subscribe to the
-      // dependencies to the task dependency manager.
-      if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-        // Fetch the object if it's not already local.
-        RAY_CHECK_OK(object_manager_.Pull(object_id, ref.owner_address()));
-      }
+    std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
+    if (!worker) {
+      worker = worker_pool_.GetRegisteredDriver(client);
+    }
+    if (worker) {
+      // This will start a fetch for the objects that gets canceled once the
+      // objects are local, or if the worker dies.
+      dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), refs);
     }
   } else {
     // The values are needed. Add all requested objects to the list to
@@ -1544,7 +1530,7 @@ void NodeManager::ProcessWaitRequestMessage(
 
   bool resolve_objects = false;
   for (auto const &object_id : object_ids) {
-    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
+    if (!dependency_manager_.CheckObjectLocal(object_id)) {
       // At least one object requires resolution.
       resolve_objects = true;
     }
@@ -1904,11 +1890,7 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
   bool canceled;
   if (new_scheduler_enabled_) {
     canceled = cluster_task_manager_->CancelTask(task_id);
-    if (canceled) {
-      // We have not yet granted the worker lease. Cancel it now.
-      task_dependency_manager_.TaskCanceled(task_id);
-      task_dependency_manager_.UnsubscribeGetDependencies(task_id);
-    } else {
+    if (!canceled) {
       // There are 2 cases here.
       // 1. We haven't received the lease request yet. It's the caller's job to
       //    retry the cancellation once we've received the request.
@@ -1925,8 +1907,9 @@ void NodeManager::HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &r
       if (removed_task.OnDispatch()) {
         // We have not yet granted the worker lease. Cancel it now.
         removed_task.OnCancellation()();
-        task_dependency_manager_.TaskCanceled(task_id);
-        task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+        if (removed_task_state == TaskState::WAITING) {
+          dependency_manager_.RemoveTaskDependencies(task_id);
+        }
       } else {
         // We already granted the worker lease and sent the reply. Re-queue the
         // task and wait for the requester to return the leased worker.
@@ -2035,7 +2018,6 @@ void NodeManager::ScheduleTasks(
   // submission vs. registering remaining queued placeable tasks here.
   std::unordered_set<TaskID> move_task_set;
   for (const auto &task : local_queues_.GetTasks(TaskState::PLACEABLE)) {
-    task_dependency_manager_.TaskPending(task);
     move_task_set.insert(task.GetTaskSpecification().TaskId());
     PublishInfeasibleTaskError(task);
     // Assert that this placeable task is not feasible locally (necessary but not
@@ -2049,37 +2031,6 @@ void NodeManager::ScheduleTasks(
   local_queues_.MoveTasks(move_task_set, TaskState::PLACEABLE, TaskState::INFEASIBLE);
   // Check the invariant that no placeable tasks remain after a call to the policy.
   RAY_CHECK(local_queues_.GetTasks(TaskState::PLACEABLE).size() == 0);
-}
-
-void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_type) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Treating task " << spec.TaskId() << " as failed because of error "
-                 << ErrorType_Name(error_type) << ".";
-  // Loop over the return IDs (except the dummy ID) and store a fake object in
-  // the object store.
-  int64_t num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask()) {
-    // TODO(rkn): We subtract 1 to avoid the dummy ID. However, this leaks
-    // information about the TaskSpecification implementation.
-    num_returns -= 1;
-  }
-  // Determine which IDs should be marked as failed.
-  std::vector<rpc::ObjectReference> objects_to_fail;
-  for (int64_t i = 0; i < num_returns; i++) {
-    rpc::ObjectReference ref;
-    ref.set_object_id(spec.ReturnId(i).Binary());
-    ref.mutable_owner_address()->CopyFrom(spec.CallerAddress());
-    objects_to_fail.push_back(ref);
-  }
-  const JobID job_id = task.GetTaskSpecification().JobId();
-  MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
-  task_dependency_manager_.TaskCanceled(spec.TaskId());
-  // Notify the task dependency manager that we no longer need this task's
-  // object dependencies. TODO(swang): Ideally, we would check the return value
-  // here. However, we don't know at this point if the task was in the WAITING
-  // or READY queue before, in which case we would not have been subscribed to
-  // its dependencies.
-  task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
 }
 
 void NodeManager::MarkObjectsAsFailed(
@@ -2189,7 +2140,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
 
   // First, always release task dependencies. This ensures we don't leak resources even
   // if we don't need to unblock the worker below.
-  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (new_scheduler_enabled_) {
     // Important: avoid double unblocking if the unblock RPC finishes after task end.
@@ -2281,15 +2232,10 @@ void NodeManager::AsyncResolveObjects(
   // fetched and/or restarted as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
-    // TODO(ekl) using the assigned task id is a hack to handle unsubscription for
-    // HandleDirectCallUnblocked.
-    auto &task_id = mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId();
-    if (!task_id.IsNil()) {
-      task_dependency_manager_.SubscribeGetDependencies(task_id, required_object_refs);
-    }
+    dependency_manager_.StartOrUpdateGetRequest(worker->WorkerId(), required_object_refs);
   } else {
-    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
-                                                       required_object_refs);
+    dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(),
+                                                 required_object_refs);
   }
 }
 
@@ -2341,13 +2287,13 @@ void NodeManager::AsyncResolveObjectsFinish(
     worker = worker_pool_.GetRegisteredDriver(client);
   }
 
+  RAY_CHECK(worker);
   // Unsubscribe from any `ray.get` objects that the task was blocked on.  Any
   // fetch or reconstruction operations to make the objects local are canceled.
   // `ray.wait` calls will stay active until the objects become local, or the
   // task/actor that called `ray.wait` exits.
-  task_dependency_manager_.UnsubscribeGetDependencies(current_task_id);
+  dependency_manager_.CancelGetRequest(worker->WorkerId());
   // Mark the task as unblocked.
-  RAY_CHECK(worker);
   if (was_blocked) {
     worker->RemoveBlockedTaskId(current_task_id);
     local_queues_.RemoveBlockedTaskId(current_task_id);
@@ -2358,7 +2304,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // TODO(atumanov): add task lookup hashmap and change EnqueuePlaceableTask to take
   // a vector of TaskIDs. Trigger MoveTask internally.
   // Subscribe to the task's dependencies.
-  bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
+  bool args_ready = dependency_manager_.RequestTaskDependencies(
       task.GetTaskSpecification().TaskId(), task.GetDependencies());
   // Enqueue the task. If all dependencies are available, then the task is queued
   // in the READY state, else the WAITING state.
@@ -2369,10 +2315,6 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   } else {
     local_queues_.QueueTasks({task}, TaskState::WAITING);
   }
-  // Mark the task as pending. Once the task has finished execution, or once it
-  // has been forwarded to another node, the task must be marked as canceled in
-  // the TaskDependencyManager.
-  task_dependency_manager_.TaskPending(task);
 }
 
 void NodeManager::AssignTask(const std::shared_ptr<WorkerInterface> &worker,
@@ -2470,12 +2412,11 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   } else {
     // If this was a non-actor task, then cancel any ray.wait calls that were
     // made during the task execution.
-    task_dependency_manager_.UnsubscribeWaitDependencies(worker.WorkerId());
+    dependency_manager_.CancelWaitRequest(worker.WorkerId());
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId());
-  task_dependency_manager_.TaskCanceled(task_id);
+  dependency_manager_.CancelGetRequest(worker.WorkerId());
 
   if (!spec.IsActorCreationTask()) {
     // Unset the worker's assigned task. We keep the assigned task ID for
@@ -2507,8 +2448,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                                            const ObjectID &required_object_id) {
   // Get the owner's address.
   rpc::Address owner_addr;
-  bool has_owner =
-      task_dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
+  bool has_owner = dependency_manager_.GetOwnerAddress(required_object_id, &owner_addr);
   if (has_owner) {
     if (!RayConfig::instance().object_pinning_enabled()) {
       // LRU eviction is enabled. The object may still be in scope, but we
@@ -2573,7 +2513,7 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
 
 void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is local.
-  const auto ready_task_ids = task_dependency_manager_.HandleObjectLocal(object_id);
+  const auto ready_task_ids = dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG) << "Object local " << object_id << ", "
                  << " on " << self_node_id_ << ", " << ready_task_ids.size()
                  << " tasks ready";
@@ -2621,7 +2561,7 @@ bool NodeManager::IsActorCreationTask(const TaskID &task_id) {
 
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
-  const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
+  const auto waiting_task_ids = dependency_manager_.HandleObjectMissing(object_id);
   std::stringstream result;
   result << "Object missing " << object_id << ", "
          << " on " << self_node_id_ << ", " << waiting_task_ids.size()
@@ -2689,10 +2629,6 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task, const NodeID &node_man
                 RAY_LOG(INFO) << "Failed to forward task " << task_id
                               << " to node manager " << node_manager_id;
 
-                // Mark the failed task as pending to let other raylets know that we still
-                // have the task. TaskDependencyManager::TaskPending() is assumed to be
-                // idempotent.
-                task_dependency_manager_.TaskPending(task);
                 // The task is not for an actor and may therefore be placed on another
                 // node immediately. Send it to the scheduling policy to be placed again.
                 local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
@@ -2743,7 +2679,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
-    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+    dependency_manager_.RemoveTaskDependencies(spec.TaskId());
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
@@ -2770,7 +2706,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
   ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
 
-  if (task_dependency_manager_.CheckObjectLocal(id)) {
+  if (dependency_manager_.CheckObjectLocal(id)) {
     // Object is already local, so we directly fire the callback to tell the core worker
     // that the plasma object is ready.
     rpc::PlasmaObjectReadyRequest request;
@@ -2797,8 +2733,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
     //    is local at this time but when the core worker was notified, the object is
     //    is evicted. The core worker should be able to handle evicted object in this
     //    case.
-    task_dependency_manager_.SubscribeWaitDependencies(associated_worker->WorkerId(),
-                                                       refs);
+    dependency_manager_.StartOrUpdateWaitRequest(associated_worker->WorkerId(), refs);
 
     // Add this worker to the listeners for the object ID.
     {
@@ -2864,7 +2799,7 @@ std::string NodeManager::DebugString() const {
   result << "\n" << worker_pool_.DebugString();
   result << "\n" << local_queues_.DebugString();
   result << "\n" << reconstruction_policy_.DebugString();
-  result << "\n" << task_dependency_manager_.DebugString();
+  result << "\n" << dependency_manager_.DebugString();
   {
     absl::MutexLock guard(&plasma_object_notification_lock_);
     result << "\nnum async plasma notifications: "
