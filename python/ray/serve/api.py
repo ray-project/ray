@@ -17,7 +17,8 @@ from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters, logger, get_conda_env_dir)
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
+from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
+                              HTTPConfig)
 from ray.serve.env import CondaEnv
 from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
@@ -93,8 +94,7 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_host, self._http_port = ray.get(
-            controller.get_http_config.remote())
+        self._http_config = ray.get(controller.get_http_config.remote())
 
         self._sync_proxied_router = None
         self._async_proxied_router = None
@@ -237,8 +237,8 @@ class Client:
                     num_cpus=0, resources={
                         node_id: 0.01
                     }).remote(
-                        "http://{}:{}/-/routes".format(self._http_host,
-                                                       self._http_port),
+                        "http://{}:{}/-/routes".format(self._http_config.host,
+                                                       self._http_config.port),
                         check_ready=check_ready,
                         timeout=HTTP_PROXY_TIMEOUT)
                 futures.append(future)
@@ -559,9 +559,7 @@ def start(detached: bool = False,
         max_task_retries=-1,
     ).remote(
         controller_name,
-        http_host,
-        http_port,
-        http_middlewares,
+        HTTPConfig(http_host, http_port, http_middlewares),
         detached=detached)
 
     if http_host is not None:
