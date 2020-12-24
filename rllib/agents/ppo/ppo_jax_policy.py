@@ -14,11 +14,11 @@ from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.policy.jax_policy import LearningRateSchedule
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-    LearningRateSchedule
+from ray.rllib.policy.torch_policy import EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.utils.jax_ops import explained_variance, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict

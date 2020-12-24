@@ -617,7 +617,7 @@ class TorchPolicy(Policy):
 #   and for all possible hyperparams, not just lr.
 @DeveloperAPI
 class LearningRateSchedule:
-    """Mixin for TorchPolicy that adds a learning rate schedule."""
+    """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
@@ -632,11 +632,9 @@ class LearningRateSchedule:
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
         self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-        for i in range(len(self._optimizers)):
-            opt = self._optimizers[i]
-            new_hyperparams = opt.optimizer_def.update_hyper_params(
-                learning_rate=self.cur_lr)
-            opt.optimizer_def.hyper_params = new_hyperparams
+        for opt in self._optimizers:
+            for p in opt.param_groups:
+                p["lr"] = self.cur_lr
 
 
 @DeveloperAPI

@@ -14,6 +14,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax
 from ray.rllib.utils.jax_ops import convert_to_non_jax_type
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
     TensorType, TrainerConfigDict
@@ -506,3 +507,29 @@ class JAXPolicy(Policy):
     def _lazy_tensor_dict(self, data):
         tensor_dict = UsageTrackingDict(data)
         return tensor_dict
+
+
+# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
+#   and for all possible hyperparams, not just lr.
+@DeveloperAPI
+class LearningRateSchedule:
+    """Mixin for TorchPolicy that adds a learning rate schedule."""
+
+    @DeveloperAPI
+    def __init__(self, lr, lr_schedule):
+        self.cur_lr = lr
+        if lr_schedule is None:
+            self.lr_schedule = ConstantSchedule(lr, framework=None)
+        else:
+            self.lr_schedule = PiecewiseSchedule(
+                lr_schedule, outside_value=lr_schedule[-1][-1], framework=None)
+
+    @override(Policy)
+    def on_global_var_update(self, global_vars):
+        super().on_global_var_update(global_vars)
+        self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
+        for i in range(len(self._optimizers)):
+            opt = self._optimizers[i]
+            new_hyperparams = opt.optimizer_def.update_hyper_params(
+                learning_rate=self.cur_lr)
+            opt.optimizer_def.hyper_params = new_hyperparams

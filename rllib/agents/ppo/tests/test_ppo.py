@@ -92,11 +92,17 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         num_iterations = 2
 
-        for _ in framework_iterator(
+        for fw in framework_iterator(
                 config, frameworks=("tf2", "tf", "torch", "jax")):
-            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
+            envs = ["CartPole-v0"]
+            if fw != "jax":
+                envs.append("MsPacmanNoFrameskip-v4")
+            for env in envs:
                 print("Env={}".format(env))
-                for lstm in [True, False]:
+                lstms = [False]
+                if fw != "jax":
+                    lstms.append(True)
+                for lstm in lstms:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm
