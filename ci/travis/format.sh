@@ -49,6 +49,7 @@ FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
 YAPF_VERSION=$(yapf --version | awk '{print $2}')
 SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
 MYPY_VERSION=$(mypy --version | awk '{print $2}')
+GOOGLE_JAVA_FORMAT_JAR=/tmp/google-java-format-1.7-all-deps.jar
 
 # params: tool name, tool version, required version
 tool_version_check() {
@@ -67,6 +68,15 @@ if which clang-format >/dev/null; then
   tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "7.0.0"
 else
     echo "WARNING: clang-format is not installed!"
+fi
+
+if command -v java >/dev/null; then
+  if [ ! -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+    echo "Java code format tool google-java-format.jar is not installed, start to install it."
+    wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
+  fi
+else
+    echo "WARNING:java is not installed!"
 fi
 
 if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
@@ -132,6 +142,19 @@ mypy_on_each() {
     popd
 }
 
+format_java_files() {
+  # read files from pipe
+  while read -r file; do
+      printf "%s\n" "$file" >> /tmp/ray_java_files_to_format
+  done
+  if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+    printf "Start format java files:\n%s" "$(cat /tmp/ray_java_files_to_format)"
+    java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i @/tmp/ray_java_files_to_format
+  else
+    echo "Java or google-java-format.jar is not installed, skip format java files."
+  fi
+  rm -rf /tmp/ray_java_files_to_format
+}
 
 # Format specified files
 format_files() {
@@ -205,6 +228,9 @@ format_all() {
       git ls-files -- '*.cc' '*.h' '*.proto' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
     fi
 
+    echo "$(date)" "format java...."
+    git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | format_java_files
+
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files
       non_shell_files=($(git ls-files -- ':(exclude)*.sh'))
@@ -251,6 +277,12 @@ format_changed() {
         if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.cc' '*.h' &>/dev/null; then
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.cc' '*.h' | xargs -P 5 \
                  clang-format -i
+        fi
+    fi
+
+    if command -v java >/dev/null; then
+       if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | format_java_files
         fi
     fi
 
