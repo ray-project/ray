@@ -12,8 +12,8 @@ except ImportError:
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, \
-    DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
+    SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import FileType, SampleBatchType
@@ -43,7 +43,7 @@ class JsonReader(InputReader):
 
         self.ioctx = ioctx or IOContext()
         self.default_policy = \
-            self.ioctx.worker.policy_map.get("default_policy")
+            self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):

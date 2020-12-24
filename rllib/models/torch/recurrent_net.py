@@ -132,6 +132,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         else:
             self.action_dim = int(len(action_space))
 
+        self.num_outputs = num_outputs
+
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action:
             self.num_outputs += self.action_dim
@@ -140,8 +142,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
 
         self.lstm = nn.LSTM(
             self.num_outputs, self.cell_size, batch_first=not self.time_major)
-
-        self.num_outputs = num_outputs
 
         # Postprocess LSTM output with another hidden layer and compute values.
         self._logits_branch = SlimFC(
