@@ -66,9 +66,8 @@ int main(int argc, char *argv[]) {
     }
     RAY_CHECK(!plasma_directory.empty());
 
-    plasma::plasma_store_runner.reset(
-        new plasma::PlasmaStoreRunner(socket_name, system_memory, hugepages_enabled,
-                                      plasma_directory));
+    plasma::plasma_store_runner.reset(new plasma::PlasmaStoreRunner(
+        socket_name, system_memory, hugepages_enabled, plasma_directory));
     // Install signal handler before starting the eventloop.
 #ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
     // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
