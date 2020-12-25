@@ -45,8 +45,7 @@ struct ObjectBuffer {
   int device_num;
 };
 
-// TODO(suquark): Maybe we should not export plasma later?
-class RAY_EXPORT PlasmaClient {
+class PlasmaClient {
  public:
   PlasmaClient();
   ~PlasmaClient();
@@ -279,7 +278,7 @@ class RAY_EXPORT PlasmaClient {
 
   bool IsInUse(const ObjectID &object_id);
 
-  class RAY_NO_EXPORT Impl;
+  class Impl;
   std::shared_ptr<Impl> impl_;
 };
 

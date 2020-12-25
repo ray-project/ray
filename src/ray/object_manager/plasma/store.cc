@@ -112,7 +112,6 @@ GetRequest::GetRequest(boost::asio::io_service &io_context,
 
 PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string directory,
                          bool hugepages_enabled, const std::string &socket_name,
-                         std::shared_ptr<ExternalStore> external_store,
                          uint32_t delay_on_oom_ms,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback)
@@ -121,7 +120,6 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service),
       eviction_policy_(&store_info_, PlasmaAllocator::GetFootprintLimit()),
-      external_store_(external_store),
       spill_objects_callback_(spill_objects_callback),
       delay_on_oom_ms_(delay_on_oom_ms),
       usage_log_interval_ns_(RayConfig::instance().object_store_usage_log_interval_s() *
@@ -467,8 +465,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     int64_t timeout_ms) {
   // Create a get request for this object.
   auto get_req = new GetRequest(io_context_, client, object_ids);
-  std::vector<ObjectID> evicted_ids;
-  std::vector<ObjectTableEntry *> evicted_entries;
   for (auto object_id : object_ids) {
     // Check if this object is already present
     // locally. If so, record that the object is being used and mark it as accounted for.
@@ -489,12 +485,12 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                       /*evict=*/true, &entry->fd, &entry->map_size,
                                       &entry->offset, client, false, &error);
       if (entry->pointer) {
+        // TODO(suquark): Not sure if this old behavior is still compatible
+        // with our current object spilling mechanics.
         entry->state = ObjectState::PLASMA_CREATED;
         entry->create_time = std::time(nullptr);
         eviction_policy_.ObjectCreated(object_id, client.get(), false);
         AddToClientObjectIds(object_id, store_info_.objects[object_id].get(), client);
-        evicted_ids.push_back(object_id);
-        evicted_entries.push_back(entry);
       } else {
         // We are out of memory and cannot allocate memory for this object.
         // Change the state of the object back to PLASMA_EVICTED so some
@@ -508,31 +504,6 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
       get_req->objects[object_id].data_size = -1;
       // Add the get request to the relevant data structures.
       object_get_requests_[object_id].push_back(get_req);
-    }
-  }
-
-  if (!evicted_ids.empty()) {
-    std::vector<std::shared_ptr<Buffer>> buffers;
-    for (size_t i = 0; i < evicted_ids.size(); ++i) {
-      RAY_CHECK(evicted_entries[i]->pointer != nullptr);
-      buffers.emplace_back(new arrow::MutableBuffer(evicted_entries[i]->pointer,
-                                                    evicted_entries[i]->data_size));
-    }
-    if (external_store_->Get(evicted_ids, buffers).ok()) {
-      for (size_t i = 0; i < evicted_ids.size(); ++i) {
-        evicted_entries[i]->state = ObjectState::PLASMA_SEALED;
-        evicted_entries[i]->construct_duration =
-            std::time(nullptr) - evicted_entries[i]->create_time;
-        PlasmaObject_init(&get_req->objects[evicted_ids[i]], evicted_entries[i]);
-        get_req->num_satisfied += 1;
-      }
-    } else {
-      // We tried to get the objects from the external store, but could not get them.
-      // Set the state of these objects back to PLASMA_EVICTED so some other request
-      // can try again.
-      for (size_t i = 0; i < evicted_ids.size(); ++i) {
-        evicted_entries[i]->state = ObjectState::PLASMA_EVICTED;
-      }
     }
   }
 
@@ -703,9 +674,6 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
   if (object_ids.size() == 0) {
     return;
   }
-
-  std::vector<std::shared_ptr<arrow::Buffer>> evicted_object_data;
-  std::vector<ObjectTableEntry *> evicted_entries;
   for (const auto &object_id : object_ids) {
     RAY_LOG(DEBUG) << "evicting object " << object_id.Hex();
     auto entry = GetObjectTableEntry(&store_info_, object_id);
@@ -718,37 +686,18 @@ void PlasmaStore::EvictObjects(const std::vector<ObjectID> &object_ids) {
     RAY_CHECK(entry->ref_count == 0)
         << "To evict an object, there must be no clients currently using it.";
 
-    // If there is a backing external store, then mark object for eviction to
-    // external store, free the object data pointer and keep a placeholder
-    // entry in ObjectTable
-    if (external_store_) {
-      evicted_object_data.push_back(std::make_shared<arrow::Buffer>(
-          entry->pointer, entry->data_size + entry->metadata_size));
-      evicted_entries.push_back(entry);
-    } else {
-      // Prepare the notification before deleting the object.
-      ObjectInfoT notification;
-      notification.object_id = object_id.Binary();
-      notification.owner_raylet_id = entry->owner_raylet_id.Binary();
-      notification.owner_ip_address = entry->owner_ip_address;
-      notification.owner_port = entry->owner_port;
-      notification.owner_worker_id = entry->owner_worker_id.Binary();
-      notification.is_deletion = true;
-      // If there is no backing external store, just erase the object entry
-      // and send a deletion notification.
-      EraseFromObjectTable(object_id);
-      // Inform all subscribers that the object has been deleted.
-      PushNotification(&notification);
-    }
-  }
-
-  if (external_store_ && !object_ids.empty()) {
-    RAY_CHECK_OK(external_store_->Put(object_ids, evicted_object_data));
-    for (auto entry : evicted_entries) {
-      PlasmaAllocator::Free(entry->pointer, entry->data_size + entry->metadata_size);
-      entry->pointer = nullptr;
-      entry->state = ObjectState::PLASMA_EVICTED;
-    }
+    // Prepare the notification before deleting the object.
+    ObjectInfoT notification;
+    notification.object_id = object_id.Binary();
+    notification.owner_raylet_id = entry->owner_raylet_id.Binary();
+    notification.owner_ip_address = entry->owner_ip_address;
+    notification.owner_port = entry->owner_port;
+    notification.owner_worker_id = entry->owner_worker_id.Binary();
+    notification.is_deletion = true;
+    // Erase the object entry and send a deletion notification.
+    EraseFromObjectTable(object_id);
+    // Inform all subscribers that the object has been deleted.
+    PushNotification(&notification);
   }
 }
 
