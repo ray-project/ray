@@ -21,7 +21,7 @@ from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
     MBMPOExploration
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.model_vector_env import model_vector_env
+from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet

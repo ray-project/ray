@@ -22,7 +22,8 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.utils.filter import Filter
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
-from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
+from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
+    MonitorEnv
 from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize

@@ -1067,6 +1067,20 @@ py_test(
     srcs = ["env/wrappers/tests/test_recsim_wrapper.py"]
 )
 
+py_test(
+    name = "env/wrappers/tests/test_exception_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_exception_wrapper.py"]
+)
+
+py_test(
+    name = "env/wrappers/tests/test_group_agents_wrapper",
+    tags = ["env"],
+    size = "small",
+    srcs = ["env/wrappers/tests/test_group_agents_wrapper.py"]
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
