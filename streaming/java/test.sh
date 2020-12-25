@@ -7,6 +7,14 @@ set -x
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
+pushd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+popd
+
 echo "build ray streaming"
 bazel build //streaming/java:all
 
@@ -17,9 +25,6 @@ if [ -n "${symbols_conflict}" ]; then
     echo "streaming should not include symbols from ray: ${symbols_conflict}"
     exit 1
 fi
-
-echo "Linting Java code with checkstyle."
-bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_only
 
 echo "Running streaming tests."
 java -cp "$ROOT_DIR"/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
@@ -56,12 +61,6 @@ if [ $exit_code -ne 2 ] && [ $exit_code -ne 0 ] ; then
     done
     exit $exit_code
 fi
-
-echo "Check java code format."
-# check google java style
-mvn -T16 spotless:check
-# check naming and others
-mvn -T16 checkstyle:check
 
 echo "Testing maven install."
 cd "$ROOT_DIR"/../../java
