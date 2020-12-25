@@ -12,7 +12,6 @@ def ray_deps_build_all():
   bazel_skylib_workspace()
   gen_java_deps()
   gen_streaming_java_deps()
-  checkstyle_deps()
   boost_deps()
   prometheus_cpp_repositories()
   python_configure(name = "local_config_python")
