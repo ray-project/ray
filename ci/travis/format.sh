@@ -270,8 +270,6 @@ format_changed() {
 
     if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
-            changed_java_files=$(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java')
-            printf "Start to format the changed java files: \n%s" "$changed_java_files"
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
         fi
     fi
