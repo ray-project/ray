@@ -76,7 +76,7 @@ if command -v java >/dev/null; then
     wget https://github.com/google/google-java-format/releases/download/google-java-format-1.7/google-java-format-1.7-all-deps.jar -O "$GOOGLE_JAVA_FORMAT_JAR"
   fi
 else
-    echo "WARNING:java is not installed!"
+    echo "WARNING:java is not installed, skip format java files!"
 fi
 
 if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
@@ -140,20 +140,6 @@ mypy_on_each() {
        mypy ${MYPY_FLAGS[@]+"${MYPY_FLAGS[@]}"} "$file"
     done
     popd
-}
-
-format_java_files() {
-  # read files from pipe
-  while read -r file; do
-      printf "%s\n" "$file" >> /tmp/ray_java_files_to_format
-  done
-  if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-    printf "Start format java files:\n%s" "$(cat /tmp/ray_java_files_to_format)"
-    java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i @/tmp/ray_java_files_to_format
-  else
-    echo "Java or google-java-format.jar is not installed, skip format java files."
-  fi
-  rm -rf /tmp/ray_java_files_to_format
 }
 
 # Format specified files
@@ -229,7 +215,9 @@ format_all() {
     fi
 
     echo "$(date)" "format java...."
-    git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | format_java_files
+    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
+      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+    fi
 
     if command -v shellcheck >/dev/null; then
       local shell_files non_shell_files
@@ -280,9 +268,11 @@ format_changed() {
         fi
     fi
 
-    if command -v java >/dev/null; then
+    if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | format_java_files
+            changed_java_files=$(git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java')
+            printf "Start to format the changed java files: \n%s" "$changed_java_files"
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
         fi
     fi
 
