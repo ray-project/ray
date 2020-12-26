@@ -3,7 +3,6 @@ from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import numpy as np
 import unittest
 
-
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.preprocessors import DictFlatteningPreprocessor, \
     get_preprocessor, NoPreprocessor, TupleFlatteningPreprocessor, \
@@ -12,7 +11,6 @@ from ray.rllib.utils.test_utils import check
 
 
 class TestPreprocessors(unittest.TestCase):
-
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
         self.assertEqual(type(p1), NoPreprocessor)
@@ -49,8 +47,10 @@ class TestPreprocessors(unittest.TestCase):
         self.assertTrue(isinstance(pp, DictFlatteningPreprocessor))
         self.assertEqual(pp.shape, (9, ))
         check(
-            pp.transform({"a": 1, "b": (1, np.array([0.0, -0.5, 0.1, 0.6]))}),
-            [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, -0.5, 0.1,  0.6])
+            pp.transform({
+                "a": 1,
+                "b": (1, np.array([0.0, -0.5, 0.1, 0.6]))
+            }), [0.0, 1.0, 0.0, 1.0, 0.0, 0.0, -0.5, 0.1, 0.6])
 
     def test_one_hot_preprocessor(self):
         space = Discrete(5)

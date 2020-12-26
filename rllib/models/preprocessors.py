@@ -149,6 +149,7 @@ class OneHotPreprocessor(Preprocessor):
         >>> self.transform(MultiDiscrete([2, 3]).sample())
         ... np.array([0.0, 1.0, 0.0, 0.0, 1.0])
     """
+
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         if isinstance(obs_space, gym.spaces.Discrete):
@@ -159,9 +160,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        arr = np.zeros(
-            self._init_shape(self._obs_space, {}),
-            dtype=np.float32)
+        arr = np.zeros(self._init_shape(self._obs_space, {}), dtype=np.float32)
         if isinstance(self._obs_space, gym.spaces.Discrete):
             arr[observation] = 1
         else:

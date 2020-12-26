@@ -1,5 +1,5 @@
 import gym
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Discrete
 import numpy as np
 import unittest
 
@@ -7,8 +7,7 @@ import ray
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS, ActionDistribution
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
-from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
-                                            Preprocessor)
+from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
