@@ -10,16 +10,15 @@ deprecation_warning(
     error=False,
 )
 
-# Check whether this will get through linter.
-# is_atari = is_atari
-# get_wrapper_by_cls = get_wrapper_by_cls
-# MonitorEnv = MonitorEnv
-# NoopResetEnv = NoopResetEnv
-# ClipRewardEnv = ClipRewardEnv
-# FireResetEnv = FireResetEnv
-# EpisodicLifeEnv = EpisodicLifeEnv
-# MaxAndSkipEnv = MaxAndSkipEnv
-# WarpFrame = WarpFrame
-# FrameStack = FrameStack
-# ScaledFloatFrame = ScaledFloatFrame
-# wrap_deepmind = wrap_deepmind
+is_atari = is_atari
+get_wrapper_by_cls = get_wrapper_by_cls
+MonitorEnv = MonitorEnv
+NoopResetEnv = NoopResetEnv
+ClipRewardEnv = ClipRewardEnv
+FireResetEnv = FireResetEnv
+EpisodicLifeEnv = EpisodicLifeEnv
+MaxAndSkipEnv = MaxAndSkipEnv
+WarpFrame = WarpFrame
+FrameStack = FrameStack
+ScaledFloatFrame = ScaledFloatFrame
+wrap_deepmind = wrap_deepmind

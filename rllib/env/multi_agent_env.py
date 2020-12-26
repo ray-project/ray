@@ -155,6 +155,7 @@ def make_multi_agent(env_name_or_creator):
          >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
          ...    {"num_agents": 2})
     """
+
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config):
             num = config.pop("num_agents", 1)
