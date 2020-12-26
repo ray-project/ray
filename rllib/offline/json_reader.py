@@ -42,8 +42,10 @@ class JsonReader(InputReader):
         """
 
         self.ioctx = ioctx or IOContext()
-        self.default_policy = \
-            self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+        self.default_policy = None
+        if self.ioctx.worker is not None:
+            self.default_policy = \
+                self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):

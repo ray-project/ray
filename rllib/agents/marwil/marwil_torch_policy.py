@@ -24,6 +24,7 @@ class ValueNetworkMixin:
                 return self.model.value_function()[0]
 
         else:
+
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
