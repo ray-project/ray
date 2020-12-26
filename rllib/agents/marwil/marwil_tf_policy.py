@@ -31,8 +31,10 @@ class ValueNetworkMixin:
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
                     SampleBatch.CUR_OBS: tf.convert_to_tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor([prev_action]),
-                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor([prev_reward]),
+                    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                        [prev_action]),
+                    SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
+                        [prev_reward]),
                     "is_training": tf.convert_to_tensor(False),
                 }, [tf.convert_to_tensor([s]) for s in state],
                                           tf.convert_to_tensor([1]))
@@ -57,10 +59,8 @@ class ReweightedImitationLoss:
             # Update averaged advantage norm.
             # Eager.
             if policy.config["framework"] in ["tf2", "tfe"]:
-                policy._ma_adv_norm.assign_add(
-                    1e-6 *
-                    (tf.reduce_mean(
-                        tf.math.square(adv)) - policy._ma_adv_norm))
+                policy._ma_adv_norm.assign_add(1e-6 * (
+                    tf.reduce_mean(tf.math.square(adv)) - policy._ma_adv_norm))
                 # Exponentially weighted advantages.
                 exp_advs = tf.math.exp(beta * tf.math.divide(
                     adv, 1e-8 + tf.math.sqrt(policy._ma_adv_norm)))
@@ -68,9 +68,8 @@ class ReweightedImitationLoss:
             else:
                 update_adv_norm = tf1.assign_add(
                     ref=policy._ma_adv_norm,
-                    value=1e-6 *
-                          (tf.reduce_mean(
-                              tf.math.square(adv)) - policy._ma_adv_norm))
+                    value=1e-6 * (tf.reduce_mean(tf.math.square(adv)) -
+                                  policy._ma_adv_norm))
 
                 # Exponentially weighted advantages.
                 with tf1.control_dependencies([update_adv_norm]):

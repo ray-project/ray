@@ -498,8 +498,7 @@ class DynamicTFPolicy(TFPolicy):
             dummy_batch = SampleBatch(dummy_batch)
 
         logger.info("Testing `postprocess_trajectory` w/ dummy batch.")
-        self.exploration.postprocess_trajectory(self, dummy_batch,
-                                                self._sess)
+        self.exploration.postprocess_trajectory(self, dummy_batch, self._sess)
         postprocessed_batch = self.postprocess_trajectory(dummy_batch)
         # Add new columns automatically to (loss) input_dict.
         if self.config["_use_trajectory_view_api"]:
@@ -555,8 +554,8 @@ class DynamicTFPolicy(TFPolicy):
         loss = self._do_loss_init(train_batch)
 
         all_accessed_keys = \
-            train_batch.accessed_keys | batch_for_postproc.accessed_keys | \
-            batch_for_postproc.added_keys | set(
+            train_batch.accessed_keys | dummy_batch.accessed_keys | \
+            dummy_batch.added_keys | set(
                 self.model.inference_view_requirements.keys())
 
         TFPolicy._initialize_loss(self, loss, [(k, v)
@@ -577,9 +576,9 @@ class DynamicTFPolicy(TFPolicy):
                 auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys
+                                dummy_batch.accessed_keys
             # Tag those only needed for post-processing.
-            for key in batch_for_postproc.accessed_keys:
+            for key in dummy_batch.accessed_keys:
                 if key not in train_batch.accessed_keys and \
                         key not in self.model.inference_view_requirements:
                     if key in self.view_requirements:
@@ -598,7 +597,7 @@ class DynamicTFPolicy(TFPolicy):
                     # If user deleted this key manually in postprocessing
                     # fn, warn about it and do not remove from
                     # view-requirements.
-                    if key in batch_for_postproc.deleted_keys:
+                    if key in dummy_batch.deleted_keys:
                         logger.warning(
                             "SampleBatch key '{}' was deleted manually in "
                             "postprocessing function! RLlib will "

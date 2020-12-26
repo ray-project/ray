@@ -2,7 +2,7 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Any, Dict, Iterable, List, Optional, Set, Union
+from typing import Dict, Iterable, List, Optional, Set, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
@@ -491,8 +491,8 @@ class SampleBatch:
             else:
                 # Index range.
                 if isinstance(index, tuple):
-                    data = self.data[data_col][index[0]:index[1] + 1
-                                               if index[1] != -1 else None]
+                    data = self.data[data_col][index[0]:index[1] +
+                                               1 if index[1] != -1 else None]
                     input_dict[view_col] = np.array([data])
                 # Single index.
                 else:

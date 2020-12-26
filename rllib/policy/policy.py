@@ -656,14 +656,14 @@ class Policy(metaclass=ABCMeta):
                 auto_remove_unneeded_view_reqs:
             # Add those needed for postprocessing and training.
             all_accessed_keys = train_batch.accessed_keys | \
-                                batch_for_postproc.accessed_keys | \
-                                batch_for_postproc.added_keys
+                                self._dummy_batch.accessed_keys | \
+                                self._dummy_batch.added_keys
             for key in all_accessed_keys:
                 if key not in self.view_requirements:
                     self.view_requirements[key] = ViewRequirement()
             if self._loss:
                 # Tag those only needed for post-processing.
-                for key in batch_for_postproc.accessed_keys:
+                for key in self._dummy_batch.accessed_keys:
                     if key not in train_batch.accessed_keys and \
                             key in self.view_requirements and \
                             key not in self.model.inference_view_requirements:
@@ -680,7 +680,7 @@ class Policy(metaclass=ABCMeta):
                         # If user deleted this key manually in postprocessing
                         # fn, warn about it and do not remove from
                         # view-requirements.
-                        if key in batch_for_postproc.deleted_keys:
+                        if key in self._dummy_batch.deleted_keys:
                             logger.warning(
                                 "SampleBatch key '{}' was deleted manually in "
                                 "postprocessing function! RLlib will "

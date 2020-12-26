@@ -75,8 +75,7 @@ if __name__ == "__main__":
                         "agent_id": 1,
                     }),
                 },
-                "policy_mapping_fn": lambda agent_id: "pol1"
-                if agent_id == 0 else "pol2",
+                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
             "framework": "torch" if args.torch else "tf",
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
