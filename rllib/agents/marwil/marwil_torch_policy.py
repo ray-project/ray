@@ -5,6 +5,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import explained_variance
+from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
 torch, _ = try_import_torch()
 
@@ -18,6 +19,7 @@ class ValueNetworkMixin:
         if config["_use_trajectory_view_api"]:
 
             def value(**input_dict):
+                input_dict = self._lazy_tensor_dict(input_dict)
                 model_out, _ = self.model.from_batch(
                     input_dict, is_training=False)
                 # [0] = remove the batch dim.
