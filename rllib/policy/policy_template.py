@@ -6,7 +6,6 @@ from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.jax_policy import JAXPolicy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
@@ -78,7 +77,7 @@ def build_policy_class(
         view_requirements_fn: Optional[Callable[[Policy], Dict[
             str, ViewRequirement]]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None
-) -> Type[Union[JAXPolicy, TorchPolicy]]:
+) -> Type[TorchPolicy]:
     """Helper function for creating a new Policy class at runtime.
 
     Supports frameworks JAX and PyTorch.
@@ -195,7 +194,7 @@ def build_policy_class(
     """
 
     original_kwargs = locals().copy()
-    parent_cls = TorchPolicy if framework == "torch" else JAXPolicy
+    parent_cls = TorchPolicy
     base = add_mixins(parent_cls, mixins)
 
     class policy_cls(base):
