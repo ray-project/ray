@@ -288,7 +288,7 @@ ray::Status NodeManager::RegisterGcs() {
       [this](const ResourceUsageBatchData &resource_usage_batch) {
         ResourceUsageBatchAdded(resource_usage_batch);
       };
-  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeBatchedResourceUsage(
+  RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
       resource_usage_batch_added, /*done*/ nullptr));
 
   // Subscribe to all unexpected failure notifications from the local and
@@ -448,7 +448,7 @@ void NodeManager::ReportResourceUsage() {
     // Update local chche from gcs remote cache, this is needed when gcs restart.
     // We should always keep the cache view consistent.
     new_resource_scheduler_->UpdateLastReportResourcesFromGcs(
-        gcs_client_->Nodes().GetLastResourceUsage());
+        gcs_client_->NodeResources().GetLastResourceUsage());
     new_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
                                                resources_data);
     cluster_task_manager_->FillResourceUsage(light_report_resource_usage_enabled_,
@@ -460,7 +460,7 @@ void NodeManager::ReportResourceUsage() {
     // If light resource usage report enabled, we only set filed that represent resources
     // changed.
     if (light_report_resource_usage_enabled_) {
-      auto last_heartbeat_resources = gcs_client_->Nodes().GetLastResourceUsage();
+      auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
       if (!last_heartbeat_resources->GetTotalResources().IsEqual(
               local_resources.GetTotalResources())) {
         for (const auto &resource_pair :
@@ -546,8 +546,8 @@ void NodeManager::ReportResourceUsage() {
   if (resources_data->resources_total_size() > 0 ||
       resources_data->resources_available_changed() ||
       resources_data->resource_load_changed() || resources_data->should_global_gc()) {
-    RAY_CHECK_OK(
-        gcs_client_->Nodes().AsyncReportResourceUsage(resources_data, /*done*/ nullptr));
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(resources_data,
+                                                                       /*done*/ nullptr));
   }
 
   // Reset the timer.

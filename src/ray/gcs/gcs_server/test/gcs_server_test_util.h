@@ -371,12 +371,6 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncSubscribeBatchedResourceUsage(
-        const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-        const gcs::StatusCallback &done) override {
-      return Status::NotImplemented("");
-    }
-
     void AsyncResubscribe(bool is_pubsub_server_restarted) override {}
   };
 
