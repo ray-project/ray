@@ -65,28 +65,6 @@ class TestModelCatalog(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_gym_preprocessors(self):
-        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
-        self.assertEqual(type(p1), NoPreprocessor)
-
-        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
-        self.assertEqual(type(p2), OneHotPreprocessor)
-
-    def test_tuple_preprocessor(self):
-        ray.init(object_store_memory=1000 * 1024 * 1024)
-
-        class TupleEnv:
-            def __init__(self):
-                self.observation_space = Tuple(
-                    [Discrete(5),
-                     Box(0, 5, shape=(3, ), dtype=np.float32)])
-
-        p1 = ModelCatalog.get_preprocessor(TupleEnv())
-        self.assertEqual(p1.shape, (8, ))
-        self.assertEqual(
-            list(p1.transform((0, np.array([1, 2, 3])))),
-            [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
-
     def test_custom_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
         ModelCatalog.register_custom_preprocessor("foo", CustomPreprocessor)
