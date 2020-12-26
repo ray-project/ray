@@ -1,10 +1,8 @@
 import binascii
 import errno
 import hashlib
-import inspect
 import logging
 import multiprocessing
-import numpy as np
 import os
 import signal
 import subprocess
@@ -13,11 +11,13 @@ import tempfile
 import threading
 import time
 import uuid
+from inspect import signature
 
+import numpy as np
+import psutil
 import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
-import psutil
 
 pwd = None
 if sys.platform != "win32":
@@ -50,9 +50,9 @@ def get_ray_temp_dir():
 
 
 def _random_string():
-    id_hash = hashlib.sha1()
+    id_hash = hashlib.shake_128()
     id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest()
+    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
     assert len(id_bytes) == ray_constants.ID_SIZE
     return id_bytes
 
@@ -127,53 +127,6 @@ def push_error_to_driver_through_redis(redis_client,
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
                          pubsub_msg.SerializeToString())
-
-
-def is_cython(obj):
-    """Check if an object is a Cython function or method"""
-
-    # TODO(suo): We could split these into two functions, one for Cython
-    # functions and another for Cython methods.
-    # TODO(suo): There doesn't appear to be a Cython function 'type' we can
-    # check against via isinstance. Please correct me if I'm wrong.
-    def check_cython(x):
-        return type(x).__name__ == "cython_function_or_method"
-
-    # Check if function or method, respectively
-    return check_cython(obj) or \
-        (hasattr(obj, "__func__") and check_cython(obj.__func__))
-
-
-def is_function_or_method(obj):
-    """Check if an object is a function or method.
-
-    Args:
-        obj: The Python object in question.
-
-    Returns:
-        True if the object is an function or method.
-    """
-    return inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj)
-
-
-def is_class_method(f):
-    """Returns whether the given method is a class_method."""
-    return hasattr(f, "__self__") and f.__self__ is not None
-
-
-def is_static_method(cls, f_name):
-    """Returns whether the class has a static method with the given name.
-
-    Args:
-        cls: The Python class (i.e. object of type `type`) to
-            search for the method in.
-        f_name: The name of the method to look up in this class
-            and check whether or not it is static.
-    """
-    for cls in inspect.getmro(cls):
-        if f_name in cls.__dict__:
-            return isinstance(cls.__dict__[f_name], staticmethod)
-    return False
 
 
 def random_string():
@@ -388,23 +341,6 @@ def resources_from_resource_arguments(
     return resources
 
 
-_default_handler = None
-
-
-def setup_logger(logging_level, logging_format):
-    """Setup default logging for ray."""
-    logger = logging.getLogger("ray")
-    if type(logging_level) is str:
-        logging_level = logging.getLevelName(logging_level.upper())
-    logger.setLevel(logging_level)
-    global _default_handler
-    if _default_handler is None:
-        _default_handler = logging.StreamHandler()
-        logger.addHandler(_default_handler)
-    _default_handler.setFormatter(logging.Formatter(logging_format))
-    logger.propagate = False
-
-
 class Unbuffered(object):
     """There's no "built-in" solution to programatically disabling buffering of
     text files. Ray expects stdout/err to be text files, so creating an
@@ -445,32 +381,6 @@ def open_log(path, unbuffered=False, **kwargs):
         return Unbuffered(stream)
     else:
         return stream
-
-
-def create_and_init_new_worker_log(path, worker_pid):
-    """Opens or creates and sets up a new worker log file. Note that because we
-    expect to dup the underlying file descriptor, then fdopen it, the python
-    level metadata is not important.
-
-    Args:
-        path (str): The name/path of the file to be opened.
-        worker_pid (int): The pid of the worker process.
-
-    Returns:
-        A file-like object which can be written to.
-
-    """
-    # TODO (Alex): We should eventually be able to replace this with
-    # named-pipes.
-    f = open_log(path)
-    # Check to see if we're creating this file. No one else should ever write
-    # to this file, so we don't have to worry about TOCTOU.
-    if f.tell() == 0:
-        # This should always be the first message to appear in the worker's
-        # stdout and stderr log files. The string "Ray worker pid:" is
-        # parsed in the log monitor process.
-        print(f"Ray worker pid: {worker_pid}", file=f)
-    return f
 
 
 def get_system_memory():
@@ -897,3 +807,8 @@ def get_user():
         return pwd.getpwuid(os.getuid()).pw_name
     except Exception:
         return ""
+
+
+def get_function_args(callable):
+    all_parameters = frozenset(signature(callable).parameters)
+    return list(all_parameters)

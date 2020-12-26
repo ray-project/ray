@@ -67,13 +67,14 @@ if __name__ == "__main__":
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
-        print("== Test config ==")
-        print(yaml.dump(experiments))
-
         # Add torch option to exp configs.
         for exp in experiments.values():
             if args.torch:
                 exp["config"]["framework"] = "torch"
+
+        # Print out the actual config.
+        print("== Test config ==")
+        print(yaml.dump(experiments))
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.
@@ -96,7 +97,7 @@ if __name__ == "__main__":
                 print("Regression test PASSED")
                 break
             else:
-                print("Regression test FAILED on attempt {}", i + 1)
+                print("Regression test FAILED on attempt {}".format(i + 1))
 
         if not passed:
             print("Overall regression FAILED: Exiting with Error.")

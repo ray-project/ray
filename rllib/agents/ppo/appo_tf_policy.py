@@ -13,12 +13,12 @@ from typing import Dict, List, Optional, Type, Union
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
@@ -338,31 +338,14 @@ def postprocess_trajectory(
         SampleBatch: The postprocessed, modified SampleBatch (or a new one).
     """
     if not policy.config["vtrace"]:
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(policy.num_state_tensors()):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                   sample_batch[SampleBatch.ACTIONS][-1],
-                                   sample_batch[SampleBatch.REWARDS][-1],
-                                   *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            policy.config["gamma"],
-            policy.config["lambda"],
-            use_gae=policy.config["use_gae"],
-            use_critic=policy.config["use_critic"])
-    else:
-        batch = sample_batch
+        sample_batch = postprocess_ppo_gae(policy, sample_batch,
+                                           other_agent_batches, episode)
+
     # TODO: (sven) remove this del once we have trajectory view API fully in
     #  place.
-    del batch.data["new_obs"]  # not used, so save some bandwidth
+    del sample_batch.data["new_obs"]  # not used, so save some bandwidth
 
-    return batch
+    return sample_batch
 
 
 def add_values(policy):

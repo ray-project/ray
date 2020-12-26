@@ -68,7 +68,7 @@ struct WorkerThreadContext {
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_counter_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
-    SetCurrentPlacementGroupId(task_spec.PlacementGroupId());
+    SetCurrentPlacementGroupId(task_spec.PlacementGroupBundleId().first);
     SetPlacementGroupCaptureChildTasks(task_spec.PlacementGroupCaptureChildTasks());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
@@ -111,7 +111,7 @@ WorkerContext::WorkerContext(WorkerType worker_type, const WorkerID &worker_id,
                              const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
-      current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
+      current_job_id_(job_id),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(true),
@@ -156,7 +156,10 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
   }
 }
 
-void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
+const std::unordered_map<std::string, std::string>
+    &WorkerContext::GetCurrentOverrideEnvironmentVariables() const {
+  return override_environment_variables_;
+}
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
@@ -164,34 +167,28 @@ void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   GetThreadContext().SetCurrentTask(task_spec);
+  RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
-    RAY_CHECK(current_job_id_.IsNil());
-    SetCurrentJobId(task_spec.JobId());
     current_task_is_direct_call_ = true;
+    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(current_job_id_.IsNil());
-    SetCurrentJobId(task_spec.JobId());
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_is_direct_call_ = true;
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
     current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
-    current_actor_placement_group_id_ = task_spec.PlacementGroupId();
+    is_detached_actor_ = task_spec.IsDetachedActor();
+    current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
+    override_environment_variables_ = task_spec.OverrideEnvironmentVariables();
   } else if (task_spec.IsActorTask()) {
-    RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
     RAY_CHECK(false);
   }
 }
 
-void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
-  GetThreadContext().ResetCurrentTask();
-  if (task_spec.IsNormalTask()) {
-    SetCurrentJobId(JobID::Nil());
-  }
-}
+void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
 
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
@@ -227,6 +224,8 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 }
 
 bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
+
+bool WorkerContext::CurrentActorDetached() const { return is_detached_actor_; }
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {

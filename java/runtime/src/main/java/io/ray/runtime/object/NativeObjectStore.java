@@ -50,8 +50,8 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    nativeDelete(toBinaryList(objectIds), localOnly, deleteCreatingTasks);
+  public void delete(List<ObjectId> objectIds, boolean localOnly) {
+    nativeDelete(toBinaryList(objectIds), localOnly);
   }
 
   @Override
@@ -116,8 +116,7 @@ public class NativeObjectStore extends ObjectStore {
   private static native List<Boolean> nativeWait(List<byte[]> objectIds, int numObjects,
       long timeoutMs);
 
-  private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly,
-      boolean deleteCreatingTasks);
+  private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly);
 
   private static native void nativeAddLocalReference(byte[] workerId, byte[] objectId);
 

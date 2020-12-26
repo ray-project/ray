@@ -120,7 +120,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:redis_gcs_client_test
         -//:core_worker_test
         -//:event_test
         -//:gcs_pub_sub_test
@@ -139,6 +138,7 @@ test_python() {
     args+=(
       python/ray/serve/...
       python/ray/tests/...
+      -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
@@ -261,6 +261,11 @@ _bazel_build_before_install() {
   bazel build "${target}"
 }
 
+
+_bazel_build_protobuf() {
+  bazel build "//:install_py_proto"
+}
+
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
@@ -285,16 +290,18 @@ build_wheels() {
         -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
+        -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
       )
 
       # This command should be kept in sync with ray/python/README-building-wheels.md,
       # except the "${MOUNT_BAZEL_CACHE[@]}" part.
-      suppress_output docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        rayproject/arrow_linux_x86_64_base:python-3.8.0 /ray/python/build-wheel-manylinux1.sh
+      docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+      quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      # Remove suppress_output for now to avoid timeout
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -455,6 +462,8 @@ init() {
 build() {
   if [ "${LINT-}" != 1 ]; then
     _bazel_build_before_install
+  else
+    _bazel_build_protobuf
   fi
 
   if ! need_wheels; then

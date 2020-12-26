@@ -36,12 +36,13 @@ Status GcsPubSub::Publish(const std::string &channel, const std::string &id,
 
 Status GcsPubSub::Subscribe(const std::string &channel, const std::string &id,
                             const Callback &subscribe, const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done, boost::optional<std::string>(id));
+  return SubscribeInternal(channel, subscribe, done, false,
+                           boost::optional<std::string>(id));
 }
 
 Status GcsPubSub::SubscribeAll(const std::string &channel, const Callback &subscribe,
                                const StatusCallback &done) {
-  return SubscribeInternal(channel, subscribe, done);
+  return SubscribeInternal(channel, subscribe, done, true);
 }
 
 Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string &id) {
@@ -59,6 +60,7 @@ Status GcsPubSub::Unsubscribe(const std::string &channel_name, const std::string
 
 Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
                                     const Callback &subscribe, const StatusCallback &done,
+                                    bool is_sub_or_unsub_all,
                                     const boost::optional<std::string> &id) {
   std::string pattern = GenChannelPattern(channel_name, id);
 
@@ -71,7 +73,7 @@ Status GcsPubSub::SubscribeInternal(const std::string &channel_name,
   }
 
   // Add the SUBSCRIBE command to the queue.
-  channel->second.command_queue.push_back(Command(subscribe, done));
+  channel->second.command_queue.push_back(Command(subscribe, done, is_sub_or_unsub_all));
 
   // Process the first command on the queue, if possible.
   return ExecuteCommandIfPossible(channel->first, channel->second);
@@ -140,15 +142,25 @@ Status GcsPubSub::ExecuteCommandIfPossible(const std::string &channel_key,
         }
       }
     };
-    status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
-                                                                 callback_index);
+
+    if (command.is_sub_or_unsub_all) {
+      status = redis_client_->GetPrimaryContext()->PSubscribeAsync(channel_key, callback,
+                                                                   callback_index);
+    } else {
+      status = redis_client_->GetPrimaryContext()->SubscribeAsync(channel_key, callback,
+                                                                  callback_index);
+    }
     channel.pending_reply = true;
     channel.command_queue.pop_front();
   } else if (!command.is_subscribe && channel.callback_index != -1) {
     // The next command is UNSUBSCRIBE and we are currently subscribed, so we
     // can execute the command. The reply for will be received through the
     // SUBSCRIBE command's callback.
-    status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);
+    if (command.is_sub_or_unsub_all) {
+      status = redis_client_->GetPrimaryContext()->PUnsubscribeAsync(channel_key);
+    } else {
+      status = redis_client_->GetPrimaryContext()->UnsubscribeAsync(channel_key);
+    }
     channel.pending_reply = true;
     channel.command_queue.pop_front();
   } else if (!channel.pending_reply) {

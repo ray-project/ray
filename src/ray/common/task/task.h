@@ -89,6 +89,8 @@ class Task {
   /// Returns the cancellation task callback, or nullptr.
   const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
 
+  void SetBacklogSize(int64_t backlog_size);
+
   int64_t BacklogSize() const;
 
   std::string DebugString() const;

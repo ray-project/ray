@@ -24,6 +24,7 @@ from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.framework import try_import_tf, TensorStructType
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.typing import TrainerConfigDict, \
     PartialTrainerConfigDict, EnvInfoDict, ResultDict, EnvType, PolicyID
@@ -74,10 +75,18 @@ COMMON_CONFIG: TrainerConfigDict = {
     # The dataflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
     "rollout_fragment_length": 200,
-    # Whether to rollout "complete_episodes" or "truncate_episodes" to
-    # `rollout_fragment_length` length unrolls. Episode truncation guarantees
-    # evenly sized batches, but increases variance as the reward-to-go will
-    # need to be estimated at truncation boundaries.
+    # How to build per-Sampler (RolloutWorker) batches, which are then
+    # usually concat'd to form the train batch. Note that "steps" below can
+    # mean different things (either env- or agent-steps) and depends on the
+    # `count_steps_by` (multiagent) setting below.
+    # truncate_episodes: Each produced batch (when calling
+    #   RolloutWorker.sample()) will contain exactly `rollout_fragment_length`
+    #   steps. This mode guarantees evenly sized batches, but increases
+    #   variance as the future return must now be estimated at truncation
+    #   boundaries.
+    # complete_episodes: Each unroll happens exactly over one episode, from
+    #   beginning to end. Data collection will not stop unless the episode
+    #   terminates or a configured horizon (hard or soft) is hit.
     "batch_mode": "truncate_episodes",
 
     # === Settings for the Trainer process ===
@@ -221,8 +230,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # Experimental flag to speed up sampling and use "trajectory views" as
     # generic ModelV2 `input_dicts` that can be requested by the model to
     # contain different information on the ongoing episode.
-    # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": False,
+    "_use_trajectory_view_api": True,
 
     # Element-wise observation filter, either "NoFilter" or "MeanStdFilter".
     "observation_filter": "NoFilter",
@@ -357,6 +365,13 @@ COMMON_CONFIG: TrainerConfigDict = {
         # agents it controls at that timestep. When replay_mode=independent,
         # transitions are replayed independently per policy.
         "replay_mode": "independent",
+        # Which metric to use as the "batch size" when building a
+        # MultiAgentBatch. The two supported values are:
+        # env_steps: Count each time the env is "stepped" (no matter how many
+        #   multi-agent actions are passed/how many multi-agent observations
+        #   have been returned in the previous step).
+        # agent_steps: Count each individual agent step as one step.
+        "count_steps_by": "env_steps",
     },
 
     # === Logger ===
@@ -552,11 +567,22 @@ class Trainer(Trainable):
             elif "." in env:
                 self.env_creator = \
                     lambda env_context: from_config(env, env_context)
-            # Try gym.
+            # Try gym/PyBullet.
             else:
-                import gym  # soft dependency
-                self.env_creator = \
-                    lambda env_context: gym.make(env, **env_context)
+
+                def _creator(env_context):
+                    import gym
+                    # Allow for PyBullet envs to be used as well (via string).
+                    # This allows for doing things like
+                    # `env=CartPoleContinuousBulletEnv-v0`.
+                    try:
+                        import pybullet_envs
+                        pybullet_envs.getList()
+                    except (ModuleNotFoundError, ImportError):
+                        pass
+                    return gym.make(env, **env_context)
+
+                self.env_creator = _creator
         else:
             self.env_creator = lambda env_config: None
 
@@ -1047,21 +1073,53 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if config.get("_use_trajectory_view_api") and \
-                config.get("framework") != "torch":
-            logger.info(
-                "`_use_trajectory_view_api` only supported for PyTorch so "
-                "far! Will run w/o.")
-            config["_use_trajectory_view_api"] = False
-        elif not config.get("_use_trajectory_view_api") and \
+        if not config.get("_use_trajectory_view_api") and \
                 config.get("model", {}).get("_time_major"):
             raise ValueError("`model._time_major` only supported "
                              "iff `_use_trajectory_view_api` is True!")
 
-        if type(config["input_evaluation"]) != list:
+        if isinstance(config["input_evaluation"], tuple):
+            config["input_evaluation"] = list(config["input_evaluation"])
+        elif not isinstance(config["input_evaluation"], list):
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}".format(
+                "`input_evaluation` must be a list of strings, got {}!".format(
                     config["input_evaluation"]))
+
+        # Check model config.
+        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
+                                               DEPRECATED_VALUE)
+        if prev_a_r != DEPRECATED_VALUE:
+            deprecation_warning(
+                "model.lstm_use_prev_action_reward",
+                "model.lstm_use_prev_action and model.lstm_use_prev_reward",
+                error=False)
+            config["model"]["lstm_use_prev_action"] = prev_a_r
+            config["model"]["lstm_use_prev_reward"] = prev_a_r
+
+        # Check batching/sample collection settings.
+        if config["batch_mode"] not in [
+                "truncate_episodes", "complete_episodes"
+        ]:
+            raise ValueError("`batch_mode` must be one of [truncate_episodes|"
+                             "complete_episodes]! Got {}".format(
+                                 config["batch_mode"]))
+
+        if config["multiagent"].get("count_steps_by", "env_steps") not in \
+                ["env_steps", "agent_steps"]:
+            raise ValueError(
+                "`count_steps_by` must be one of [env_steps|agent_steps]! "
+                "Got {}".format(config["multiagent"]["count_steps_by"]))
+
+        # If evaluation_num_workers > 0, warn if evaluation_interval is None
+        # (also set it to 1).
+        if config["evaluation_num_workers"] > 0 and \
+                not config["evaluation_interval"]:
+            logger.warning(
+                "You have specified {} evaluation workers, but no evaluation "
+                "interval! Will set the interval to 1 (each `train()` call). "
+                "If this is too frequent, set `evaluation_interval` to some "
+                "larger value.".format(config["evaluation_num_workers"]))
+            config["evaluation_interval"] = 1
 
     def _try_recover(self):
         """Try to identify and remove any unhealthy workers.

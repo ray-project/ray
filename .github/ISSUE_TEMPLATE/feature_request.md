@@ -1,8 +1,8 @@
 ---
 name: Feature request/Question
-about: For feature requests or questions, post on our Github Discussions page instead!
+about: For feature requests or questions, post on https://discuss.ray.io/ instead!
 title: ''
-labels: enhancement, triage
+labels: enhancement
 assignees: ''
 
 ---
@@ -11,4 +11,4 @@ assignees: ''
 
 ### Describe your feature request
 
-For feature requests or questions, post on our Github Discussions page instead: https://github.com/ray-project/ray/discussions!
+For feature requests or questions, post on our Discussion page instead: https://discuss.ray.io/

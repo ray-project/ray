@@ -128,7 +128,7 @@ public class ActorTest extends BaseTest {
     ObjectRef value = counter.task(Counter::getValue).remote();
     Assert.assertEquals(100, value.get());
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(value), false, false);
+    Ray.internal().free(ImmutableList.of(value), false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
     // Free deletes from in-memory store.
@@ -138,10 +138,46 @@ public class ActorTest extends BaseTest {
     ObjectRef<TestUtils.LargeObject> largeValue = counter.task(Counter::createLargeObject).remote();
     Assert.assertTrue(largeValue.get() instanceof TestUtils.LargeObject);
     // Delete the object from the object store.
-    Ray.internal().free(ImmutableList.of(largeValue), false, false);
+    Ray.internal().free(ImmutableList.of(largeValue), false);
     // Wait for delete RPC to propagate
     TimeUnit.SECONDS.sleep(1);
     // Free deletes big objects from plasma store.
     Assert.expectThrows(UnreconstructableException.class, () -> largeValue.get());
   }
+
+  public interface ChildClassInterface {
+
+    default String interfaceName() {
+      return ChildClassInterface.class.getName();
+    }
+
+  }
+
+  public static class ChildClass extends Counter implements ChildClassInterface {
+
+    public ChildClass(int initValue) {
+      super(initValue);
+    }
+
+    @Override
+    public void increase(int delta) {
+      super.increase(-delta);
+    }
+
+  }
+
+  @Test(groups = {"cluster"})
+  public void testInheritance() {
+    ActorHandle<ChildClass> counter = Ray.actor(ChildClass::new, 100).remote();
+    counter.task(ChildClass::increase, 10).remote();
+    Assert.assertEquals(counter.task(ChildClass::getValue).remote().get(), Integer.valueOf(90));
+    // Since `increase` method is overrided, call by super class method reference should still
+    // execute child class methods.
+    counter.task(Counter::increase, 10).remote();
+    Assert.assertEquals(counter.task(Counter::getValue).remote().get(), Integer.valueOf(80));
+    // test interface default methods
+    Assert.assertEquals(counter.task(ChildClassInterface::interfaceName).remote().get(),
+        ChildClassInterface.class.getName());
+  }
+
 }

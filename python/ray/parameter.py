@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -88,7 +89,6 @@ class RayParams:
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
         java_worker_options (list): The command options for Java worker.
-        load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
@@ -141,15 +141,12 @@ class RayParams:
                  include_log_monitor=None,
                  autoscaling_config=None,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  start_initial_python_workers_for_first_job=False,
                  _system_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 lru_evict=False,
-                 object_spilling_config=None,
-                 code_search_path=None):
+                 lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -186,19 +183,14 @@ class RayParams:
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.java_worker_options = java_worker_options
-        self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
-        self._system_config = _system_config
+        self._system_config = _system_config or {}
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
-        self.object_spilling_config = object_spilling_config
         self._check_usage()
-        self.code_search_path = code_search_path
-        if code_search_path is None:
-            self.code_search_path = []
 
         # Set the internal config options for LRU eviction.
         if lru_evict:
@@ -320,3 +312,13 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+        # Make sure object spilling configuration is applicable.
+        object_spilling_config = self._system_config.get(
+            "object_spilling_config", {})
+        if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
+            from ray import external_storage
+            # Validate external storage usage.
+            external_storage.setup_external_storage(object_spilling_config)
+            external_storage.reset_external_storage()

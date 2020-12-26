@@ -7,8 +7,7 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping, \
-    view_requirements_fn
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -50,7 +49,8 @@ def ppo_surrogate_loss(
 
     # RNN case: Mask away 0-padded chunks at end of time axis.
     if state:
-        max_seq_len = torch.max(train_batch["seq_lens"])
+        B = len(train_batch["seq_lens"])
+        max_seq_len = logits.shape[0] // B
         mask = sequence_mask(
             train_batch["seq_lens"],
             max_seq_len,
@@ -211,27 +211,41 @@ class ValueNetworkMixin:
         # When doing GAE, we need the value function estimate on the
         # observation.
         if config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+            if config["_use_trajectory_view_api"]:
 
-            def value(ob, prev_action, prev_reward, *state):
-                model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: convert_to_torch_tensor(
-                        np.asarray([ob]), self.device),
-                    SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
-                        np.asarray([prev_action]), self.device),
-                    SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
-                        np.asarray([prev_reward]), self.device),
-                    "is_training": False,
-                }, [
-                    convert_to_torch_tensor(np.asarray([s]), self.device)
-                    for s in state
-                ], convert_to_torch_tensor(np.asarray([1]), self.device))
-                # [0] = remove the batch dim.
-                return self.model.value_function()[0]
+                def value(**input_dict):
+                    model_out, _ = self.model.from_batch(
+                        convert_to_torch_tensor(input_dict, self.device),
+                        is_training=False)
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
+
+            # TODO: (sven) Remove once trajectory view API is all-algo default.
+            else:
+
+                def value(ob, prev_action, prev_reward, *state):
+                    model_out, _ = self.model({
+                        SampleBatch.CUR_OBS: convert_to_torch_tensor(
+                            np.asarray([ob]), self.device),
+                        SampleBatch.PREV_ACTIONS: convert_to_torch_tensor(
+                            np.asarray([prev_action]), self.device),
+                        SampleBatch.PREV_REWARDS: convert_to_torch_tensor(
+                            np.asarray([prev_reward]), self.device),
+                        "is_training": False,
+                    }, [
+                        convert_to_torch_tensor(np.asarray([s]), self.device)
+                        for s in state
+                    ], convert_to_torch_tensor(np.asarray([1]), self.device))
+                    # [0] = remove the batch dim.
+                    return self.model.value_function()[0]
 
         # When not doing GAE, we do not require the value function's output.
         else:
 
-            def value(ob, prev_action, prev_reward, *state):
+            def value(*args, **kwargs):
                 return 0.0
 
         self._value = value
@@ -266,10 +280,9 @@ PPOTorchPolicy = build_torch_policy(
     postprocess_fn=postprocess_ppo_gae,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
-    after_init=setup_mixins,
+    before_loss_init=setup_mixins,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
         ValueNetworkMixin
     ],
-    view_requirements_fn=view_requirements_fn,
 )

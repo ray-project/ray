@@ -39,7 +39,6 @@ class MockWorker {
     options.language = Language::PYTHON;
     options.store_socket = store_socket;
     options.raylet_socket = raylet_socket;
-    options.job_id = JobID::FromInt(1);
     options.gcs_options = gcs_options;
     options.enable_logging = true;
     options.install_failure_signal_handler = true;
@@ -47,7 +46,7 @@ class MockWorker {
     options.node_manager_port = node_manager_port;
     options.raylet_ip_address = "127.0.0.1";
     options.task_execution_callback =
-        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8);
+        std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8, _9);
     options.ref_counting_enabled = true;
     options.num_workers = 1;
     options.metrics_agent_port = -1;
@@ -63,6 +62,7 @@ class MockWorker {
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
+                     const std::string &debugger_breakpoint,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     const ray::FunctionDescriptor function_descriptor =

@@ -26,7 +26,23 @@ from ray.utils import try_to_create_directory, try_to_symlink, open_log
 logger = logging.getLogger(__name__)
 
 SESSION_LATEST = "session_latest"
-NUMBER_OF_PORT_RETRIES = 40
+NUM_PORT_RETRIES = 40
+NUM_REDIS_GET_RETRIES = 20
+
+
+def _get_with_retry(redis_client, key, num_retries=NUM_REDIS_GET_RETRIES):
+    result = None
+    for i in range(num_retries):
+        result = redis_client.get(key)
+        if result is not None:
+            break
+        else:
+            logger.debug(f"Fetched {key}=None from redis. Retrying.")
+            time.sleep(2)
+    if not result:
+        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
+                           "Has redis started correctly on the head node?")
+    return result
 
 
 class Node:
@@ -139,8 +155,8 @@ class Node:
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
             redis_client = self.create_redis_client()
-            self.session_name = ray.utils.decode(
-                redis_client.get("session_name"))
+            session_name = _get_with_retry(redis_client, "session_name")
+            self.session_name = ray.utils.decode(session_name)
 
         self._init_temp(redis_client)
 
@@ -230,15 +246,16 @@ class Node:
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            self._temp_dir = ray.utils.decode(redis_client.get("temp_dir"))
+            temp_dir = _get_with_retry(redis_client, "temp_dir")
+            self._temp_dir = ray.utils.decode(temp_dir)
 
         try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            self._session_dir = ray.utils.decode(
-                redis_client.get("session_dir"))
+            session_dir = _get_with_retry(redis_client, "session_dir")
+            self._session_dir = ray.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -282,8 +299,8 @@ class Node:
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
                 env_resources = json.loads(env_string)
-                logger.info(
-                    f"Autosaler overriding resources: {env_resources}.")
+                logger.debug(
+                    f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
                 merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
@@ -321,10 +338,6 @@ class Node:
     def redis_password(self):
         """Get the cluster Redis password"""
         return self._ray_params.redis_password
-
-    @property
-    def load_code_from_local(self):
-        return self._ray_params.load_code_from_local
 
     @property
     def object_ref_seed(self):
@@ -494,7 +507,7 @@ class Node:
         # Try to generate a port that is far above the 'next available' one.
         # This solves issue #8254 where GRPC fails because the port assigned
         # from this method has been used by a different process.
-        for _ in range(NUMBER_OF_PORT_RETRIES):
+        for _ in range(NUM_PORT_RETRIES):
             new_port = random.randint(port, 65535)
             new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
@@ -585,38 +598,17 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "log_monitor", unique=True)
         process_info = ray._private.services.start_log_monitor(
             self.redis_address,
             self._logs_dir,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
+            stdout_file=subprocess.DEVNULL,
+            stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
         ]
-
-    def start_reporter(self):
-        """Start the reporter."""
-        stdout_file, stderr_file = self.get_log_file_handles(
-            "reporter", unique=True)
-
-        process_info = ray._private.services.start_reporter(
-            self.redis_address,
-            self._ray_params.metrics_agent_port,
-            self._metrics_export_port,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
-            redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
-        assert ray_constants.PROCESS_TYPE_REPORTER not in self.all_processes
-        if process_info is not None:
-            self.all_processes[ray_constants.PROCESS_TYPE_REPORTER] = [
-                process_info,
-            ]
 
     def start_dashboard(self, require_dashboard):
         """Start the dashboard.
@@ -643,7 +635,7 @@ class Node:
                 process_info,
             ]
             redis_client = self.create_redis_client()
-            redis_client.hmset("webui", {"url": self._webui_url})
+            redis_client.hset("webui", mapping={"url": self._webui_url})
 
     def start_plasma_store(self, plasma_directory, object_store_memory):
         """Start the plasma store."""
@@ -727,63 +719,31 @@ class Node:
             stderr_file=stderr_file,
             config=self._config,
             java_worker_options=self._ray_params.java_worker_options,
-            load_code_from_local=self._ray_params.load_code_from_local,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
             head_node=self.head,
             start_initial_python_workers_for_first_job=self._ray_params.
-            start_initial_python_workers_for_first_job,
-            object_spilling_config=self._ray_params.object_spilling_config,
-            code_search_path=self._ray_params.code_search_path)
+            start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
-
-    def get_job_redirected_log_file(self,
-                                    worker_id: bytes,
-                                    job_id: bytes = None):
-        """Determines (but does not create) logging files for workers to
-        redirect its output.
-
-        Args:
-            worker_id (bytes): A byte representation of the worker id.
-            job_id (bytes): A byte representation of the job id. If None,
-                provides a generic log file for the worker.
-
-        Returns:
-            (tuple) The stdout and stderr file names that the job should be
-        redirected to.
-        """
-        redirect_output = self._ray_params.redirect_output
-
-        if redirect_output is None:
-            # Make the default behavior match that of glog.
-            redirect_output = os.getenv("GLOG_logtostderr") != "1"
-
-        if not redirect_output:
-            return None, None
-
-        if job_id is not None:
-            name = "worker-{}-{}-{}".format(
-                ray.utils.binary_to_hex(worker_id),
-                ray.utils.binary_to_hex(job_id), os.getpid())
-        else:
-            name = f"worker-{ray.utils.binary_to_hex(worker_id)}-{os.getpid()}"
-
-        worker_stdout_file, worker_stderr_file = self._get_log_file_names(
-            name, unique=False)
-        return worker_stdout_file, worker_stderr_file
 
     def start_worker(self):
         """Start a worker process."""
         raise NotImplementedError
 
     def start_monitor(self):
-        """Start the monitor."""
+        """Start the monitor.
+
+        Autoscaling output goes to these monitor.err/out files, and
+        any modification to these files may break existing
+        cluster launching commands.
+        """
         stdout_file, stderr_file = self.get_log_file_handles(
             "monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self._redis_address,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,

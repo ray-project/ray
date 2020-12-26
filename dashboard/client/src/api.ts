@@ -96,7 +96,7 @@ export type GPUStats = {
   name: string;
   temperatureGpu: number;
   fanSpeed: number;
-  utilizationGpu: number;
+  utilizationGpu?: number;
   powerDraw: number;
   enforcedPowerLimit: number;
   memoryUsed: number;
@@ -112,7 +112,7 @@ export type NodeDetails = {
 } & BaseNodeInfo;
 
 export type RayletData = {
-  // Merger of GCSNodeStats and GetNodeStatsReply
+  // Merger of GCSNodeInfo and GetNodeStatsReply
   // GetNodeStatsReply fields.
   // Note workers are in an array in NodeDetails
   objectStoreUsedMemory: number;

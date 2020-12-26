@@ -1,3 +1,5 @@
+.. _torch-guide:
+
 Distributed PyTorch
 ===================
 
@@ -251,7 +253,20 @@ TorchTrainer automatically applies a DistributedDataParallel wrapper to your mod
 
     DistributedDataParallel(model, device_ids=self.device_ids)
 
-By setting ``TorchTrainer(wrap_ddp=False)``, you can change the parameters on the DistributedDataParallel wrapper or provide your own wrapper.
+You can also pass in additional arguments to DistributedDataParallel by setting the `ddp_args` field in your `TrainingOperator`.
+
+.. code-block:: python
+    :emphasize-lines: 6
+
+    from ray.util.sgd.torch import TrainingOperator
+
+    class CustomOperator(TrainingOperator):
+        def setup(self, config):
+            ...
+            self.model, ... = self.register(..., ddp_args={"find_unused_parameters": True})
+
+
+If you want to use a custom wrapper for distributed training or if you want to wrap in DistributedDataParallel yourself, you can do so by setting ``TorchTrainer(wrap_ddp=False)``.
 
 .. note:: Make sure to register the model before it is wrapped in DistributedDataParallel or a custom wrapper.
 
@@ -402,20 +417,29 @@ You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. 
 ``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. When ``use_fp16=True``,
 you should not manually cast your model or data to ``.half()``. The flag informs the Trainer to call ``amp.initialize`` on the created models and optimizers and optimize using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
 
-To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the TorchTrainer constructor. Valid arguments can be found on the `Apex documentation <https://nvidia.github.io/apex/amp.html#apex.amp.initialize>`_:
+To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field when calling `self.register` in your `TrainingOperator`. Valid arguments can be found on the `Apex documentation <https://nvidia.github.io/apex/amp.html#apex.amp.initialize>`_:
 
 .. code-block:: python
-    :emphasize-lines: 5-10
+    :emphasize-lines: 8-12
+
+    class MyTrainingOperator(TrainingOperator):
+        def setup(self, config):
+            models = [...]
+            optimizers = [...]
+            model, optimizer = self.register(
+                models=models,
+                optimizers=optimizers,
+                apex_args={
+                    opt_level="03",
+                    num_losses=2,
+                    verbosity=0
+                }
+            )
 
     trainer = TorchTrainer(
         training_operator_cls=MyTrainingOperator,
         num_workers=4,
-        use_fp16=True,
-        apex_args={
-            opt_level="O3",
-            num_losses=2,
-            verbosity=0
-        }
+        use_fp16=True
     )
 
 Note that if implementing custom training (:ref:`raysgd-custom-training`), you will need to manage loss scaling manually.
@@ -444,7 +468,6 @@ After connecting, you can scale up the number of workers seamlessly across multi
     )
     trainer.train()
     model = trainer.get_model()
-
 
 Advanced: Fault Tolerance
 -------------------------

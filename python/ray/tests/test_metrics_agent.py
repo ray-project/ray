@@ -1,5 +1,8 @@
 import json
+import pathlib
+import platform
 from pprint import pformat
+import time
 from unittest.mock import MagicMock
 
 import requests
@@ -7,6 +10,7 @@ import pytest
 from prometheus_client.parser import text_string_to_metric_families
 
 import ray
+from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
 from ray.test_utils import wait_for_condition, SignalActor
@@ -42,6 +46,22 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
     assert (set(get_metrics_export_address_from_node(nodes)) == set(
         loaded_json_data["targets"]))
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_prome_file_discovery_run_by_dashboard(shutdown_only):
+    ray.init(num_cpus=0)
+    global_node = ray.worker._global_node
+    temp_dir = global_node.get_temp_dir_path()
+
+    def is_service_discovery_exist():
+        for path in pathlib.Path(temp_dir).iterdir():
+            if PROMETHEUS_SERVICE_DISCOVERY_FILE in str(path):
+                return True
+        return False
+
+    wait_for_condition(is_service_discovery_exist)
 
 
 @pytest.fixture
@@ -272,6 +292,33 @@ def test_custom_metrics_edge_cases(metric_mock):
     # The tag keys must be a tuple type.
     with pytest.raises(ValueError):
         Count("name", tag_keys=("a"))
+
+
+def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
+    # https://github.com/ray-project/ray/issues/12859
+
+    @ray.remote
+    def override():
+        a = Count("num_count", description="")
+        b = Count("num_count", description="")
+        a.record(1)
+        b.record(1)
+
+    ray.get(override.remote())
+
+    # Check the stderr from the worker.
+    start = time.time()
+    while True:
+        if (time.time() - start) > 5:
+            break
+        msg = log_pubsub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+
+        log_lines = json.loads(ray.utils.decode(msg["data"]))["lines"]
+        for line in log_lines:
+            assert "Attempt to register measure" not in line
 
 
 if __name__ == "__main__":
