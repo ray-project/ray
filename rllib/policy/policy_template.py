@@ -206,10 +206,7 @@ def build_policy_class(
             self.config = config
 
             # Set the DL framework for this Policy.
-            self.framework = framework
-            if "framework" not in self.config:
-                self.config["framework"] = framework
-            assert framework == self.config["framework"]
+            self.framework = self.config["framework"] = framework
 
             # Validate observation- and action-spaces.
             if validate_spaces:
