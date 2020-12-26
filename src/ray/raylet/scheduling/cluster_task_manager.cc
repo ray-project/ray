@@ -102,7 +102,7 @@ bool ClusterTaskManager::WaitForTaskArgsRequests(Work work) {
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
   if (object_ids.size() > 0) {
-    bool args_ready = task_dependency_manager_.SubscribeGetDependencies(
+    bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task.GetTaskSpecification().TaskId(), task.GetDependencies());
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched "
@@ -164,7 +164,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                          << "'s caller is no longer running. Cancelling task.";
         worker_pool.PushWorker(worker);
         if (!spec.GetDependencies().empty()) {
-          RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+          task_dependency_manager_.RemoveTaskDependencies(
+              task.GetTaskSpecification().TaskId());
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
@@ -179,7 +180,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         if (remove) {
           if (!spec.GetDependencies().empty()) {
-            RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+            task_dependency_manager_.RemoveTaskDependencies(
+                task.GetTaskSpecification().TaskId());
           }
           work_it = dispatch_queue.erase(work_it);
         } else {
@@ -313,7 +315,8 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
         RemoveFromBacklogTracker(task);
         ReplyCancelled(*work_it);
         if (!task.GetTaskSpecification().GetDependencies().empty()) {
-          RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(task_id));
+          task_dependency_manager_.RemoveTaskDependencies(
+              task.GetTaskSpecification().TaskId());
         }
         work_queue.erase(work_it);
         if (work_queue.empty()) {
@@ -347,9 +350,11 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     RemoveFromBacklogTracker(task);
     ReplyCancelled(iter->second);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
-      task_dependency_manager_.UnsubscribeGetDependencies(task_id);
+      task_dependency_manager_.RemoveTaskDependencies(task_id);
     }
     waiting_tasks_.erase(iter);
+
+    task_dependency_manager_.RemoveTaskDependencies(task_id);
     return true;
   }
 

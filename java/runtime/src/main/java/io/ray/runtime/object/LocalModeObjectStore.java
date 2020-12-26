@@ -21,7 +21,7 @@ public class LocalModeObjectStore extends ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
 
-  private static final int GET_CHECK_INTERVAL_MS = 100;
+  private static final int GET_CHECK_INTERVAL_MS = 1;
 
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
