@@ -18,6 +18,7 @@
 #include <thread>
 
 #include "gtest/gtest.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
@@ -338,8 +339,6 @@ class StressTestObjectManager : public TestObjectManagerBase {
     NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
     NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
 
-    ray::Status status = ray::Status::OK();
-
     if (transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PUSH ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE) {
@@ -374,21 +373,25 @@ class StressTestObjectManager : public TestObjectManagerBase {
     case TransferPattern::PULL_A_B: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1, rpc::Address());
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
       }
     } break;
     case TransferPattern::PULL_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2, rpc::Address());
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1, rpc::Address());
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2, rpc::Address());
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
@@ -397,9 +400,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
       std::uniform_int_distribution<> dis(1, 50);
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size + dis(gen));
-        status = server2->object_manager_.Pull(oid1, rpc::Address());
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
         ObjectID oid2 = WriteDataToClient(client2, data_size + dis(gen));
-        status = server1->object_manager_.Pull(oid2, rpc::Address());
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     default: {

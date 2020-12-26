@@ -35,7 +35,7 @@
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
-#include "ray/raylet/task_dependency_manager.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -239,18 +239,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task The task in question.
   /// \return Void.
   void EnqueuePlaceableTask(const Task &task);
-  /// This will treat a task removed from the local queue as if it had been
-  /// executed and failed. This is done by looping over the task return IDs and
-  /// for each ID storing an object that represents a failure in the object
-  /// store. When clients retrieve these objects, they will raise
-  /// application-level exceptions. State for the task will be cleaned up as if
-  /// it were any other task that had been assigned, executed, and removed from
-  /// the local queue.
-  ///
-  /// \param task The task to fail.
-  /// \param error_type The type of the error that caused this task to fail.
-  /// \return Void.
-  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
   /// Mark the specified objects as failed with the given error type.
   ///
   /// \param error_type The type of the error that caused this task to fail.
@@ -707,8 +695,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;
-  /// A manager to make waiting tasks's missing object dependencies available.
-  TaskDependencyManager task_dependency_manager_;
+  /// A manager to resolve objects needed by queued tasks and workers that
+  /// called `ray.get` or `ray.wait`.
+  DependencyManager dependency_manager_;
 
   std::unique_ptr<AgentManager> agent_manager_;
 
