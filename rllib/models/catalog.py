@@ -86,8 +86,12 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "attention_memory_training": 50,
     # The output dim of the position-wise MLP.
     "attention_position_wise_mlp_dim": 32,
-    #
+    # The initial bias values for the 2 GRU gates within a transformer unit.
     "attention_init_gru_gate_bias": 2.0,
+    # TODO: Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
+    # "attention_use_n_prev_actions": 0,
+    # Whether to feed r_{t-n:t-1} to GTrXL.
+    # "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs
@@ -426,7 +430,7 @@ class ModelCatalog:
                 raise ValueError("ModelV2 class could not be determined!")
 
             from ray.rllib.models.tf.recurrent_net import LSTMWrapper
-            from ray.rllib.models.tf.attention_net import GTrXLNet
+            from ray.rllib.models.tf.attention_net import AttentionWrapper
 
             if model_config.get("use_lstm") or \
                     model_config.get("use_attention"):
@@ -437,18 +441,18 @@ class ModelCatalog:
                         wrapped_cls, LSTMWrapper)
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, GTrXLNet)
-                    model_kwargs.update({
-                        "num_transformer_units":
-                            model_config["attention_num_transformer_units"],
-                        "attention_dim": model_config["attention_dim"],
-                        "num_heads": model_config["attention_num_heads"],
-                        "memory_tau": model_config["attention_memory_tau"],
-                        "position_wise_mlp_dim":
-                            model_config["attention_position_wise_mlp_dim"],
-                        "init_gate_bias":
-                            model_config["attention_init_gru_gate_bias"],
-                    })
+                        wrapped_cls, AttentionWrapper)
+                    #model_kwargs.update({
+                    #    "num_transformer_units":
+                    #        model_config["attention_num_transformer_units"],
+                    #    "attention_dim": model_config["attention_dim"],
+                    #    "num_heads": model_config["attention_num_heads"],
+                    #    "memory_tau": model_config["attention_memory_tau"],
+                    #    "position_wise_mlp_dim":
+                    #        model_config["attention_position_wise_mlp_dim"],
+                    #    "init_gru_gate_bias":
+                    #        model_config["attention_init_gru_gate_bias"],
+                    #})
 
                 v2_class._wrapped_forward = forward
 
@@ -459,17 +463,41 @@ class ModelCatalog:
 
         # Find a default TorchModelV2 and wrap with model_interface.
         elif framework == "torch":
-            v2_class = \
-                default_model or ModelCatalog._get_v2_model_class(
+            # Try to get a default v2 model.
+            if not model_config.get("custom_model"):
+                v2_class = default_model or ModelCatalog._get_v2_model_class(
                     obs_space, framework=framework)
-            if model_config.get("use_lstm"):
-                from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
-                    as TorchLSTMWrapper
+                #v2_class = \
+                #    default_model or ModelCatalog._get_v2_model_class(
+                #        obs_space, framework=framework)
+
+            if not v2_class:
+                raise ValueError("ModelV2 class could not be determined!")
+
+            from ray.rllib.models.torch.recurrent_net import LSTMWrapper
+            from ray.rllib.models.torch.attention_net import AttentionWrapper
+
+            if model_config.get("use_lstm") or \
+                    model_config.get("use_attention"):
+
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
-                v2_class = ModelCatalog._wrap_if_needed(
-                    wrapped_cls, TorchLSTMWrapper)
+                if model_config.get("use_lstm"):
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper)
+                else:
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper)
+
+            #if model_config.get("use_lstm"):
+            #    from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
+            #        as TorchLSTMWrapper
+            #    wrapped_cls = v2_class
+            #    forward = wrapped_cls.forward
+            #    v2_class = ModelCatalog._wrap_if_needed(
+            #        wrapped_cls, TorchLSTMWrapper)
                 v2_class._wrapped_forward = forward
+
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -479,9 +507,12 @@ class ModelCatalog:
         elif framework == "jax":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, model_config, framework=framework)
+                    obs_space, framework=framework)
             if model_config.get("use_lstm"):
                 raise NotImplementedError("JAXModel's not LSTM-wrappable yet!")
+            elif model_config.get("use_attention"):
+                raise NotImplementedError(
+                    "JAXModel's not Attention (GTrXL)-wrappable yet!")
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -667,7 +698,7 @@ class ModelCatalog:
         Args:
             config (ModelConfigDict): The "model" sub-config dict
                 within the Trainer's config dict.
-            framework (str): One of "tf2", "tf", "tfe", or "torch".
+            framework (str): One of "jax", "tf2", "tf", "tfe", or "torch".
 
         Raises:
             ValueError: If something is wrong with the given config.
@@ -675,6 +706,6 @@ class ModelCatalog:
         if config["use_lstm"] and config["use_attention"]:
             raise ValueError("Only one of `use_lstm` or `use_attention` may "
                              "be set to True!")
-        if framework == "torch" and config["use_attention"]:
+        if framework == "jax" and config["use_attention"]:
             raise ValueError("`use_attention` not available for "
-                             "framework=torch so far!")
+                             "framework=jax so far!")

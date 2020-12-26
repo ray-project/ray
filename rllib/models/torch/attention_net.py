@@ -8,9 +8,10 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-import numpy as np
 import gym
-from gym.spaces import Box
+from gym.spaces import Box, Discrete, MultiDiscrete
+import numpy as np
+from typing import Dict, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -62,7 +63,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                  memory_training: int = 50,
                  head_dim: int = 32,
                  position_wise_mlp_dim: int = 32,
-                 init_gate_bias: float = 2.0):
+                 init_gru_gate_bias: float = 2.0):
         """Initializes a GTrXLNet.
 
         Args:
@@ -88,9 +89,9 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attention_dim`.
-            init_gate_bias (float): Initial bias values for the GRU gates (two
-                GRUs per Transformer unit, one after the MHA, one after the
-                position-wise MLP).
+            init_gru_gate_bias (float): Initial bias values for the GRU gates
+                (two GRUs per Transformer unit, one after the MHA, one after
+                the position-wise MLP).
         """
 
         super().__init__(observation_space, action_space, num_outputs,
@@ -124,7 +125,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                     head_dim=head_dim,
                     input_layernorm=True,
                     output_activation=nn.ReLU),
-                fan_in_layer=GRUGate(self.attention_dim, init_gate_bias))
+                fan_in_layer=GRUGate(self.attention_dim, init_gru_gate_bias))
 
             # Position-wise MultiLayerPerceptron part.
             E_layer = SkipConnection(
@@ -140,7 +141,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                         out_size=self.attention_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU)),
-                fan_in_layer=GRUGate(self.attention_dim, init_gate_bias))
+                fan_in_layer=GRUGate(self.attention_dim, init_gru_gate_bias))
 
             # Build a list of all attanlayers in order.
             attention_layers.extend([MHA_layer, E_layer])
@@ -165,7 +166,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # current one (0))
         # 1 to `num_transformer_units`: Memory data (one per transformer unit).
         for i in range(self.num_transformer_units):
-            space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
+            space = Box(-1.0, 1.0, shape=(self.attention_dim, ))
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
@@ -212,7 +213,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self._value_out = self.values_out(all_out)
 
         return torch.reshape(logits, [-1, self.num_outputs]), [
-            torch.reshape(m, [-1, self.attn_dim]) for m in memory_outs
+            torch.reshape(m, [-1, self.attention_dim]) for m in memory_outs
         ]
 
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
@@ -223,3 +224,114 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
     @override(ModelV2)
     def value_function(self) -> TensorType:
         return torch.reshape(self._value_out, [-1])
+
+
+class AttentionWrapper(RecurrentNetwork, nn.Module):
+    """GTrXL wrapper serving as interface for ModelV2s that set use_attention.
+    """
+
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
+
+        nn.Module.__init__(self)
+        super().__init__(obs_space, action_space, None, model_config, name)
+
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+        elif isinstance(action_space, MultiDiscrete):
+            self.action_dim = np.product(action_space.nvec)
+        elif action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
+
+        ## Add prev-action/reward nodes to input to LSTM.
+        #if self.use_prev_action:
+        #    num_outputs += self.action_dim
+        #if self.use_prev_reward:
+        #    num_outputs += 1
+
+        cfg = model_config
+
+        self.attention_dim = cfg["attention_dim"]
+
+        self.gtrxl = GTrXLNet(
+            obs_space, action_space, num_outputs, model_config, "gtrxl",
+            num_transformer_units=cfg["attention_num_transformer_units"],
+            attention_dim=self.attention_dim,
+            num_heads=cfg["attention_num_heads"],
+            head_dim=cfg["attention_head_dim"],
+            memory_inference=cfg["attention_memory_inference"],
+            memory_training=cfg["attention_memory_training"],
+            position_wise_mlp_dim=cfg["attention_position_wise_mlp_dim"],
+            init_gru_gate_bias=cfg["attention_init_gru_gate_bias"],
+        )
+
+        self.num_outputs = num_outputs
+
+        # Postprocess GTrXL output with another hidden layer and compute
+        # values.
+        self._logits_branch = SlimFC(
+            in_size=self.attention_dim,
+            out_size=self.num_outputs,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+        self._value_branch = SlimFC(
+            in_size=self.attention_dim,
+            out_size=1,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+
+        self.inference_view_requirements = \
+            self.gtrxl.inference_view_requirements
+
+        ## Add prev-a/r to this model's view, if required.
+        #if model_config["lstm_use_prev_action"]:
+        #    self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
+        #        ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
+        #                        shift=-1)
+        #if model_config["lstm_use_prev_reward"]:
+        #    self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
+        #        ViewRequirement(SampleBatch.REWARDS, shift=-1)
+
+    @override(RecurrentNetwork)
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+        assert seq_lens is not None
+        # Push obs through "unwrapped" net's `forward()` first.
+        wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Concat. prev-action/reward if required.
+        #prev_a_r = []
+        #if self.model_config["lstm_use_prev_action"]:
+        #    if isinstance(self.action_space, (Discrete, MultiDiscrete)):
+        #        prev_a = one_hot(input_dict[SampleBatch.PREV_ACTIONS].float(),
+        #                         self.action_space)
+        #    else:
+        #        prev_a = input_dict[SampleBatch.PREV_ACTIONS].float()
+        #    prev_a_r.append(torch.reshape(prev_a, [-1, self.action_dim]))
+        #if self.model_config["lstm_use_prev_reward"]:
+        #    prev_a_r.append(
+        #        torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
+        #                      [-1, 1]))
+
+        #if prev_a_r:
+        #    wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)
+
+        # Then through our GTrXL.
+        input_dict["obs_flat"] = wrapped_out
+
+        self._features, memory_outs = self.gtrxl(input_dict, state, seq_lens)
+        model_out = self._logits_branch(self._features)
+        return model_out, [torch.squeeze(m, 0) for m in memory_outs]
+
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        return []
+
+    @override(ModelV2)
+    def value_function(self) -> TensorType:
+        assert self._features is not None, "Must call forward() first!"
+        return torch.reshape(self._value_branch(self._features), [-1])

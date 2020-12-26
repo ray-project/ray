@@ -181,7 +181,7 @@ class GTrXLNet(RecurrentNetwork):
                  memory_training: int = 50,
                  head_dim: int = 32,
                  position_wise_mlp_dim: int = 32,
-                 init_gate_bias: float = 2.0):
+                 init_gru_gate_bias: float = 2.0):
         """Initializes a GTrXLNet instance.
 
         Args:
@@ -207,7 +207,7 @@ class GTrXLNet(RecurrentNetwork):
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attention_dim`.
-            init_gate_bias (float): Initial bias values for the GRU gates (two
+            init_gru_gate_bias (float): Initial bias values for the GRU gates (two
                 GRUs per Transformer unit, one after the MHA, one after the
                 position-wise MLP).
         """
@@ -251,7 +251,7 @@ class GTrXLNet(RecurrentNetwork):
                     head_dim=head_dim,
                     input_layernorm=True,
                     output_activation=tf.nn.relu),
-                fan_in_layer=GRUGate(init_gate_bias),
+                fan_in_layer=GRUGate(init_gru_gate_bias),
                 name="mha_{}".format(i + 1))(
                     E_out, memory=memory_ins[i])
             # Position-wise MLP part.
@@ -262,7 +262,7 @@ class GTrXLNet(RecurrentNetwork):
                          out_dim=self.attention_dim,
                          hidden_dim=position_wise_mlp_dim,
                          output_activation=tf.nn.relu))),
-                fan_in_layer=GRUGate(init_gate_bias),
+                fan_in_layer=GRUGate(init_gru_gate_bias),
                 name="pos_wise_mlp_{}".format(i + 1))(MHA_out)
             # Output of position-wise MLP == E(l-1), which is concat'd
             # to the current Mem block (M(l-1)) to yield E~(l-1), which is then
@@ -290,7 +290,7 @@ class GTrXLNet(RecurrentNetwork):
         # current one (0))
         # 1 to `num_transformer_units`: Memory data (one per transformer unit).
         for i in range(self.num_transformer_units):
-            space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
+            space = Box(-1.0, 1.0, shape=(self.attention_dim, ))
             self.inference_view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
@@ -324,7 +324,7 @@ class GTrXLNet(RecurrentNetwork):
         memory_outs = all_out[2:]
 
         return tf.reshape(logits, [-1, self.num_outputs]), [
-            tf.reshape(m, [-1, self.attn_dim]) for m in memory_outs
+            tf.reshape(m, [-1, self.attention_dim]) for m in memory_outs
         ]
 
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.

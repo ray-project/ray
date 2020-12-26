@@ -28,7 +28,7 @@ parser.add_argument("--stop-reward", type=float, default=80)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)#TODO
 
     registry.register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     registry.register_env("RepeatInitialObsEnv",
@@ -51,17 +51,18 @@ if __name__ == "__main__":
         "num_sgd_iter": 10,
         "vf_loss_coeff": 1e-5,
         "model": {
-            "custom_model": TorchGTrXLNet if args.torch else GTrXLNet,
+            "use_attention": True,
+            #"custom_model": TorchGTrXLNet if args.torch else GTrXLNet,
             "max_seq_len": 50,
-            "custom_model_config": {
-                "num_transformer_units": 1,
-                "attention_dim": 64,
-                "memory_inference": 100,
-                "memory_training": 50,
-                "num_heads": 2,
-                "head_dim": 32,
-                "position_wise_mlp_dim": 32,
-            },
+            #"custom_model_config": {
+            "attention_num_transformer_units": 1,
+            "attention_dim": 64,
+            "attention_memory_inference": 100,
+            "attention_memory_training": 50,
+            "attention_num_heads": 2,
+            "attention_head_dim": 32,
+            "attention_position_wise_mlp_dim": 32,
+            #},
         },
         "framework": "torch" if args.torch else "tf",
     }
