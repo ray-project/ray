@@ -32,7 +32,6 @@
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/create_request_queue.h"
-#include "ray/object_manager/plasma/external_store.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/quota_aware_policy.h"
@@ -55,8 +54,7 @@ class PlasmaStore {
   // TODO: PascalCase PlasmaStore methods.
   PlasmaStore(boost::asio::io_service &main_service, std::string directory,
               bool hugepages_enabled, const std::string &socket_name,
-              std::shared_ptr<ExternalStore> external_store, uint32_t delay_on_oom_ms,
-              ray::SpillObjectsCallback spill_objects_callback,
+              uint32_t delay_on_oom_ms, ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback);
 
   ~PlasmaStore();
@@ -249,12 +247,6 @@ class PlasmaStore {
                           int64_t *map_size, ptrdiff_t *offset,
                           const std::shared_ptr<Client> &client, bool is_create,
                           PlasmaError *error);
-#ifdef PLASMA_CUDA
-  Status AllocateCudaMemory(int device_num, int64_t size, uint8_t **out_pointer,
-                            std::shared_ptr<CudaIpcMemHandle> *out_ipc_handle);
-
-  Status FreeCudaMemory(int device_num, int64_t size, uint8_t *out_pointer);
-#endif
 
   // Start listening for clients.
   void DoAccept();
@@ -281,12 +273,6 @@ class PlasmaStore {
 
   std::unordered_set<ObjectID> deletion_cache_;
 
-  /// Manages worker threads for handling asynchronous/multi-threaded requests
-  /// for reading/writing data to/from external store.
-  std::shared_ptr<ExternalStore> external_store_;
-#ifdef PLASMA_CUDA
-  arrow::cuda::CudaDeviceManager *manager_;
-#endif
   std::shared_ptr<ray::ObjectStoreNotificationManager> notification_listener_;
   /// A callback to asynchronously spill objects when space is needed. The
   /// callback returns the amount of space still needed after the spilling is

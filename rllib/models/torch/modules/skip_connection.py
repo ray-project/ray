@@ -15,7 +15,6 @@ class SkipConnection(nn.Module):
     def __init__(self,
                  layer: nn.Module,
                  fan_in_layer: Optional[nn.Module] = None,
-                 add_memory: bool = False,
                  **kwargs):
         """Initializes a SkipConnection nn Module object.
 

@@ -208,16 +208,6 @@ class TaskInfoAccessor {
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
 
-  /// Delete tasks from GCS asynchronously.
-  ///
-  /// \param task_ids The vector of IDs to delete from GCS.
-  /// \param callback Callback that is called after delete finished.
-  /// \return Status
-  // TODO(micafan) Will support callback of batch deletion in the future.
-  // Currently this callback will never be called.
-  virtual Status AsyncDelete(const std::vector<TaskID> &task_ids,
-                             const StatusCallback &callback) = 0;
-
   /// Subscribe asynchronously to the event that the given task is added in GCS.
   ///
   /// \param task_id The ID of the task to be subscribed to.
@@ -498,40 +488,6 @@ class NodeInfoAccessor {
       const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
-  /// Report resource usage of a node to GCS asynchronously.
-  ///
-  /// \param data_ptr The data that will be reported to GCS.
-  /// \param callback Callback that will be called after report finishes.
-  /// \return Status
-  virtual Status AsyncReportResourceUsage(
-      const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-      const StatusCallback &callback) = 0;
-
-  /// Resend resource usage when GCS restarts from a failure.
-  virtual void AsyncReReportResourceUsage() = 0;
-
-  /// Return resources in last report. Used by light heartbeat.
-  std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
-    return last_resource_usage_;
-  }
-
-  /// Get newest resource usage of all nodes from GCS asynchronously.
-  ///
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetAllResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &callback) = 0;
-
-  /// Subscribe batched state of all nodes from GCS.
-  ///
-  /// \param subscribe Callback that will be called each time when batch resource usage is
-  /// updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeBatchedResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-      const StatusCallback &done) = 0;
-
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -559,12 +515,6 @@ class NodeInfoAccessor {
 
  protected:
   NodeInfoAccessor() = default;
-
- private:
-  /// Cache which stores resource usage in last report used to check if they are changed.
-  /// Used by light resource usage report.
-  std::shared_ptr<SchedulingResources> last_resource_usage_ =
-      std::make_shared<SchedulingResources>();
 };
 
 /// \class NodeResourceInfoAccessor
@@ -629,8 +579,48 @@ class NodeResourceInfoAccessor {
   /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
   virtual void AsyncResubscribe(bool is_pubsub_server_restarted) = 0;
 
+  /// Report resource usage of a node to GCS asynchronously.
+  ///
+  /// \param data_ptr The data that will be reported to GCS.
+  /// \param callback Callback that will be called after report finishes.
+  /// \return Status
+  virtual Status AsyncReportResourceUsage(
+      const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Resend resource usage when GCS restarts from a failure.
+  virtual void AsyncReReportResourceUsage() = 0;
+
+  /// Return resources in last report. Used by light heartbeat.
+  std::shared_ptr<SchedulingResources> &GetLastResourceUsage() {
+    return last_resource_usage_;
+  }
+
+  /// Get newest resource usage of all nodes from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) = 0;
+
+  /// Subscribe batched state of all nodes from GCS.
+  ///
+  /// \param subscribe Callback that will be called each time when batch resource usage is
+  /// updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
+      const StatusCallback &done) = 0;
+
  protected:
   NodeResourceInfoAccessor() = default;
+
+ private:
+  /// Cache which stores resource usage in last report used to check if they are changed.
+  /// Used by light resource usage report.
+  std::shared_ptr<SchedulingResources> last_resource_usage_ =
+      std::make_shared<SchedulingResources>();
 };
 
 /// \class ErrorInfoAccessor

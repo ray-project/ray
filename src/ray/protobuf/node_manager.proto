@@ -37,6 +37,8 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
+  // PID of the worker process.
+  uint32 worker_pid = 5;
 }
 
 message PrepareBundleResourcesRequest {

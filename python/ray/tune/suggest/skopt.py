@@ -4,7 +4,8 @@ import pickle
 from typing import Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized
+from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
+    LogUniform
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -144,7 +145,7 @@ class SkOptSearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer: Optional[sko.optimizer.Optimizer] = None,
+                 optimizer: Optional["sko.optimizer.Optimizer"] = None,
                  space: Union[List[str], Dict[str, Union[Tuple, List]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
@@ -152,9 +153,9 @@ class SkOptSearch(Searcher):
                  evaluated_rewards: Optional[List] = None,
                  max_concurrent: Optional[int] = None,
                  use_early_stopped_trials: Optional[bool] = None):
-        assert sko is not None, """skopt must be installed!
-            You can install Skopt with the command:
-            `pip install scikit-optimize`."""
+        assert sko is not None, ("skopt must be installed! "
+                                 "You can install Skopt with the command: "
+                                 "`pip install scikit-optimize`.")
 
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -334,24 +335,26 @@ class SkOptSearch(Searcher):
                 sampler = sampler.get_sampler()
 
             if isinstance(domain, Float):
-                if domain.sampler is not None:
-                    logger.warning(
-                        "SkOpt does not support specific sampling methods."
-                        " The {} sampler will be dropped.".format(sampler))
-                return domain.lower, domain.upper
+                if isinstance(domain.sampler, LogUniform):
+                    return sko.space.Real(
+                        domain.lower, domain.upper, prior="log-uniform")
+                return sko.space.Real(
+                    domain.lower, domain.upper, prior="uniform")
 
-            if isinstance(domain, Integer):
-                if domain.sampler is not None:
-                    logger.warning(
-                        "SkOpt does not support specific sampling methods."
-                        " The {} sampler will be dropped.".format(sampler))
-                return domain.lower, domain.upper
+            elif isinstance(domain, Integer):
+                if isinstance(domain.sampler, LogUniform):
+                    return sko.space.Integer(
+                        domain.lower, domain.upper, prior="log-uniform")
+                return sko.space.Integer(
+                    domain.lower, domain.upper, prior="uniform")
 
-            if isinstance(domain, Categorical):
+            elif isinstance(domain, Categorical):
                 return domain.categories
 
             raise ValueError("SkOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         space = {

@@ -74,7 +74,8 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
         new_class_id = pickle.dumps(pickle.loads(class_id))
         if new_class_id == class_id:
             # We appear to have reached a fix point, so use this as the ID.
-            return hashlib.sha1(new_class_id).digest()
+            return hashlib.shake_128(new_class_id).digest(
+                ray_constants.ID_SIZE)
         class_id = new_class_id
 
     # We have not reached a fixed point, so we may end up with a different
@@ -82,7 +83,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     # same class definition being exported many many times.
     logger.warning(
         f"WARNING: Could not produce a deterministic class ID for class {cls}")
-    return hashlib.sha1(new_class_id).digest()
+    return hashlib.shake_128(new_class_id).digest(ray_constants.ID_SIZE)
 
 
 def object_ref_deserializer(reduced_obj_ref, owner_address):
