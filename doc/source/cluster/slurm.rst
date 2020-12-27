@@ -163,7 +163,6 @@ The python interface ``launch.py``
     PARTITION_OPTION = "{{PARTITION_OPTION}}"
     COMMAND_PLACEHOLDER = "{{COMMAND_PLACEHOLDER}}"
     GIVEN_NODE = "{{GIVEN_NODE}}"
-    COMMAND_SUFFIX = "{{COMMAND_SUFFIX}}"
     LOAD_ENV = "{{LOAD_ENV}}"
 
     if __name__ == '__main__':
@@ -221,7 +220,6 @@ The python interface ``launch.py``
         text = text.replace(COMMAND_PLACEHOLDER, str(args.command))
         text = text.replace(LOAD_ENV, str(args.load_env))
         text = text.replace(GIVEN_NODE, node_info)
-        text = text.replace(COMMAND_SUFFIX, "")
         text = text.replace(
             "# THIS FILE IS A TEMPLATE AND IT SHOULD NOT BE DEPLOYED TO "
             "PRODUCTION!",
@@ -315,4 +313,4 @@ The advanced SBATCH template ``sbatch_template.sh``
     done
 
     # ===== Call your code below =====
-    {{COMMAND_PLACEHOLDER}} {{COMMAND_SUFFIX}}
+    {{COMMAND_PLACEHOLDER}}
