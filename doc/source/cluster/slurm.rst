@@ -244,7 +244,7 @@ The python interface `launch.py`
 
 
 The advanced SBATCH template `sbatch_template.sh`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
