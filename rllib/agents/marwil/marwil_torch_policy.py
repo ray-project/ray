@@ -1,8 +1,8 @@
 import ray
 from ray.rllib.agents.marwil.marwil_tf_policy import postprocess_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import explained_variance
 
@@ -18,6 +18,7 @@ class ValueNetworkMixin:
         if config["_use_trajectory_view_api"]:
 
             def value(**input_dict):
+                input_dict = self._lazy_tensor_dict(input_dict)
                 model_out, _ = self.model.from_batch(
                     input_dict, is_training=False)
                 # [0] = remove the batch dim.
@@ -89,8 +90,9 @@ def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
-MARWILTorchPolicy = build_torch_policy(
+MARWILTorchPolicy = build_policy_class(
     name="MARWILTorchPolicy",
+    framework="torch",
     loss_fn=marwil_loss,
     get_default_config=lambda: ray.rllib.agents.marwil.marwil.DEFAULT_CONFIG,
     stats_fn=stats,

@@ -118,6 +118,13 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         nn.Module.__init__(self)
         super().__init__(obs_space, action_space, None, model_config, name)
 
+        # At this point, self.num_outputs is the number of nodes coming
+        # from the wrapped (underlying) model. In other words, self.num_outputs
+        # is the input size for the LSTM layer.
+        # If None, set it to the observation space.
+        if self.num_outputs is None:
+            self.num_outputs = int(np.product(self.obs_space.shape))
+
         self.cell_size = model_config["lstm_cell_size"]
         self.time_major = model_config.get("_time_major", False)
         self.use_prev_action = model_config["lstm_use_prev_action"]
@@ -132,16 +139,20 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         else:
             self.action_dim = int(len(action_space))
 
-        self.num_outputs = num_outputs
-
         # Add prev-action/reward nodes to input to LSTM.
         if self.use_prev_action:
             self.num_outputs += self.action_dim
         if self.use_prev_reward:
             self.num_outputs += 1
 
+        # Define actual LSTM layer (with num_outputs being the nodes coming
+        # from the wrapped (underlying) layer).
         self.lstm = nn.LSTM(
             self.num_outputs, self.cell_size, batch_first=not self.time_major)
+
+        # Set self.num_outputs to the number of output nodes desired by the
+        # caller of this constructor.
+        self.num_outputs = num_outputs
 
         # Postprocess LSTM output with another hidden layer and compute values.
         self._logits_branch = SlimFC(
