@@ -48,15 +48,15 @@ double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requeste
 
 /////////////////////////////// Begin of GcsResourceScheduler ///////////////////////////
 std::vector<NodeID> GcsResourceScheduler::Schedule(
-    std::vector<ResourceSet> required_resources, SchedulingPolicy policy,
-    const std::function<bool(const NodeID &)> &node_filter_func,
-    const std::function<std::vector<NodeID>(const std::vector<NodeScore> &, selected_nodes)> &node_rank_func) {
+    const std::vector<ResourceSet> &required_resources, const SchedulingPolicy &policy,
+    const std::function<bool(const NodeID &)> &node_filter_func) {
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
 
   // Filter candidate nodes.
   absl::flat_hash_set<NodeID> candidate_nodes =
       FilterCandidateNodes(cluster_resources, node_filter_func);
-  if (candidate_nodes.size() < required_resources.size()) {
+  if (candidate_nodes.empty()) {
+    RAY_LOG(INFO) << "The candidate nodes is empty, return directly.";
     return {};
   }
 
@@ -65,34 +65,30 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
   const auto &to_schedule_resources = SortRequiredResources(required_resources);
 
   // Score and rank nodes.
-  switch (policy.type_) {
-    case SPREAD:
-      auto used_nodes;
-      for (const auto &resource : to_schedule_resources) {
-        sort;
-        // rerank
-        node_rank_func()
-      }
-      break;
-    case STRICT_SPREAD:
-      break;
-    case PACK:
-      break;
-    case STRICT_PACK:
-      break;
-    default:
-      break;
-  }
-
-
-
   std::vector<NodeID> result;
+  switch (policy.type_) {
+  case SPREAD:
+    SpreadSchedule(to_schedule_resources, candidate_nodes, &result);
+    break;
+  case STRICT_SPREAD:
+    StrictSpreadSchedule(to_schedule_resources, candidate_nodes, &result);
+    break;
+  case PACK:
+    PackSchedule(to_schedule_resources, candidate_nodes, &result);
+    break;
+  case STRICT_PACK:
+    StrictPackSchedule(to_schedule_resources, candidate_nodes, &result);
+    break;
+  default:
+    RAY_LOG(FATAL) << "Unsupported policy type: " << policy.type_;
+    break;
+  }
   return result;
 }
 
 absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
-    const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources,
-    std::function<bool(const NodeID &)> node_filter_func) {
+    const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,
+    const std::function<bool(const NodeID &)> &node_filter_func) {
   absl::flat_hash_set<NodeID> result;
   for (const auto &iter : cluster_resources) {
     const auto &node_id = iter.first;
@@ -104,7 +100,62 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
 }
 
 std::vector<ResourceSet> GcsResourceScheduler::SortRequiredResources(
-    const std::vector<ResourceSet> &required_resources) {}
+    const std::vector<ResourceSet> &required_resources) {
+  // TODO(ffbin): We will implement it in next pr.
+  return required_resources;
+}
+
+void GcsResourceScheduler::StrictSpreadSchedule(
+    const std::vector<ResourceSet> &required_resources_list,
+    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {}
+
+void GcsResourceScheduler::SpreadSchedule(
+    const std::vector<ResourceSet> &required_resources_list,
+    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {}
+
+void GcsResourceScheduler::StrictPackSchedule(
+    const std::vector<ResourceSet> &required_resources_list,
+    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {
+  // Aggregate required resources.
+  ResourceSet required_resources;
+  for (const auto &iter : required_resources_list) {
+    required_resources.AddResources(iter);
+  }
+
+  // Score and sort nodes.
+  const auto &node_scores = ScoreNodes(required_resources, candidate_nodes);
+
+  // Select the node with the highest score.
+  // `StrictPackSchedule` does not need to consider the scheduling context, because it
+  // only schedules to a node and triggers rescheduling when node dead.
+  if (!node_scores.empty()) {
+    const auto &highest_node_score = node_scores.front();
+    if (highest_node_score.second > 0) {
+      result->push_back(highest_node_score.first);
+    }
+  }
+}
+
+void GcsResourceScheduler::PackSchedule(
+    const std::vector<ResourceSet> &required_resources_list,
+    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {}
+
+std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
+    const ResourceSet &required_resources,
+    const absl::flat_hash_set<NodeID> &candidate_nodes) {
+  std::list<NodeScore> node_scores;
+  const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
+  for (const auto &node_id : candidate_nodes) {
+    const auto &iter = cluster_resources.find(node_id);
+    RAY_CHECK(iter != cluster_resources.end());
+    double node_grade = node_scorer_->MakeGrade(required_resources, iter->second);
+    node_scores.emplace_back(node_id, node_grade);
+  }
+  node_scores.sort([](const NodeScore &left, const NodeScore &right) {
+    return right.second < left.second;
+  });
+  return node_scores;
+}
 
 /////////////////////////////// End of GcsResourceScheduler ///////////////////////////
 

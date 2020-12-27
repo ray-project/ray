@@ -75,6 +75,20 @@ class LeastResourceScorer : public NodeScorer {
                    const FractionalResourceQuantity &available);
 };
 
+// class ResourceScheduleContext {
+// public:
+//  virtual ~ResourceScheduleContext() {}
+//
+//  virtual bool IsNodeSelected(const NodeID &node_id) {
+//    return std::find(selected_nodes.begin(), selected_nodes.end(), node_id) !=
+//        selected_nodes.end();
+//  }
+//
+//  virtual bool IsNodeSchedulable(const NodeID &node_id) { return true; }
+//
+//  std::vector<NodeID> selected_nodes;
+//};
+
 /// Gcs resource scheduler implementation.
 /// Non-thread safe.
 class GcsResourceScheduler {
@@ -86,17 +100,35 @@ class GcsResourceScheduler {
   virtual ~GcsResourceScheduler() = default;
 
   std::vector<NodeID> Schedule(
-      const std::vector<ResourceSet> &required_resources, SchedulingPolicy policy,
-      const std::function<bool(const NodeID &)> &node_filter_func,
-      const std::function<std::vector<NodeID>(const std::vector<NodeScore> &)> &node_rank_func);
+      const std::vector<ResourceSet> &required_resources, const SchedulingPolicy &policy,
+      const std::function<bool(const NodeID &)> &node_filter_func);
 
  private:
   absl::flat_hash_set<NodeID> FilterCandidateNodes(
-      const absl::flat_hash_map<NodeID, ResourceSet> &cluster_resources,
+      const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,
       const std::function<bool(const NodeID &)> &node_filter_func);
 
   std::vector<ResourceSet> SortRequiredResources(
       const std::vector<ResourceSet> &required_resources);
+
+  void StrictSpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
+                            const absl::flat_hash_set<NodeID> &candidate_nodes,
+                            std::vector<NodeID> *result);
+
+  void SpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
+                      const absl::flat_hash_set<NodeID> &candidate_nodes,
+                      std::vector<NodeID> *result);
+
+  void StrictPackSchedule(const std::vector<ResourceSet> &required_resources_list,
+                          const absl::flat_hash_set<NodeID> &candidate_nodes,
+                          std::vector<NodeID> *result);
+
+  void PackSchedule(const std::vector<ResourceSet> &required_resources_list,
+                    const absl::flat_hash_set<NodeID> &candidate_nodes,
+                    std::vector<NodeID> *result);
+
+  std::list<NodeScore> ScoreNodes(const ResourceSet &required_resources,
+                                  const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
