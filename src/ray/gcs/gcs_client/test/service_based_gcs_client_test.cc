@@ -286,18 +286,19 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool SubscribeToResources(const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeToResources(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  gcs::NodeInfoAccessor::ResourceMap GetResources(const NodeID &node_id) {
-    gcs::NodeInfoAccessor::ResourceMap resource_map;
+  gcs::NodeResourceInfoAccessor::ResourceMap GetResources(const NodeID &node_id) {
+    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
-        node_id, [&resource_map, &promise](
-                     Status status,
-                     const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &result) {
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
+        node_id,
+        [&resource_map, &promise](
+            Status status,
+            const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &result) {
           if (result) {
             resource_map.insert(result->begin(), result->end());
           }
@@ -309,11 +310,11 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool UpdateResources(const NodeID &node_id, const std::string &key) {
     std::promise<bool> promise;
-    gcs::NodeInfoAccessor::ResourceMap resource_map;
+    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
     auto resource = std::make_shared<rpc::ResourceTableData>();
     resource->set_resource_capacity(1.0);
     resource_map[key] = resource;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
         node_id, resource_map,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
@@ -322,7 +323,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   bool DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &resource_names) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDeleteResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
         node_id, resource_names,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
@@ -331,7 +332,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   bool SubscribeBatchResourceUsage(
       const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchedResourceUsage(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -345,7 +346,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
         resources, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -353,7 +354,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   std::vector<rpc::AvailableResources> GetAllAvailableResources() {
     std::promise<bool> promise;
     std::vector<rpc::AvailableResources> resources;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllAvailableResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
         [&resources, &promise](Status status,
                                const std::vector<rpc::AvailableResources> &result) {
           EXPECT_TRUE(!result.empty());
@@ -412,13 +413,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return task_table_data;
-  }
-
-  bool DeleteTask(const std::vector<TaskID> &task_ids) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(
-        task_ids, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool SubscribeTaskLease(
@@ -873,10 +867,6 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   // Assert unsubscribe succeeded.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(task_count, 1);
-
-  // Delete tasks from GCS.
-  std::vector<TaskID> task_ids = {task_id};
-  ASSERT_TRUE(DeleteTask(task_ids));
 
   // Subscribe to the event that the given task lease is added in GCS.
   std::atomic<int> task_lease_count(0);

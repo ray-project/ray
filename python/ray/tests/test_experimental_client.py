@@ -1,21 +1,10 @@
 import pytest
-from contextlib import contextmanager
+import time
+import sys
+import logging
 
-import ray.experimental.client.server.server as ray_client_server
-from ray.experimental.client import ray, reset_api
 from ray.experimental.client.common import ClientObjectRef
-
-
-@contextmanager
-def ray_start_client_server():
-    server = ray_client_server.serve("localhost:50051", test_mode=True)
-    ray.connect("localhost:50051")
-    try:
-        yield ray
-    finally:
-        ray.disconnect()
-        server.stop(0)
-        reset_api()
+from ray.experimental.client.ray_client_helpers import ray_start_client_server
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
@@ -81,11 +70,11 @@ def test_wait(ray_start_regular_shared):
         with pytest.raises(Exception):
             # Reference not in the object store.
             ray.wait([ClientObjectRef("blabla")])
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait("blabla")
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait(ClientObjectRef("blabla"))
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             ray.wait(["blabla"])
 
 
@@ -142,7 +131,7 @@ def test_function_calling_function(ray_start_regular_shared):
 
         @ray.remote
         def f():
-            print(f, f._name, g._name, g)
+            print(f, g)
             return ray.get(g.remote())
 
         print(f, type(f))
@@ -171,8 +160,7 @@ def test_basic_actor(ray_start_regular_shared):
 
 
 def test_pass_handles(ray_start_regular_shared):
-    """
-    Test that passing client handles to actors and functions to remote actors
+    """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
     caller.
     """
@@ -234,6 +222,98 @@ def test_pass_handles(ray_start_regular_shared):
                                                 4)) == local_fact(4)
 
 
+def test_basic_log_stream(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        log_msgs = []
+
+        def test_log(level, msg):
+            log_msgs.append(msg)
+
+        ray.worker.log_client.log = test_log
+        ray.worker.log_client.set_logstream_level(logging.DEBUG)
+        # Allow some time to propogate
+        time.sleep(1)
+        x = ray.put("Foo")
+        assert ray.get(x) == "Foo"
+        time.sleep(1)
+        logs_with_id = [msg for msg in log_msgs if msg.find(x.id.hex()) >= 0]
+        assert len(logs_with_id) >= 2
+        assert any((msg.find("get") >= 0 for msg in logs_with_id))
+        assert any((msg.find("put") >= 0 for msg in logs_with_id))
+
+
+def test_stdout_log_stream(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        log_msgs = []
+
+        def test_log(level, msg):
+            log_msgs.append(msg)
+
+        ray.worker.log_client.stdstream = test_log
+
+        @ray.remote
+        def print_on_stderr_and_stdout(s):
+            print(s)
+            print(s, file=sys.stderr)
+
+        time.sleep(1)
+        print_on_stderr_and_stdout.remote("Hello world")
+        time.sleep(1)
+        assert len(log_msgs) == 2
+        assert all((msg.find("Hello world") for msg in log_msgs))
+
+
+def test_create_remote_before_start(ray_start_regular_shared):
+    """Creates remote objects (as though in a library) before
+    starting the client.
+    """
+    from ray.experimental.client import ray
+
+    @ray.remote
+    class Returner:
+        def doit(self):
+            return "foo"
+
+    @ray.remote
+    def f(x):
+        return x + 20
+
+    # Prints in verbose tests
+    print("Created remote functions")
+
+    with ray_start_client_server() as ray:
+        assert ray.get(f.remote(3)) == 23
+        a = Returner.remote()
+        assert ray.get(a.doit.remote()) == "foo"
+
+
+def test_basic_named_actor(ray_start_regular_shared):
+    """Test that ray.get_actor() can create and return a detached actor.
+    """
+    with ray_start_client_server() as ray:
+
+        @ray.remote
+        class Accumulator:
+            def __init__(self):
+                self.x = 0
+
+            def inc(self):
+                self.x += 1
+
+            def get(self):
+                return self.x
+
+        # Create the actor
+        actor = Accumulator.options(name="test_acc").remote()
+
+        actor.inc.remote()
+        actor.inc.remote()
+        del actor
+
+        new_actor = ray.get_actor("test_acc")
+        new_actor.inc.remote()
+        assert ray.get(new_actor.get.remote()) == 3
+
+
 if __name__ == "__main__":
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

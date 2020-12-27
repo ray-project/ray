@@ -21,7 +21,7 @@
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -84,7 +84,7 @@ class GcsServer {
   void InitGcsHeartbeatManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs resource manager.
-  void InitGcsResourceManager();
+  void InitGcsResourceManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs job manager.
   void InitGcsJobManager();
@@ -156,6 +156,8 @@ class GcsServer {
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Node info handler and service
   std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
+  /// Node resource info handler and service
+  std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
   /// Object info handler and service
@@ -174,7 +176,7 @@ class GcsServer {
   /// Placement Group info handler and service
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Backend client
-  std::shared_ptr<RedisGcsClient> redis_gcs_client_;
+  std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
   /// The gcs table storage.

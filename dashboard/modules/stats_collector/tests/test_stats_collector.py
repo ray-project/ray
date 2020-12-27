@@ -4,9 +4,12 @@ import logging
 import requests
 import time
 import traceback
-
+import random
 import pytest
 import ray
+import threading
+from datetime import datetime, timedelta
+from ray.cluster_utils import Cluster
 from ray.new_dashboard.tests.conftest import *  # noqa
 from ray.test_utils import (format_web_url, wait_until_server_available,
                             wait_for_condition,
@@ -109,20 +112,16 @@ def test_memory_table(disable_aiohttp_cache, ray_start_with_dashboard):
     def check_mem_table():
         resp = requests.get(f"{webui_url}/memory/memory_table")
         resp_data = resp.json()
-        if not resp_data["result"]:
-            return False
+        assert resp_data["result"]
         latest_memory_table = resp_data["data"]["memoryTable"]
         summary = latest_memory_table["summary"]
-        try:
-            # 1 ref per handle and per object the actor has a ref to
-            assert summary["totalActorHandles"] == len(actors) * 2
-            # 1 ref for my_obj
-            assert summary["totalLocalRefCount"] == 1
-            return True
-        except AssertionError:
-            return False
+        # 1 ref per handle and per object the actor has a ref to
+        assert summary["totalActorHandles"] == len(actors) * 2
+        # 1 ref for my_obj
+        assert summary["totalLocalRefCount"] == 1
 
-    wait_for_condition(check_mem_table, 10)
+    wait_until_succeeded_without_exception(
+        check_mem_table, (AssertionError, ), timeout_ms=1000)
 
 
 def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
@@ -182,7 +181,7 @@ def test_get_all_node_details(disable_aiohttp_cache, ray_start_with_dashboard):
     }], indirect=True)
 def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
                           ray_start_cluster_head):
-    cluster = ray_start_cluster_head
+    cluster: Cluster = ray_start_cluster_head
     assert (wait_until_server_available(cluster.webui_url) is True)
     webui_url = cluster.webui_url
     webui_url = format_web_url(webui_url)
@@ -214,7 +213,53 @@ def test_multi_nodes_info(enable_test_module, disable_aiohttp_cache,
             logger.info(ex)
             return False
 
-    wait_for_condition(_check_nodes, timeout=10)
+    wait_for_condition(_check_nodes, timeout=15)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "include_dashboard": True
+    }], indirect=True)
+def test_multi_node_churn(enable_test_module, disable_aiohttp_cache,
+                          ray_start_cluster_head):
+    cluster: Cluster = ray_start_cluster_head
+    assert (wait_until_server_available(cluster.webui_url) is True)
+    webui_url = format_web_url(cluster.webui_url)
+
+    def cluster_chaos_monkey():
+        worker_nodes = []
+        while True:
+            time.sleep(5)
+            if len(worker_nodes) < 2:
+                worker_nodes.append(cluster.add_node())
+                continue
+            should_add_node = random.randint(0, 1)
+            if should_add_node:
+                worker_nodes.append(cluster.add_node())
+            else:
+                node_index = random.randrange(0, len(worker_nodes))
+                node_to_remove = worker_nodes.pop(node_index)
+                cluster.remove_node(node_to_remove)
+
+    def get_index():
+        resp = requests.get(webui_url)
+        resp.raise_for_status()
+
+    def get_nodes():
+        resp = requests.get(webui_url + "/nodes?view=summary")
+        resp.raise_for_status()
+        summary = resp.json()
+        assert summary["result"] is True, summary["msg"]
+        assert summary["data"]["summary"]
+
+    t = threading.Thread(target=cluster_chaos_monkey, daemon=True)
+    t.start()
+
+    t_st = datetime.now()
+    duration = timedelta(seconds=60)
+    while datetime.now() < t_st + duration:
+        get_index()
+        time.sleep(2)
 
 
 @pytest.mark.parametrize(

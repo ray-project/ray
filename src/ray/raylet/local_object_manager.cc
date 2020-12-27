@@ -22,7 +22,6 @@ namespace raylet {
 
 void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects) {
-  absl::MutexLock lock(&mutex_);
   RAY_CHECK(object_pinning_enabled_);
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
@@ -62,7 +61,6 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   // object_pinning_enabled_ flag is off when the --lru-evict flag is on.
   if (object_pinning_enabled_) {
-    absl::MutexLock lock(&mutex_);
     RAY_LOG(DEBUG) << "Unpinning object " << object_id;
     // The object should be in one of these stats. pinned, spilling, or spilled.
     RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
@@ -104,50 +102,85 @@ void LocalObjectManager::FlushFreeObjectsIfNeeded(int64_t now_ms) {
   }
 }
 
-int64_t LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill,
-                                               int64_t min_bytes_to_spill) {
-  RAY_CHECK(num_bytes_to_spill >= min_bytes_to_spill);
-
+void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   if (RayConfig::instance().object_spilling_config().empty() ||
       !RayConfig::instance().automatic_object_spilling_enabled()) {
-    return min_bytes_to_spill;
+    return;
   }
 
-  absl::MutexLock lock(&mutex_);
+  // Spill as fast as we can using all our spill workers.
+  bool can_spill_more = true;
+  while (can_spill_more) {
+    if (!SpillObjectsOfSize(min_spilling_size_)) {
+      break;
+    }
+    {
+      absl::MutexLock lock(&mutex_);
+      num_active_workers_ += 1;
+      can_spill_more = num_active_workers_ < max_active_workers_;
+    }
+  }
+}
 
-  RAY_LOG(INFO) << "Choosing objects to spill of total size " << num_bytes_to_spill;
+bool LocalObjectManager::IsSpillingInProgress() {
+  absl::MutexLock lock(&mutex_);
+  return num_active_workers_ > 0;
+}
+
+bool LocalObjectManager::SpillObjectsOfSize(int64_t num_bytes_to_spill) {
+  if (RayConfig::instance().object_spilling_config().empty() ||
+      !RayConfig::instance().automatic_object_spilling_enabled()) {
+    return false;
+  }
+
+  RAY_LOG(DEBUG) << "Choosing objects to spill of total size " << num_bytes_to_spill;
   int64_t bytes_to_spill = 0;
   auto it = pinned_objects_.begin();
   std::vector<ObjectID> objects_to_spill;
-  while (bytes_to_spill < num_bytes_to_spill && it != pinned_objects_.end()) {
-    bytes_to_spill += it->second->GetSize();
-    objects_to_spill.push_back(it->first);
+  while (bytes_to_spill <= num_bytes_to_spill && it != pinned_objects_.end()) {
+    if (is_plasma_object_spillable_(it->first)) {
+      bytes_to_spill += it->second->GetSize();
+      objects_to_spill.push_back(it->first);
+    }
     it++;
   }
   if (!objects_to_spill.empty()) {
-    RAY_LOG(INFO) << "Spilling objects of total size " << bytes_to_spill;
-    auto start_time = current_time_ms();
-    SpillObjectsInternal(
-        objects_to_spill, [bytes_to_spill, start_time](const Status &status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
-          } else {
-            RAY_LOG(INFO) << "Spilled " << bytes_to_spill << " in "
-                          << (current_time_ms() - start_time) << "ms";
-          }
-        });
+    RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill
+                   << " num objects " << objects_to_spill.size();
+    auto start_time = absl::GetCurrentTimeNanos();
+    SpillObjectsInternal(objects_to_spill, [this, bytes_to_spill, objects_to_spill,
+                                            start_time](const Status &status) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Error spilling objects " << status.ToString();
+      } else {
+        auto now = absl::GetCurrentTimeNanos();
+        RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
+                       << (now - start_time) / 1e6 << "ms";
+        spilled_bytes_total_ += bytes_to_spill;
+        spilled_objects_total_ += objects_to_spill.size();
+        // Adjust throughput timing to account for concurrent spill operations.
+        spill_time_total_s_ += (now - std::max(start_time, last_spill_finish_ns_)) / 1e9;
+        if (now - last_spill_log_ns_ > 1e9) {
+          last_spill_log_ns_ = now;
+          // TODO(ekl) logging at error level until we add a better UX indicator.
+          RAY_LOG(ERROR) << "Spilled "
+                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024))
+                         << " MiB, " << spilled_objects_total_
+                         << " objects, write throughput "
+                         << static_cast<int>(spilled_bytes_total_ / (1024 * 1024) /
+                                             spill_time_total_s_)
+                         << " MiB/s";
+        }
+        last_spill_finish_ns_ = now;
+      }
+    });
+    return true;
   }
-  //  We do not track a mapping between objects that need to be created to
-  //  objects that are being spilled, so we just subtract the total number of
-  //  bytes that are currently being spilled from the amount of space
-  //  requested. If the space is claimed by another client, this client may
-  //  need to request space again.
-  return min_bytes_to_spill - num_bytes_pending_spill_;
+  return false;
 }
 
 void LocalObjectManager::SpillObjects(const std::vector<ObjectID> &object_ids,
                                       std::function<void(const ray::Status &)> callback) {
-  absl::MutexLock lock(&mutex_);
   SpillObjectsInternal(object_ids, callback);
 }
 
@@ -196,7 +229,10 @@ void LocalObjectManager::SpillObjectsInternal(
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
-              absl::MutexLock lock(&mutex_);
+              {
+                absl::MutexLock lock(&mutex_);
+                num_active_workers_ -= 1;
+              }
               io_worker_pool_.PushSpillWorker(io_worker);
               if (!status.ok()) {
                 for (const auto &object_id : objects_to_spill) {
@@ -222,7 +258,6 @@ void LocalObjectManager::AddSpilledUrls(
     const std::vector<ObjectID> &object_ids, const rpc::SpillObjectsReply &worker_reply,
     std::function<void(const ray::Status &)> callback) {
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
-  auto num_bytes_spilled = std::make_shared<size_t>(0);
   for (size_t i = 0; i < object_ids.size(); ++i) {
     const ObjectID &object_id = object_ids[i];
     const std::string &object_url = worker_reply.spilled_objects_url(i);
@@ -232,15 +267,12 @@ void LocalObjectManager::AddSpilledUrls(
     // be retrieved by other raylets.
     RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
         object_id, object_url,
-        [this, object_id, object_url, callback, num_remaining,
-         num_bytes_spilled](Status status) {
+        [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
-          absl::MutexLock lock(&mutex_);
           // Unpin the object.
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
           num_bytes_pending_spill_ -= it->second->GetSize();
-          *num_bytes_spilled += it->second->GetSize();
           objects_pending_spill_.erase(it);
 
           // Update the object_id -> url_ref_count to use it for deletion later.
@@ -273,20 +305,41 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
                  << object_url;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
+    auto start_time = absl::GetCurrentTimeNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(std::move(object_url));
     request.add_object_ids_to_restore(object_id.Binary());
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
-        [this, object_id, callback, io_worker](const ray::Status &status,
-                                               const rpc::RestoreSpilledObjectsReply &r) {
+        [this, start_time, object_id, callback, io_worker](
+            const ray::Status &status, const rpc::RestoreSpilledObjectsReply &r) {
           io_worker_pool_.PushRestoreWorker(io_worker);
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
-            RAY_LOG(DEBUG) << "Restored object " << object_id;
+            auto now = absl::GetCurrentTimeNanos();
+            auto restored_bytes = r.bytes_restored_total();
+            RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
+                           << (now - start_time) / 1e6 << "ms. Object id:" << object_id;
+            restored_bytes_total_ += restored_bytes;
+            restored_objects_total_ += 1;
+            // Adjust throughput timing to account for concurrent restore operations.
+            restore_time_total_s_ +=
+                (now - std::max(start_time, last_restore_finish_ns_)) / 1e9;
+            if (now - last_restore_log_ns_ > 1e9) {
+              last_restore_log_ns_ = now;
+              // TODO(ekl) logging at error level until we add a better UX indicator.
+              RAY_LOG(ERROR) << "Restored "
+                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024))
+                             << " MiB, " << restored_objects_total_
+                             << " objects, read throughput "
+                             << static_cast<int>(restored_bytes_total_ / (1024 * 1024) /
+                                                 restore_time_total_s_)
+                             << " MiB/s";
+            }
+            last_restore_finish_ns_ = now;
           }
           if (callback) {
             callback(status);
@@ -296,7 +349,6 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
 }
 
 void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_size) {
-  absl::MutexLock lock(&mutex_);
   std::vector<std::string> object_urls_to_delete;
 
   // Process upto batch size of objects to delete.

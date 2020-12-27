@@ -10,16 +10,22 @@ import time
 import numpy as np
 import pytest
 
-import ray
 import ray.cluster_utils
 import ray.test_utils
 
+from ray.test_utils import client_test_enabled
 from ray.test_utils import RayTestTimeoutException
+
+if client_test_enabled():
+    from ray.experimental.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
 
 # issue https://github.com/ray-project/ray/issues/7105
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_internal_free(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -60,14 +66,14 @@ def test_multiple_waits_and_gets(shutdown_only):
         return 1
 
     @ray.remote
-    def g(l):
-        # The argument l should be a list containing one object ref.
-        ray.wait([l[0]])
+    def g(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.wait([input_list[0]])
 
     @ray.remote
-    def h(l):
-        # The argument l should be a list containing one object ref.
-        ray.get(l[0])
+    def h(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.get(input_list[0])
 
     # Make sure that multiple wait requests involving the same object ref
     # all return.
@@ -80,6 +86,7 @@ def test_multiple_waits_and_gets(shutdown_only):
     ray.get([h.remote([x]), h.remote([x])])
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_caching_functions_to_run(shutdown_only):
     # Test that we export functions to run on all workers before the driver
     # is connected.
@@ -125,6 +132,7 @@ def test_caching_functions_to_run(shutdown_only):
     ray.worker.global_worker.run_function_on_all_workers(f)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
@@ -152,6 +160,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="ray.timeline")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
@@ -345,6 +354,8 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="grpc interaction with releasing resources")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
@@ -482,6 +493,7 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_wait_makes_object_local(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)

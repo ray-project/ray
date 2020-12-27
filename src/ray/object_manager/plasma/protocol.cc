@@ -19,16 +19,11 @@
 
 #include <utility>
 
+#include "arrow/util/ubsan.h"
 #include "flatbuffers/flatbuffers.h"
-
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
-
-#ifdef PLASMA_CUDA
-#include "arrow/gpu/cuda_api.h"
-#endif
-#include "arrow/util/ubsan.h"
 
 namespace fb = plasma::flatbuf;
 
@@ -131,9 +126,6 @@ Status PlasmaErrorStatus(fb::PlasmaError plasma_error) {
     return Status::ObjectNotFound("object does not exist in the plasma store");
   case fb::PlasmaError::OutOfMemory:
     return Status::ObjectStoreFull("object does not fit in the plasma store");
-  case fb::PlasmaError::TransientOutOfMemory:
-    return Status::ObjectStoreFull(
-        "object does not fit in the plasma store, spilling objects to make room");
   case fb::PlasmaError::UnexpectedError:
     return Status::UnknownError(
         "an unexpected error occurred, likely due to a bug in the system or caller");
@@ -259,15 +251,6 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
                                  object.data_size, object.metadata_offset,
                                  object.metadata_size, object.device_num);
   auto object_string = fbb.CreateString(object_id.Binary());
-#ifdef PLASMA_CUDA
-  flatbuffers::Offset<fb::CudaHandle> ipc_handle;
-  if (object.device_num != 0) {
-    std::shared_ptr<arrow::Buffer> handle;
-    ARROW_ASSIGN_OR_RAISE(handle, object.ipc_handle->Serialize());
-    ipc_handle =
-        fb::CreateCudaHandle(fbb, fbb.CreateVector(handle->data(), handle->size()));
-  }
-#endif
   fb::PlasmaCreateReplyBuilder crb(fbb);
   crb.add_error(static_cast<PlasmaError>(error_code));
   crb.add_plasma_object(&plasma_object);
@@ -276,11 +259,7 @@ Status SendCreateReply(const std::shared_ptr<Client> &client, ObjectID object_id
   crb.add_store_fd(FD2INT(object.store_fd));
   crb.add_mmap_size(object.mmap_size);
   if (object.device_num != 0) {
-#ifdef PLASMA_CUDA
-    crb.add_ipc_handle(ipc_handle);
-#else
     RAY_LOG(FATAL) << "This should be unreachable.";
-#endif
   }
   auto message = crb.Finish();
   return PlasmaSend(client, MessageType::PlasmaCreateReply, &fbb, message);
@@ -309,13 +288,6 @@ Status ReadCreateReply(uint8_t *data, size_t size, ObjectID *object_id,
   *mmap_size = message->mmap_size();
 
   object->device_num = message->plasma_object()->device_num();
-#ifdef PLASMA_CUDA
-  if (object->device_num != 0) {
-    ARROW_ASSIGN_OR_RAISE(
-        object->ipc_handle,
-        CudaIpcMemHandle::FromBuffer(message->ipc_handle()->handle()->data()));
-  }
-#endif
   return PlasmaErrorStatus(message->error());
 }
 
@@ -597,14 +569,6 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
     objects.push_back(PlasmaObjectSpec(FD2INT(object.store_fd), object.data_offset,
                                        object.data_size, object.metadata_offset,
                                        object.metadata_size, object.device_num));
-#ifdef PLASMA_CUDA
-    if (object.device_num != 0) {
-      std::shared_ptr<arrow::Buffer> handle;
-      ARROW_ASSIGN_OR_RAISE(handle, object.ipc_handle->Serialize());
-      handles.push_back(
-          fb::CreateCudaHandle(fbb, fbb.CreateVector(handle->data(), handle->size())));
-    }
-#endif
   }
   std::vector<int> store_fds_as_int;
   for (MEMFD_TYPE store_fd : store_fds) {
@@ -626,9 +590,6 @@ Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
                     std::vector<int64_t> &mmap_sizes) {
   RAY_DCHECK(data);
   auto message = flatbuffers::GetRoot<fb::PlasmaGetReply>(data);
-#ifdef PLASMA_CUDA
-  int handle_pos = 0;
-#endif
   RAY_DCHECK(VerifyFlatbuffer(message, data, size));
   for (uoffset_t i = 0; i < num_objects; ++i) {
     object_ids[i] = ObjectID::FromBinary(message->object_ids()->Get(i)->str());
@@ -641,14 +602,6 @@ Status ReadGetReply(uint8_t *data, size_t size, ObjectID object_ids[],
     plasma_objects[i].metadata_offset = object->metadata_offset();
     plasma_objects[i].metadata_size = object->metadata_size();
     plasma_objects[i].device_num = object->device_num();
-#ifdef PLASMA_CUDA
-    if (object->device_num() != 0) {
-      const void *ipc_handle = message->handles()->Get(handle_pos)->handle()->data();
-      ARROW_ASSIGN_OR_RAISE(plasma_objects[i].ipc_handle,
-                            CudaIpcMemHandle::FromBuffer(ipc_handle));
-      handle_pos++;
-    }
-#endif
   }
   RAY_CHECK(message->store_fds()->size() == message->mmap_sizes()->size());
   for (uoffset_t i = 0; i < message->store_fds()->size(); i++) {

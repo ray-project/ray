@@ -66,7 +66,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
   // Filter candidate nodes.
   std::vector<std::pair<int64_t, NodeID>> candidate_nodes;
   for (auto &node : context->cluster_resources_) {
-    if (required_resources.IsSubset(node.second)) {
+    if (required_resources.IsSubset(node.second.GetAvailableResources())) {
       candidate_nodes.emplace_back((*context->node_to_bundles_)[node.first], node.first);
     }
   }
@@ -99,7 +99,8 @@ ScheduleMap GcsPackStrategy::Schedule(
   for (const auto &bundle : bundles) {
     const auto &required_resources = bundle->GetRequiredResources();
     for (const auto &node : context->cluster_resources_) {
-      if (IsAvailableResourceSufficient(node.second, allocated_resources[node.first],
+      if (IsAvailableResourceSufficient(node.second.GetAvailableResources(),
+                                        allocated_resources[node.first],
                                         required_resources)) {
         schedule_map[bundle->BundleId()] = node.first;
         allocated_resources[node.first].AddResources(required_resources);
@@ -135,7 +136,8 @@ ScheduleMap GcsSpreadStrategy::Schedule(
     // that meets the resource requirements. `iter_begin` is the next node of the last
     // selected node.
     for (; iter != candidate_nodes.end(); ++iter) {
-      if (IsAvailableResourceSufficient(iter->second, allocated_resources[iter->first],
+      if (IsAvailableResourceSufficient(iter->second.GetAvailableResources(),
+                                        allocated_resources[iter->first],
                                         required_resources)) {
         schedule_map[bundle->BundleId()] = iter->first;
         allocated_resources[iter->first].AddResources(required_resources);
@@ -153,8 +155,9 @@ ScheduleMap GcsSpreadStrategy::Schedule(
       if (iter_begin != candidate_nodes.begin()) {
         // Traverse all the nodes from `candidate_nodes.begin()` to `iter_begin`.
         for (iter = candidate_nodes.begin(); iter != iter_begin; ++iter) {
-          if (IsAvailableResourceSufficient(
-                  iter->second, allocated_resources[iter->first], required_resources)) {
+          if (IsAvailableResourceSufficient(iter->second.GetAvailableResources(),
+                                            allocated_resources[iter->first],
+                                            required_resources)) {
             schedule_map[bundle->BundleId()] = iter->first;
             allocated_resources[iter->first].AddResources(required_resources);
             break;
@@ -207,7 +210,8 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
     auto iter = candidate_nodes.begin();
     for (; iter != candidate_nodes.end(); ++iter) {
       if (!allocated_resources.contains(iter->first) &&
-          IsAvailableResourceSufficient(iter->second, allocated_resources[iter->first],
+          IsAvailableResourceSufficient(iter->second.GetAvailableResources(),
+                                        allocated_resources[iter->first],
                                         required_resources)) {
         schedule_map[bundle->BundleId()] = iter->first;
         allocated_resources[iter->first].AddResources(required_resources);
@@ -273,7 +277,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
-    PrepareResources(bundle, gcs_node_manager_.GetNode(node_id),
+    PrepareResources(bundle, gcs_node_manager_.GetAliveNode(node_id),
                      [this, bundle, node_id, lease_status_tracker, failure_callback,
                       success_callback](const Status &status) {
                        lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
@@ -411,7 +415,7 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
   lease_status_tracker->MarkCommitPhaseStarted();
   for (const auto &bundle_to_commit : *prepared_bundle_locations) {
     const auto &node_id = bundle_to_commit.second.first;
-    const auto &node = gcs_node_manager_.GetNode(node_id);
+    const auto &node = gcs_node_manager_.GetAliveNode(node_id);
     const auto &bundle = bundle_to_commit.second.second;
 
     auto commit_resources_callback = [this, lease_status_tracker, bundle, node_id,
@@ -623,7 +627,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     for (const auto &iter : *(leasing_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
   }
 }
@@ -642,7 +646,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
     for (const auto &iter : *(committed_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetNode(node_id));
+      CancelResourceReserve(bundle_spec, gcs_node_manager_.GetAliveNode(node_id));
     }
     committed_bundle_location_index_.Erase(placement_group_id);
   }

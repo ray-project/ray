@@ -119,6 +119,12 @@ class LSTMWrapper(RecurrentNetwork):
 
         super(LSTMWrapper, self).__init__(obs_space, action_space, None,
                                           model_config, name)
+        # At this point, self.num_outputs is the number of nodes coming
+        # from the wrapped (underlying) model. In other words, self.num_outputs
+        # is the input size for the LSTM layer.
+        # If None, set it to the observation space.
+        if self.num_outputs is None:
+            self.num_outputs = int(np.product(self.obs_space.shape))
 
         self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action = model_config["lstm_use_prev_action"]
@@ -127,7 +133,7 @@ class LSTMWrapper(RecurrentNetwork):
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
         elif isinstance(action_space, MultiDiscrete):
-            self.action_dim = np.product(action_space.nvec)
+            self.action_dim = np.sum(action_space.nvec)
         elif action_space.shape is not None:
             self.action_dim = int(np.product(action_space.shape))
         else:
@@ -143,6 +149,8 @@ class LSTMWrapper(RecurrentNetwork):
         input_layer = tf.keras.layers.Input(
             shape=(None, self.num_outputs), name="inputs")
 
+        # Set self.num_outputs to the number of output nodes desired by the
+        # caller of this constructor.
         self.num_outputs = num_outputs
 
         state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")

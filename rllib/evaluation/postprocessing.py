@@ -50,8 +50,6 @@ def compute_advantages(rollout: SampleBatch,
             processed rewards.
     """
 
-    rollout_size = len(rollout[SampleBatch.ACTIONS])
-
     assert SampleBatch.VF_PREDS in rollout or not use_critic, \
         "use_critic=True but values not found"
     assert use_critic or not use_gae, \
@@ -90,6 +88,4 @@ def compute_advantages(rollout: SampleBatch,
     rollout[Postprocessing.ADVANTAGES] = rollout[
         Postprocessing.ADVANTAGES].astype(np.float32)
 
-    assert all(val.shape[0] == rollout_size for key, val in rollout.items()), \
-        "Rollout stacked incorrectly!"
     return rollout

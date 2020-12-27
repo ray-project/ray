@@ -1,5 +1,7 @@
 #include "ray/object_manager/pull_manager.h"
 
+#include "ray/common/common_protocol.h"
+
 namespace ray {
 
 PullManager::PullManager(
@@ -15,29 +17,56 @@ PullManager::PullManager(
       pull_timeout_ms_(pull_timeout_ms),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
-bool PullManager::Pull(const ObjectID &object_id, const rpc::Address &owner_address) {
-  RAY_LOG(DEBUG) << "Pull "
-                 << " of object " << object_id;
-  // Check if object is already local.
-  if (object_is_local_(object_id)) {
-    RAY_LOG(DEBUG) << object_id << " attempted to pull an object that's already local.";
-    return false;
-  }
-  if (pull_requests_.find(object_id) != pull_requests_.end()) {
-    RAY_LOG(DEBUG) << object_id << " has inflight pull_requests, skipping.";
-    return false;
+uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
+                           std::vector<rpc::ObjectReference> *objects_to_locate) {
+  auto bundle_it = pull_request_bundles_.emplace(next_req_id_++, object_ref_bundle).first;
+  RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first;
+
+  for (const auto &ref : object_ref_bundle) {
+    auto obj_id = ObjectRefToId(ref);
+    auto it = object_pull_requests_.find(obj_id);
+    if (it == object_pull_requests_.end()) {
+      RAY_LOG(DEBUG) << "Pull of object " << obj_id;
+      // We don't have an active pull for this object yet. Ask the caller to
+      // send us notifications about the object's location.
+      objects_to_locate->push_back(ref);
+      it = object_pull_requests_
+               .emplace(obj_id, ObjectPullRequest(get_time_() + pull_timeout_ms_ / 1000))
+               .first;
+    }
+    it->second.bundle_request_ids.insert(bundle_it->first);
   }
 
-  pull_requests_.emplace(object_id, PullRequest(get_time_() + pull_timeout_ms_ / 1000));
-  return true;
+  return bundle_it->first;
+}
+
+std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
+  std::vector<ObjectID> objects_to_cancel;
+  RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
+  auto bundle_it = pull_request_bundles_.find(request_id);
+  RAY_CHECK(bundle_it != pull_request_bundles_.end());
+
+  for (const auto &ref : bundle_it->second) {
+    auto obj_id = ObjectRefToId(ref);
+    auto it = object_pull_requests_.find(obj_id);
+    RAY_CHECK(it != object_pull_requests_.end());
+    RAY_CHECK(it->second.bundle_request_ids.erase(request_id));
+    if (it->second.bundle_request_ids.empty()) {
+      object_pull_requests_.erase(it);
+      objects_to_cancel.push_back(obj_id);
+    }
+  }
+
+  pull_request_bundles_.erase(bundle_it);
+  return objects_to_cancel;
 }
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url) {
   // Exit if the Pull request has already been fulfilled or canceled.
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
+  auto it = object_pull_requests_.find(object_id);
+  if (it == object_pull_requests_.end()) {
     return;
   }
   // Reset the list of clients that are now expected to have the object.
@@ -45,26 +74,50 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // we may end up sending a duplicate request to the same client as
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
-  if (!spilled_url.empty()) {
+  it->second.spilled_url = spilled_url;
+  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+                 << client_ids.size();
+
+  TryToMakeObjectLocal(object_id);
+}
+
+void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
+  if (object_is_local_(object_id)) {
+    return;
+  }
+  auto it = object_pull_requests_.find(object_id);
+  if (it == object_pull_requests_.end()) {
+    return;
+  }
+
+  auto &request = it->second;
+  if (!request.spilled_url.empty()) {
     // Try to restore the spilled object.
-    restore_spilled_object_(object_id, spilled_url,
+    restore_spilled_object_(object_id, request.spilled_url,
                             [this, object_id](const ray::Status &status) {
                               // Fall back to fetching from another object manager.
                               if (!status.ok()) {
-                                TryPull(object_id);
+                                PullFromRandomLocation(object_id);
                               }
                             });
   } else {
     // New object locations were found, so begin trying to pull from a
     // client. This will be called every time a new client location
     // appears.
-    TryPull(object_id);
+    PullFromRandomLocation(object_id);
   }
+
+  const auto time = get_time_();
+  auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
+  request.next_pull_time = time + retry_timeout_len;
+
+  // Bound the retry time at 10 * 1024 seconds.
+  request.num_retries = std::min(request.num_retries + 1, 10);
 }
 
-void PullManager::TryPull(const ObjectID &object_id) {
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
+void PullManager::PullFromRandomLocation(const ObjectID &object_id) {
+  auto it = object_pull_requests_.find(object_id);
+  if (it == object_pull_requests_.end()) {
     return;
   }
 
@@ -112,28 +165,17 @@ void PullManager::TryPull(const ObjectID &object_id) {
   send_pull_request_(object_id, node_id);
 }
 
-bool PullManager::CancelPull(const ObjectID &object_id) {
-  auto it = pull_requests_.find(object_id);
-  if (it == pull_requests_.end()) {
-    return false;
-  }
-
-  pull_requests_.erase(it);
-  return true;
-}
-
 void PullManager::Tick() {
-  for (auto &pair : pull_requests_) {
+  for (auto &pair : object_pull_requests_) {
     const auto &object_id = pair.first;
     auto &request = pair.second;
     const auto time = get_time_();
     if (time >= request.next_pull_time) {
-      TryPull(object_id);
-      request.next_pull_time = time + pull_timeout_ms_ / 1000;
+      TryToMakeObjectLocal(object_id);
     }
   }
 }
 
-int PullManager::NumActiveRequests() const { return pull_requests_.size(); }
+int PullManager::NumActiveRequests() const { return object_pull_requests_.size(); }
 
 }  // namespace ray

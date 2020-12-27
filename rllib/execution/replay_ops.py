@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any, Optional
 import random
 
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
@@ -55,7 +55,7 @@ class StoreToReplayBuffer:
 def Replay(*,
            local_buffer: LocalReplayBuffer = None,
            actors: List["ActorHandle"] = None,
-           num_async=4):
+           num_async: int = 4) -> LocalIterator[SampleBatchType]:
     """Replay experiences from the given buffer or actors.
 
     This should be combined with the StoreToReplayActors operation using the
@@ -99,10 +99,10 @@ def Replay(*,
 class WaitUntilTimestepsElapsed:
     """Callable that returns True once a given number of timesteps are hit."""
 
-    def __init__(self, target_num_timesteps):
+    def __init__(self, target_num_timesteps: int):
         self.target_num_timesteps = target_num_timesteps
 
-    def __call__(self, item):
+    def __call__(self, item: Any) -> bool:
         metrics = _get_shared_metrics()
         ts = metrics.counters[STEPS_SAMPLED_COUNTER]
         return ts > self.target_num_timesteps
@@ -112,7 +112,9 @@ class WaitUntilTimestepsElapsed:
 class SimpleReplayBuffer:
     """Simple replay buffer that operates over batches."""
 
-    def __init__(self, num_slots, replay_proportion: float = None):
+    def __init__(self,
+                 num_slots: int,
+                 replay_proportion: Optional[float] = None):
         """Initialize SimpleReplayBuffer.
 
         Args:
@@ -122,7 +124,7 @@ class SimpleReplayBuffer:
         self.replay_batches = []
         self.replay_index = 0
 
-    def add_batch(self, sample_batch):
+    def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_buffer_size(item=sample_batch, num_items=self.num_slots)
         if self.num_slots > 0:
             if len(self.replay_batches) < self.num_slots:
@@ -132,7 +134,7 @@ class SimpleReplayBuffer:
                 self.replay_index += 1
                 self.replay_index %= self.num_slots
 
-    def replay(self):
+    def replay(self) -> SampleBatchType:
         return random.choice(self.replay_batches)
 
 
@@ -145,7 +147,7 @@ class MixInReplay:
     number of replay slots.
     """
 
-    def __init__(self, num_slots, replay_proportion: float):
+    def __init__(self, num_slots: int, replay_proportion: float):
         """Initialize MixInReplay.
 
         Args:
@@ -171,7 +173,7 @@ class MixInReplay:
         self.replay_buffer = SimpleReplayBuffer(num_slots)
         self.replay_proportion = replay_proportion
 
-    def __call__(self, sample_batch):
+    def __call__(self, sample_batch: SampleBatchType) -> List[SampleBatchType]:
         # Put in replay buffer if enabled.
         self.replay_buffer.add_batch(sample_batch)
 
