@@ -11,7 +11,10 @@ from ray.rllib.utils.typing import TensorType
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
-VALIDATION_INTERVAL = 100
+
+# Only validate env observations vs the observation space every n times in a
+# Preprocessor.
+OBS_VALIDATION_INTERVAL = 100
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class Preprocessor:
 
     def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
-        if self._i % VALIDATION_INTERVAL == 0:
+        if self._i % OBS_VALIDATION_INTERVAL == 0:
             if type(observation) is list and isinstance(
                     self._obs_space, gym.spaces.Box):
                 observation = np.array(observation)
@@ -218,7 +221,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        array = np.zeros(self.shape)
+        array = np.zeros(self.shape, dtype=np.float32)
         self.write(observation, array, 0)
         return array
 
@@ -252,7 +255,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        array = np.zeros(self.shape)
+        array = np.zeros(self.shape, dtype=np.float32)
         self.write(observation, array, 0)
         return array
 
