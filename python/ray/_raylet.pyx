@@ -107,6 +107,10 @@ from ray.exceptions import (
     TaskCancelledError
 )
 from ray.utils import decode
+from ray._private.client_mode_hook import (
+    _enable_client_hook,
+    _disable_client_hook,
+)
 import msgpack
 
 cimport cpython
@@ -558,6 +562,7 @@ cdef CRayStatus task_execution_handler(
 
     with gil:
         try:
+            client_was_enabled = _disable_client_hook()
             try:
                 # The call to execute_task should never raise an exception. If
                 # it does, that indicates that there was an internal error.
@@ -582,6 +587,8 @@ cdef CRayStatus task_execution_handler(
             else:
                 logger.exception("SystemExit was raised from the worker")
                 return CRayStatus.UnexpectedSystemExit()
+        finally:
+            _enable_client_hook(client_was_enabled)
 
     return CRayStatus.OK()
 
@@ -1030,14 +1037,13 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
-    def free_objects(self, object_refs, c_bool local_only,
-                     c_bool delete_creating_tasks):
+    def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only, delete_creating_tasks))
+                free_ids, local_only))
 
     def global_gc(self):
         with nogil:

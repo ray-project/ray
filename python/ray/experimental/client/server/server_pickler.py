@@ -1,5 +1,4 @@
-"""
-Implements the client side of the client/server pickling protocol.
+"""Implements the client side of the client/server pickling protocol.
 
 These picklers are aware of the server internals and can find the
 references held for the client within the server.
@@ -20,6 +19,7 @@ import ray
 from typing import Any
 from typing import TYPE_CHECKING
 
+from ray._private.client_mode_hook import disable_client_hook
 from ray.experimental.client.client_pickler import PickleStub
 from ray.experimental.client.server.server_stubs import (
     ServerSelfReferenceSentinel)
@@ -121,12 +121,13 @@ def loads_from_client(data: bytes,
                       fix_imports=True,
                       encoding="ASCII",
                       errors="strict") -> Any:
-    if isinstance(data, str):
-        raise TypeError("Can't load pickle from unicode string")
-    file = io.BytesIO(data)
-    return ClientUnpickler(
-        server_instance, file, fix_imports=fix_imports,
-        encoding=encoding).load()
+    with disable_client_hook():
+        if isinstance(data, str):
+            raise TypeError("Can't load pickle from unicode string")
+        file = io.BytesIO(data)
+        return ClientUnpickler(
+            server_instance, file, fix_imports=fix_imports,
+            encoding=encoding).load()
 
 
 def convert_from_arg(pb: "ray_client_pb2.Arg",
