@@ -107,7 +107,9 @@ std::vector<ResourceSet> GcsResourceScheduler::SortRequiredResources(
 
 void GcsResourceScheduler::StrictSpreadSchedule(
     const std::vector<ResourceSet> &required_resources_list,
-    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {}
+    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {
+  
+}
 
 void GcsResourceScheduler::SpreadSchedule(
     const std::vector<ResourceSet> &required_resources_list,
