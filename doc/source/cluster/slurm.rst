@@ -134,7 +134,7 @@ There are other options you can use when calling `python launch.py`:
 * `--exp-name`: The experiment name. Will generate `{exp-name}_{date}-{time}.sh` and  `{exp-name}_{date}-{time}.log`.
 * `--command`: The command you wish to run. For example: `rllib train XXX` or `python XXX.py`.
 * `--num-gpus`: The number of GPUs you wish to use in each computing node. Default: 0.
-* `--node` (`-w`): The specify nodes you wish to use, in the same form of the return of `sinfo`. Automatically assign if not specify.
+* `--node` (`-w`): The specific nodes you wish to use, in the same form as the output of `sinfo`. Nodes are automatically assigned if not specified.
 * `--num-nodes` (`-n`): The number of nodes you wish to use. Default: 1.
 * `--partition` (`-p`): The partition you wish to use. Default: "chpc" (CUHK cluster partition name, change to yours!)
 * `--load-env`: The command to setup your environment. For example: `module load cuda/10.1`. Default: "".
