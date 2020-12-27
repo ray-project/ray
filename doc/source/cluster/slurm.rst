@@ -142,7 +142,7 @@ There are other options you can use when calling `python launch.py`:
 Note that the `sbatch_template.sh` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
 
 The python interface `launch.py`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
