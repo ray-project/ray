@@ -122,6 +122,18 @@ GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
 )
 
+JAVA_EXCLUDES=(
+  'java/api/src/main/java/io/ray/api/ActorCall.java'
+  'java/api/src/main/java/io/ray/api/PyActorCall.java'
+  'java/api/src/main/java/io/ray/api/RayCall.java'
+)
+
+JAVA_EXCLUDES_REGEX=""
+for f in "${JAVA_EXCLUDES[@]}"; do
+  JAVA_EXCLUDES_REGEX="$JAVA_EXCLUDES_REGEX|(${f//\//\/})"
+done
+JAVA_EXCLUDES_REGEX=${JAVA_EXCLUDES_REGEX#|}
+
 # TODO(barakmich): This should be cleaned up. I've at least excised the copies
 # of these arguments to this location, but the long-term answer is to actually
 # make a flake8 config file
@@ -216,7 +228,7 @@ format_all() {
 
     echo "$(date)" "format java...."
     if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "/$JAVA_EXCLUDES_REGEX/d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
     fi
 
     if command -v shellcheck >/dev/null; then
@@ -270,7 +282,7 @@ format_changed() {
 
     if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | sed -E "/$JAVA_EXCLUDES_REGEX/d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
         fi
     fi
 
