@@ -72,7 +72,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)#TODO
+        ray.init(local_mode=True)  #TODO
 
     @classmethod
     def tearDownClass(cls):
@@ -90,7 +90,7 @@ class TestPPO(unittest.TestCase):
         config["model"]["lstm_cell_size"] = 10
         config["model"]["max_seq_len"] = 20
         config["train_batch_size"] = 128
-        num_iterations = 12#TODO: = 2
+        num_iterations = 12  #TODO: = 2
 
         for fw in framework_iterator(
                 config, frameworks=("jax", "tf2", "tf", "torch")):
@@ -109,7 +109,7 @@ class TestPPO(unittest.TestCase):
                     config["model"]["lstm_use_prev_reward"] = lstm
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
-                        print(trainer.train())#TODO: no print
+                        print(trainer.train())  #TODO: no print
                     check_compute_single_action(
                         trainer,
                         include_prev_action_reward=True,

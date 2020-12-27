@@ -34,6 +34,7 @@ class FullyConnectedNetwork(JAXModelV2):
 
         self._logits = None
         self._logits_params = None
+        self._hidden_layers = None
 
         # The last layer is adjusted to be of size num_outputs, but it's a
         # layer with activation.
@@ -71,9 +72,11 @@ class FullyConnectedNetwork(JAXModelV2):
                     [int(np.product(obs_space.shape))] + hiddens[-1:])[-1]
 
         # Init hidden layers.
-        in_ = jnp.zeros((1, in_features))
-        self._hidden_layers_params = self._hidden_layers.init(
-            self.prng_key, in_)
+        self._hidden_layers_params = None
+        if self._hidden_layers:
+            in_ = jnp.zeros((1, in_features))
+            self._hidden_layers_params = self._hidden_layers.init(
+                self.prng_key, in_)
 
         self._value_branch_separate = None
         if not self.vf_share_layers:
@@ -102,9 +105,10 @@ class FullyConnectedNetwork(JAXModelV2):
 
     @override(JAXModelV2)
     def forward(self, input_dict, state, seq_lens):
-        self._last_flat_in = input_dict["obs_flat"]
-        self._features = self._hidden_layers.apply(self._hidden_layers_params,
-                                                   self._last_flat_in)
+        self._last_flat_in = self._features = input_dict["obs_flat"]
+        if self._hidden_layers:
+            self._features = self._hidden_layers.apply(
+                self._hidden_layers_params, self._last_flat_in)
         logits = self._logits.apply(self._logits_params, self._features) if \
             self._logits else self._features
         return logits, state
