@@ -670,7 +670,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # for better compression inside the writer.
         self.output_writer.write(batch)
 
-        # Do off-policy estimation if needed
+        # Do off-policy estimation, if needed.
         if self.reward_estimators:
             for sub_batch in batch.split_by_episode():
                 for estimator in self.reward_estimators:
