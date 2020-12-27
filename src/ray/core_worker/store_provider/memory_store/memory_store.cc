@@ -353,8 +353,7 @@ Status CoreWorkerMemoryStore::Get(
     bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  RAY_RETURN_NOT_OK(Get(id_vector, id_vector.size(), timeout_ms, ctx,
-                        &result_objects));
+  RAY_RETURN_NOT_OK(Get(id_vector, id_vector.size(), timeout_ms, ctx, &result_objects));
 
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
