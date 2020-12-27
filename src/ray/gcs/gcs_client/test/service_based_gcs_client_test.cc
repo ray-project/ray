@@ -332,7 +332,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   bool SubscribeBatchResourceUsage(
       const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchedResourceUsage(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -346,7 +346,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
         resources, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }

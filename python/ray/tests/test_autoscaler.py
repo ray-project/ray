@@ -54,8 +54,11 @@ class MockProcessRunner:
         self.calls = []
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
+        self.ready_to_run = threading.Event()
+        self.ready_to_run.set()
 
     def check_call(self, cmd, *args, **kwargs):
+        self.ready_to_run.wait()
         for token in self.fail_cmds:
             if token in str(cmd):
                 raise CalledProcessError(1, token,
@@ -165,22 +168,28 @@ class MockProvider(NodeProvider):
             ]
 
     def is_running(self, node_id):
-        return self.mock_nodes[node_id].state == "running"
+        with self.lock:
+            return self.mock_nodes[node_id].state == "running"
 
     def is_terminated(self, node_id):
-        return self.mock_nodes[node_id].state in ["stopped", "terminated"]
+        with self.lock:
+            return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
-        return self.mock_nodes[node_id].tags
+        with self.lock:
+            return self.mock_nodes[node_id].tags
 
     def internal_ip(self, node_id):
-        return self.mock_nodes[node_id].internal_ip
+        with self.lock:
+            return self.mock_nodes[node_id].internal_ip
 
     def external_ip(self, node_id):
-        return self.mock_nodes[node_id].external_ip
+        with self.lock:
+            return self.mock_nodes[node_id].external_ip
 
-    def create_node(self, node_config, tags, count):
-        self.ready_to_create.wait()
+    def create_node(self, node_config, tags, count, _skip_wait=False):
+        if not _skip_wait:
+            self.ready_to_create.wait()
         if self.fail_creates:
             return
         with self.lock:
@@ -200,7 +209,8 @@ class MockProvider(NodeProvider):
                 self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
-        self.mock_nodes[node_id].tags.update(tags)
+        with self.lock:
+            self.mock_nodes[node_id].tags.update(tags)
 
     def terminate_node(self, node_id):
         with self.lock:
@@ -534,7 +544,11 @@ class AutoscalingTest(unittest.TestCase):
         config["max_workers"] = 5
         config_path = self.write_config(config)
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "worker"}, 10)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "worker",
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_WORKER
+        }, 10)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         autoscaler = StandardAutoscaler(
@@ -562,6 +576,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
         }, 1)
         lm.update("172.0.0.0", {"CPU": 1}, {"CPU": 0}, {})
@@ -658,11 +673,15 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # 1 head node.
         self.waitForNodes(1)
-        autoscaler.request_resources([{"CPU": 1}])
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 1}])
         autoscaler.update()
         # still 1 head node because request_resources fits in the headnode.
         self.waitForNodes(1)
-        autoscaler.request_resources([{"CPU": 1}] + [{"CPU": 2}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{
+            "CPU": 1
+        }] + [{
+            "CPU": 2
+        }] * 9)
         autoscaler.update()
         self.waitForNodes(2)  # Adds a single worker to get its resources.
         autoscaler.update()
@@ -767,7 +786,8 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: "head",
-            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
@@ -817,7 +837,11 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
 
         self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_KIND: "head"}, 1)
+        self.provider.create_node({}, {
+            TAG_RAY_NODE_KIND: "head",
+            TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
+        }, 1)
         head_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: "head"}, )[0]
 
@@ -975,6 +999,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(11)])
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
         }, 1)
         lm = LoadMetrics()
@@ -1096,6 +1121,14 @@ class AutoscalingTest(unittest.TestCase):
             assert len(self.provider.non_terminated_nodes({})) < 2
 
     def testConfiguresOutdatedNodes(self):
+        from ray.autoscaler._private.cli_logger import cli_logger
+
+        def do_nothing(*args, **kwargs):
+            pass
+
+        cli_logger._print = type(cli_logger._print)(do_nothing,
+                                                    type(cli_logger))
+
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1133,6 +1166,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(6)])
         self.provider.create_node({}, {
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
         }, 1)
         lm.update("172.0.0.0", {"CPU": 1}, {"CPU": 0}, {})
