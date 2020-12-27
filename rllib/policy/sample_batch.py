@@ -76,19 +76,23 @@ class SampleBatch:
         lengths = []
         for k, v in self.data.copy().items():
             assert isinstance(k, str), self
-            lengths.append(len(v))
+            len_ = len(v) if isinstance(v, (list, np.ndarray)) else None
+            lengths.append(len_)
             if isinstance(v, list):
                 self.data[k] = np.array(v)
+
         if not lengths:
             raise ValueError("Empty sample batch")
+
         if not self.dont_check_lens:
             assert len(set(lengths)) == 1, \
                 "Data columns must be same length, but lens are " \
                 "{}".format(lengths)
+
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
-            self.count = len(next(iter(self.data.values())))
+            self.count = lengths[0]
 
     @staticmethod
     @PublicAPI
@@ -160,8 +164,10 @@ class SampleBatch:
             SampleBatch: A (deep) copy of this SampleBatch object.
         """
         copy_ = SampleBatch(
-            {k: np.array(v, copy=True)
-             for (k, v) in self.data.items()},
+            {
+                k: np.array(v, copy=True) if isinstance(v, np.ndarray) else v
+                for (k, v) in self.data.items()
+            },
             _seq_lens=self.seq_lens)
         copy_.set_get_interceptor(self.get_interceptor)
         return copy_
