@@ -16,13 +16,13 @@ TensorStructType = TensorStructType
 
 
 def try_import_jax(error=False):
-    """Tries importing JAX and returns the module (or None).
+    """Tries importing JAX and FLAX and returns both modules (or Nones).
 
     Args:
-        error (bool): Whether to raise an error if JAX cannot be imported.
+        error (bool): Whether to raise an error if JAX/FLAX cannot be imported.
 
     Returns:
-        The jax module.
+        Tuple: The jax- and the flax modules.
 
     Raises:
         ImportError: If error=True and JAX is not installed.

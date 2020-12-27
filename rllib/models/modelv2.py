@@ -9,6 +9,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
@@ -280,7 +281,7 @@ class ModelV2:
 
         Args:
             as_dict(bool): Whether variables should be returned as dict-values
-                (using descriptive keys).
+                (using descriptive str keys).
 
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
@@ -373,19 +374,6 @@ class ModelV2:
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)
 
         return input_dict
-
-
-class NullContextManager:
-    """No-op context manager"""
-
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
 
 
 @DeveloperAPI
