@@ -1103,6 +1103,13 @@ py_test(
     srcs = ["models/tests/test_distributions.py"]
 )
 
+py_test(
+    name = "test_preprocessors",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_preprocessors.py"]
+)
+
 # --------------------------------------------------------------------
 # Evaluation components
 # rllib/evaluation/
