@@ -109,12 +109,12 @@ First, we rewrite the starter SBATCH script and add some placeholders so that we
 Then, we can write a python interface to take user's specification as argument and replace the placeholders in the SBATCH scripts.
 The python script can also be used to launch the Ray job to the ray cluster which is hosted inside the slurm cluster.
 
-The following `launch.py` and `sbatch_template.sh` implement this idea and you can copy them to your own project as helper files.
-Concretely, the `launch.py` does the following things:
+The following ``launch.py`` and ``sbatch_template.sh`` implement this idea and you can copy them to your own project as helper files.
+Concretely, the ``launch.py`` does the following things:
 
-1. It automatically writes your requirements, e.g. number of CPUs, GPUs per node, the number of nodes and so on, to a sbatch script name `{exp-name}_{date}-{time}.sh`. Your command (`--command`) to launch your own job is also written into the sbatch script.
+1. It automatically writes your requirements, e.g. number of CPUs, GPUs per node, the number of nodes and so on, to a sbatch script name ``{exp-name}_{date}-{time}.sh``. Your command (``--command``) to launch your own job is also written into the sbatch script.
 2. Then it will submit the sbatch script to slurm manager via a new process.
-3. Finally, the python process will terminate itself and leaves a log file named `{exp-name}_{date}-{time}.log` to record the progress of your submitted command. At the mean time, the ray cluster and your job is running in the slurm cluster.
+3. Finally, the python process will terminate itself and leaves a log file named ``{exp-name}_{date}-{time}.log`` to record the progress of your submitted command. At the mean time, the ray cluster and your job is running in the slurm cluster.
 
 
 If you want to utilize multiple computing node in slurm and let ray recognizes them, please use:
@@ -123,26 +123,26 @@ If you want to utilize multiple computing node in slurm and let ray recognizes t
     python launch.py --exp-name test --command "python your_file.py" --num-nodes 3
 
 
-If you want to specify the computing nodes, just use the same node name in `sinfo` command:
+If you want to specify the computing nodes, just use the same node name in ``sinfo`` command:
 
 .. code-block:: bash
     python launch.py --exp-name test --command "python your_file.py" --num-nodes 3 --node chpc-cn[003-005]
 
 
-There are other options you can use when calling `python launch.py`:
+There are other options you can use when calling ``python launch.py``:
 
-* `--exp-name`: The experiment name. Will generate `{exp-name}_{date}-{time}.sh` and  `{exp-name}_{date}-{time}.log`.
-* `--command`: The command you wish to run. For example: `rllib train XXX` or `python XXX.py`.
-* `--num-gpus`: The number of GPUs you wish to use in each computing node. Default: 0.
-* `--node` (`-w`): The specific nodes you wish to use, in the same form as the output of `sinfo`. Nodes are automatically assigned if not specified.
-* `--num-nodes` (`-n`): The number of nodes you wish to use. Default: 1.
-* `--partition` (`-p`): The partition you wish to use. Default: "", will use user's default partition.
-* `--load-env`: The command to setup your environment. For example: `module load cuda/10.1`. Default: "".
+* ``--exp-name``: The experiment name. Will generate ``{exp-name}_{date}-{time}.sh`` and  ``{exp-name}_{date}-{time}.log``.
+* ``--command``: The command you wish to run. For example: ``rllib train XXX`` or ``python XXX.py``.
+* ``--num-gpus``: The number of GPUs you wish to use in each computing node. Default: 0.
+* ``--node`` (``-w``): The specific nodes you wish to use, in the same form as the output of ``sinfo``. Nodes are automatically assigned if not specified.
+* ``--num-nodes`` (``-n``): The number of nodes you wish to use. Default: 1.
+* ``--partition`` (``-p``): The partition you wish to use. Default: "", will use user's default partition.
+* ``--load-env``: The command to setup your environment. For example: ``module load cuda/10.1``. Default: "".
 
-Note that the `sbatch_template.sh` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
+Note that the ``sbatch_template.sh`` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
 
-The python interface `launch.py`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The python interface ``launch.py``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
@@ -245,8 +245,8 @@ The python interface `launch.py`
 
 
 
-The advanced SBATCH template `sbatch_template.sh`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The advanced SBATCH template ``sbatch_template.sh``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
