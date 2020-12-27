@@ -130,6 +130,10 @@ class GcsResourceScheduler {
   std::list<NodeScore> ScoreNodes(const ResourceSet &required_resources,
                                   const absl::flat_hash_set<NodeID> &candidate_nodes);
 
+  void ReleaseTemporarilyDeductedResources(
+      const std::vector<ResourceSet> &required_resources_list,
+      const std::vector<NodeID> &nodes);
+
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
 
