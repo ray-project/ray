@@ -233,7 +233,7 @@ The python interface `launch.py`
             f.write(text)
 
         # ===== Submit the job =====
-        print("Start to submit job!")
+        print("Starting to submit job!")
         subprocess.Popen(["sbatch", script_file])
         print(
             "Job submitted! Script file is at: <{}>. Log file is at: <{}>".format(
