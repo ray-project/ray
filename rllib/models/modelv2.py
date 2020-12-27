@@ -438,9 +438,7 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
-    if (isinstance(space, gym.spaces.Dict)
-            or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, Repeated)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:

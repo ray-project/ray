@@ -1096,6 +1096,13 @@ py_test(
     srcs = ["models/tests/test_jax_models.py"]
 )
 
+py_test(
+    name = "test_preprocessors",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_preprocessors.py"]
+)
+
 # --------------------------------------------------------------------
 # Evaluation components
 # rllib/evaluation/
