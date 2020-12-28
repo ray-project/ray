@@ -28,7 +28,7 @@ if __name__ == "__main__":
         "rank": [0, 1],
         "backend": "nccl"
     }
-    collective.declare_collective_group(workers, _options)
+    collective.declare_collective_group(workers, **_options)
     results = ray.get([w.compute.remote() for w in workers])
     print(results)
     ray.shutdown()

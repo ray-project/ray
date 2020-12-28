@@ -241,7 +241,7 @@ def test_collective_envs(ray_start_10_cpus):
     @ray.remote
     class Actor:
         def __init__(self):
-            pass
+            print("Actor created")
 
         def f(self):
             _group_name = os.getenv("collective_group_name")
