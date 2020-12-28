@@ -165,21 +165,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
-  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
-                                  const StatusCallback &callback) override;
-
-  void AsyncReReportResourceUsage() override;
-
-  /// Fill resource fields with cached resources. Used by light resource usage report.
-  void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
-
-  Status AsyncGetAllResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override;
-
-  Status AsyncSubscribeBatchedResourceUsage(
-      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-      const StatusCallback &done) override;
-
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
   Status AsyncSetInternalConfig(
@@ -193,7 +178,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_node_operation_;
-  SubscribeOperation subscribe_batch_resource_usage_operation_;
 
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
@@ -250,12 +234,35 @@ class ServiceBasedNodeResourceInfoAccessor : public NodeResourceInfoAccessor {
   Status AsyncSubscribeToResources(const ItemCallback<rpc::NodeResourceChange> &subscribe,
                                    const StatusCallback &done) override;
 
+  Status AsyncReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> &data_ptr,
+                                  const StatusCallback &callback) override;
+
+  void AsyncReReportResourceUsage() override;
+
+  /// Fill resource fields with cached resources. Used by light resource usage report.
+  void FillResourceUsageRequest(rpc::ReportResourceUsageRequest &resource_usage);
+
+  Status AsyncGetAllResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &callback) override;
+
+  Status AsyncSubscribeBatchedResourceUsage(
+      const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
+      const StatusCallback &done) override;
+
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 
  private:
+  // Mutex to protect the cached_resource_usage_ field.
+  absl::Mutex mutex_;
+
+  /// Save the resource usage data, so we can resend it again when GCS server restarts
+  /// from a failure.
+  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
+
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_resource_operation_;
+  SubscribeOperation subscribe_batch_resource_usage_operation_;
 
   ServiceBasedGcsClient *client_impl_;
 
