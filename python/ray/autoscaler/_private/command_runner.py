@@ -737,31 +737,23 @@ class DockerCommandRunner(CommandRunnerInterface):
         try:
             active_mounts = json.loads(mounts)
             active_remote_mounts = {
-                mnt["Destination"]
+                mnt["Destination"].strip("/")
                 for mnt in active_mounts
             }
             # Ignore ray bootstrap files.
             requested_remote_mounts = {
-                self._docker_expand_user(remote)
+                self._docker_expand_user(remote).strip("/")
                 for remote in cleaned_bind_mounts.keys()
             }
             unfulfilled_mounts = (
                 requested_remote_mounts - active_remote_mounts)
             if unfulfilled_mounts:
-                try:
-                    re_init_required = cli_logger.confirm(
-                        False, "This Docker Container is already running, Do "
-                        "you want to restart the Docker container on "
-                        "this node? to pick up the following file_mounts {}",
-                        unfulfilled_mounts)
-                except ValueError as e:
-                    cli_logger.print(str(e))
-                    re_init_required = True
-                if not re_init_required:
-                    cli_logger.error(
-                        "Please ray stop & restart cluster to "
-                        "allow the following mounts to be picked up "
-                        "{}", unfulfilled_mounts)
+                re_init_required = True
+                cli_logger.warning(
+                    "This Docker Container is already running. "
+                    "Restarting the Docker container on "
+                    "this node to pick up the following file_mounts {}",
+                    unfulfilled_mounts)
         except json.JSONDecodeError:
             cli_logger.verbose(
                 "Unable to check if file_mounts specified in the YAML "
