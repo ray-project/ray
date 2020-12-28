@@ -129,8 +129,8 @@ class HTTPProxy:
                 http_headers=headers)
 
         request = build_starlette_request(scope, http_body_bytes)
-
-        result = ray.get(await handle.remote(request))
+        object_ref = await handle.remote(request)
+        result = await object_ref
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)
