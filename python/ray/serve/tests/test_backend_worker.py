@@ -40,8 +40,8 @@ def setup_worker(name,
         def update_config(self, new_config):
             return self.worker.update_config(new_config)
 
-        async def shutdown(self):
-            return await self.worker.shutdown()
+        async def drain_pending_queries(self):
+            return await self.worker.drain_pending_queries()
 
     worker = WorkerActor.remote()
     ray.get(worker.ready.remote())
