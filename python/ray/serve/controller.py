@@ -306,9 +306,13 @@ class ActorStateReconciler:
 
         return replica_handle
 
-    def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
-                                backend_tag: BackendTag, num_replicas: int,
-                                force_kill: bool) -> None:
+    def _scale_backend_replicas(
+            self,
+            backends: Dict[BackendTag, BackendInfo],
+            backend_tag: BackendTag,
+            num_replicas: int,
+            force_kill: bool = False,
+    ) -> None:
         """Scale the given backend to the number of replicas.
 
         NOTE: this does not actually start or stop the replicas, but instead
