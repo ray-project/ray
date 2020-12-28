@@ -29,8 +29,10 @@ To scale out a backend to many instances, simply configure the number of replica
 
 This will scale up or down the number of replicas that can accept requests.
 
-Using Resources (CPUs, GPUs)
-============================
+.. _`serve-cpus-gpus`:
+
+Resource Management (CPUs, GPUs)
+================================
 
 To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
@@ -89,7 +91,7 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
 .. _serve-batching:
 
-Batching to improve performance
+Batching to Improve Performance
 ===============================
 
 You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
