@@ -124,9 +124,9 @@ void GcsResourceScheduler::StrictSpreadSchedule(
 
     // There are nodes to meet the scheduling requirements.
     if (!node_scores.empty() && node_scores.front().second > 0) {
-      const auto &highest_score_node = node_scores.front().first;
-      result->push_back(highest_score_node);
-      candidate_nodes_copy.erase(highest_score_node);
+      const auto &highest_score_node_id = node_scores.front().first;
+      result->push_back(highest_score_node_id);
+      candidate_nodes_copy.erase(highest_score_node_id);
     } else {
       // There is no node to meet the scheduling requirements.
       break;
@@ -150,16 +150,18 @@ void GcsResourceScheduler::SpreadSchedule(
 
     // There are nodes to meet the scheduling requirements.
     if (!node_scores.empty() && node_scores.front().second > 0) {
-      const auto &highest_score_node = node_scores.front().first;
-      result->push_back(highest_score_node);
-      candidate_nodes_copy.erase(highest_score_node);
-      selected_nodes.insert(highest_score_node);
+      const auto &highest_score_node_id = node_scores.front().first;
+      result->push_back(highest_score_node_id);
+      RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
+      candidate_nodes_copy.erase(highest_score_node_id);
+      selected_nodes.insert(highest_score_node_id);
     } else {
       // Scheduling from selected nodes.
       const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
       if (!node_scores.empty() && node_scores.front().second > 0) {
-        const auto &highest_score_node = node_scores.front().first;
-        result->push_back(highest_score_node);
+        const auto &highest_score_node_id = node_scores.front().first;
+        result->push_back(highest_score_node_id);
+        RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
       } else {
         break;
       }
@@ -169,6 +171,10 @@ void GcsResourceScheduler::SpreadSchedule(
   if (result->size() != required_resources_list.size()) {
     // Unable to meet the resources required for scheduling, scheduling failed.
     result->clear();
+  } else {
+    // Scheduling succeeded, releasing the resources temporarily deducted from
+    // `gcs_resource_manager_`.
+    ReleaseTemporarilyDeductedResources(required_resources_list, *result);
   }
 }
 
