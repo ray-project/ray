@@ -8,10 +8,10 @@ import cupy
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
+from ray.util.collective.const import get_nccl_store_name
 from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
     AllGatherOptions, ReduceScatterOptions
-from ray.util.collective.const import get_nccl_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +109,10 @@ class NCCLGroup(BaseGroup):
     def __init__(self, world_size, rank, group_name):
         """Init an NCCL collective group."""
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
-        self._nccl_uid = None
 
         # TODO(Hao): change this to a be a cache
-        self._nccl_comm = None
+        self._collective_comm_cache = None
+        self._p2p_comm_cache = {}
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -120,33 +120,34 @@ class NCCLGroup(BaseGroup):
         if nccl_util.get_nccl_runtime_version() < 2704:
             logger.warning("NCCL send/recv calls requires NCCL>=2.7.4")
 
-        self._rendezvous = Rendezvous(self.group_name)
-        self._rendezvous.meet()
-
-        # Setup the nccl uid using the store
-        self._init_nccl_unique_id()
-
         # Setup a tensor for barrier calls
         self._barrier_tensor = cupy.array([1])
 
-    def _init_nccl_unique_id(self):
-        """Init the NCCLUniqueID required for creating NCCL communicators."""
-        self._nccl_uid = self._rendezvous.get_nccl_id()
-
-    @property
-    def nccl_uid(self):
-        return self._nccl_uid
-
     def destroy_group(self):
-        """Destroy the group and release the NCCL communicators safely."""
-        if self._nccl_comm is not None:
+        """Destroy the group and release NCCL communicators."""
+        if self._collective_comm_cache:
             self.barrier()
             # We also need a barrier call here.
             stream = self._get_cuda_stream()
             stream.synchronize()
             # destroy the communicator
-            self._nccl_comm.destroy()
-            self._nccl_comm = None
+            self._collective_comm_cache.destroy()
+            self._collective_comm_cache = None
+
+            if self.rank == 0:
+                self._destroy_store(self.group_name)
+
+        if self._p2p_comm_cache:
+            for key, comm in self._p2p_comm_cache.items():
+                comm.destroy()
+                min_rank, max_rank = self._parse_p2p_group_key(key)
+                if self.rank == min_rank:
+                    self._destroy_store(key)
+                self._p2p_comm_cache[key] = None
+            for key in list(self._p2p_comm_cache.keys()):
+                del self._p2p_comm_cache[key]
+            self._p2p_comm_cache = None
+
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
@@ -163,7 +164,7 @@ class NCCLGroup(BaseGroup):
         Returns:
         """
         # obtain the communicator
-        comm = self._get_nccl_communicator()
+        comm = self._get_nccl_collective_communicator()
         # obtain the stream: using default stream by now
         # TODO(Hao): implement a simple stream manager here
         stream = self._get_cuda_stream()
@@ -196,7 +197,7 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        comm = self._get_nccl_communicator()
+        comm = self._get_nccl_collective_communicator()
         stream = self._get_cuda_stream()
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
@@ -218,7 +219,7 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        comm = self._get_nccl_communicator()
+        comm = self._get_nccl_collective_communicator()
         stream = self._get_cuda_stream()
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
@@ -232,7 +233,7 @@ class NCCLGroup(BaseGroup):
                   tensor_list,
                   tensor,
                   allgather_options=AllGatherOptions()):
-        """Allgather tensors across the group into a list of  tensors.
+        """Allgather tensors across the group into a list of tensors.
 
         Args:
             tensor_list: the tensor list to store the results.
@@ -244,7 +245,7 @@ class NCCLGroup(BaseGroup):
         """
 
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-        comm = self._get_nccl_communicator()
+        comm = self._get_nccl_collective_communicator()
         stream = self._get_cuda_stream()
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
@@ -272,7 +273,7 @@ class NCCLGroup(BaseGroup):
         """
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
 
-        comm = self._get_nccl_communicator()
+        comm = self._get_nccl_collective_communicator()
         stream = self._get_cuda_stream()
         dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
         n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
@@ -286,16 +287,134 @@ class NCCLGroup(BaseGroup):
         comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
                            stream.ptr)
 
-    def _get_nccl_communicator(self):
-        """Create or use a cached NCCL communicator for the collective task.
+    def send(self, tensor, dst_rank):
+        """Send tensor to a destination process in the group.
 
+        Args:
+            tensor: the tensor to send.
+            dst_rank: the rank of the destination process.
+
+        Returns:
+            None
         """
-        # TODO(Hao): later change this to use device keys and query from cache.
+
+        # check whether send/recv is available
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(
+                                   nccl_util.get_nccl_runtime_version()))
+
+        peer_p2p_rank = 0 if self.rank > dst_rank else 1
+        comm = self._get_nccl_p2p_communicator(self.rank, dst_rank)
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        comm.send(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
+
+    def recv(self, tensor, src_rank):
+        """Receive tensor from a source process in the group.
+
+        Args:
+            tensor: the received tensor.
+            src_rank: the rank of the source process.
+
+        Returns:
+            None
+        """
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(
+                                   nccl_util.get_nccl_runtime_version()))
+        peer_p2p_rank = 0 if self.rank > src_rank else 1
+        comm = self._get_nccl_p2p_communicator(src_rank, self.rank)
+        stream = self._get_cuda_stream()
+
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        comm.recv(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
+
+    def _get_nccl_collective_communicator(self):
+        """Create or retrieve a cached NCCL communicator.
+
+        Returns:
+            communicator
+        """
         # TODO(Hao): implement a thin wrapper
-        if not self._nccl_comm:
-            self._nccl_comm = nccl_util.create_nccl_communicator(
-                self.world_size, self.nccl_uid, self.rank)
-        return self._nccl_comm
+        if not self._collective_comm_cache:
+            # create the communicator
+            if self.rank == 0:
+                group_uid = self._generate_nccl_uid(self.group_name)
+            else:
+                rendezvous = Rendezvous(self.group_name)
+                rendezvous.meet()
+                group_uid = rendezvous.get_nccl_id()
+            self._collective_comm_cache = \
+                nccl_util.create_nccl_communicator(self.world_size,
+                                                   group_uid,
+                                                   self.rank)
+        return self._collective_comm_cache
+
+    def _get_nccl_p2p_communicator(self, src_rank, dst_rank):
+        """Create or retrieve an NCCL communicator for p2p tasks.
+
+        Args:
+            src_rank (int): source rank.
+            dst_rank (int): destination rank.
+
+        Returns:
+            communicator
+        """
+        min_rank = min(src_rank, dst_rank)
+        max_rank = max(src_rank, dst_rank)
+        my_rank = 0 if self.rank == min_rank else 1
+        p2p_group_key = self._generate_p2p_group_key(min_rank, max_rank)
+        comm = self._p2p_comm_cache.get(p2p_group_key)
+        if not comm:
+            if self.rank == min_rank:
+                group_uid = self._generate_nccl_uid(p2p_group_key)
+            else:
+                rendezvous = Rendezvous(p2p_group_key)
+                rendezvous.meet()
+                group_uid = rendezvous.get_nccl_id()
+            comm = nccl_util.create_nccl_communicator(2, group_uid, my_rank)
+            self._p2p_comm_cache[p2p_group_key] = comm
+        return comm
+
+    def _generate_p2p_group_key(self, min_rank, max_rank):
+        return self.group_name + "_" + str(min_rank) + "_" + str(max_rank)
+
+    @staticmethod
+    def _parse_p2p_group_key(key):
+        strs = key.split("_")
+        return int(strs[-2]), int(strs[-1])
+
+    @staticmethod
+    def _destroy_store(group_name):
+        store_name = get_nccl_store_name(group_name)
+        store = ray.get_actor(store_name)
+        # ray.get([store.__ray_terminate__.remote()])
+        ray.kill(store)
+
+    def _generate_nccl_uid(self, name):
+        """Generate an NCCL UID by calling the NCCL API.
+
+        Args:
+            name: the name of the collective group.
+
+        Returns:
+            str: NCCL uid.
+        """
+        group_uid = nccl_util.get_nccl_unique_id()
+        store_name = get_nccl_store_name(name)
+        # Avoid a potential circular dependency in ray/actor.py
+        from ray.util.collective.util import NCCLUniqueIDStore
+        store = NCCLUniqueIDStore.options(
+            name=store_name, lifetime="detached").remote(store_name)
+        ray.wait([store.set_id.remote(group_uid)])
+        return group_uid
 
     @staticmethod
     def _get_cuda_stream():
@@ -303,6 +422,7 @@ class NCCLGroup(BaseGroup):
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
 
+    # Note(Hao): too many bipolate code -- make some abstraction.
     # def _collective_call(self, *args):
     #     """Private method to encapsulate all collective calls"""
     #     pass

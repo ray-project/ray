@@ -45,9 +45,10 @@ class CentralizedCriticModel(TFModelV2):
 
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         return tf.reshape(
-            self.central_vf(
-                [obs, opponent_obs,
-                 tf.one_hot(opponent_actions, 2)]), [-1])
+            self.central_vf([
+                obs, opponent_obs,
+                tf.one_hot(tf.cast(opponent_actions, tf.int32), 2)
+            ]), [-1])
 
     @override(ModelV2)
     def value_function(self):
@@ -124,7 +125,7 @@ class TorchCentralizedCriticModel(TorchModelV2, nn.Module):
     def central_value_function(self, obs, opponent_obs, opponent_actions):
         input_ = torch.cat([
             obs, opponent_obs,
-            torch.nn.functional.one_hot(opponent_actions, 2).float()
+            torch.nn.functional.one_hot(opponent_actions.long(), 2).float()
         ], 1)
         return torch.reshape(self.central_vf(input_), [-1])
 

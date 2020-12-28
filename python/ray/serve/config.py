@@ -2,8 +2,8 @@ import inspect
 
 from pydantic import BaseModel, PositiveInt, validator, PositiveFloat
 from ray.serve.constants import ASYNC_CONCURRENCY
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+from typing import Optional, Dict, Any, List
+from dataclasses import dataclass, field
 
 
 def _callable_accepts_batch(func_or_class):
@@ -196,3 +196,10 @@ class ReplicaConfig:
                 raise TypeError(
                     "resources in ray_actor_options must be a dictionary.")
             self.resource_dict.update(custom_resources)
+
+
+@dataclass
+class HTTPConfig:
+    host: str = field(init=True)
+    port: int = field(init=True)
+    middlewares: List[Any] = field(init=True)

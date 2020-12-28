@@ -147,7 +147,7 @@ def test_call_method(serve_instance):
 
     # Test serve handle path.
     handle = client.get_handle("endpoint")
-    assert ray.get(handle.options("method").remote()) == "hello"
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):

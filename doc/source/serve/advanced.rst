@@ -29,8 +29,10 @@ To scale out a backend to many instances, simply configure the number of replica
 
 This will scale up or down the number of replicas that can accept requests.
 
-Using Resources (CPUs, GPUs)
-============================
+.. _`serve-cpus-gpus`:
+
+Resource Management (CPUs, GPUs)
+================================
 
 To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
@@ -89,7 +91,7 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
 .. _serve-batching:
 
-Batching to improve performance
+Batching to Improve Performance
 ===============================
 
 You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
@@ -266,6 +268,26 @@ asynchronous by using an ``async def``. You'll see this in the example below.
 That's it. Let's take a look at an example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_model_composition.py
+
+
+.. _serve-sync-async-handles:
+
+Sync and Async Handles
+======================
+
+Ray Serve offers two types of ``ServeHandle``. You can use the ``client.get_handle(..., sync=True|False)``
+flag to toggle between them.
+
+- When you set ``sync=True`` (the default), a synchronous handle is returned.
+  Calling ``handle.remote()`` should return a Ray ObjectRef.
+- When you set ``sync=False``, an asyncio based handle is returned. You need to
+  Call it with ``await handle.remote()`` to return a Ray ObjectRef. To use ``await``,
+  you have to run ``client.get_handle`` and ``handle.remote`` in Python asyncio event loop.
+
+The async handle has performance advantage because it uses asyncio directly; as compared
+to the sync handle, which talks to an asyncio event loop in a thread. To learn more about
+the reasoning behind these, checkout our `architecture documentation <./architecture.html>`_.
+
 
 Monitoring
 ==========
