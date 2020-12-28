@@ -766,7 +766,8 @@ def test_get_concurrent_resource_demand_to_launch():
 
     # Sanity check.
     updated_to_launch = \
-        scheduler._get_concurrent_resource_demand_to_launch({}, [], [], {}, {})
+        scheduler._get_concurrent_resource_demand_to_launch(
+            {}, [], [], {}, {}, {})
     assert updated_to_launch == {}
 
     provider.create_node({}, {
@@ -785,10 +786,37 @@ def test_get_concurrent_resource_demand_to_launch():
     connected_nodes = []  # All the non_terminated_nodes are not connected yet.
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes, {})
+        pending_launches_nodes, {}, {})
     # Note: we have 2 pending/launching gpus, 3 pending/launching cpus,
     # 0 running gpu, and 0 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 2}
+
+    # Test min_workers bypass max launch limit.
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch,
+        connected_nodes,
+        non_terminated_nodes,
+        pending_launches_nodes,
+        adjusted_min_workers={"m4.large": 40},
+        placement_group_nodes={})
+    assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 40}
+    # Test placement groups bypass max launch limit.
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch,
+        connected_nodes,
+        non_terminated_nodes,
+        pending_launches_nodes, {},
+        placement_group_nodes={"m4.large": 40})
+    assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 40}
+    # Test combining min_workers and placement groups bypass max launch limit.
+    updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
+        to_launch,
+        connected_nodes,
+        non_terminated_nodes,
+        pending_launches_nodes,
+        adjusted_min_workers={"m4.large": 25},
+        placement_group_nodes={"m4.large": 15})
+    assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 40}
 
     # This starts the min workers only, so we have no more pending workers.
     # The workers here are either running (connected) or in
@@ -798,7 +826,7 @@ def test_get_concurrent_resource_demand_to_launch():
     ]
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes, {})
+        pending_launches_nodes, {}, {})
     # Note that here we have 1 launching gpu, 1 launching cpu,
     # 1 running gpu, and 2 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 4, "m4.large": 4}
@@ -819,7 +847,7 @@ def test_get_concurrent_resource_demand_to_launch():
     pending_launches_nodes = {}  # No pending launches
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes, {})
+        pending_launches_nodes, {}, {})
     # Note: we have 5 pending cpus. So we are not allowed to start any.
     # Still only 2 running cpus.
     assert updated_to_launch == {}
@@ -830,7 +858,7 @@ def test_get_concurrent_resource_demand_to_launch():
     ]
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes, {})
+        pending_launches_nodes, {}, {})
     # Note: that here we have 7 running cpus and nothing pending/launching.
     assert updated_to_launch == {"m4.large": 7}
 
@@ -846,7 +874,7 @@ def test_get_concurrent_resource_demand_to_launch():
     pending_launches_nodes = {"m4.large": 1}
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes, {})
+        pending_launches_nodes, {}, {})
     # Note: we have 8 pending/launching cpus and only 7 running.
     # So we should not launch anything (8 < 7).
     assert updated_to_launch == {}
@@ -857,7 +885,7 @@ def test_get_concurrent_resource_demand_to_launch():
     ]
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes,
-        pending_launches_nodes, {})
+        pending_launches_nodes, {}, {})
     # Note: that here we have 14 running cpus and 1 launching.
     assert updated_to_launch == {"m4.large": 13}
 
@@ -865,16 +893,28 @@ def test_get_concurrent_resource_demand_to_launch():
 def test_get_nodes_to_launch_max_launch_concurrency():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
-    new_types["p2.8xlarge"]["min_workers"] = 4
+    new_types["p2.8xlarge"]["min_workers"] = 10
     new_types["p2.8xlarge"]["max_workers"] = 40
 
     scheduler = ResourceDemandScheduler(
         provider, new_types, 30, head_node_type=None)
 
     to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], {})
-    # Respects min_workers despite concurrency limitation.
-    assert to_launch == {"p2.8xlarge": 4}
+    # Respects min_workers despite max launch limit.
+    assert to_launch == {"p2.8xlarge": 10}
+    pending_placement_groups = [
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.RESCHEDULING,
+            strategy=PlacementStrategy.PACK,
+            bundles=([Bundle(unit_resources={"GPU": 8})] * 25))
+    ]
+    # placement groups should bypass max launch limit.
+    # Note that 25 = max(placement group resources=25, min_workers=10).
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {},
+                                              pending_placement_groups, {})
+    assert to_launch == {"p2.8xlarge": 25}
 
+    scheduler.node_types["p2.8xlarge"]["min_workers"] = 4
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",
         TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED
