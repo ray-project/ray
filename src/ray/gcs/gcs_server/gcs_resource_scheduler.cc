@@ -141,7 +141,36 @@ void GcsResourceScheduler::StrictSpreadSchedule(
 
 void GcsResourceScheduler::SpreadSchedule(
     const std::vector<ResourceSet> &required_resources_list,
-    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {}
+    const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {
+  absl::flat_hash_set<NodeID> candidate_nodes_copy(candidate_nodes);
+  absl::flat_hash_set<NodeID> selected_nodes;
+  for (const auto &iter : required_resources_list) {
+    // Score and sort nodes.
+    const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
+
+    // There are nodes to meet the scheduling requirements.
+    if (!node_scores.empty() && node_scores.front().second > 0) {
+      const auto &highest_score_node = node_scores.front().first;
+      result->push_back(highest_score_node);
+      candidate_nodes_copy.erase(highest_score_node);
+      selected_nodes.insert(highest_score_node);
+    } else {
+      // Scheduling from selected nodes.
+      const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
+      if (!node_scores.empty() && node_scores.front().second > 0) {
+        const auto &highest_score_node = node_scores.front().first;
+        result->push_back(highest_score_node);
+      } else {
+        break;
+      }
+    }
+  }
+
+  if (result->size() != required_resources_list.size()) {
+    // Unable to meet the resources required for scheduling, scheduling failed.
+    result->clear();
+  }
+}
 
 void GcsResourceScheduler::StrictPackSchedule(
     const std::vector<ResourceSet> &required_resources_list,
