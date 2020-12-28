@@ -228,7 +228,7 @@ format_all() {
 
     echo "$(date)" "format java...."
     if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
-      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "/$JAVA_EXCLUDES_REGEX/d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+      git ls-files -- '*.java' "${GIT_LS_EXCLUDES[@]}" | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
     fi
 
     if command -v shellcheck >/dev/null; then
@@ -282,7 +282,7 @@ format_changed() {
 
     if command -v java >/dev/null & [ -f "$GOOGLE_JAVA_FORMAT_JAR" ]; then
        if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.java' &>/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | sed -E "/$JAVA_EXCLUDES_REGEX/d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
+            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.java' | sed -E "\:$JAVA_EXCLUDES_REGEX:d" | xargs -P 5 java -jar "$GOOGLE_JAVA_FORMAT_JAR" -i
         fi
     fi
 
