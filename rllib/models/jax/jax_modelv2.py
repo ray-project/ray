@@ -43,11 +43,11 @@ class JAXModelV2(ModelV2):
     @override(ModelV2)
     def variables(self, as_dict: bool = False
                   ) -> Union[List[TensorType], Dict[str, TensorType]]:
-        params = fd({
-            k: v["params"]._dict
+        params = {
+            k: v
             for k, v in self.__dict__.items()
             if isinstance(v, fd) and "params" in v
-        })._dict
+        }
         if as_dict:
             return params
         return tree.flatten(params)

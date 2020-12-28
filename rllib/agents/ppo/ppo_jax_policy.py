@@ -20,7 +20,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_jax
-from ray.rllib.utils.jax_ops import explained_variance, sequence_mask
+from ray.rllib.utils.jax_ops import explained_variance
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 jax, flax = try_import_jax()
@@ -50,26 +50,12 @@ def ppo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
+    if vars:
+        for k, v in vars.items():
+            setattr(model, k, v)
+
     logits, state = model.from_batch(train_batch, is_training=True)
     curr_action_dist = dist_class(logits, model)
-
-    # RNN case: Mask away 0-padded chunks at end of time axis.
-    if state:
-        max_seq_len = jnp.maximum(train_batch["seq_lens"])
-        mask = sequence_mask(
-            train_batch["seq_lens"],
-            max_seq_len,
-            time_major=model.is_time_major())
-        mask = jnp.reshape(mask, [-1])
-        num_valid = jnp.sum(mask)
-
-        def reduce_mean_valid(t):
-            return jnp.sum(t[mask]) / num_valid
-
-    # non-RNN case: No masking.
-    else:
-        mask = None
-        reduce_mean_valid = jnp.mean
 
     prev_action_dist = dist_class(train_batch[SampleBatch.ACTION_DIST_INPUTS],
                                   model)
@@ -78,17 +64,17 @@ def ppo_surrogate_loss(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
         train_batch[SampleBatch.ACTION_LOGP])
     action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl = reduce_mean_valid(action_kl)
+    mean_kl = jnp.mean(action_kl)
 
     curr_entropy = curr_action_dist.entropy()
-    mean_entropy = reduce_mean_valid(curr_entropy)
+    mean_entropy = jnp.mean(curr_entropy)
 
     surrogate_loss = jnp.minimum(
         train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
         train_batch[Postprocessing.ADVANTAGES] * jnp.clip(
             logp_ratio, 1 - policy.config["clip_param"],
             1 + policy.config["clip_param"]))
-    mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+    mean_policy_loss = jnp.mean(-surrogate_loss)
 
     if policy.config["use_gae"]:
         prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
@@ -101,16 +87,14 @@ def ppo_surrogate_loss(
         vf_loss2 = jnp.square(vf_clipped -
                               train_batch[Postprocessing.VALUE_TARGETS])
         vf_loss = jnp.maximum(vf_loss1, vf_loss2)
-        mean_vf_loss = reduce_mean_valid(vf_loss)
-        total_loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * curr_entropy)
+        mean_vf_loss = jnp.mean(vf_loss)
+        total_loss = jnp.mean(-surrogate_loss + policy.kl_coeff * action_kl +
+                              policy.config["vf_loss_coeff"] * vf_loss -
+                              policy.entropy_coeff * curr_entropy)
     else:
         mean_vf_loss = 0.0
-        total_loss = reduce_mean_valid(-surrogate_loss +
-                                       policy.kl_coeff * action_kl -
-                                       policy.entropy_coeff * curr_entropy)
+        total_loss = jnp.mean(-surrogate_loss + policy.kl_coeff * action_kl -
+                              policy.entropy_coeff * curr_entropy)
 
     # Store stats in policy for stats_fn.
     policy._total_loss = total_loss
@@ -121,6 +105,14 @@ def ppo_surrogate_loss(
         policy.model.value_function())
     policy._mean_entropy = mean_entropy
     policy._mean_kl = mean_kl
+
+    if vars:
+        policy._total_loss = policy._total_loss.primal
+        policy._mean_policy_loss = policy._mean_policy_loss.primal
+        policy._mean_vf_loss = policy._mean_vf_loss.primal
+        policy._vf_explained_var = policy._vf_explained_var.primal
+        policy._mean_entropy = policy._mean_entropy.primal
+        policy._mean_kl = policy._mean_kl.primal
 
     return total_loss
 

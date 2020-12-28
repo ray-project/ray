@@ -21,10 +21,8 @@ from ray.rllib.utils.typing import ModelGradients, ModelWeights, \
 
 jax, flax = try_import_jax()
 jnp = None
-fd = None
 if jax:
     import jax.numpy as jnp
-    from flax.core.frozen_dict import FrozenDict as fd
 
 logger = logging.getLogger(__name__)
 
@@ -300,6 +298,10 @@ class JAXPolicy(Policy):
             opt = self._optimizers[i]
             self._optimizers[i] = opt.apply_gradient(grads[i])
 
+        # Update model's params.
+        for k, v in self._optimizers[0].target.items():
+            setattr(self.model, k, v)
+
         if self.model:
             fetches["model"] = self.model.metrics()
         return fetches
@@ -317,15 +319,12 @@ class JAXPolicy(Policy):
         )
 
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+        model_params = self.model.variables(as_dict=True)
 
         # Calculate the actual policy loss.
         all_grads = force_list(
-            self._gradient_loss(
-                self,
-                self.model,
-                self.dist_class,
-                train_batch,
-                self.model.variables(as_dict=True)))
+            self._gradient_loss(self, self.model, self.dist_class, train_batch,
+                                model_params))
 
         # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
@@ -360,7 +359,7 @@ class JAXPolicy(Policy):
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         for k, v in weights.items():
-            setattr(self.model, k, fd({"params": v}))
+            setattr(self.model, k, v)
 
     @override(Policy)
     @DeveloperAPI
