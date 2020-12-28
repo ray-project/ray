@@ -231,8 +231,8 @@ class ActorStateReconciler:
         return replica_handle
 
     def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
-                                backend_tag: BackendTag,
-                                num_replicas: int) -> None:
+                                backend_tag: BackendTag, num_replicas: int,
+                                force_kill: bool) -> None:
         """Scale the given backend to the number of replicas.
 
         NOTE: this does not actually start or stop the replicas, but instead
@@ -287,10 +287,13 @@ class ActorStateReconciler:
                 if len(self.backend_replicas[backend_tag]) == 0:
                     del self.backend_replicas[backend_tag]
 
+                graceful_timeout_s = (backend_info.backend_config.
+                                      experimental_graceful_shutdown_timeout_s)
+                if force_kill:
+                    graceful_timeout_s = 0
                 self.backend_replicas_to_stop[backend_tag].append((
                     replica_tag,
-                    (backend_info.backend_config.
-                     experimental_graceful_shutdown_timeout_s),
+                    graceful_timeout_s,
                 ))
 
     async def _enqueue_pending_scale_changes_loop(self,
@@ -978,7 +981,9 @@ class ServeController:
             self.notify_backend_configs_changed()
             return return_uuid
 
-    async def delete_backend(self, backend_tag: BackendTag) -> UUID:
+    async def delete_backend(self,
+                             backend_tag: BackendTag,
+                             force_kill: bool = False) -> UUID:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
@@ -1003,7 +1008,7 @@ class ServeController:
 
             # This should be a call to the control loop
             self.actor_reconciler._scale_backend_replicas(
-                self.current_state.backends, backend_tag, 0)
+                self.current_state.backends, backend_tag, 0, force_kill)
 
             # Remove the backend's metadata.
             del self.current_state.backends[backend_tag]
