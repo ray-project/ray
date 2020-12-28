@@ -209,7 +209,6 @@ class ResourceDemandScheduler:
                                                resource_demands)
         logger.debug("Resource demands: {}".format(resource_demands))
         logger.debug("Unfulfilled demands: {}".format(unfulfilled))
-
         nodes_to_add_based_on_demand = get_nodes_for(
             self.node_types, node_type_counts, self.head_node_type, max_to_add,
             unfulfilled)
