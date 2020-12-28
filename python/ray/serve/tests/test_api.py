@@ -4,6 +4,7 @@ import time
 import os
 import pytest
 import requests
+import starlette.responses
 
 import ray
 from ray import serve
@@ -18,8 +19,8 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name,
 def test_e2e(serve_instance):
     client = serve_instance
 
-    def function(flask_request):
-        return {"method": flask_request.method}
+    def function(starlette_request):
+        return {"method": starlette_request.method}
 
     client.create_backend("echo:v1", function)
     client.create_endpoint(
@@ -32,6 +33,63 @@ def test_e2e(serve_instance):
     assert resp == "POST"
 
 
+def test_starlette_response(serve_instance):
+    client = serve_instance
+
+    def basic_response(_):
+        return starlette.responses.Response(
+            "Hello, world!", media_type="text/plain")
+
+    client.create_backend("basic_response", basic_response)
+    client.create_endpoint(
+        "basic_response", backend="basic_response", route="/basic_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/basic_response").text == "Hello, world!"
+
+    def html_response(_):
+        return starlette.responses.HTMLResponse(
+            "<html><body><h1>Hello, world!</h1></body></html>")
+
+    client.create_backend("html_response", html_response)
+    client.create_endpoint(
+        "html_response", backend="html_response", route="/html_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/html_response"
+    ).text == "<html><body><h1>Hello, world!</h1></body></html>"
+
+    def plain_text_response(_):
+        return starlette.responses.PlainTextResponse("Hello, world!")
+
+    client.create_backend("plain_text_response", plain_text_response)
+    client.create_endpoint(
+        "plain_text_response",
+        backend="plain_text_response",
+        route="/plain_text_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/plain_text_response").text == "Hello, world!"
+
+    def json_response(_):
+        return starlette.responses.JSONResponse({"hello": "world"})
+
+    client.create_backend("json_response", json_response)
+    client.create_endpoint(
+        "json_response", backend="json_response", route="/json_response")
+    assert requests.get("http://127.0.0.1:8000/json_response").json()[
+        "hello"] == "world"
+
+    def redirect_response(_):
+        return starlette.responses.RedirectResponse(
+            url="http://127.0.0.1:8000/basic_response")
+
+    client.create_backend("redirect_response", redirect_response)
+    client.create_endpoint(
+        "redirect_response",
+        backend="redirect_response",
+        route="/redirect_response")
+    assert requests.get(
+        "http://127.0.0.1:8000/redirect_response").text == "Hello, world!"
+
+
 def test_backend_user_config(serve_instance):
     client = serve_instance
 
@@ -39,7 +97,7 @@ def test_backend_user_config(serve_instance):
         def __init__(self):
             self.count = 10
 
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return self.count, os.getpid()
 
         def reconfigure(self, config):
@@ -54,18 +112,19 @@ def test_backend_user_config(serve_instance):
         pids_seen = set()
         for i in range(100):
             result = ray.get(handle.remote())
-            assert (str(result[0]) == val), result[0]
+            if str(result[0]) != val:
+                return False
             pids_seen.add(result[1])
-        assert (len(pids_seen) == num_replicas)
+        return len(pids_seen) == num_replicas
 
-    check("123", 2)
+    wait_for_condition(lambda: check("123", 2))
 
     client.update_backend_config("counter", BackendConfig(num_replicas=3))
-    check("123", 3)
+    wait_for_condition(lambda: check("123", 3))
 
     config = BackendConfig(user_config={"count": 456})
     client.update_backend_config("counter", config)
-    check("456", 3)
+    wait_for_condition(lambda: check("456", 3))
 
 
 def test_call_method(serve_instance):
@@ -87,7 +146,7 @@ def test_call_method(serve_instance):
 
     # Test serve handle path.
     handle = client.get_handle("endpoint")
-    assert ray.get(handle.options("method").remote()) == "hello"
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
@@ -761,8 +820,8 @@ def test_serve_metrics(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
-    def batcher(flask_requests):
-        return ["hello"] * len(flask_requests)
+    def batcher(starlette_requests):
+        return ["hello"] * len(starlette_requests)
 
     client.create_backend("metrics", batcher)
     client.create_endpoint("metrics", backend="metrics", route="/metrics")
@@ -810,6 +869,26 @@ def test_serve_metrics(serve_instance):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics()
+
+
+def test_starlette_request(serve_instance):
+    client = serve_instance
+
+    async def echo_body(starlette_request):
+        data = await starlette_request.body()
+        return data
+
+    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
+
+    # Long string to test serialization of multiple messages.
+    long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
+
+    client.create_backend("echo:v1", echo_body)
+    client.create_endpoint(
+        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+
+    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
+    assert resp == long_string
 
 
 if __name__ == "__main__":

@@ -59,7 +59,7 @@ class HyperOptSearch(Searcher):
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
-            for future parameters. Needs to be a list of dict containing the
+            for future parameters. Needs to be a list of dicts containing the
             configurations.
         n_initial_points (int): number of random evaluations of the
             objective function before starting to aproximate it with
@@ -155,7 +155,7 @@ class HyperOptSearch(Searcher):
         if gamma is not None:
             self.algo = partial(self.algo, gamma=gamma)
 
-        self._points_to_evaluate = points_to_evaluate
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
         self._live_trial_mapping = {}
         if random_state_seed is None:
@@ -190,7 +190,8 @@ class HyperOptSearch(Searcher):
             for i in range(len(self._points_to_evaluate)):
                 config = self._points_to_evaluate[i]
                 self._convert_categories_to_indices(config)
-
+            # HyperOpt treats initial points as LIFO, reverse to get FIFO
+            self._points_to_evaluate = list(reversed(self._points_to_evaluate))
             self._hpopt_trials = generate_trials_to_calculate(
                 self._points_to_evaluate)
             self._hpopt_trials.refresh()
@@ -399,8 +400,9 @@ class HyperOptSearch(Searcher):
             if isinstance(domain, Float):
                 if isinstance(sampler, LogUniform):
                     if quantize:
-                        return hpo.hp.qloguniform(par, domain.lower,
-                                                  domain.upper, quantize)
+                        return hpo.hp.qloguniform(par, np.log(domain.lower),
+                                                  np.log(domain.upper),
+                                                  quantize)
                     return hpo.hp.loguniform(par, np.log(domain.lower),
                                              np.log(domain.upper))
                 elif isinstance(sampler, Uniform):
@@ -415,12 +417,21 @@ class HyperOptSearch(Searcher):
                     return hpo.hp.normal(par, sampler.mean, sampler.sd)
 
             elif isinstance(domain, Integer):
-                if isinstance(sampler, Uniform):
+                if isinstance(sampler, LogUniform):
                     if quantize:
-                        logger.warning(
-                            "HyperOpt does not support quantization for "
-                            "integer values. Reverting back to 'randint'.")
-                    return hpo.hp.randint(par, domain.lower, high=domain.upper)
+                        return hpo.base.pyll.scope.int(
+                            hpo.hp.qloguniform(par, np.log(domain.lower),
+                                               np.log(domain.upper), quantize))
+                    return hpo.base.pyll.scope.int(
+                        hpo.hp.qloguniform(par, np.log(domain.lower),
+                                           np.log(domain.upper), 1.0))
+                elif isinstance(sampler, Uniform):
+                    if quantize:
+                        return hpo.base.pyll.scope.int(
+                            hpo.hp.quniform(par, domain.lower, domain.upper,
+                                            quantize))
+                    return hpo.hp.uniformint(
+                        par, domain.lower, high=domain.upper)
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
                     return hpo.hp.choice(par, [

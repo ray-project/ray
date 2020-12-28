@@ -4,6 +4,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
@@ -46,15 +47,16 @@ class ClusterTaskManager {
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   /// the state of the cluster.
-  /// \param fulfills_dependencies_func: Returns true if all of a task's
-  /// dependencies are fulfilled.
+  /// \param task_dependency_manager_ Used to fetch task's dependencies.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
-  /// (according to our ownership model). \param gcs_client: A gcs client.
+  /// (according to our ownership model).
+  /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     std::function<bool(const Task &)> fulfills_dependencies_func,
+                     TaskDependencyManagerInterface &task_dependency_manager,
                      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
-                     NodeInfoGetter get_node_info);
+                     NodeInfoGetter get_node_info,
+                     std::function<void(const Task &)> announce_infeasible_task);
 
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
@@ -103,6 +105,11 @@ class ClusterTaskManager {
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id);
 
+  /// Populate the list of pending or infeasible actor tasks for node stats.
+  ///
+  /// \param Output parameter.
+  void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
+
   /// Populate the relevant parts of the heartbeat table. This is intended for
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
@@ -113,6 +120,16 @@ class ClusterTaskManager {
   void FillResourceUsage(bool light_report_resource_usage_enabled,
                          std::shared_ptr<rpc::ResourcesData> data) const;
 
+  /// Return if any tasks are pending resource acquisition.
+  ///
+  /// \param[in] exemplar An example task that is deadlocking.
+  /// \param[in] num_pending_actor_creation Number of pending actor creation tasks.
+  /// \param[in] num_pending_tasks Number of pending tasks.
+  /// \param[in] any_pending True if there's any pending exemplar.
+  /// \return True if any progress is any tasks are pending.
+  bool AnyPendingTasks(Task *exemplar, bool *any_pending, int *num_pending_actor_creation,
+                       int *num_pending_tasks) const;
+
   std::string DebugString() const;
 
  private:
@@ -122,11 +139,20 @@ class ClusterTaskManager {
   bool AttemptDispatchWork(const Work &work, std::shared_ptr<WorkerInterface> &worker,
                            bool *worker_leased);
 
+  /// Reiterate all local infeasible tasks and register them to task_to_schedule_ if it
+  /// becomes feasible to schedule.
+  void TryLocalInfeasibleTaskScheduling();
+
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  std::function<bool(const Task &)> fulfills_dependencies_func_;
+  /// Class to make task dependencies to be local.
+  TaskDependencyManagerInterface &task_dependency_manager_;
+  /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
+  /// Function to get the node information of a given node id.
   NodeInfoGetter get_node_info_;
+  /// Function to announce infeasible task to GCS.
+  std::function<void(const Task &)> announce_infeasible_task_;
 
   const int max_resource_shapes_per_load_report_;
   const bool report_worker_backlog_;
@@ -137,11 +163,25 @@ class ClusterTaskManager {
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
+  /// Tasks can also move from dispatch -> waiting if one of their arguments is
+  /// evicted.
+  /// All tasks in this map that have dependencies should be registered with
+  /// the dependency manager, in case a dependency gets evicted while the task
+  /// is still queued.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
+  /// Tasks can also move from dispatch -> waiting if one of their arguments is
+  /// evicted.
+  /// All tasks in this map that have dependencies should be registered with
+  /// the dependency manager, so that they can be moved to dispatch once their
+  /// dependencies are local.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
+
+  /// Queue of lease requests that are infeasible.
+  /// Tasks go between scheduling <-> infeasible.
+  std::unordered_map<SchedulingClass, std::deque<Work>> infeasible_tasks_;
 
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
   std::unordered_map<SchedulingClass, int> backlog_tracker_;
@@ -162,6 +202,8 @@ class ClusterTaskManager {
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
+
+  friend class ClusterTaskManagerTest;
 };
 }  // namespace raylet
 }  // namespace ray

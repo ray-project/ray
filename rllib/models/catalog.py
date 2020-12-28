@@ -316,6 +316,14 @@ class ModelCatalog:
                                                      model_interface)
 
             if framework in ["tf2", "tf", "tfe"]:
+                # Try wrapping custom model with LSTM, if required.
+                if model_config.get("use_lstm"):
+                    wrapped_cls = model_cls
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper)
+                    model_cls._wrapped_forward = forward
+
                 # Track and warn if vars were created but not registered.
                 created = set()
 

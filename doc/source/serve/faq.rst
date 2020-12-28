@@ -117,7 +117,7 @@ policies <serve-split-traffic>`, finding the next available replica, and
 batching requests together.
 
 When the request arrives in the model, you can access the data similarly to how
-you would with HTTP request. Here are some examples how ServeRequest mirrors Flask.Request:
+you would with HTTP request. Here are some examples how ServeRequest mirrors Starlette.Request:
 
 .. list-table::
    :header-rows: 1
@@ -125,25 +125,25 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
    * - HTTP
      - ServeHandle
      - | Request
-       | (Flask.Request and ServeRequest)
+       | (Starlette.Request and ServeRequest)
    * - ``requests.get(..., headers={...})``
      - ``handle.options(http_headers={...})``
      - ``request.headers``
    * - ``requests.post(...)``
      - ``handle.options(http_method="POST")``
-     - ``requests.method``
-   * - ``request.get(..., json={...})``
+     - ``request.method``
+   * - ``requests.get(..., json={...})``
      - ``handle.remote({...})``
-     - ``request.json``
-   * - ``request.get(..., form={...})``
+     - ``await request.json()``
+   * - ``requests.get(..., form={...})``
      - ``handle.remote({...})``
-     - ``request.form``
-   * - ``request.get(..., params={"a":"b"})``
+     - ``await request.form()``
+   * - ``requests.get(..., params={"a":"b"})``
      - ``handle.remote(a="b")``
-     - ``request.args``
-   * - ``request.get(..., data="long string")``
+     - ``request.query_params``
+   * - ``requests.get(..., data="long string")``
      - ``handle.remote("long string")``
-     - ``request.data``
+     - ``await request.body()``
    * - ``N/A``
      - ``handle.remote(python_object)``
      - ``request.data``
@@ -157,9 +157,9 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
 
     .. code-block:: python
 
-        import flask
+        import starlette.requests
 
-        if isinstance(request, flask.Request):
+        if isinstance(request, starlette.requests.Request):
             print("Request coming from web!")
         elif isinstance(request, ServeRequest):
             print("Request coming from Python!")
@@ -170,10 +170,10 @@ you would with HTTP request. Here are some examples how ServeRequest mirrors Fla
 
     .. code-block:: python
 
-        handle.remote(flask_request)
+        handle.remote(starlette_request)
 
     In this case, Serve will `not` wrap it in ServeRequest. You can directly
-    process the request as a ``flask.Request``.
+    process the request as a ``starlette.requests.Request``.
 
 How fast is Ray Serve?
 ----------------------
@@ -186,13 +186,6 @@ We are continuously benchmarking Ray Serve. We can confidently say:
 You can checkout our `microbenchmark instruction <https://github.com/ray-project/ray/tree/master/python/ray/serve/benchmarks>`_
 to benchmark on your hardware.
 
-
-Does Ray Serve use Flask?
--------------------------
-Flask is only used as a web request object for servable to consume the data.
-We actually use the fastest Python web server: `Uvicorn <https://www.uvicorn.org/>`_ as our web server,
-alongside with the power of Python asyncio.
-**Flask is ONLY the request object that we are using, Uvicorn (not flask) provides the webserver.**
 
 Can I use asyncio along with Ray Serve?
 ---------------------------------------

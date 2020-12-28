@@ -43,6 +43,10 @@ from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import format_info_string, \
+    format_info_string_no_node_types
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,14 @@ def debug_status() -> str:
         status = "No cluster status."
     else:
         status = status.decode("utf-8")
+        as_dict = json.loads(status)
+        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
+        if "autoscaler_report" in as_dict:
+            autoscaler_summary = AutoscalerSummary(
+                **as_dict["autoscaler_report"])
+            status = format_info_string(lm_summary, autoscaler_summary)
+        else:
+            status = format_info_string_no_node_types(lm_summary)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -280,9 +292,10 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for non-AWS will
-    # fail (the schema error will ask the user to manually fill the resources)
-    # as we currently support autofilling resources for AWS instances only.
+    # NOTE: if `resources` field is missing, validate_config for providers
+    # other than AWS and Kubernetes will fail (the schema error will ask the
+    # user to manually fill the resources) as we currently support autofilling
+    # resources for AWS and Kubernetes only.
     validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 

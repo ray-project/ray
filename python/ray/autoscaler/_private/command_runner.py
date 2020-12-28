@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 HASH_MAX_LENGTH = 10
 KUBECTL_RSYNC = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
+MAX_HOME_RETRIES = 3
+HOME_RETRY_DELAY_S = 5
 
 _config = {"use_login_shells": True, "silent_rsync": True}
 
@@ -248,16 +250,31 @@ class KubernetesCommandRunner(CommandRunnerInterface):
 
     @property
     def _home(self):
+        if self._home_cached is not None:
+            return self._home_cached
+        for _ in range(MAX_HOME_RETRIES - 1):
+            try:
+                self._home_cached = self._try_to_get_home()
+                return self._home_cached
+            except Exception:
+                # TODO (Dmitri): Identify the exception we're trying to avoid.
+                logger.info("Error reading container's home directory. "
+                            f"Retrying in {HOME_RETRY_DELAY_S} seconds.")
+                time.sleep(HOME_RETRY_DELAY_S)
+        # Last try
+        self._home_cached = self._try_to_get_home()
+        return self._home_cached
+
+    def _try_to_get_home(self):
         # TODO (Dmitri): Think about how to use the node's HOME variable
         # without making an extra kubectl exec call.
-        if self._home_cached is None:
-            cmd = self.kubectl + [
-                "exec", "-it", self.node_id, "--", "printenv", "HOME"
-            ]
-            joined_cmd = " ".join(cmd)
-            raw_out = self.process_runner.check_output(joined_cmd, shell=True)
-            self._home_cached = raw_out.decode().strip("\n\r")
-        return self._home_cached
+        cmd = self.kubectl + [
+            "exec", "-it", self.node_id, "--", "printenv", "HOME"
+        ]
+        joined_cmd = " ".join(cmd)
+        raw_out = self.process_runner.check_output(joined_cmd, shell=True)
+        home = raw_out.decode().strip("\n\r")
+        return home
 
 
 class SSHOptions:

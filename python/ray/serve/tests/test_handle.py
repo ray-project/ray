@@ -8,7 +8,7 @@ def test_handle_in_endpoint(serve_instance):
     client = serve_instance
 
     class Endpoint1:
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return "hello"
 
     class Endpoint2:
@@ -40,12 +40,12 @@ def test_handle_http_args(serve_instance):
     client = serve_instance
 
     class Endpoint:
-        def __call__(self, request):
+        async def __call__(self, request):
             return {
-                "args": dict(request.args),
+                "args": dict(request.query_params),
                 "headers": dict(request.headers),
                 "method": request.method,
-                "json": request.json
+                "json": await request.json()
             }
 
     client.create_backend("backend", Endpoint)
@@ -58,7 +58,7 @@ def test_handle_http_args(serve_instance):
             "arg2": "2"
         },
         "headers": {
-            "X-Custom-Header": "value"
+            "x-custom-header": "value"
         },
         "method": "POST",
         "json": {
@@ -81,10 +81,10 @@ def test_handle_http_args(serve_instance):
     for resp in [resp_web, resp_handle]:
         for field in ["args", "method", "json"]:
             assert resp[field] == ground_truth[field]
-        resp["headers"]["X-Custom-Header"] == "value"
+        resp["headers"]["x-custom-header"] == "value"
 
 
-def test_handle_inject_flask_request(serve_instance):
+def test_handle_inject_starlette_request(serve_instance):
     client = serve_instance
 
     def echo_request_type(request):
@@ -103,7 +103,37 @@ def test_handle_inject_flask_request(serve_instance):
     for route in ["/echo", "/wrapper"]:
         resp = requests.get(f"http://127.0.0.1:8000{route}")
         request_type = resp.text
-        assert request_type == "<class 'flask.wrappers.Request'>"
+        assert request_type == "<class 'starlette.requests.Request'>"
+
+
+def test_handle_option_chaining(serve_instance):
+    # https://github.com/ray-project/ray/issues/12802
+    # https://github.com/ray-project/ray/issues/12798
+
+    client = serve_instance
+
+    class MultiMethod:
+        def method_a(self, _):
+            return "method_a"
+
+        def method_b(self, _):
+            return "method_b"
+
+        def __call__(self, _):
+            return "__call__"
+
+    client.create_backend("m", MultiMethod)
+    client.create_endpoint("m", backend="m")
+
+    # get_handle should give you a clean handle
+    handle1 = client.get_handle("m").options(method_name="method_a")
+    handle2 = client.get_handle("m")
+    # options().options() override should work
+    handle3 = handle1.options(method_name="method_b")
+
+    assert ray.get(handle1.remote()) == "method_a"
+    assert ray.get(handle2.remote()) == "__call__"
+    assert ray.get(handle3.remote()) == "method_b"
 
 
 if __name__ == "__main__":

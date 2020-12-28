@@ -1,8 +1,8 @@
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -84,8 +84,9 @@ class ValueNetworkMixin:
         return self.model.value_function()[0]
 
 
-A3CTorchPolicy = build_torch_policy(
+A3CTorchPolicy = build_policy_class(
     name="A3CTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,
