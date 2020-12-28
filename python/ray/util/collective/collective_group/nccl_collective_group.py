@@ -111,7 +111,7 @@ class NCCLGroup(BaseGroup):
         """Init an NCCL collective group."""
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
 
-        # TODO(Hao): change this to a be a cache
+        # TODO(Hao): fix this cache to accommodate `_dev_comm_map` below.
         self._collective_comm_cache = None
         self._p2p_comm_cache = {}
 
@@ -125,6 +125,8 @@ class NCCLGroup(BaseGroup):
         self._barrier_tensor = cupy.array([1])
 
         self._dev_comm_map = dict()
+
+        # check the stream correctness.
         self._dev_streams_map = dict()
 
     def destroy_group(self):
@@ -172,6 +174,7 @@ class NCCLGroup(BaseGroup):
     def backend(cls):
         return Backend.NCCL
 
+    # TODO (Hao): change all collective/p2p calls to accept a list of tensors.
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
         """AllReduce the tensor across the collective group following options.
 
@@ -502,10 +505,15 @@ class NCCLGroup(BaseGroup):
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
 
-    # Note(Hao): too many bipolate code -- make some abstraction.
-    # def _collective_call(self, *args):
-    #     """Private method to encapsulate all collective calls"""
-    #     pass
+    # Note(Hao): too many bipolate code -- make some abstractions here.
+    def _collective(self, *args):
+        """TODO(Hao)"""
+        """Method to encapsulate all collective calls"""
+        pass
+
+    def _point2point(self, *args):
+        """TODO(Hao)"""
+        pass
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):

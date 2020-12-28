@@ -178,11 +178,17 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     Returns:
         None
     """
-    nccl_util.check_collective_input(tensor)
+    # nccl_util.check_collective_input(tensor)
+    _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
     g.allreduce(tensor, opts)
+
+
+def allreduce_multigpu(tensor_list, group_name: str = "default", op=types.ReduceOp.SUM)
+    """Collective allrecue a list of tensors across the group."""
+    pass
 
 
 def barrier(group_name: str = "default"):
@@ -224,6 +230,15 @@ def reduce(tensor,
     g.reduce(tensor, opts)
 
 
+def reduce_multigpu(tensor_list,
+                    dst_rank: int = 0,
+                    dst_tensor: int = 0,
+                    group_name: str = "default",
+                    op=types.ReduceOp.SUM):
+    """TODO(Dacheng)"""
+    pass
+
+
 def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     """Broadcast the tensor from a source process to all others.
 
@@ -243,6 +258,14 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
     g.broadcast(tensor, opts)
+
+
+def broadcast_multigpu(tensor_list,
+                       src_rank: int = 0,
+                       src_tensor: int = 0,
+                       group_name: str = "default"):
+    """TODO(Dacheng)"""
+    pass
 
 
 def allgather(tensor_list: list, tensor, group_name: str = "default"):
@@ -267,6 +290,12 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
             "must not be equal to world_size.")
     opts = types.AllGatherOptions()
     g.allgather(tensor_list, tensor, opts)
+
+
+def allgather_multigpu(output_tensor_lists: list,
+                       input_tensor_list: list,
+                       group_name: str = "default"):
+    """TODO(Dacheng)."""
 
 
 def reducescatter(tensor,
@@ -299,6 +328,14 @@ def reducescatter(tensor,
     g.reducescatter(tensor, tensor_list, opts)
 
 
+def reducescatter_multigpu(output_tensor_list,
+                           input_tensor_lists,
+                           group_name: str = "default",
+                           op=types.ReduceOp.SUM):
+    """TODO(Dacheng)."""
+    pass
+
+
 def send(tensor, dst_rank: int, group_name: str = "default"):
     """Send a tensor to a remote processes synchronously.
 
@@ -317,6 +354,14 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
         raise RuntimeError(
             "The destination rank '{}' is self.".format(dst_rank))
     g.send(tensor, dst_rank)
+
+
+def send_multigpu(tensor,
+                  dst_rank: int,
+                  dst_gpu_index: int,
+                  group_name: str = "default")
+    """TODO(Dacheng)."""
+    pass
 
 
 def recv(tensor, src_rank: int, group_name: str = "default"):
@@ -339,6 +384,14 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g.recv(tensor, src_rank)
 
 
+def recv_multigpu(tensor,
+                  src_rank: int,
+                  src_gpu_index: int,
+                  group_name: str = "default"):
+    """TODO(Dacheng).."""
+    pass
+
+
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
     _check_inside_actor()
@@ -347,6 +400,21 @@ def _check_and_get_group(group_name):
                            "initialized in the process.".format(group_name))
     g = _group_mgr.get_group_by_name(group_name)
     return g
+
+
+def _check_single_tensor_input(tensor):
+    """Check if the tensor is with a supported type."""
+    if isinstance(tensor, np.ndarray):
+        return
+    if types.cupy_available():
+        if isinstance(tensor, types.cp.ndarray):
+            return
+    if types.torch_available():
+        if isinstance(tensor, types.th.Tensor):
+            return
+    raise RuntimeError("Unrecognized tensor type '{}'. Supported types are: "	
+                       "np.ndarray, torch.Tensor, cupy.ndarray.".format(
+                       type(tensor)))
 
 
 def _check_backend_availability(backend: types.Backend):
