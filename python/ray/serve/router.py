@@ -256,7 +256,7 @@ class Router:
             endpoint_status = await self._pending_endpoints[endpoint]
             if endpoint_status == _PendingEndpointFound.REMOVED:
                 raise RayServeException(
-                    f"Endpoint {endpoint} was removed therefore this request "
+                    f"Endpoint {endpoint} was removed. This request "
                     "cannot be completed.")
 
         endpoint_policy = self.endpoint_policies[endpoint]
