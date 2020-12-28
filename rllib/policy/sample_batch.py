@@ -168,7 +168,8 @@ class SampleBatch:
                 k: np.array(v, copy=True) if isinstance(v, np.ndarray) else v
                 for (k, v) in self.data.items()
             },
-            _seq_lens=self.seq_lens)
+            _seq_lens=self.seq_lens,
+            _dont_check_lens=self.dont_check_lens)
         copy_.set_get_interceptor(self.get_interceptor)
         return copy_
 

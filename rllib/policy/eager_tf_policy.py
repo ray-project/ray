@@ -14,7 +14,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import convert_to_non_tf_type
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -649,10 +648,6 @@ def build_eager_tf_policy(name,
 
         def _lazy_tensor_dict(self, postprocessed_batch):
             postprocessed_batch.set_get_interceptor(_convert_to_tf)
-            return postprocessed_batch
-
-        def _lazy_numpy_dict(self, postprocessed_batch):
-            postprocessed_batch.set_get_interceptor(convert_to_non_tf_type)
             return postprocessed_batch
 
         @classmethod

@@ -599,13 +599,10 @@ class TorchPolicy(Policy):
         return self.model.import_from_h5(import_file)
 
     def _lazy_tensor_dict(self, postprocessed_batch):
+        if not isinstance(postprocessed_batch, SampleBatch):
+            postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
             functools.partial(convert_to_torch_tensor, device=self.device))
-        return postprocessed_batch
-
-    def _lazy_numpy_dict(self, postprocessed_batch):
-        postprocessed_batch.set_get_interceptor(
-            functools.partial(convert_to_non_torch_type))
         return postprocessed_batch
 
 
