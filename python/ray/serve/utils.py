@@ -374,8 +374,9 @@ class MockImportedBackend:
     def __call__(self, *args):
         return {"arg": self.arg, "config": self.config}
 
-    def other_method(self, request):
-        return request.data
+    async def other_method(self, request):
+        return await request.body()
+
 
 
 def compute_iterable_delta(old: Iterable,

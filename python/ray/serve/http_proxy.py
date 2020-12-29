@@ -28,7 +28,9 @@ class HTTPProxy:
     def __init__(self, controller_name):
         # Set the controller name so that serve.connect() will connect to the
         # controller instance this proxy is running in.
-        ray.serve.api._set_internal_controller_name(controller_name)
+
+        ray.serve.api._set_internal_replica_context(None, None,
+                                                    controller_name)
         self.client = ray.serve.connect()
 
         controller = ray.get_actor(controller_name)
@@ -39,8 +41,8 @@ class HTTPProxy:
         })
 
         self.request_counter = metrics.Count(
-            "num_http_requests",
-            description="The number of HTTP requests processed",
+            "serve_num_http_requests",
+            description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
     async def setup(self):

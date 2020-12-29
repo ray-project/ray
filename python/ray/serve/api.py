@@ -6,11 +6,12 @@ import os
 from uuid import UUID
 import threading
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+from dataclasses import dataclass
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController
+from ray.serve.controller import ServeController, BackendTag, ReplicaTag
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters, logger, get_conda_env_dir)
@@ -21,7 +22,8 @@ from ray.serve.env import CondaEnv
 from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
 
-_INTERNAL_CONTROLLER_NAME = None
+_INTERNAL_REPLICA_CONTEXT = None
+global_async_loop = None
 
 global_async_loop = None
 
@@ -38,9 +40,30 @@ def create_or_get_async_loop_in_thread():
     return global_async_loop
 
 
-def _set_internal_controller_name(name):
-    global _INTERNAL_CONTROLLER_NAME
-    _INTERNAL_CONTROLLER_NAME = name
+@dataclass
+class InternalReplicaContext:
+    """Stores data for Serve API calls from within the user's backend code."""
+    backend_tag: BackendTag
+    replica_tag: ReplicaTag
+    controller_name: str
+
+
+def create_or_get_async_loop_in_thread():
+    global global_async_loop
+    if global_async_loop is None:
+        global_async_loop = asyncio.new_event_loop()
+        thread = threading.Thread(
+            daemon=True,
+            target=global_async_loop.run_forever,
+        )
+        thread.start()
+    return global_async_loop
+
+
+def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
+    global _INTERNAL_REPLICA_CONTEXT
+    _INTERNAL_REPLICA_CONTEXT = InternalReplicaContext(
+        backend_tag, replica_tag, controller_name)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -598,12 +621,12 @@ def connect() -> Client:
     if not ray.is_initialized():
         ray.init()
 
-    # When running inside of a backend, _INTERNAL_CONTROLLER_NAME is set to
+    # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
-    if _INTERNAL_CONTROLLER_NAME is None:
+    if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = _INTERNAL_CONTROLLER_NAME
+        controller_name = _INTERNAL_REPLICA_CONTEXT.controller_name
 
     # Try to get serve controller if it exists
     try:
@@ -615,6 +638,37 @@ def connect() -> Client:
                                 "one.")
 
     return Client(controller, controller_name, detached=True)
+
+
+def get_current_backend_tag() -> BackendTag:
+    """When called from within a backend, return its backend tag.
+
+    Raises:
+        RayServeException if not called from within a Ray Serve backend.
+    """
+    if _INTERNAL_REPLICA_CONTEXT is None:
+        raise RayServeException("`serve.get_current_backend_tag()`"
+                                "may only be called from within a"
+                                "Ray Serve backend.")
+    else:
+        return _INTERNAL_REPLICA_CONTEXT.backend_tag
+
+
+def get_current_replica_tag() -> ReplicaTag:
+    """When called from within a backend, return its replica tag.
+
+    A replica tag uniquely identifies a single replica (a process)
+    for a Ray Serve backend.
+
+    Raises:
+        RayServeException if not called from within a Ray Serve backend.
+    """
+    if _INTERNAL_REPLICA_CONTEXT is None:
+        raise RayServeException("`serve.get_current_replica_tag()`"
+                                "may only be called from within a"
+                                "Ray Serve backend.")
+    else:
+        return _INTERNAL_REPLICA_CONTEXT.replica_tag
 
 
 def accept_batch(f: Callable) -> Callable:
