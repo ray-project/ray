@@ -13,7 +13,7 @@ class MyBackendClass:
         self.my_counter = metrics.Count(
             "my_counter",
             description=("The number of excellent requests to this backend."),
-            tag_keys=("backend",))
+            tag_keys=("backend", ))
         self.my_counter.set_default_tags({
             "backend": serve.get_current_backend_tag()
         })
