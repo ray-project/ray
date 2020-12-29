@@ -5,29 +5,19 @@ import io.ray.streaming.api.partition.Partition;
 import io.ray.streaming.jobgraph.JobEdge;
 import java.io.Serializable;
 
-/**
- * An edge that connects two execution job vertices.
- */
+/** An edge that connects two execution job vertices. */
 public class ExecutionJobEdge implements Serializable {
 
-  /**
-   * The source(upstream) execution job vertex.
-   */
+  /** The source(upstream) execution job vertex. */
   private final ExecutionJobVertex sourceExecutionJobVertex;
 
-  /**
-   * The target(downstream) execution job vertex.
-   */
+  /** The target(downstream) execution job vertex. */
   private final ExecutionJobVertex targetExecutionJobVertex;
 
-  /**
-   * The partition of the execution job edge.
-   */
+  /** The partition of the execution job edge. */
   private final Partition partition;
 
-  /**
-   * An unique id for execution job edge.
-   */
+  /** An unique id for execution job edge. */
   private final String executionJobEdgeIndex;
 
   public ExecutionJobEdge(
@@ -41,7 +31,8 @@ public class ExecutionJobEdge implements Serializable {
   }
 
   private String generateExecutionJobEdgeIndex() {
-    return sourceExecutionJobVertex.getExecutionJobVertexId() + "—"
+    return sourceExecutionJobVertex.getExecutionJobVertexId()
+        + "—"
         + targetExecutionJobVertex.getExecutionJobVertexId();
   }
 

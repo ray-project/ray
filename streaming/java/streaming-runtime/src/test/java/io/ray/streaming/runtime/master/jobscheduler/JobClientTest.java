@@ -8,5 +8,4 @@ public class JobClientTest {
   public void testSchedule() {
     // TODO (tianyi): need JobWorker Part to do this.
   }
-
 }

@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Class metric is mapped to stats metric object in core worker.
- * it must be in categories set [Gague, Count, Sum, Histogram].
+ * Class metric is mapped to stats metric object in core worker. it must be in categories set
+ * [Gague, Count, Sum, Histogram].
  */
 public abstract class Metric {
   protected String name;
@@ -33,9 +33,7 @@ public abstract class Metric {
   // Metric data will be flushed into stats view data inside core worker immediately after
   // record is called.
 
-  /**
-   * Flush records to stats in last aggregator.
-   */
+  /** Flush records to stats in last aggregator. */
   public void record() {
     Preconditions.checkState(metricNativePointer != 0, "Metric native pointer must not be 0.");
     // Get tag key list from map;
@@ -46,20 +44,22 @@ public abstract class Metric {
       tagValues.add(entry.getValue());
     }
     // Get tag value list from map;
-    NativeMetric.recordNative(metricNativePointer, getAndReset(), nativeTagKeyList.stream()
-        .map(TagKey::getTagKey).collect(Collectors.toList()), tagValues);
+    NativeMetric.recordNative(
+        metricNativePointer,
+        getAndReset(),
+        nativeTagKeyList.stream().map(TagKey::getTagKey).collect(Collectors.toList()),
+        tagValues);
   }
 
   /**
    * Get the value to record and then reset.
    *
-   * @return latest updating value.
+   * <p>Returns latest updating value.
    */
   protected abstract double getAndReset();
 
   /**
-   * Update gauge value without tags.
-   * Update metric info for user.
+   * Update gauge value without tags. Update metric info for user.
    *
    * @param value latest value for updating
    */
@@ -69,21 +69,18 @@ public abstract class Metric {
    * Update gauge value with dynamic tag values.
    *
    * @param value latest value for updating
-   * @param tags  tag map
+   * @param tags tag map
    */
   public void update(double value, Map<TagKey, String> tags) {
     update(value);
     this.tags = tags;
   }
 
-  /**
-   * Deallocate object from stats and reset native pointer in null.
-   */
+  /** Deallocate object from stats and reset native pointer in null. */
   public void unregister() {
     if (0 != metricNativePointer) {
       NativeMetric.unregisterMetricNative(metricNativePointer);
     }
     metricNativePointer = 0;
   }
-
 }
