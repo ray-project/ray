@@ -653,7 +653,6 @@ class ServeController:
 
     async def wait_for_event(self, uuid: UUID) -> bool:
         start = time.time()
-        logger.error(f"FINDING UUID {uuid}")
         if uuid not in self.inflight_results:
             logger.debug(f"UUID ({uuid}) not found!!!")
             return True
@@ -675,7 +674,7 @@ class ServeController:
         event = asyncio.Event()
         event.result = FutureResult(goal_state)
         uuid_val = recreation_uuid or uuid4()
-        logger.error(f"Creating uuid {uuid_val} for result of {goal_state}")
+        logger.debug(f"Creating uuid {uuid_val} for result of {goal_state}")
         self.inflight_results[uuid_val] = event
         self._serializable_inflight_results[uuid_val] = event.result
         return uuid_val
@@ -802,7 +801,7 @@ class ServeController:
 
     def set_goal_id(self, goal_id: UUID) -> None:
         event = self.inflight_results.get(goal_id)
-        logger.error(f"Setting Goal Id: {goal_id}")
+        logger.debug(f"Setting Goal Id: {goal_id}")
         if event:
             event.set()
 
@@ -1149,7 +1148,6 @@ class ServeController:
 
             # self.notify_replica_handles_changed()
             # self.notify_backend_configs_changed()
-            logger.error(f"UpdateBackendConfig with UUID {return_uuid}")
             return return_uuid
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
