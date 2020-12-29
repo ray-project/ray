@@ -409,7 +409,7 @@ class ActorStateReconciler:
                         # Graceful period passed, kill it forcefully.
                         logger.debug(
                             f"{replica_name_to_use} did not shutdown after "
-                            f"{shutdown_timeout}, killing.")
+                            f"{shutdown_timeout}s, killing.")
                     finally:
                         ray.kill(replica, no_restart=True)
 
