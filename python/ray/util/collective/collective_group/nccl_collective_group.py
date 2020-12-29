@@ -179,12 +179,12 @@ class NCCLGroup(BaseGroup):
         """AllReduce the tensor across the collective group following options.
 
         Args:
-            tensor: the tensor to be reduced, each tensor locates on a GPU
+            tensor(list): the list of tensor to be reduced. The length of the 
+                          list is the num_gpus used in this process.
             allreduce_options:
 
         Returns:
         """
-        nccl_util.check_collective_input(tensor)
         devices = nccl_util.get_devices(tensor)
         key = nccl_util.get_key_from_devices(devices)
         comms = self._get_nccl_communicator(devices)
@@ -218,43 +218,68 @@ class NCCLGroup(BaseGroup):
         """Reduce tensor to a destination process following options.
 
         Args:
-            tensor: the tensor to be reduced.
+            tensor(list): the list of tensor to be reduced.
             reduce_options: reduce options
 
         Returns:
             None
         """
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
-
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        devices = nccl_util.get_devices(tensor)
+        key = nccl_util.get_key_from_devices(devices)
+        comms = self._get_nccl_communicator(devices)
+        # comm = self._get_nccl_collective_communicator()
         reduce_op = nccl_util.get_nccl_reduce_op(reduce_options.reduceOp)
 
-        # in-place reduce
-        comm.reduce(ptr, ptr, n_elems, dtype, reduce_op,
-                    reduce_options.root_rank, stream.ptr)
-
+        # First wait for current tensor allocation stream
+        streams = self._dev_streams_map[key]
+        self._sync_streams()
+       
+        # compute the actual root rank
+        root_rank = reduce_options.root_rank
+        root_tensor = reduce_options.root_tensor
+        _root_rank = root_rank * len(tensor) + root_tensor
+        # for non-blocking calls of all-reduce
+        groupStart()
+        for i in range(len(tensor)):
+            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
+            ptr = nccl_util.get_tensor_ptr(tensor[i])
+            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
+            # in-place allreduce
+            comms[i].reduce(ptr, ptr, n_elems, dtype, reduce_op, _root_rank,
+                    streams[i].ptr)
+        groupEnd()
+        
     def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
         """Broadcast tensor to all other processes following options.
 
         Args:
-            tensor: the tensor to be broadcasted.
+            tensor(list): the list of tensor to be broadcasted.
             broadcast_options: broadcast options.
 
         Returns:
             None
         """
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
-
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        # in-place broadcast
-        comm.broadcast(ptr, ptr, n_elems, dtype, broadcast_options.root_rank,
-                       stream.ptr)
+        devices = nccl_util.get_devices(tensor)
+        key = nccl_util.get_key_from_devices(devices)
+        comms = self._get_nccl_communicator(devices)
+        # First wait for current tensor allocation stream
+        streams = self._dev_streams_map[key]
+        self._sync_streams()
+       
+        # compute the actual root rank
+        root_rank = reduce_options.root_rank
+        root_tensor = reduce_options.root_tensor
+        _root_rank = root_rank * len(tensor) + root_tensor
+        # for non-blocking calls of all-reduce
+        groupStart()
+        for i in range(len(tensor)):
+            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
+            ptr = nccl_util.get_tensor_ptr(tensor[i])
+            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
+            # in-place allreduce
+            comms[i].broadcast(ptr, ptr, n_elems, dtype, _root_rank,
+                    streams[i].ptr)
+        groupEnd()
 
     def allgather(self,
                   tensor_list,
@@ -263,17 +288,21 @@ class NCCLGroup(BaseGroup):
         """Allgather tensors across the group into a list of tensors.
 
         Args:
-            tensor_list: the tensor list to store the results.
-            tensor: the tensor to be allgather-ed across the group.
+            tensor_list(list(list(tensor))): the tensor list to store
+                                             the results.
+            tensor(list): the list of tensor to be allgather-ed across
+                          the group.
             allgather_options: allgather options.
 
         Returns:
             None
         """
-
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
+        devices = nccl_util.get_devices(tensor)
+        key = nccl_util.get_key_from_devices(devices)
+        comms = self._get_nccl_communicator(devices)
+        # First wait for current tensor allocation stream
+        streams = self._dev_streams_map[key]
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
         send_ptr = nccl_util.get_tensor_ptr(tensor)
@@ -421,7 +450,6 @@ class NCCLGroup(BaseGroup):
                     comm = nccl_util.create_nccl_communicator(
                         _world_size, nccl_uid, _rank)
                     stream = Stream(non_blocking=True)
-                    logger.debug(f"{stream}")
                 comms.append(comm)
                 nccl_streams.append(stream)
             groupEnd()
@@ -541,8 +569,12 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
 
 def _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list):
     """Check the compatibility between tensor input and tensor list inputs."""
+    pass
     if not tensor_list:
         raise RuntimeError("Got empty list of tensors.")
+    if not tensor:
+        raise RuntimeError("Got empty tensor.")
+    #for i in range(len(tensor_list)):
     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
     shape = nccl_util.get_tensor_shape(tensor)
     for t in tensor_list:

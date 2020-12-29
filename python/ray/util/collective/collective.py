@@ -183,13 +183,17 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
-    g.allreduce(tensor, opts)
+    g.allreduce([tensor], opts)
 
 
-def allreduce_multigpu(tensor_list, group_name: str = "default", op=types.ReduceOp.SUM)
+def allreduce_multigpu(tensor_list, group_name: str = "default", op=types.ReduceOp.SUM):
     """Collective allrecue a list of tensors across the group."""
-    pass
-
+    # nccl_util.check_collective_input(tensor)
+    _check_tensor_list_input(tensor)
+    g = _check_and_get_group(group_name)
+    opts = types.AllReduceOptions
+    opts.reduceOp = op
+    g.allreduce(tensor, opts)
 
 def barrier(group_name: str = "default"):
     """Barrier all processes in the collective group.
@@ -227,7 +231,8 @@ def reduce(tensor,
     opts = types.ReduceOptions()
     opts.reduceOp = op
     opts.root_rank = dst_rank
-    g.reduce(tensor, opts)
+    opts.root_tensor = 0
+    g.reduce([tensor], opts)
 
 
 def reduce_multigpu(tensor_list,
@@ -236,7 +241,17 @@ def reduce_multigpu(tensor_list,
                     group_name: str = "default",
                     op=types.ReduceOp.SUM):
     """TODO(Dacheng)"""
-    pass
+    _check_list_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+
+    # check dst rank
+    _check_rank_valid(g, dst_rank)
+    _check_rank_index_valid(len(tensor_list), dst_tensor)
+    opts = types.ReduceOptions()
+    opts.reduceOp = op
+    opts.root_rank = dst_rank
+    opts.root_tensor = dst_tensor
+    g.reduce(tensor_list, opts)
 
 
 def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
@@ -257,7 +272,8 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     _check_rank_valid(g, src_rank)
     opts = types.BroadcastOptions()
     opts.root_rank = src_rank
-    g.broadcast(tensor, opts)
+    opts.root_tensor = 0
+    g.broadcast([tensor], opts)
 
 
 def broadcast_multigpu(tensor_list,
@@ -265,8 +281,16 @@ def broadcast_multigpu(tensor_list,
                        src_tensor: int = 0,
                        group_name: str = "default"):
     """TODO(Dacheng)"""
-    pass
+    _check_list_tensor_input(tensor_list)
+    g = _check_and_get_group(group_name)
 
+    # check src rank
+    _check_rank_valid(g, src_rank)
+    _check_rank_index_valid(len(tensor_list), src_tensor)
+    opts = types.BroadcastOptions()
+    opts.root_rank = src_rank
+    opts.root_tensor = src_tensor
+    g.broadcast(tensor_list, opts)
 
 def allgather(tensor_list: list, tensor, group_name: str = "default"):
     """Allgather tensors from each process of the group into a list.
@@ -287,16 +311,27 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
         # Here we make it more strict: len(tensor_list) == world_size.
         raise RuntimeError(
             "The length of the tensor list operands to allgather "
-            "must not be equal to world_size.")
+            "must be equal to world_size.")
     opts = types.AllGatherOptions()
-    g.allgather(tensor_list, tensor, opts)
+    g.allgather([tensor_list], [tensor], opts)
 
 
 def allgather_multigpu(output_tensor_lists: list,
                        input_tensor_list: list,
                        group_name: str = "default"):
-    """TODO(Dacheng)."""
-
+    """output_tensor_lists: list(list(tensors)), shape should be
+                            num_gpus * world_size * len(tensor)"""
+    _check_tensor_list_input(input_tensor_list)
+    _check_tensor_lists_input(output_tensor_lists)
+    g = _check_and_get_group(group_name)
+    if len(output_tensor_lists[0]) != g.world_size:
+        # Typically CLL lib requires len(tensor_list) >= world_size;
+        # Here we make it more strict: len(tensor_list) == world_size.
+        raise RuntimeError(
+            "The length of elements of the output tensor lists operands to\
+            allgather_multigpu must be equal to world_size.")
+    opts = types.AllGatherOptions()
+    g.allgather(output_tensor_lists, input_tensor_list, opts)
 
 def reducescatter(tensor,
                   tensor_list: list,
@@ -359,7 +394,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
 def send_multigpu(tensor,
                   dst_rank: int,
                   dst_gpu_index: int,
-                  group_name: str = "default")
+                  group_name: str = "default"):
     """TODO(Dacheng)."""
     pass
 
@@ -440,10 +475,17 @@ def _check_rank_valid(g, rank: int):
     """Check the rank: 0 <= rank < world_size."""
     if rank < 0:
         raise ValueError("rank '{}' is negative.".format(rank))
-    if rank > g.world_size:
+    if rank >= g.world_size:
         raise ValueError("rank '{}' is greater than world size "
                          "'{}'".format(rank, g.world_size))
 
+def _check_rank_index_valid(length, rank_index):
+    """Check the rank_index 0 <= rank_index < length"""
+    if rank_index < 0:
+        raise ValueError("rank_index '{}' is negative.".format(rank_index))
+    if rank_index >= length:
+        raise ValueError("rank_index '{}' is greater than length of inputs"
+                         "'{}'".format(rank_index, length))
 
 def _check_tensor_list_input(tensor_list):
     """Check if the input is a list of supported tensor types."""
@@ -454,3 +496,13 @@ def _check_tensor_list_input(tensor_list):
         raise RuntimeError("Got an empty list of tensors.")
     for t in tensor_list:
         _check_single_tensor_input(t)
+
+def _check_tensor_lists_input(tensor_lists):
+    """Check if the input is a list of lists of supported tensor types."""
+    if not isinstance(tensor_lists, list):
+        raise RuntimeError("The input must be a list of lists of tensors. "
+                           "Got '{}'.".format(type(tensor_lists)))
+    if not tensor_lists:
+        raise RuntimeError("Got an empty list of lists of tensors.")
+    for t in tensor_lists:
+        _check_tensor_list_input(t)

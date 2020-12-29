@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     send = cp.ones((4, ), dtype=cp.float32)
 
-    ray.init(num_gpus=4)
+ #   ray.init(num_gpus=4)
 
     num_workers = 2
     workers = []
@@ -42,4 +42,4 @@ if __name__ == "__main__":
     a = ray.get(init_rets)
     results = ray.get([w.compute.remote() for w in workers])
     print(results)
-    ray.shutdown()
+ #   ray.shutdown()

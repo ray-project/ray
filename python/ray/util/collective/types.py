@@ -68,6 +68,7 @@ class BarrierOptions:
 class ReduceOptions:
     reduceOp = ReduceOp.SUM
     root_rank = 0
+    root_tensor = 0  # index for multi-gpu reduce operations
     timeout_ms = unset_timeout_ms
 
 
@@ -86,6 +87,7 @@ class AllGatherOptions:
 @dataclass
 class BroadcastOptions:
     root_rank = 0
+    root_tensor = 0
     timeout_ms = unset_timeout_ms
 
 
