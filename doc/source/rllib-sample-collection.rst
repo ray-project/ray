@@ -11,7 +11,7 @@ The two implemented sub-classes of ``SamplerInput`` are ``SyncSampler`` and ``As
 (residing under the ``RolloutWorker.sampler`` property).
 
 In case the "_use_trajectory_view_api" top-level config key is set to True
-(by default since version >=1.2.0), every such sampler object will use the
+(by default since version >=1.1.0), every such sampler object will use the
 ``SampleCollector`` API to store and retrieve temporary environment-, model-, and other data
 during rollouts (see figure below).
 
@@ -58,7 +58,8 @@ are determined by the following Trainer config keys:
     `Policy.postprocess_trajectory()` method never sees data from more than one episode.
 
 **multiagent.count_steps_by [env_steps|agent_steps]**:
-    Within the Trainer's ``multiagent`` config dict, you can set the unit, by which RLlib will count a) rollout fragment lengths as well as b) the size of the final train_batch (see below).
+    Within the Trainer's ``multiagent`` config dict, you can set the unit, by which RLlib will count a) rollout fragment lengths as well as b) the size of the final train_batch (see below). The two supported values are:
+
     *env_steps (default)*:
      Each call to ``[Env].step()`` is counted as one. It does not
      matter, how many individual agents are stepping simultaneously in this very call
