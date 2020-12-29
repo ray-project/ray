@@ -18,6 +18,7 @@ from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules import GRUGate, \
     RelativeMultiHeadAttention, SkipConnection
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -240,7 +241,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         return torch.reshape(self._value_out, [-1])
 
 
-class AttentionWrapper(RecurrentNetwork, nn.Module):
+class AttentionWrapper(TorchModelV2, nn.Module):
     """GTrXL wrapper serving as interface for ModelV2s that set use_attention.
     """
 
