@@ -78,10 +78,11 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const ObjectID &actor_creation_return_id) {
   reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   direct_actor_submitter_->AddActorQueueIfNotExists(actor_id);
+
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
-    inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+    inserted = actor_handles_.insert_or_assign(actor_id, std::move(actor_handle)).second;
   }
   if (inserted) {
     // Register a callback to handle actor notifications.
@@ -145,6 +146,105 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   } else {
     // The actor is being created and not yet ready, just ignore!
   }
+}
+
+std::pair<const ActorHandle *, Status> ActorManager::GetNamedActorHandle(
+    const std::string &name, const TaskID &caller_id, const std::string &call_site,
+    const rpc::Address &rpc_address) {
+  ActorID found_actor_id_in_cache = ActorID::Nil();
+  {
+    absl::MutexLock lock(&named_actor_cache_mutex_);
+    auto it = actor_name_to_ids_cache_.find(name);
+    if (it != actor_name_to_ids_cache_.end()) {
+      found_actor_id_in_cache = it->second;
+    }
+  }
+
+  if (!found_actor_id_in_cache.IsNil()) {
+    // We found the actor in local named actor cache, no need to fetch it from Gcs.
+    return std::make_pair(GetActorHandle(found_actor_id_in_cache).get(), Status::OK());
+  }
+
+  // We didn't find the actor in named actor cache locally,
+  // fetch it from Gcs synchronously.
+  auto result = SyncFetchNamedActorFromGcs(name, caller_id, call_site, rpc_address);
+  if (result.second.ok()) {
+    // Fetched the named actor from Gcs, let's cache it on local.
+    absl::MutexLock lock(&named_actor_cache_mutex_);
+    RAY_IGNORE_EXPR(actor_name_to_ids_cache_.emplace(name, result.first->GetActorID()));
+  }
+  if (result.second.ok()) {
+    RAY_LOG(DEBUG) << "Success to cache the named actor on local with actor_name=" << name
+                   << " and actor_id=" << result.first;
+  }
+  return result;
+}
+
+std::pair<const ActorHandle *, Status> ActorManager::SyncFetchNamedActorFromGcs(
+    const std::string &name, const TaskID &caller_id, const std::string &call_site,
+    const rpc::Address &rpc_address) {
+  // This call needs to be blocking because we can't return until the actor
+  // handle is created, which requires the response from the RPC. This is
+  // implemented using a promise that's captured in the RPC callback.
+  // There should be no risk of deadlock because we don't hold any
+  // locks during the call and the RPCs run on a separate thread.
+  ActorID actor_id;
+  std::shared_ptr<std::promise<void>> ready_promise =
+      std::make_shared<std::promise<void>>(std::promise<void>());
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetByName(
+      name, [this, &actor_id, name, ready_promise, caller_id, call_site, rpc_address](
+                Status status, const boost::optional<rpc::ActorTableData> &result) {
+        if (status.ok() && result) {
+          auto actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(*result));
+          actor_id = actor_handle->GetActorID();
+          AddNewActorHandleForNamedActor(name, std::move(actor_handle), caller_id,
+                                         call_site, rpc_address);
+        } else {
+          // Use a NIL actor ID to signal that the actor wasn't found.
+          RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
+          actor_id = ActorID::Nil();
+        }
+        ready_promise->set_value();
+      }));
+  // Block until the RPC completes. Set a timeout to avoid hangs if the
+  // GCS service crashes.
+  if (ready_promise->get_future().wait_for(std::chrono::seconds(
+          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
+      std::future_status::ready) {
+    std::ostringstream stream;
+    stream << "There was timeout in getting the actor handle. It is probably "
+              "because GCS server is dead or there's a high load there.";
+    return std::make_pair(nullptr, Status::TimedOut(stream.str()));
+  }
+
+  if (actor_id.IsNil()) {
+    std::ostringstream stream;
+    stream << "Failed to look up actor with name '" << name << "'. You are "
+           << "either trying to look up a named actor you didn't create, "
+           << "the named actor died, or the actor hasn't been created "
+           << "because named actor creation is asynchronous.";
+    return std::make_pair(nullptr, Status::NotFound(stream.str()));
+  }
+
+  return std::make_pair(GetActorHandle(actor_id).get(), Status::OK());
+}
+
+void ActorManager::AddNewActorHandleForNamedActor(
+    const std::string &name, std::unique_ptr<ActorHandle> actor_handle,
+    const TaskID &caller_id, const std::string &call_site,
+    const rpc::Address &caller_address) {
+  const auto &actor_id = actor_handle->GetActorID();
+  const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+
+  AddActorHandle(std::move(actor_handle), /*is_owner_handle=*/false, caller_id, call_site,
+                 caller_address, actor_id, actor_creation_return_id);
+
+  reference_counter_->SetDeleteCallback(
+      actor_creation_return_id, [name, this](const ObjectID &actor_handle_id) {
+        absl::MutexLock lock(&named_actor_cache_mutex_);
+        auto num_erased = actor_name_to_ids_cache_.erase(name);
+        RAY_CHECK(num_erased == 1) << "Failed to erase the actor handle from cache.";
+      });
 }
 
 std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {

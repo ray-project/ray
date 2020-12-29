@@ -149,6 +149,10 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
+  std::pair<const ActorHandle *, Status> GetNamedActorHandle(
+      const std::string &name, const TaskID &caller_id, const std::string &call_site,
+      const rpc::Address &rpc_address);
+
  private:
   /// Give this worker a handle to an actor.
   ///
@@ -172,12 +176,23 @@ class ActorManager {
                       const rpc::Address &caller_address, const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id);
 
+  void AddNewActorHandleForNamedActor(const std::string &name,
+                                      std::unique_ptr<ActorHandle> actor_handle,
+                                      const TaskID &caller_id,
+                                      const std::string &call_site,
+                                      const rpc::Address &caller_address);
+
   /// Handle actor state notification published from GCS.
   ///
   /// \param[in] actor_id The actor id of this notification.
   /// \param[in] actor_data The GCS actor data.
   void HandleActorStateNotification(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data);
+
+  /// Fetch the named actor from Gcs synchronously with the given name.
+  std::pair<const ActorHandle *, Status> SyncFetchNamedActorFromGcs(
+      const std::string &name, const TaskID &caller_id, const std::string &call_site,
+      const rpc::Address &rpc_address);
 
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
@@ -195,6 +210,13 @@ class ActorManager {
   /// Actor handle is a logical abstraction that holds actor handle's states.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(mutex_);
+
+  /// The mutex guard for the named actor cache below.
+  absl::Mutex named_actor_cache_mutex_;
+
+  /// The map to cache the named actor in this worker locally..
+  absl::flat_hash_map<std::string, ActorID> actor_name_to_ids_cache_
+      GUARDED_BY(named_actor_cache_mutex_);
 };
 
 }  // namespace ray

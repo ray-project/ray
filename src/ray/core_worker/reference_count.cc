@@ -403,7 +403,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_ref_removed) {
-    RAY_LOG(DEBUG) << "Calling on_ref_removed for object " << id;
     it->second.on_ref_removed(id);
     it->second.on_ref_removed = nullptr;
   }

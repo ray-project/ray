@@ -34,6 +34,7 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/util/filesystem.h"
+#include "ray/util/logging.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -54,7 +55,7 @@ static void flushall_redis(void) {
 }
 
 ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
-                          int64_t max_restarts) {
+                          int64_t max_restarts, std::string name = "") {
   std::unique_ptr<ActorHandle> actor_handle;
 
   uint8_t array[] = {1, 2, 3};
@@ -66,12 +67,12 @@ ActorID CreateActorHelper(std::unordered_map<std::string, double> &resources,
   args.emplace_back(new TaskArgByValue(
       std::make_shared<RayObject>(buffer, nullptr, std::vector<ObjectID>())));
 
-  std::string name = "";
+  const bool is_detached = !name.empty();
   ActorCreationOptions actor_options{
       max_restarts,
       /*max_task_retries=*/0,
-      /*max_concurrency*/ 1,  resources, resources,           {},
-      /*is_detached=*/false,  name,      /*is_asyncio=*/false};
+      /*max_concurrency*/ 1,  resources, resources, {}, is_detached, name,
+      /*is_asyncio=*/false};
 
   // Create an actor.
   ActorID actor_id;
@@ -878,6 +879,55 @@ TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
   TestActorFailure(resources);
+}
+
+TEST_F(SingleNodeTest, TestCacheNamedActor) {
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
+
+  std::unordered_map<std::string, double> resources;
+  constexpr auto actor_name = "test_cache_named_actor";
+  auto actor_id = CreateActorHelper(
+      /*resources=*/resources, /*max_retry=*/1000, /*name=*/actor_name);
+
+  ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, /*timeout_ms=*/30 * 1000));
+  RAY_LOG(INFO) << "actor test_cache_named_actor has been alive.";
+
+  auto handle_pair = driver.GetNamedActorHandle(actor_name);
+  ASSERT_TRUE(handle_pair.second.ok());
+  auto *actor_handle = handle_pair.first;
+  ASSERT_EQ(actor_id, actor_handle->GetActorID());
+
+  handle_pair = driver.GetNamedActorHandle(actor_name);
+  ASSERT_TRUE(handle_pair.second.ok());
+  auto *actor_handle_again = handle_pair.first;
+  ASSERT_EQ(actor_handle, actor_handle_again);
+}
+
+TEST_F(SingleNodeTest, TestEvictNamedActorFromCache) {
+  auto &driver = CoreWorkerProcess::GetCoreWorker();
+
+  std::unordered_map<std::string, double> resources;
+  constexpr auto actor_name = "test_evict_named_actor";
+  auto actor_id = CreateActorHelper(
+      /*resources=*/resources, /*max_retry=*/1000, /*name=*/actor_name);
+
+  ASSERT_TRUE(WaitForDirectCallActorState(actor_id, true, /*timeout_ms=*/30 * 1000));
+  RAY_LOG(INFO) << "actor test_evict_named_actor has been alive.";
+
+  auto handle_pair = driver.GetNamedActorHandle(actor_name);
+  ASSERT_TRUE(handle_pair.second.ok());
+  auto *actor_handle = handle_pair.first;
+  ASSERT_EQ(actor_id, actor_handle->GetActorID());
+
+  // Remove the handle that we create.
+  driver.RemoveActorHandleReference(actor_id);
+  // Remove the handle of named actor handle.
+  driver.RemoveActorHandleReference(actor_id);
+
+  handle_pair = driver.GetNamedActorHandle(actor_name);
+  ASSERT_TRUE(handle_pair.second.ok());
+  auto *actor_handle_again = handle_pair.first;
+  ASSERT_TRUE(actor_handle != actor_handle_again);
 }
 
 }  // namespace ray
