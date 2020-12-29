@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional, Union
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
     SkipConnection
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.recurrent_net import RecurrentNetwork
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -344,7 +345,7 @@ class GTrXLNet(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
-class AttentionWrapper(RecurrentNetwork):
+class AttentionWrapper(TFModelV2):
     """GTrXL wrapper serving as interface for ModelV2s that set use_attention.
     """
 
