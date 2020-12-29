@@ -633,12 +633,9 @@ def get_current_backend_tag() -> BackendTag:
         RayServeException if not called from within a Ray Serve backend.
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("Called `serve.get_current_backend_tag()`"
-                                "from a function that is not running in a "
-                                "Ray Serve backend on this cluster, so it "
-                                "has no backend tag yet. Please "
-                                "use client.create_backend() to run your "
-                                "backend function using Ray Serve.")
+        raise RayServeException("`serve.get_current_backend_tag()`"
+                                "may only be called from within a"
+                                "Ray Serve backend.")
     else:
         return _INTERNAL_REPLICA_CONTEXT.backend_tag
 
@@ -646,16 +643,16 @@ def get_current_backend_tag() -> BackendTag:
 def get_current_replica_tag() -> ReplicaTag:
     """When called from within a backend, return its replica tag.
 
+    A replica tag uniquely identifies a single replica (a process)
+    for a Ray Serve backend.
+
     Raises:
         RayServeException if not called from within a Ray Serve backend.
     """
     if _INTERNAL_REPLICA_CONTEXT is None:
-        raise RayServeException("Called `serve.get_current_replica_tag()`"
-                                "from a function that is not running in a "
-                                "Ray Serve backend on this cluster, so it "
-                                "has no replica tag yet. Please "
-                                "use client.create_backend() to run your "
-                                "backend function using Ray Serve.")
+        raise RayServeException("`serve.get_current_replica_tag()`"
+                                "may only be called from within a"
+                                "Ray Serve backend.")
     else:
         return _INTERNAL_REPLICA_CONTEXT.replica_tag
 
