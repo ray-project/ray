@@ -66,8 +66,7 @@ ScheduleMap GcsStrictPackStrategy::Schedule(
     const std::unique_ptr<ScheduleContext> &context) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
-      required_resources, SchedulingPolicy(SchedulingType::STRICT_PACK),
-      [](const NodeID &) { return true; });
+      required_resources, SchedulingType::STRICT_PACK);
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 
@@ -78,9 +77,8 @@ ScheduleMap GcsPackStrategy::Schedule(
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
-      required_resources, SchedulingPolicy(SchedulingType::PACK),
-      [](const NodeID &) { return true; });
+  const auto &selected_nodes =
+      context->gcs_resource_scheduler_.Schedule(required_resources, SchedulingType::PACK);
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 
@@ -89,8 +87,7 @@ ScheduleMap GcsSpreadStrategy::Schedule(
     const std::unique_ptr<ScheduleContext> &context) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
-      required_resources, SchedulingPolicy(SchedulingType::SPREAD),
-      [](const NodeID &) { return true; });
+      required_resources, SchedulingType::SPREAD);
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 
@@ -112,7 +109,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
 
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
-      required_resources, SchedulingPolicy(SchedulingType::STRICT_SPREAD),
+      required_resources, SchedulingType::STRICT_SPREAD,
       [nodes_in_use](const NodeID &node_id) { return nodes_in_use.count(node_id) == 0; });
   return GenerateScheduleMap(bundles, selected_nodes);
 }

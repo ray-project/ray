@@ -30,13 +30,6 @@ enum SchedulingType {
 
 typedef std::pair<NodeID, double> NodeScore;
 
-class SchedulingPolicy {
- public:
-  SchedulingPolicy(const SchedulingType &type) : type_(type) {}
-
-  const SchedulingType type_;
-};
-
 /// NodeScorer is a scorer to make a grade to the node, which is used for scheduling
 /// decision.
 class NodeScorer {
@@ -75,20 +68,6 @@ class LeastResourceScorer : public NodeScorer {
                    const FractionalResourceQuantity &available);
 };
 
-// class ResourceScheduleContext {
-// public:
-//  virtual ~ResourceScheduleContext() {}
-//
-//  virtual bool IsNodeSelected(const NodeID &node_id) {
-//    return std::find(selected_nodes.begin(), selected_nodes.end(), node_id) !=
-//        selected_nodes.end();
-//  }
-//
-//  virtual bool IsNodeSchedulable(const NodeID &node_id) { return true; }
-//
-//  std::vector<NodeID> selected_nodes;
-//};
-
 /// Gcs resource scheduler implementation.
 /// Non-thread safe.
 class GcsResourceScheduler {
@@ -100,8 +79,9 @@ class GcsResourceScheduler {
   virtual ~GcsResourceScheduler() = default;
 
   std::vector<NodeID> Schedule(
-      const std::vector<ResourceSet> &required_resources, const SchedulingPolicy &policy,
-      const std::function<bool(const NodeID &)> &node_filter_func);
+      const std::vector<ResourceSet> &required_resources,
+      const SchedulingType &scheduling_type,
+      const std::function<bool(const NodeID &)> &node_filter_func = nullptr);
 
  private:
   absl::flat_hash_set<NodeID> FilterCandidateNodes(

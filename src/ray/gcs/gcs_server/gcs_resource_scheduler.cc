@@ -41,10 +41,6 @@ double LeastResourceScorer::MakeGrade(const ResourceSet &required_resources,
   if (!required_resources.GetResourceAmountMap().empty()) {
     node_score /= required_resources.GetResourceAmountMap().size();
   }
-
-  RAY_LOG(INFO) << "LeastResourceScorer::MakeGrade, available_resources is "
-                << available_resources.ToString() << ", required_resources is "
-                << required_resources.ToString() << ", node_score is " << node_score;
   return node_score;
 }
 
@@ -59,7 +55,8 @@ double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requeste
 
 /////////////////////////////// Begin of GcsResourceScheduler ///////////////////////////
 std::vector<NodeID> GcsResourceScheduler::Schedule(
-    const std::vector<ResourceSet> &required_resources, const SchedulingPolicy &policy,
+    const std::vector<ResourceSet> &required_resources,
+    const SchedulingType &scheduling_type,
     const std::function<bool(const NodeID &)> &node_filter_func) {
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
 
@@ -77,7 +74,7 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
 
   // Score and rank nodes.
   std::vector<NodeID> result;
-  switch (policy.type_) {
+  switch (scheduling_type) {
   case SPREAD:
     SpreadSchedule(to_schedule_resources, candidate_nodes, &result);
     break;
@@ -91,7 +88,7 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
     StrictPackSchedule(to_schedule_resources, candidate_nodes, &result);
     break;
   default:
-    RAY_LOG(FATAL) << "Unsupported policy type: " << policy.type_;
+    RAY_LOG(FATAL) << "Unsupported scheduling type: " << scheduling_type;
     break;
   }
   return result;
@@ -103,7 +100,7 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
   absl::flat_hash_set<NodeID> result;
   for (const auto &iter : cluster_resources) {
     const auto &node_id = iter.first;
-    if (node_filter_func(node_id)) {
+    if (node_filter_func == nullptr || node_filter_func(node_id)) {
       result.emplace(node_id);
     }
   }
