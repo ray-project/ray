@@ -27,8 +27,10 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 2. Alternatively, call them from within your existing Python web server using the Python-native :ref:`servehandle-api` .
 
+:ref:`serve-web-server-integration-tutorial`
 
-.. note::
+
+.. tip::
   Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel and on our `forum <https://discuss.ray.io/>`_!
 
 .. note::
