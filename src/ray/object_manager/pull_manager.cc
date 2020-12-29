@@ -95,15 +95,25 @@ void PullManager::TryPull(const ObjectID &object_id) {
   }
 
   NodeID node_id;
-  int num_candidates = 0;
-  for (NodeID potential : node_vector) {
-    if (inflight_pulls.count(potential) > 0) {
-      continue;
-    }
-    num_candidates++;
-    std::uniform_int_distribution<int> distribution(0, num_candidates - 1);
-    if (distribution(gen_) == 0) {
-      node_id = potential;
+  {
+    /*
+      A one pass algorithm for picking a uniformly random, acceptable value from a list:
+      1. If you come across an acceptable element store store it with the intention of
+      returning it later.
+      2. Next time you come across an acceptable element, replace the stored value with
+      probability 1/2.
+      n. For the nth acceptable element, store it for return with proabability 1/n.
+    */
+    int num_candidates = 0;
+    for (NodeID &potential : node_vector) {
+      if (inflight_pulls.count(potential) > 0) {
+        continue;
+      }
+      num_candidates++;
+      std::uniform_int_distribution<int> distribution(0, num_candidates - 1);
+      if (distribution(gen_) == 0) {
+        node_id = potential;
+      }
     }
   }
 
@@ -111,8 +121,6 @@ void PullManager::TryPull(const ObjectID &object_id) {
     RAY_LOG(DEBUG)
         << "Resending pull request for " << object_id << " to " << node_id
         << " this means we've already tried pulling the object from all available nodes.";
-    // We've already tried all the nodes that we know about. Clear the set of inflight
-    // nodes and try again.
     inflight_pulls.clear();
     // Choose a random client to pull the object from.
     // Generate a random index.
