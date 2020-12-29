@@ -118,9 +118,8 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
-            self.backend = RayServeReplica(backend_tag, replica_tag, _callable,
-                                           backend_config, is_function,
-                                           controller_handle)
+            self.backend = RayServeReplica(_callable, backend_config,
+                                           is_function, controller_handle)
 
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
@@ -154,11 +153,10 @@ def ensure_async(func: Callable) -> Callable:
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
-    def __init__(self, backend_tag: str, replica_tag: str, _callable: Callable,
-                 backend_config: BackendConfig, is_function: bool,
-                 controller_handle: ActorHandle) -> None:
-        self.backend_tag = backend_tag
-        self.replica_tag = replica_tag
+    def __init__(self, _callable: Callable, backend_config: BackendConfig,
+                 is_function: bool, controller_handle: ActorHandle) -> None:
+        self.backend_tag = ray.serve.api.get_current_backend_tag()
+        self.replica_tag = ray.serve.api.get_current_replica_tag()
         self.callable = _callable
         self.is_function = is_function
 
