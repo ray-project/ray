@@ -11,9 +11,15 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
+from ray.rllib.models.tf.attention_net import AttentionWrapper
+from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
+from ray.rllib.models.torch.attention_net import AttentionWrapper as \
+    TorchAttentionWrapper
+from ray.rllib.models.torch.recurrent_net import LSTMWrapper as \
+    TorchLSTMWrapper
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
@@ -346,12 +352,14 @@ class ModelCatalog:
                                                      model_interface)
 
             if framework in ["tf2", "tf", "tfe"]:
-                # Try wrapping custom model with LSTM, if required.
-                if model_config.get("use_lstm"):
+                # Try wrapping custom model with LSTM/attention, if required.
+                if model_config.get("use_lstm") or \
+                        model_config.get("use_attention"):
                     wrapped_cls = model_cls
                     forward = wrapped_cls.forward
                     model_cls = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper)
+                        wrapped_cls, LSTMWrapper
+                        if model_config.get("use_lstm") else AttentionWrapper)
                     model_cls._wrapped_forward = forward
 
                 # Track and warn if vars were created but not registered.
@@ -397,6 +405,17 @@ class ModelCatalog:
                         "question?".format(not_registered, instance,
                                            registered))
             elif framework == "torch":
+                # Try wrapping custom model with LSTM/attention, if required.
+                if model_config.get("use_lstm") or \
+                        model_config.get("use_attention"):
+                    wrapped_cls = model_cls
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, TorchLSTMWrapper
+                        if model_config.get("use_lstm") else
+                        TorchAttentionWrapper)
+                    model_cls._wrapped_forward = forward
+
                 # PyTorch automatically tracks nn.Modules inside the parent
                 # nn.Module's constructor.
                 # Try calling with kwargs first (custom ModelV2 should
@@ -437,9 +456,6 @@ class ModelCatalog:
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
 
-            from ray.rllib.models.tf.recurrent_net import LSTMWrapper
-            from ray.rllib.models.tf.attention_net import AttentionWrapper
-
             if model_config.get("use_lstm") or \
                     model_config.get("use_attention"):
                 wrapped_cls = v2_class
@@ -450,17 +466,6 @@ class ModelCatalog:
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
                         wrapped_cls, AttentionWrapper)
-                    #model_kwargs.update({
-                    #    "num_transformer_units":
-                    #        model_config["attention_num_transformer_units"],
-                    #    "attention_dim": model_config["attention_dim"],
-                    #    "num_heads": model_config["attention_num_heads"],
-                    #    "memory_tau": model_config["attention_memory_tau"],
-                    #    "position_wise_mlp_dim":
-                    #        model_config["attention_position_wise_mlp_dim"],
-                    #    "init_gru_gate_bias":
-                    #        model_config["attention_init_gru_gate_bias"],
-                    #})
 
                 v2_class._wrapped_forward = forward
 
@@ -475,15 +480,9 @@ class ModelCatalog:
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
                     obs_space, framework=framework)
-                #v2_class = \
-                #    default_model or ModelCatalog._get_v2_model_class(
-                #        obs_space, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
-
-            from ray.rllib.models.torch.recurrent_net import LSTMWrapper
-            from ray.rllib.models.torch.attention_net import AttentionWrapper
 
             if model_config.get("use_lstm") or \
                     model_config.get("use_attention"):
@@ -492,18 +491,11 @@ class ModelCatalog:
                 forward = wrapped_cls.forward
                 if model_config.get("use_lstm"):
                     v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, LSTMWrapper)
+                        wrapped_cls, TorchLSTMWrapper)
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, AttentionWrapper)
+                        wrapped_cls, TorchAttentionWrapper)
 
-            #if model_config.get("use_lstm"):
-            #    from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
-            #        as TorchLSTMWrapper
-            #    wrapped_cls = v2_class
-            #    forward = wrapped_cls.forward
-            #    v2_class = ModelCatalog._wrap_if_needed(
-            #        wrapped_cls, TorchLSTMWrapper)
                 v2_class._wrapped_forward = forward
 
             # Wrap in the requested interface.
@@ -516,11 +508,6 @@ class ModelCatalog:
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
                     obs_space, framework=framework)
-            if model_config.get("use_lstm"):
-                raise NotImplementedError("JAXModel's not LSTM-wrappable yet!")
-            elif model_config.get("use_attention"):
-                raise NotImplementedError(
-                    "JAXModel's not Attention (GTrXL)-wrappable yet!")
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -714,6 +701,10 @@ class ModelCatalog:
         if config["use_lstm"] and config["use_attention"]:
             raise ValueError("Only one of `use_lstm` or `use_attention` may "
                              "be set to True!")
-        if framework == "jax" and config["use_attention"]:
-            raise ValueError("`use_attention` not available for "
-                             "framework=jax so far!")
+        if framework == "jax":
+            if config["use_attention"]:
+                raise ValueError("`use_attention` not available for "
+                                 "framework=jax so far!")
+            elif config.get("use_lstm"):
+                raise ValueError("`use_lstm` not available for "
+                                 "framework=jax so far!")

@@ -8,10 +8,10 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-from gym.spaces import Box
+from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import gym
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.layers import GRUGate, RelativeMultiHeadAttention, \
@@ -105,8 +105,8 @@ class TrXLNet(RecurrentNetwork):
                     output_activation=None),
                 fan_in_layer=None)(E_out)
             E_out = SkipConnection(
-                PositionwiseFeedforward(attention_dim, position_wise_mlp_dim))(
-                MHA_out)
+                PositionwiseFeedforward(attention_dim,
+                                        position_wise_mlp_dim))(MHA_out)
             E_out = tf.keras.layers.LayerNormalization(axis=-1)(E_out)
 
         # Postprocess TrXL output with another hidden layer and compute values.
@@ -170,7 +170,7 @@ class GTrXLNet(RecurrentNetwork):
     def __init__(self,
                  observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 num_outputs: int,
+                 num_outputs: Optional[int],
                  model_config: ModelConfigDict,
                  name: str,
                  *,
@@ -207,9 +207,9 @@ class GTrXLNet(RecurrentNetwork):
                 block within one Transformer unit). This is the size of the
                 first of the two layers within the PositionwiseFeedforward. The
                 second layer always has size=`attention_dim`.
-            init_gru_gate_bias (float): Initial bias values for the GRU gates (two
-                GRUs per Transformer unit, one after the MHA, one after the
-                position-wise MLP).
+            init_gru_gate_bias (float): Initial bias values for the GRU gates
+                (two GRUs per Transformer unit, one after the MHA, one after
+                the position-wise MLP).
         """
 
         super().__init__(observation_space, action_space, num_outputs,
@@ -269,19 +269,22 @@ class GTrXLNet(RecurrentNetwork):
             # used by the next transformer block.
             memory_outs.append(E_out)
 
-        # Postprocess TrXL output with another hidden layer and compute values.
-        logits = tf.keras.layers.Dense(
-            self.num_outputs,
-            activation=tf.keras.activations.linear,
-            name="logits")(E_out)
-
+        self._logits = None
         self._value_out = None
-        values_out = tf.keras.layers.Dense(
-            1, activation=None, name="values")(E_out)
+
+        # Postprocess TrXL output with another hidden layer and compute values.
+        if num_outputs is not None:
+            self._logits = tf.keras.layers.Dense(
+                self.num_outputs, activation=None, name="logits")(E_out)
+            values_out = tf.keras.layers.Dense(
+                1, activation=None, name="values")(E_out)
+            outs = [self._logits, values_out]
+        else:
+            outs = [E_out]
+            self.num_outputs = self.attention_dim
 
         self.trxl_model = tf.keras.Model(
-            inputs=[input_layer] + memory_ins,
-            outputs=[logits, values_out] + memory_outs[:-1])
+            inputs=[input_layer] + memory_ins, outputs=outs + memory_outs[:-1])
 
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
@@ -319,11 +322,15 @@ class GTrXLNet(RecurrentNetwork):
 
         all_out = self.trxl_model([observations] + state)
 
-        logits = all_out[0]
-        self._value_out = all_out[1]
-        memory_outs = all_out[2:]
+        if self._logits is not None:
+            out = tf.reshape(all_out[0], [-1, self.num_outputs])
+            self._value_out = all_out[1]
+            memory_outs = all_out[2:]
+        else:
+            out = tf.reshape(all_out[0], [-1, self.attention_dim])
+            memory_outs = all_out[1:]
 
-        return tf.reshape(logits, [-1, self.num_outputs]), [
+        return out, [
             tf.reshape(m, [-1, self.attention_dim]) for m in memory_outs
         ]
 
@@ -335,3 +342,91 @@ class GTrXLNet(RecurrentNetwork):
     @override(ModelV2)
     def value_function(self) -> TensorType:
         return tf.reshape(self._value_out, [-1])
+
+
+class AttentionWrapper(RecurrentNetwork):
+    """GTrXL wrapper serving as interface for ModelV2s that set use_attention.
+    """
+
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
+
+        super().__init__(obs_space, action_space, None, model_config, name)
+
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+        elif isinstance(action_space, MultiDiscrete):
+            self.action_dim = np.product(action_space.nvec)
+        elif action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
+
+        cfg = model_config
+
+        self.attention_dim = cfg["attention_dim"]
+
+        # Construct GTrXL sub-module w/ num_outputs=None (so it does not
+        # create a logits/value output; we'll do this ourselves in this wrapper
+        # here).
+        self.gtrxl = GTrXLNet(
+            obs_space,
+            action_space,
+            None,
+            model_config,
+            "gtrxl",
+            num_transformer_units=cfg["attention_num_transformer_units"],
+            attention_dim=self.attention_dim,
+            num_heads=cfg["attention_num_heads"],
+            head_dim=cfg["attention_head_dim"],
+            memory_inference=cfg["attention_memory_inference"],
+            memory_training=cfg["attention_memory_training"],
+            position_wise_mlp_dim=cfg["attention_position_wise_mlp_dim"],
+            init_gru_gate_bias=cfg["attention_init_gru_gate_bias"],
+        )
+        self.register_variables(self.gtrxl.variables())
+
+        # `self.num_outputs` right now is the number of nodes coming from the
+        # attention net.
+        input_ = tf.keras.layers.Input(shape=(self.gtrxl.num_outputs, ))
+
+        # Set final num_outputs to correct value (depending on action space).
+        self.num_outputs = num_outputs
+
+        # Postprocess GTrXL output with another hidden layer and compute
+        # values.
+        out = tf.keras.layers.Dense(self.num_outputs, activation=None)(input_)
+        self._logits_branch = tf.keras.models.Model([input_], [out])
+        self.register_variables(self._logits_branch.variables)
+
+        out = tf.keras.layers.Dense(1, activation=None)(input_)
+        self._value_branch = tf.keras.models.Model([input_], [out])
+        self.register_variables(self._value_branch.variables)
+
+        self.inference_view_requirements = \
+            self.gtrxl.inference_view_requirements
+
+    @override(RecurrentNetwork)
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+        assert seq_lens is not None
+        # Push obs through "unwrapped" net's `forward()` first.
+        wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Then through our GTrXL.
+        input_dict["obs_flat"] = wrapped_out
+
+        self._features, memory_outs = self.gtrxl(input_dict, state, seq_lens)
+        model_out = self._logits_branch(self._features)
+        return model_out, memory_outs
+
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        return []
+
+    @override(ModelV2)
+    def value_function(self) -> TensorType:
+        assert self._features is not None, "Must call forward() first!"
+        return tf.reshape(self._value_branch(self._features), [-1])

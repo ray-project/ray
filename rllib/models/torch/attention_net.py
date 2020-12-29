@@ -11,7 +11,7 @@
 import gym
 from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
@@ -52,7 +52,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
     def __init__(self,
                  observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 num_outputs: int,
+                 num_outputs: Optional[int],
                  model_config: ModelConfigDict,
                  name: str,
                  *,
@@ -151,16 +151,23 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.attention_layers = nn.Sequential(*attention_layers)
         self.layers.extend(attention_layers)
 
-        # Postprocess GTrXL output with another hidden layer.
-        self.logits = SlimFC(
-            in_size=self.attention_dim,
-            out_size=self.num_outputs,
-            activation_fn=nn.ReLU)
-
-        # Value function used by all RLlib Torch RL implementations.
+        # Final layers if num_outputs not None.
+        self.logits = None
+        self.values_out = None
+        # Last value output.
         self._value_out = None
-        self.values_out = SlimFC(
-            in_size=self.attention_dim, out_size=1, activation_fn=None)
+        # Postprocess GTrXL output with another hidden layer.
+        if self.num_outputs is not None:
+            self.logits = SlimFC(
+                in_size=self.attention_dim,
+                out_size=self.num_outputs,
+                activation_fn=nn.ReLU)
+
+            # Value function used by all RLlib Torch RL implementations.
+            self.values_out = SlimFC(
+                in_size=self.attention_dim, out_size=1, activation_fn=None)
+        else:
+            self.num_outputs = self.attention_dim
 
         # Setup inference view (`memory-inference` x past observations +
         # current one (0))
@@ -209,10 +216,15 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # layer).
         memory_outs = memory_outs[:-1]
 
-        logits = self.logits(all_out)
-        self._value_out = self.values_out(all_out)
+        if self.logits is not None:
+            out = self.logits(all_out)
+            self._value_out = self.values_out(all_out)
+            out_dim = self.num_outputs
+        else:
+            out = all_out
+            out_dim = self.attention_dim
 
-        return torch.reshape(logits, [-1, self.num_outputs]), [
+        return torch.reshape(out, [-1, out_dim]), [
             torch.reshape(m, [-1, self.attention_dim]) for m in memory_outs
         ]
 
@@ -223,6 +235,8 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
 
     @override(ModelV2)
     def value_function(self) -> TensorType:
+        assert self._value_out is not None,\
+            "Must call forward first AND must have value branch!"
         return torch.reshape(self._value_out, [-1])
 
 
@@ -246,18 +260,19 @@ class AttentionWrapper(RecurrentNetwork, nn.Module):
         else:
             self.action_dim = int(len(action_space))
 
-        ## Add prev-action/reward nodes to input to LSTM.
-        #if self.use_prev_action:
-        #    num_outputs += self.action_dim
-        #if self.use_prev_reward:
-        #    num_outputs += 1
-
         cfg = model_config
 
         self.attention_dim = cfg["attention_dim"]
 
+        # Construct GTrXL sub-module w/ num_outputs=None (so it does not
+        # create a logits/value output; we'll do this ourselves in this wrapper
+        # here).
         self.gtrxl = GTrXLNet(
-            obs_space, action_space, num_outputs, model_config, "gtrxl",
+            obs_space,
+            action_space,
+            None,
+            model_config,
+            "gtrxl",
             num_transformer_units=cfg["attention_num_transformer_units"],
             attention_dim=self.attention_dim,
             num_heads=cfg["attention_num_heads"],
@@ -268,6 +283,7 @@ class AttentionWrapper(RecurrentNetwork, nn.Module):
             init_gru_gate_bias=cfg["attention_init_gru_gate_bias"],
         )
 
+        # Set final num_outputs to correct value (depending on action space).
         self.num_outputs = num_outputs
 
         # Postprocess GTrXL output with another hidden layer and compute
@@ -286,15 +302,6 @@ class AttentionWrapper(RecurrentNetwork, nn.Module):
         self.inference_view_requirements = \
             self.gtrxl.inference_view_requirements
 
-        ## Add prev-a/r to this model's view, if required.
-        #if model_config["lstm_use_prev_action"]:
-        #    self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
-        #        ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
-        #                        shift=-1)
-        #if model_config["lstm_use_prev_reward"]:
-        #    self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
-        #        ViewRequirement(SampleBatch.REWARDS, shift=-1)
-
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
@@ -302,23 +309,6 @@ class AttentionWrapper(RecurrentNetwork, nn.Module):
         assert seq_lens is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
-
-        # Concat. prev-action/reward if required.
-        #prev_a_r = []
-        #if self.model_config["lstm_use_prev_action"]:
-        #    if isinstance(self.action_space, (Discrete, MultiDiscrete)):
-        #        prev_a = one_hot(input_dict[SampleBatch.PREV_ACTIONS].float(),
-        #                         self.action_space)
-        #    else:
-        #        prev_a = input_dict[SampleBatch.PREV_ACTIONS].float()
-        #    prev_a_r.append(torch.reshape(prev_a, [-1, self.action_dim]))
-        #if self.model_config["lstm_use_prev_reward"]:
-        #    prev_a_r.append(
-        #        torch.reshape(input_dict[SampleBatch.PREV_REWARDS].float(),
-        #                      [-1, 1]))
-
-        #if prev_a_r:
-        #    wrapped_out = torch.cat([wrapped_out] + prev_a_r, dim=1)
 
         # Then through our GTrXL.
         input_dict["obs_flat"] = wrapped_out
