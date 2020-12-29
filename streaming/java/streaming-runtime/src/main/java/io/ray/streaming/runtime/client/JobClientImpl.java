@@ -49,7 +49,7 @@ public class JobClientImpl implements JobClient {
       }
     } catch (Exception e) {
       LOG.error("Failed to submit job: {}.", jobGraph.getJobName(), e);
-      throw new RuntimeException("submitting job failed");
+      throw new RuntimeException("submitting job failed", e);
     }
   }
 }
