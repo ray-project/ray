@@ -9,9 +9,10 @@ import java.util.stream.Collectors;
 
 /**
  * This class contains demo code of the Ray introduction doc
- * (https://docs.ray.io/en/master/index.html and  https://docs.ray.io/en/master/ray-overview/index.html).
+ * (https://docs.ray.io/en/master/index.html and
+ * https://docs.ray.io/en/master/ray-overview/index.html).
  *
- * Please keep them in sync.
+ * <p>Please keep them in sync.
  */
 public class RayDemo {
 
@@ -43,7 +44,7 @@ public class RayDemo {
         objectRefList.add(Ray.task(RayDemo::square, i).remote());
       }
       // Get the actual results of the tasks with `get`.
-      System.out.println(Ray.get(objectRefList));  // [0, 1, 4, 9]
+      System.out.println(Ray.get(objectRefList)); // [0, 1, 4, 9]
     }
 
     {
@@ -60,10 +61,11 @@ public class RayDemo {
         counter.task(Counter::increment).remote();
       }
       // Invoke the `read` method on each actor, and print the results.
-      List<ObjectRef<Integer>> objectRefList = counters.stream()
-          .map(counter -> counter.task(Counter::read).remote())
-          .collect(Collectors.toList());
-      System.out.println(Ray.get(objectRefList));  // [1, 1, 1, 1]
+      List<ObjectRef<Integer>> objectRefList =
+          counters.stream()
+              .map(counter -> counter.task(Counter::read).remote())
+              .collect(Collectors.toList());
+      System.out.println(Ray.get(objectRefList)); // [1, 1, 1, 1]
     }
   }
 }

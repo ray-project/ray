@@ -11,9 +11,7 @@ import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Test Ray.call API
- */
+/** Test Ray.call API */
 public class RayCallTest extends BaseTest {
 
   private static int testInt(int val) {
@@ -69,9 +67,7 @@ public class RayCallTest extends BaseTest {
     return buffer;
   }
 
-  /**
-   * Test calling and returning different types.
-   */
+  /** Test calling and returning different types. */
   @Test
   public void testType() {
     Assert.assertEquals(1, (int) Ray.task(RayCallTest::testInt, 1).remote().get());
@@ -134,16 +130,12 @@ public class RayCallTest extends BaseTest {
   public void testNumberOfParameters() {
     Assert.assertEquals(0, (int) Ray.task(RayCallTest::testNoParam).remote().get());
     Assert.assertEquals(1, (int) Ray.task(RayCallTest::testOneParam, 1).remote().get());
-    Assert.assertEquals(2, (int) Ray.task(
-        RayCallTest::testTwoParams, 1, 1).remote().get());
-    Assert.assertEquals(3, (int) Ray.task(
-        RayCallTest::testThreeParams, 1, 1, 1).remote().get());
-    Assert.assertEquals(4, (int) Ray.task(
-        RayCallTest::testFourParams, 1, 1, 1, 1).remote().get());
-    Assert.assertEquals(5, (int) Ray.task(
-        RayCallTest::testFiveParams, 1, 1, 1, 1, 1).remote().get());
-    Assert.assertEquals(6, (int) Ray.task(
-        RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(2, (int) Ray.task(RayCallTest::testTwoParams, 1, 1).remote().get());
+    Assert.assertEquals(3, (int) Ray.task(RayCallTest::testThreeParams, 1, 1, 1).remote().get());
+    Assert.assertEquals(4, (int) Ray.task(RayCallTest::testFourParams, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(
+        5, (int) Ray.task(RayCallTest::testFiveParams, 1, 1, 1, 1, 1).remote().get());
+    Assert.assertEquals(
+        6, (int) Ray.task(RayCallTest::testSixParams, 1, 1, 1, 1, 1, 1).remote().get());
   }
-
 }

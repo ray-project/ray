@@ -106,8 +106,9 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
     class RayServeWrappedReplica(object):
         def __init__(self, backend_tag, replica_tag, init_args,
                      backend_config: BackendConfig, controller_name: str):
-            # Set the controller name so that serve.connect() will connect to
-            # the instance that this backend is running in.
+            # Set the controller name so that serve.connect() in the user's
+            # backend code will connect to the instance that this backend is
+            # running in.
             ray.serve.api._set_internal_replica_context(
                 backend_tag, replica_tag, controller_name)
             if is_function:
@@ -126,6 +127,9 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
 
         def ready(self):
             pass
+
+        async def drain_pending_queries(self):
+            return await self.backend.drain_pending_queries()
 
     RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
         func_or_class.__name__)
@@ -410,3 +414,25 @@ class RayServeReplica:
 
         self.num_ongoing_requests -= 1
         return result
+
+    async def drain_pending_queries(self):
+        """Perform graceful shutdown.
+
+        Trigger a graceful shutdown protocol that will wait for all the queued
+        tasks to be completed and return to the controller.
+        """
+        sleep_time = self.config.experimental_graceful_shutdown_wait_loop_s
+        while True:
+            # Sleep first because we want to make sure all the routers receive
+            # the notification to remove this replica first.
+            await asyncio.sleep(sleep_time)
+
+            num_queries_waiting = self.batch_queue.qsize()
+            if (num_queries_waiting == 0) and (self.num_ongoing_requests == 0):
+                break
+            else:
+                logger.info(
+                    f"Waiting for an additional {sleep_time}s "
+                    f"to shutdown replica {self.replica_tag} because "
+                    f"num_queries_waiting {num_queries_waiting} and "
+                    f"num_ongoing_requests {self.num_ongoing_requests}")

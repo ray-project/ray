@@ -7,7 +7,6 @@ from collections import defaultdict
 import os
 
 import pytest
-from ray.serve.context import TaskContext
 
 import ray
 from ray.serve.controller import TrafficPolicy
@@ -212,9 +211,7 @@ async def test_replica_set(ray_instance):
 
     # Send two queries. They should go through the router but blocked by signal
     # actors.
-    query = Query([], {}, TaskContext.Python,
-                  RequestMetadata("request-id", "endpoint",
-                                  TaskContext.Python))
+    query = Query([], {}, RequestMetadata("request-id", "endpoint"))
     first_ref = await rs.assign_replica(query)
     second_ref = await rs.assign_replica(query)
 
