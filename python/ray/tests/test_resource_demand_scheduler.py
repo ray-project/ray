@@ -890,18 +890,15 @@ def test_get_concurrent_resource_demand_to_launch():
     assert updated_to_launch == {"m4.large": 13}
 
 
-def test_get_nodes_to_launch_max_launch_concurrency():
+def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
     provider = MockProvider()
     new_types = copy.deepcopy(TYPES_A)
     new_types["p2.8xlarge"]["min_workers"] = 10
     new_types["p2.8xlarge"]["max_workers"] = 40
 
     scheduler = ResourceDemandScheduler(
-        provider, new_types, 30, head_node_type=None)
+        provider, new_types, 50, head_node_type=None)
 
-    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], {})
-    # Respects min_workers despite max launch limit.
-    assert to_launch == {"p2.8xlarge": 10}
     pending_placement_groups = [
         PlacementGroupTableData(
             state=PlacementGroupTableData.RESCHEDULING,
@@ -914,6 +911,63 @@ def test_get_nodes_to_launch_max_launch_concurrency():
                                               pending_placement_groups, {})
     assert to_launch == {"p2.8xlarge": 25}
 
+    pending_placement_groups = [
+        # Requires 25 p2.8xlarge nodes.
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.RESCHEDULING,
+            strategy=PlacementStrategy.STRICT_SPREAD,
+            bundles=([Bundle(unit_resources={"GPU": 2})] * 25)),
+        # Requires 5 additional nodes (total 30).
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.RESCHEDULING,
+            strategy=PlacementStrategy.PACK,
+            bundles=([Bundle(unit_resources={"GPU": 6})] * 30))
+    ]
+
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {},
+                                              pending_placement_groups, {})
+    # Test that combining spreads and normal placement group demands bypasses
+    # launch limit.
+    assert to_launch == {"p2.8xlarge": 30}
+
+    pending_placement_groups = [
+        # Requires 25 p2.8xlarge nodes.
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.RESCHEDULING,
+            strategy=PlacementStrategy.STRICT_SPREAD,
+            bundles=([Bundle(unit_resources={"GPU": 2})] * 25)),
+        # Requires 35 additional nodes (total 60).
+        PlacementGroupTableData(
+            state=PlacementGroupTableData.RESCHEDULING,
+            strategy=PlacementStrategy.PACK,
+            bundles=([Bundle(unit_resources={"GPU": 6})] * 60))
+    ]
+
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {},
+                                              pending_placement_groups, {})
+    # make sure it still respects max_workers of p2.8xlarge.
+    assert to_launch == {"p2.8xlarge": 40}
+
+    scheduler.node_types["p2.8xlarge"]["max_workers"] = 60
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {},
+                                              pending_placement_groups, {})
+    # make sure it still respects global max_workers constraint.
+    # 50 + 1 is global max_workers + head node.ß
+    assert to_launch == {"p2.8xlarge": 51}
+
+
+def test_get_nodes_to_launch_max_launch_concurrency():
+    provider = MockProvider()
+    new_types = copy.deepcopy(TYPES_A)
+    new_types["p2.8xlarge"]["min_workers"] = 10
+    new_types["p2.8xlarge"]["max_workers"] = 40
+
+    scheduler = ResourceDemandScheduler(
+        provider, new_types, 30, head_node_type=None)
+
+    to_launch = scheduler.get_nodes_to_launch([], {}, [], {}, [], {})
+    # Respects min_workers despite max launch limit.
+    assert to_launch == {"p2.8xlarge": 10}
     scheduler.node_types["p2.8xlarge"]["min_workers"] = 4
     provider.create_node({}, {
         TAG_RAY_USER_NODE_TYPE: "p2.8xlarge",

@@ -161,7 +161,7 @@ class ResourceDemandScheduler:
 
         # Step 3: get resource demands of placement groups and return the
         # groups that should be strictly spread.
-        logger.debug(f"Placement group demands: {pending_placement_groups}")
+        logger.info(f"Placement group demands: {pending_placement_groups}")
         placement_group_demand_vector, strict_spreads = \
             placement_groups_to_resource_demands(pending_placement_groups)
         # Place placement groups demand vector at the beginning of the resource
@@ -355,7 +355,7 @@ class ResourceDemandScheduler:
                 max_allowed_pending_nodes - total_pending_nodes,
 
                 # Allow more nodes if this is to respect min_workers or
-                # request_resources().
+                # request_resources() or placement groups.
                 adjusted_min_workers.get(node_type, 0) +
                 placement_group_nodes.get(node_type, 0))
 
