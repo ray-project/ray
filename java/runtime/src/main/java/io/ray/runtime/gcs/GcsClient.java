@@ -20,9 +20,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * An implementation of GcsClient.
- */
+/** An implementation of GcsClient. */
 public class GcsClient {
   private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
   private RedisClient primary;
@@ -35,9 +33,9 @@ public class GcsClient {
   }
 
   /**
-   * Get placement group by {@link PlacementGroupId}
-   * @param placementGroupId Id of placement group.
-   * @return The placement group.
+   * Get placement group by {@link PlacementGroupId}.
+   *
+   * @param placementGroupId Id of placement group. Returns The placement group.
    */
   public PlacementGroup getPlacementGroupInfo(PlacementGroupId placementGroupId) {
     byte[] result = globalStateAccessor.getPlacementGroupInfo(placementGroupId);
@@ -46,7 +44,8 @@ public class GcsClient {
 
   /**
    * Get all placement groups in this cluster.
-   * @return All placement groups.
+   *
+   * <p>Returns All placement groups.
    */
   public List<PlacementGroup> getAllPlacementGroupInfo() {
     List<byte[]> results = globalStateAccessor.getAllPlacementGroupInfo();
@@ -71,15 +70,20 @@ public class GcsClient {
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
-      final UniqueId nodeId = UniqueId
-          .fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
+      final UniqueId nodeId = UniqueId.fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
 
       // NOTE(lingxuan.zlx): we assume no duplicated node id in fetched node list
       // and it's only one final state for each node in recorded table.
-      NodeInfo nodeInfo = new NodeInfo(
-          nodeId, data.getNodeManagerAddress(), data.getNodeManagerHostname(),
-          data.getNodeManagerPort(), data.getObjectStoreSocketName(), data.getRayletSocketName(),
-          data.getState() == GcsNodeInfo.GcsNodeState.ALIVE, new HashMap<>());
+      NodeInfo nodeInfo =
+          new NodeInfo(
+              nodeId,
+              data.getNodeManagerAddress(),
+              data.getNodeManagerHostname(),
+              data.getNodeManagerPort(),
+              data.getObjectStoreSocketName(),
+              data.getRayletSocketName(),
+              data.getState() == GcsNodeInfo.GcsNodeState.ALIVE,
+              new HashMap<>());
       nodes.put(nodeId, nodeInfo);
     }
 
@@ -119,9 +123,7 @@ public class GcsClient {
     return resources;
   }
 
-  /**
-   * If the actor exists in GCS.
-   */
+  /** If the actor exists in GCS. */
   public boolean actorExists(ActorId actorId) {
     byte[] result = globalStateAccessor.getActorInfo(actorId);
     return result != null;
@@ -149,9 +151,7 @@ public class GcsClient {
     return JobId.fromInt(jobCounter);
   }
 
-  /**
-   * Destroy global state accessor when ray native runtime will be shutdown.
-   */
+  /** Destroy global state accessor when ray native runtime will be shutdown. */
   public void destroy() {
     // Only ray shutdown should call gcs client destroy.
     LOGGER.debug("Destroying global state accessor.");

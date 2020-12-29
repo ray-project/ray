@@ -12,8 +12,7 @@ import java.util.Set;
 import sun.nio.ch.DirectBuffer;
 
 /**
- * ChannelID is used to identify a transfer channel between a upstream worker and downstream
- * worker.
+ * ChannelID is used to identify a transfer channel between a upstream worker and downstream worker.
  */
 public class ChannelId {
 
@@ -45,16 +44,12 @@ public class ChannelId {
 
   private static native void destroyNativeId(long nativeIdPtr);
 
-  /**
-   * @param id hex string representation of channel id
-   */
+  /** @param id hex string representation of channel id */
   public static ChannelId from(String id) {
     return from(id, ChannelId.idStrToBytes(id));
   }
 
-  /**
-   * @param idBytes bytes representation of channel id
-   */
+  /** @param idBytes bytes representation of channel id */
   public static ChannelId from(byte[] idBytes) {
     return from(idBytesToStr(idBytes), idBytes);
   }
@@ -76,9 +71,7 @@ public class ChannelId {
     return id;
   }
 
-  /**
-   * @return a random channel id string
-   */
+  /** Returns a random channel id string */
   public static String genRandomIdStr() {
     StringBuilder sb = new StringBuilder();
     Random random = new Random();
@@ -92,18 +85,20 @@ public class ChannelId {
    * Generate channel name, which will be 20 character
    *
    * @param fromTaskId upstream task id
-   * @param toTaskId downstream task id
-   * @return channel name
+   * @param toTaskId downstream task id Returns channel name
    */
   public static String genIdStr(int fromTaskId, int toTaskId, long ts) {
     /*
       |    Head    | Timestamp | Empty | From  |  To    |
       | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
     */
-    Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
-        "fromTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
-    Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
-        "toTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
+    Preconditions.checkArgument(
+        fromTaskId < Short.MAX_VALUE,
+        "fromTaskId %s is larger than %s",
+        fromTaskId,
+        Short.MAX_VALUE);
+    Preconditions.checkArgument(
+        toTaskId < Short.MAX_VALUE, "toTaskId %s is larger than %s", fromTaskId, Short.MAX_VALUE);
     byte[] channelName = new byte[20];
 
     for (int i = 11; i >= 8; i--) {
@@ -120,8 +115,7 @@ public class ChannelId {
   }
 
   /**
-   * @param id hex string representation of channel id
-   * @return bytes representation of channel id
+   * @param id hex string representation of channel id Returns bytes representation of channel id
    */
   public static byte[] idStrToBytes(String id) {
     byte[] idBytes = BaseEncoding.base16().decode(id.toUpperCase());
@@ -130,8 +124,7 @@ public class ChannelId {
   }
 
   /**
-   * @param id bytes representation of channel id
-   * @return hex string representation of channel id
+   * @param id bytes representation of channel id Returns hex string representation of channel id
    */
   public static String idBytesToStr(byte[] id) {
     assert id.length == ChannelId.ID_LENGTH;
@@ -178,6 +171,4 @@ public class ChannelId {
   public int hashCode() {
     return strId.hashCode();
   }
-
 }
-

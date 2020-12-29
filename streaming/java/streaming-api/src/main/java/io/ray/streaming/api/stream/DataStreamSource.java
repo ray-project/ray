@@ -27,12 +27,10 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
    *
    * @param context Stream context.
    * @param values A collection of values.
-   * @param <T> The type of source data.
-   * @return A DataStreamSource.
+   * @param <T> The type of source data. Returns A DataStreamSource.
    */
   public static <T> DataStreamSource<T> fromCollection(
       StreamingContext context, Collection<T> values) {
     return new DataStreamSource<>(context, new CollectionSourceFunction<>(values));
   }
-
 }
