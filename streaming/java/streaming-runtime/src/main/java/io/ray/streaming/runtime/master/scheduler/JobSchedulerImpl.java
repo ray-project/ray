@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
@@ -82,7 +83,7 @@ public class JobSchedulerImpl implements JobScheduler {
     Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = buildWorkersContext(executionGraph);
 
     // init workers
-    initWorkers(vertexToContextMap);
+    Preconditions.checkArgument(initWorkers(vertexToContextMap));
 
     // init master
     initMaster();

@@ -44,9 +44,12 @@ public class JobClientImpl implements JobClient {
 
       if (submitResult.get()) {
         LOG.info("Finish submitting job: {}.", jobGraph.getJobName());
+      } else {
+        throw new RuntimeException("submitting job failed");
       }
     } catch (Exception e) {
       LOG.error("Failed to submit job: {}.", jobGraph.getJobName(), e);
+      throw new RuntimeException("submitting job failed");
     }
   }
 }
