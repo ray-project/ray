@@ -212,12 +212,11 @@ class TorchPolicy(Policy):
 
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            state_out = state_batches
             actions, logp, state_out = self.action_sampler_fn(
                 self,
                 self.model,
                 input_dict,
-                state_out,
+                state_batches,
                 explore=explore,
                 timestep=timestep)
         else:

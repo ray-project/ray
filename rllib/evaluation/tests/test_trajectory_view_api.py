@@ -17,7 +17,7 @@ from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwareAttentionPolicy, EpisodeEnvAwareLSTMPolicy
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
@@ -288,11 +288,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         )
         # Add the next action to the view reqs of the policy.
         # This should be visible then in postprocessing and train batches.
-        rollout_worker_w_api.policy_map["default_policy"].view_requirements[
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "next_actions"] = ViewRequirement(
                 SampleBatch.ACTIONS, shift=1, space=action_space)
         # Make sure, we have DONEs as well.
-        rollout_worker_w_api.policy_map["default_policy"].view_requirements[
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"] = ViewRequirement()
         batch = rollout_worker_w_api.sample()
         self.assertTrue("next_actions" in batch.data)

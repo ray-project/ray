@@ -8,12 +8,12 @@ import starlette.responses
 import ray
 from ray.exceptions import RayTaskError
 from ray.serve.constants import LongPollKey
-from ray.serve.context import TaskContext
 from ray.util import metrics
-from ray.serve.utils import _get_logger, get_random_letters
-from ray.serve.http_util import Response
+from ray.serve.utils import _get_logger
+from ray.serve.http_util import Response, build_starlette_request
 from ray.serve.long_poll import LongPollAsyncClient
-from ray.serve.router import Router, RequestMetadata
+from ray.serve.router import Router
+from ray.serve.handle import DEFAULT
 
 logger = _get_logger()
 
@@ -22,10 +22,15 @@ class HTTPProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
     >>> import uvicorn
-    >>> uvicorn.run(HTTPProxy(kv_store_actor_handle, router_handle))
+    >>> uvicorn.run(HTTPProxy(controller_name))
     """
 
     def __init__(self, controller_name):
+        # Set the controller name so that serve.connect() will connect to the
+        # controller instance this proxy is running in.
+        ray.serve.api._set_internal_controller_name(controller_name)
+        self.client = ray.serve.connect()
+
         controller = ray.get_actor(controller_name)
         self.route_table = {}  # Should be updated via long polling.
         self.router = Router(controller)
@@ -113,18 +118,19 @@ class HTTPProxy:
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-        request_metadata = RequestMetadata(
-            get_random_letters(10),  # Used for debugging.
-            endpoint_name,
-            TaskContext.Web,
-            http_method=scope["method"].upper(),
-            call_method=headers.get("X-SERVE-CALL-METHOD".lower(), "__call__"),
-            shard_key=headers.get("X-SERVE-SHARD-KEY".lower(), None),
-        )
 
-        ref = await self.router.assign_request(request_metadata, scope,
-                                               http_body_bytes)
-        result = await ref
+        handle = self.client.get_handle(
+            endpoint_name, sync=False).options(
+                method_name=headers.get("X-SERVE-CALL-METHOD".lower(),
+                                        DEFAULT.VALUE),
+                shard_key=headers.get("X-SERVE-SHARD-KEY".lower(),
+                                      DEFAULT.VALUE),
+                http_method=scope["method"].upper(),
+                http_headers=headers)
+
+        request = build_starlette_request(scope, http_body_bytes)
+        object_ref = await handle.remote(request)
+        result = await object_ref
 
         if isinstance(result, RayTaskError):
             error_message = "Task Error. Traceback: {}.".format(result)

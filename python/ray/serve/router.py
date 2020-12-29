@@ -1,16 +1,18 @@
 import asyncio
+from enum import Enum
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, DefaultDict, Dict, Iterable, List, Optional
+from typing import Any, ChainMap, Dict, Iterable, List, Optional
+
+from ray.serve.exceptions import RayServeException
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.constants import LongPollKey
-from ray.serve.context import TaskContext
 from ray.serve.endpoint_policy import EndpointPolicy, RandomEndpointPolicy
 from ray.serve.long_poll import LongPollAsyncClient
-from ray.serve.utils import logger
+from ray.serve.utils import logger, compute_dict_delta, compute_iterable_delta
 from ray.util import metrics
 
 REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
@@ -20,7 +22,6 @@ REPORT_QUEUE_LENGTH_PERIOD_S = 1.0
 class RequestMetadata:
     request_id: str
     endpoint: str
-    request_context: TaskContext
 
     call_method: str = "__call__"
     shard_key: Optional[str] = None
@@ -39,7 +40,6 @@ class RequestMetadata:
 class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
-    context: TaskContext
     metadata: RequestMetadata
 
     # Fields used by backend worker to perform timing measurement.
@@ -76,22 +76,16 @@ class ReplicaSet:
             self.config_updated_event.set()
 
     def update_worker_replicas(self, worker_replicas: Iterable[ActorHandle]):
-        current_replica_set = set(self.in_flight_queries.keys())
-        updated_replica_set = set(worker_replicas)
+        added, removed, _ = compute_iterable_delta(
+            self.in_flight_queries.keys(), worker_replicas)
 
-        added = updated_replica_set - current_replica_set
         for new_replica_handle in added:
             self.in_flight_queries[new_replica_handle] = set()
 
-        removed = current_replica_set - updated_replica_set
         for removed_replica_handle in removed:
-            # NOTE(simon): Do we warn if there are still inflight queries?
-            # The current approach is no because the queries objectrefs are
-            # just used to perform backpressure. Caller should decide what to
-            # do with the object refs.
+            # Delete it directly because shutdown is processed by controller.
             del self.in_flight_queries[removed_replica_handle]
 
-        # State changed, reset the round robin iterator
         if len(added) > 0 or len(removed) > 0:
             self.replica_iterator = itertools.cycle(
                 self.in_flight_queries.keys())
@@ -156,6 +150,12 @@ class ReplicaSet:
         return assigned_ref
 
 
+class _PendingEndpointFound(Enum):
+    """Enum for the status of pending endpoint registration."""
+    ADDED = 1
+    REMOVED = 2
+
+
 class Router:
     def __init__(self, controller_handle: ActorHandle):
         """Router process incoming queries: choose backend, and assign replica.
@@ -168,8 +168,7 @@ class Router:
         self.endpoint_policies: Dict[str, EndpointPolicy] = dict()
         self.backend_replicas: Dict[str, ReplicaSet] = defaultdict(ReplicaSet)
 
-        self._pending_endpoints: DefaultDict[str, asyncio.Event] = defaultdict(
-            asyncio.Event)
+        self._pending_endpoints: Dict[str, asyncio.Future] = dict()
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
@@ -190,22 +189,44 @@ class Router:
             })
 
     async def _update_traffic_policies(self, traffic_policies):
-        for endpoint, traffic_policy in traffic_policies.items():
+        added, removed, updated = compute_dict_delta(self.endpoint_policies,
+                                                     traffic_policies)
+
+        for endpoint, traffic_policy in ChainMap(added, updated).items():
             self.endpoint_policies[endpoint] = RandomEndpointPolicy(
                 traffic_policy)
             if endpoint in self._pending_endpoints:
-                event = self._pending_endpoints.pop(endpoint)
-                event.set()
+                future = self._pending_endpoints.pop(endpoint)
+                future.set_result(_PendingEndpointFound.ADDED)
+
+        for endpoint, traffic_policy in removed.items():
+            del self.endpoint_policies[endpoint]
+            if endpoint in self._pending_endpoints:
+                future = self._pending_endpoints.pop(endpoint)
+                future.set_result(_PendingEndpointFound.REMOVED)
 
     async def _update_replica_handles(self, replica_handles):
-        for backend_tag, replica_handles in replica_handles.items():
+        added, removed, updated = compute_dict_delta(self.backend_replicas,
+                                                     replica_handles)
+
+        for backend_tag, replica_handles in ChainMap(added, updated).items():
             self.backend_replicas[backend_tag].update_worker_replicas(
                 replica_handles)
 
+        for backend_tag in removed.keys():
+            if backend_tag in self.backend_replicas:
+                del self.backend_replicas[backend_tag]
+
     async def _update_backend_configs(self, backend_configs):
-        for backend_tag, config in backend_configs.items():
+        added, removed, updated = compute_dict_delta(self.backend_replicas,
+                                                     backend_configs)
+        for backend_tag, config in ChainMap(added, updated).items():
             self.backend_replicas[backend_tag].set_max_concurrent_queries(
                 config.max_concurrent_queries)
+
+        for backend_tag in removed.keys():
+            if backend_tag in self.backend_replicas:
+                del self.backend_replicas[backend_tag]
 
     async def assign_request(
             self,
@@ -218,7 +239,6 @@ class Router:
         query = Query(
             args=list(request_args),
             kwargs=request_kwargs,
-            context=request_meta.request_context,
             metadata=request_meta,
         )
 
@@ -226,7 +246,14 @@ class Router:
             logger.info(
                 f"Endpoint {endpoint} doesn't exist, waiting for registration."
             )
-            await self._pending_endpoints[endpoint].wait()
+            future = asyncio.get_event_loop().create_future()
+            if endpoint not in self._pending_endpoints:
+                self._pending_endpoints[endpoint] = future
+            endpoint_status = await self._pending_endpoints[endpoint]
+            if endpoint_status == _PendingEndpointFound.REMOVED:
+                raise RayServeException(
+                    f"Endpoint {endpoint} was removed. This request "
+                    "cannot be completed.")
 
         endpoint_policy = self.endpoint_policies[endpoint]
         chosen_backend, *shadow_backends = endpoint_policy.assign(query)

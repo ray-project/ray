@@ -133,8 +133,8 @@ public class FailureTest extends BaseTest {
   }
 
   public void testGetThrowsQuicklyWhenFoundException() {
-    List<RayFunc0<Integer>> badFunctions = Arrays.asList(FailureTest::badFunc,
-        FailureTest::badFunc2);
+    List<RayFunc0<Integer>> badFunctions =
+        Arrays.asList(FailureTest::badFunc, FailureTest::badFunc2);
     TestUtils.warmUpCluster();
     for (RayFunc0<Integer> badFunc : badFunctions) {
       ObjectRef<Integer> obj1 = Ray.task(badFunc).remote();
@@ -146,29 +146,37 @@ public class FailureTest extends BaseTest {
       } catch (RuntimeException e) {
         Instant end = Instant.now();
         long duration = Duration.between(start, end).toMillis();
-        Assert.assertTrue(duration < 5000, "Should fail quickly. " +
-            "Actual execution time: " + duration + " ms.");
+        Assert.assertTrue(
+            duration < 5000,
+            "Should fail quickly. " + "Actual execution time: " + duration + " ms.");
       }
     }
   }
 
   public void testExceptionSerialization() {
-    RayTaskException ex1 = Assert.expectThrows(RayTaskException.class, () -> {
-      Ray.put(new RayTaskException("xxx", new RayActorException())).get();
-    });
+    RayTaskException ex1 =
+        Assert.expectThrows(
+            RayTaskException.class,
+            () -> {
+              Ray.put(new RayTaskException("xxx", new RayActorException())).get();
+            });
     Assert.assertEquals(ex1.getCause().getClass(), RayActorException.class);
-    RayTaskException ex2 = Assert.expectThrows(RayTaskException.class, () -> {
-      Ray.put(new RayTaskException("xxx", new RayWorkerException())).get();
-    });
+    RayTaskException ex2 =
+        Assert.expectThrows(
+            RayTaskException.class,
+            () -> {
+              Ray.put(new RayTaskException("xxx", new RayWorkerException())).get();
+            });
     Assert.assertEquals(ex2.getCause().getClass(), RayWorkerException.class);
 
     ObjectId objectId = ObjectId.fromRandom();
-    RayTaskException ex3 = Assert.expectThrows(RayTaskException.class, () -> {
-      Ray.put(new RayTaskException("xxx", new UnreconstructableException(objectId)))
-          .get();
-    });
+    RayTaskException ex3 =
+        Assert.expectThrows(
+            RayTaskException.class,
+            () -> {
+              Ray.put(new RayTaskException("xxx", new UnreconstructableException(objectId))).get();
+            });
     Assert.assertEquals(ex3.getCause().getClass(), UnreconstructableException.class);
     Assert.assertEquals(((UnreconstructableException) ex3.getCause()).objectId, objectId);
   }
 }
-

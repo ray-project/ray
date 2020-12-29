@@ -3,9 +3,7 @@ package io.ray.runtime.gcs;
 import com.google.common.base.Preconditions;
 import io.ray.runtime.config.RayConfig;
 
-/**
- * Options to create GCS Client.
- */
+/** Options to create GCS Client. */
 public class GcsClientOptions {
   public String ip;
   public int port;
