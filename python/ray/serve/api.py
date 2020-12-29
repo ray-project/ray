@@ -7,8 +7,6 @@ from uuid import UUID
 import threading
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
 
-from ray.serve.context import TaskContext
-
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
@@ -74,7 +72,6 @@ class ThreadProxiedRouter:
         request_metadata = RequestMetadata(
             get_random_letters(10),  # Used for debugging.
             endpoint_name,
-            TaskContext.Python,
             call_method=handle_options.method_name,
             shard_key=handle_options.shard_key,
             http_method=handle_options.http_method,

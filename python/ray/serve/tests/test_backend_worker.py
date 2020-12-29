@@ -5,7 +5,6 @@ import numpy as np
 
 import ray
 from ray import serve
-import ray.serve.context as context
 from ray.serve.backend_worker import create_backend_replica, wrap_to_ray_error
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Router, RequestMetadata
@@ -67,10 +66,7 @@ async def add_servable_to_router(servable, router, controller_name, **kwargs):
 
 def make_request_param(call_method="__call__"):
     return RequestMetadata(
-        get_random_letters(10),
-        "endpoint",
-        context.TaskContext.Python,
-        call_method=call_method)
+        get_random_letters(10), "endpoint", call_method=call_method)
 
 
 @pytest.fixture
