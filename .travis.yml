@@ -141,6 +141,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_ENABLE_NEW_SCHEDULER=0
       language: java
       jdk: openjdk8
       install:
