@@ -39,8 +39,8 @@ const makeNodeLogs = (
       {node.logCount === 1 ? "line" : "lines"})
     </SpanButton>
   );
-}
-  
+};
+
 const nodeLogsAccessor: Accessor<NodeFeatureData> = ({ node }) =>
   node.logCount ? sum(Object.values(node.logCount)) : 0;
 
@@ -54,11 +54,11 @@ const makeWorkerLogs = (
       {worker.logCount === 1 ? "line" : "lines"})
     </SpanButton>
   ) : (
-      <Typography color="textSecondary" component="span" variant="inherit">
-        No logs
-      </Typography>
-    );
-}
+    <Typography color="textSecondary" component="span" variant="inherit">
+      No logs
+    </Typography>
+  );
+};
 
 const workerLogsAccessor: Accessor<WorkerFeatureData> = ({ worker }) =>
   worker.logCount ?? 0;
