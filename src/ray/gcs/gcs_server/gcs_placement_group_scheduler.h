@@ -19,6 +19,7 @@
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -89,20 +90,19 @@ class GcsPlacementGroupSchedulerInterface {
 /// ScheduleContext provides information that are needed for bundle scheduling decision.
 class ScheduleContext {
  public:
-  ScheduleContext(
-      std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-      const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
-      const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources)
+  ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
+                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
+                  GcsResourceScheduler &gcs_resource_scheduler)
       : node_to_bundles_(std::move(node_to_bundles)),
         bundle_locations_(bundle_locations),
-        cluster_resources_(cluster_resources) {}
+        gcs_resource_scheduler_(gcs_resource_scheduler) {}
 
   // Key is node id, value is the number of bundles on the node.
   const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
   // The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
-  // The available resources of all nodes.
-  const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources_;
+  // The gcs resource scheduler.
+  GcsResourceScheduler &gcs_resource_scheduler_;
 };
 
 class GcsScheduleStrategy {
@@ -113,16 +113,12 @@ class GcsScheduleStrategy {
       const std::unique_ptr<ScheduleContext> &context) = 0;
 
  protected:
-  /// Judge whether the remaining resources are sufficient for allocate.
-  ///
-  /// \param available_resources Total available resources.
-  /// \param allocated_resources Allocated resources.
-  /// \param to_allocate_resources Resources to be allocated.
-  /// \return True if allocated_resources + to_allocate_resources > available_resources.
-  /// False otherwise.
-  bool IsAvailableResourceSufficient(const ResourceSet &available_resources,
-                                     const ResourceSet &allocated_resources,
-                                     const ResourceSet &to_allocate_resources) const;
+  std::vector<ResourceSet> GetRequiredResourcesFromBundles(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles);
+
+  ScheduleMap GenerateScheduleMap(
+      const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
+      const std::vector<NodeID> &selected_nodes);
 };
 
 /// The `GcsPackStrategy` is that pack all bundles in one node as much as possible.
@@ -381,11 +377,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_info_accessor Used to flush placement_group info to storage.
   /// \param gcs_node_manager The node manager which is used when scheduling.
   /// \param gcs_resource_manager The resource manager which is used when scheduling.
+  /// \param gcs_resource_scheduler The resource scheduler which is used when scheduling.
   /// \param lease_client_factory Factory to create remote lease client.
   GcsPlacementGroupScheduler(
       boost::asio::io_context &io_context,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
       const GcsNodeManager &gcs_node_manager, GcsResourceManager &gcs_resource_manager,
+      GcsResourceScheduler &gcs_resource_scheduler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
 
   virtual ~GcsPlacementGroupScheduler() = default;
@@ -535,6 +533,9 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
 
   /// Reference of GcsResourceManager.
   GcsResourceManager &gcs_resource_manager_;
+
+  /// Reference of GcsResourceScheduler.
+  GcsResourceScheduler &gcs_resource_scheduler_;
 
   /// A vector to store all the schedule strategy.
   std::vector<std::shared_ptr<GcsScheduleStrategy>> scheduler_strategies_;

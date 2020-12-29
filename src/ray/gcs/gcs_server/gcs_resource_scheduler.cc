@@ -27,20 +27,31 @@ double LeastResourceScorer::MakeGrade(const ResourceSet &required_resources,
   double node_score = 0.0;
   for (const auto &entry : required_resources.GetResourceAmountMap()) {
     auto available_resource_amount_iter = available_resource_amount_map.find(entry.first);
-    RAY_CHECK(available_resource_amount_iter != available_resource_amount_map.end());
-    node_score += Calculate(entry.second, available_resource_amount_iter->second);
+    if (available_resource_amount_iter == available_resource_amount_map.end()) {
+      return -1;
+    }
+
+    auto calculate_score =
+        Calculate(entry.second, available_resource_amount_iter->second);
+    if (calculate_score < 0) {
+      return -1;
+    }
+    node_score += calculate_score;
   }
   if (!required_resources.GetResourceAmountMap().empty()) {
     node_score /= required_resources.GetResourceAmountMap().size();
   }
 
+  RAY_LOG(INFO) << "LeastResourceScorer::MakeGrade, available_resources is "
+                << available_resources.ToString() << ", required_resources is "
+                << required_resources.ToString() << ", node_score is " << node_score;
   return node_score;
 }
 
 double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requested,
                                       const FractionalResourceQuantity &available) {
   if (available == 0 || requested > available) {
-    return 0;
+    return -1;
   }
   return (available - requested).ToDouble() / available.ToDouble();
 }
@@ -112,8 +123,9 @@ void GcsResourceScheduler::StrictSpreadSchedule(
     const std::vector<ResourceSet> &required_resources_list,
     const absl::flat_hash_set<NodeID> &candidate_nodes, std::vector<NodeID> *result) {
   if (required_resources_list.size() > candidate_nodes.size()) {
-    RAY_LOG(INFO) << "The number of required resources is greater than the number of "
-                     "candidate nodes, scheduling fails.";
+    RAY_LOG(INFO) << "The number of required resources " << required_resources_list.size()
+                  << " is greater than the number of candidate nodes "
+                  << candidate_nodes.size() << ", scheduling fails.";
     return;
   }
 
@@ -123,7 +135,7 @@ void GcsResourceScheduler::StrictSpreadSchedule(
     const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
 
     // There are nodes to meet the scheduling requirements.
-    if (!node_scores.empty() && node_scores.front().second > 0) {
+    if (!node_scores.empty() && node_scores.front().second >= 0) {
       const auto &highest_score_node_id = node_scores.front().first;
       result->push_back(highest_score_node_id);
       candidate_nodes_copy.erase(highest_score_node_id);
@@ -149,7 +161,7 @@ void GcsResourceScheduler::SpreadSchedule(
     const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
 
     // There are nodes to meet the scheduling requirements.
-    if (!node_scores.empty() && node_scores.front().second > 0) {
+    if (!node_scores.empty() && node_scores.front().second >= 0) {
       const auto &highest_score_node_id = node_scores.front().first;
       result->push_back(highest_score_node_id);
       RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
@@ -157,8 +169,8 @@ void GcsResourceScheduler::SpreadSchedule(
       selected_nodes.insert(highest_score_node_id);
     } else {
       // Scheduling from selected nodes.
-      const auto &node_scores = ScoreNodes(iter, candidate_nodes_copy);
-      if (!node_scores.empty() && node_scores.front().second > 0) {
+      const auto &node_scores = ScoreNodes(iter, selected_nodes);
+      if (!node_scores.empty() && node_scores.front().second >= 0) {
         const auto &highest_score_node_id = node_scores.front().first;
         result->push_back(highest_score_node_id);
         RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id, iter));
@@ -168,13 +180,12 @@ void GcsResourceScheduler::SpreadSchedule(
     }
   }
 
+  // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
+  ReleaseTemporarilyDeductedResources(required_resources_list, *result);
+
   if (result->size() != required_resources_list.size()) {
     // Unable to meet the resources required for scheduling, scheduling failed.
     result->clear();
-  } else {
-    // Scheduling succeeded, releasing the resources temporarily deducted from
-    // `gcs_resource_manager_`.
-    ReleaseTemporarilyDeductedResources(required_resources_list, *result);
   }
 }
 
@@ -193,8 +204,10 @@ void GcsResourceScheduler::StrictPackSchedule(
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it
   // only schedules to a node and triggers rescheduling when node dead.
-  if (!node_scores.empty() && node_scores.front().second > 0) {
-    result->push_back(node_scores.front().first);
+  if (!node_scores.empty() && node_scores.front().second >= 0) {
+    for (int index = 0; index < required_resources_list.size(); ++index) {
+      result->push_back(node_scores.front().first);
+    }
   }
 }
 
@@ -214,12 +227,14 @@ void GcsResourceScheduler::PackSchedule(
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
     const auto &node_scores = ScoreNodes(required_resources, candidate_nodes_copy);
-    if (node_scores.empty() || node_scores.front().second <= 0) {
+    if (node_scores.empty() || node_scores.front().second < 0) {
       // There is no node to meet the scheduling requirements.
       break;
     }
 
     const auto &highest_score_node_id = node_scores.front().first;
+    RAY_CHECK(gcs_resource_manager_.AcquireResources(highest_score_node_id,
+                                                     required_resources));
     result->at(required_resources_index) = highest_score_node_id;
     required_resources_list_copy.pop_front();
 
@@ -236,13 +251,12 @@ void GcsResourceScheduler::PackSchedule(
     candidate_nodes_copy.erase(highest_score_node_id);
   }
 
-  if (result->size() != required_resources_list.size()) {
+  // Releasing the resources temporarily deducted from `gcs_resource_manager_`.
+  ReleaseTemporarilyDeductedResources(required_resources_list, *result);
+
+  if (!required_resources_list_copy.empty()) {
     // Unable to meet the resources required for scheduling, scheduling failed.
     result->clear();
-  } else {
-    // Scheduling succeeded, releasing the resources temporarily deducted from
-    // `gcs_resource_manager_`.
-    ReleaseTemporarilyDeductedResources(required_resources_list, *result);
   }
 }
 
@@ -266,9 +280,11 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
 void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(
     const std::vector<ResourceSet> &required_resources_list,
     const std::vector<NodeID> &nodes) {
-  RAY_CHECK(required_resources_list.size() == nodes.size());
   for (int index = 0; index < nodes.size(); ++index) {
-    gcs_resource_manager_.ReleaseResources(nodes[index], required_resources_list[index]);
+    if (!nodes[index].IsNil()) {
+      gcs_resource_manager_.ReleaseResources(nodes[index],
+                                             required_resources_list[index]);
+    }
   }
 }
 
