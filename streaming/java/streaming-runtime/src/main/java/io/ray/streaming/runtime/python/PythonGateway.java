@@ -228,7 +228,7 @@ public class PythonGateway {
   public byte[] newInstance(byte[] classNameBytes) {
     String className = (String) serializer.deserialize(classNameBytes);
     try {
-      Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
+      Class<?> clz = Class.forName(className, true, Thread.currentThread().getContextClassLoader());
       Object instance = clz.newInstance();
       referenceMap.put(getReferenceId(instance), instance);
       return serializer.serialize(getReferenceId(instance));
