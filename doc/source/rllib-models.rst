@@ -249,7 +249,6 @@ In case RLlib does not properly detect the update ops for your custom model, you
 Custom Models in Combination with Built-In Ones
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-
 A common use case is to construct a custom model on top of one of RLlib's built-in ones
 (e.g. a special output head on top of a ``FullyConnectedNetwork``, or an action + observation concat operation at the beginning or
 after a Conv2D stack).
@@ -260,7 +259,6 @@ Here are some examples of how to construct these more complex models:
 
 1) A dueling layer head (for DQN)
 `````````````````````````````````
-
 
 on top of an RLlib default model (either a Conv2D or an FCNet):
 
@@ -320,6 +318,19 @@ In order to construct an instance of the above model, you can still use the `cat
 Now, with the model object, you can get the underlying intermediate output (before the dueling head)
 by calling ``dueling_model`` directly (``out = dueling_model([input_dict])``), and then passing ``out`` into
 your custom ``get_q_values`` method: ``q_values = dueling_model.get_q_values(out)``.
+
+
+2) Using a Conv2D input stack (for SAC)
+```````````````````````````````````````
+
+
+3) A multi-input capable model for Tuple observation spaces (for PPO)
+`````````````````````````````````````````````````````````````````````
+
+
+4) A
+
+
 
 
 Custom Action Distributions
