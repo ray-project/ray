@@ -119,29 +119,28 @@ class SyncSampler(SamplerInput):
     """Sync SamplerInput that collects experiences when `get_data()` is called.
     """
 
-    def __init__(self,
-                 *,
-                 worker: "RolloutWorker",
-                 env: BaseEnv,
-                 policies: Dict[PolicyID, Policy],
-                 policy_mapping_fn: Callable[[AgentID], PolicyID],
-                 preprocessors: Dict[PolicyID, Preprocessor],
-                 obs_filters: Dict[PolicyID, Filter],
-                 clip_rewards: bool,
-                 rollout_fragment_length: int,
-                 count_steps_by: str = "env_steps",
-                 callbacks: "DefaultCallbacks",
-                 horizon: int = None,
-                 multiple_episodes_in_batch: bool = False,
-                 tf_sess=None,
-                 clip_actions: bool = True,
-                 soft_horizon: bool = False,
-                 no_done_at_end: bool = False,
-                 observation_fn: "ObservationFunction" = None,
-                 _use_trajectory_view_api: bool = False,
-                 sample_collector_class: Optional[
-                     Type[SampleCollector]] = None
-                 ):
+    def __init__(
+            self,
+            *,
+            worker: "RolloutWorker",
+            env: BaseEnv,
+            policies: Dict[PolicyID, Policy],
+            policy_mapping_fn: Callable[[AgentID], PolicyID],
+            preprocessors: Dict[PolicyID, Preprocessor],
+            obs_filters: Dict[PolicyID, Filter],
+            clip_rewards: bool,
+            rollout_fragment_length: int,
+            count_steps_by: str = "env_steps",
+            callbacks: "DefaultCallbacks",
+            horizon: int = None,
+            multiple_episodes_in_batch: bool = False,
+            tf_sess=None,
+            clip_actions: bool = True,
+            soft_horizon: bool = False,
+            no_done_at_end: bool = False,
+            observation_fn: "ObservationFunction" = None,
+            _use_trajectory_view_api: bool = False,
+            sample_collector_class: Optional[Type[SampleCollector]] = None):
         """Initializes a SyncSampler object.
 
         Args:
@@ -257,30 +256,30 @@ class AsyncSampler(threading.Thread, SamplerInput):
     from where they can be unqueued by the caller of `get_data()`.
     """
 
-    def __init__(self,
-                 *,
-                 worker: "RolloutWorker",
-                 env: BaseEnv,
-                 policies: Dict[PolicyID, Policy],
-                 policy_mapping_fn: Callable[[AgentID], PolicyID],
-                 preprocessors: Dict[PolicyID, Preprocessor],
-                 obs_filters: Dict[PolicyID, Filter],
-                 clip_rewards: bool,
-                 rollout_fragment_length: int,
-                 count_steps_by: str = "env_steps",
-                 callbacks: "DefaultCallbacks",
-                 horizon: int = None,
-                 multiple_episodes_in_batch: bool = False,
-                 tf_sess=None,
-                 clip_actions: bool = True,
-                 blackhole_outputs: bool = False,
-                 soft_horizon: bool = False,
-                 no_done_at_end: bool = False,
-                 observation_fn: "ObservationFunction" = None,
-                 _use_trajectory_view_api: bool = False,
-                 sample_collector_class: Optional[
-                     Type[SampleCollector]] = None,
-                 ):
+    def __init__(
+            self,
+            *,
+            worker: "RolloutWorker",
+            env: BaseEnv,
+            policies: Dict[PolicyID, Policy],
+            policy_mapping_fn: Callable[[AgentID], PolicyID],
+            preprocessors: Dict[PolicyID, Preprocessor],
+            obs_filters: Dict[PolicyID, Filter],
+            clip_rewards: bool,
+            rollout_fragment_length: int,
+            count_steps_by: str = "env_steps",
+            callbacks: "DefaultCallbacks",
+            horizon: int = None,
+            multiple_episodes_in_batch: bool = False,
+            tf_sess=None,
+            clip_actions: bool = True,
+            blackhole_outputs: bool = False,
+            soft_horizon: bool = False,
+            no_done_at_end: bool = False,
+            observation_fn: "ObservationFunction" = None,
+            _use_trajectory_view_api: bool = False,
+            sample_collector_class: Optional[Type[SampleCollector]] = None,
+    ):
         """Initializes a AsyncSampler object.
 
         Args:
@@ -1075,8 +1074,8 @@ def _process_observations_w_trajectory_view_api(
             # Record transition info if applicable.
             if last_observation is None:
                 sample_collector.add_init_obs(episode, agent_id, env_id,
-                                               policy_id, episode.length - 1,
-                                               filtered_obs)
+                                              policy_id, episode.length - 1,
+                                              filtered_obs)
             else:
                 # Add actions, rewards, next-obs to collectors.
                 values_dict = {

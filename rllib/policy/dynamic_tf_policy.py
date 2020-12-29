@@ -186,8 +186,7 @@ class DynamicTFPolicy(TFPolicy):
                     get_placeholder(
                         space=vr.space,
                         time_axis=not isinstance(vr.shift, int),
-                    ) for k, vr in
-                    self.model.view_requirements.items()
+                    ) for k, vr in self.model.view_requirements.items()
                     if k.startswith("state_in_")
                 ]
             else:

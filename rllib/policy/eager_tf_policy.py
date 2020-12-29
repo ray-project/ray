@@ -263,8 +263,7 @@ def build_eager_tf_policy(name,
             self._is_recurrent = len(self._state_inputs) > 0
 
             # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(
-                self.model.view_requirements)
+            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)

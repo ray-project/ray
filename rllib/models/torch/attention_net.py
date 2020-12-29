@@ -160,9 +160,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.values_out = SlimFC(
             in_size=self.attn_dim, out_size=1, activation_fn=None)
 
-        # Setup inference view (`memory-inference` x past observations +
-        # current one (0))
-        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        # Setup trajectory views (`memory-inference` x past memory outs).
         for i in range(self.num_transformer_units):
             space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
             self.inference_view_requirements["state_in_{}".format(i)] = \

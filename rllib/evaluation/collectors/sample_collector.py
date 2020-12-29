@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List, Optional, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType

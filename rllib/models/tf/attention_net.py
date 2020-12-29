@@ -284,9 +284,8 @@ class GTrXLNet(RecurrentNetwork):
         self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
 
-        # Setup inference view (`memory-inference` x past observations +
-        # current one (0))
-        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        # __sphinx_doc_begin__
+        # Setup trajectory views (`memory-inference` x past memory outs).
         for i in range(self.num_transformer_units):
             space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
             self.view_requirements["state_in_{}".format(i)] = \
@@ -300,6 +299,7 @@ class GTrXLNet(RecurrentNetwork):
                 ViewRequirement(
                     space=space,
                     used_for_training=False)
+        # __sphinx_doc_end__
 
     @override(ModelV2)
     def forward(self, input_dict, state: List[TensorType],

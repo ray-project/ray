@@ -397,13 +397,9 @@ class SimpleListCollector(SampleCollector):
                  count_steps_by: str = "env_steps"):
         """Initializes a SimpleListCollector instance."""
 
-        super().__init__(
-            policy_map,
-            clip_rewards,
-            callbacks,
-            multiple_episodes_in_batch,
-            rollout_fragment_length,
-            count_steps_by)
+        super().__init__(policy_map, clip_rewards, callbacks,
+                         multiple_episodes_in_batch, rollout_fragment_length,
+                         count_steps_by)
 
         self.large_batch_threshold: int = max(
             1000, self.rollout_fragment_length *
