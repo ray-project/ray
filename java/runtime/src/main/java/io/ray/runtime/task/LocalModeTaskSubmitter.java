@@ -51,9 +51,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Task submitter for local mode.
- */
+/** Task submitter for local mode. */
 public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeTaskSubmitter.class);
@@ -78,8 +76,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private final Map<PlacementGroupId, PlacementGroup> placementGroups = new ConcurrentHashMap<>();
 
-  public LocalModeTaskSubmitter(RayRuntimeInternal runtime, TaskExecutor taskExecutor,
-                                LocalModeObjectStore objectStore) {
+  public LocalModeTaskSubmitter(
+      RayRuntimeInternal runtime, TaskExecutor taskExecutor, LocalModeObjectStore objectStore) {
     this.runtime = runtime;
     this.taskExecutor = taskExecutor;
     this.objectStore = objectStore;
@@ -117,8 +115,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       }
     }
     if (taskSpec.getType() == TaskType.ACTOR_TASK) {
-      ObjectId dummyObjectId = new ObjectId(
-          taskSpec.getActorTaskSpec().getPreviousActorTaskDummyObjectId().toByteArray());
+      ObjectId dummyObjectId =
+          new ObjectId(
+              taskSpec.getActorTaskSpec().getPreviousActorTaskDummyObjectId().toByteArray());
       if (!objectStore.isObjectReady(dummyObjectId)) {
         unreadyObjects.add(dummyObjectId);
       }
@@ -126,9 +125,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return unreadyObjects;
   }
 
-  private TaskSpec.Builder getTaskSpecBuilder(TaskType taskType,
-                                              FunctionDescriptor functionDescriptor,
-                                              List<FunctionArg> args) {
+  private TaskSpec.Builder getTaskSpecBuilder(
+      TaskType taskType, FunctionDescriptor functionDescriptor, List<FunctionArg> args) {
     byte[] taskIdBytes = new byte[TaskId.LENGTH];
     new Random().nextBytes(taskIdBytes);
     List<String> functionDescriptorList = functionDescriptor.toList();
@@ -136,64 +134,83 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return TaskSpec.newBuilder()
         .setType(taskType)
         .setLanguage(Language.JAVA)
-        .setJobId(
-            ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
+        .setJobId(ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
         .setTaskId(ByteString.copyFrom(taskIdBytes))
-        .setFunctionDescriptor(Common.FunctionDescriptor.newBuilder()
-            .setJavaFunctionDescriptor(
-                Common.JavaFunctionDescriptor.newBuilder()
-                    .setClassName(functionDescriptorList.get(0))
-                    .setFunctionName(functionDescriptorList.get(1))
-                    .setSignature(functionDescriptorList.get(2))))
-        .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
-            .setObjectRef(ObjectReference.newBuilder().setObjectId(
-                    ByteString.copyFrom(arg.id.getBytes()))).build()
-            : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
-            .setMetadata(arg.value.metadata != null ? ByteString
-                .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
-            .collect(Collectors.toList()));
+        .setFunctionDescriptor(
+            Common.FunctionDescriptor.newBuilder()
+                .setJavaFunctionDescriptor(
+                    Common.JavaFunctionDescriptor.newBuilder()
+                        .setClassName(functionDescriptorList.get(0))
+                        .setFunctionName(functionDescriptorList.get(1))
+                        .setSignature(functionDescriptorList.get(2))))
+        .addAllArgs(
+            args.stream()
+                .map(
+                    arg ->
+                        arg.id != null
+                            ? TaskArg.newBuilder()
+                                .setObjectRef(
+                                    ObjectReference.newBuilder()
+                                        .setObjectId(ByteString.copyFrom(arg.id.getBytes())))
+                                .build()
+                            : TaskArg.newBuilder()
+                                .setData(ByteString.copyFrom(arg.value.data))
+                                .setMetadata(
+                                    arg.value.metadata != null
+                                        ? ByteString.copyFrom(arg.value.metadata)
+                                        : ByteString.EMPTY)
+                                .build())
+                .collect(Collectors.toList()));
   }
 
   @Override
-  public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-                                   int numReturns, CallOptions options) {
+  public List<ObjectId> submitTask(
+      FunctionDescriptor functionDescriptor,
+      List<FunctionArg> args,
+      int numReturns,
+      CallOptions options) {
     Preconditions.checkState(numReturns <= 1);
-    TaskSpec taskSpec = getTaskSpecBuilder(TaskType.NORMAL_TASK, functionDescriptor, args)
-        .setNumReturns(numReturns)
-        .build();
+    TaskSpec taskSpec =
+        getTaskSpecBuilder(TaskType.NORMAL_TASK, functionDescriptor, args)
+            .setNumReturns(numReturns)
+            .build();
     submitTaskSpec(taskSpec);
     return getReturnIds(taskSpec);
   }
 
   @Override
   public BaseActorHandle createActor(
-      FunctionDescriptor functionDescriptor, List<FunctionArg> args,
-      ActorCreationOptions options) throws IllegalArgumentException {
+      FunctionDescriptor functionDescriptor, List<FunctionArg> args, ActorCreationOptions options)
+      throws IllegalArgumentException {
     if (options != null) {
       if (options.group != null) {
-        PlacementGroupImpl group = (PlacementGroupImpl)options.group;
-        Preconditions.checkArgument(options.bundleIndex >= 0
-                && options.bundleIndex < group.getBundles().size(),
+        PlacementGroupImpl group = (PlacementGroupImpl) options.group;
+        Preconditions.checkArgument(
+            options.bundleIndex >= 0 && options.bundleIndex < group.getBundles().size(),
             String.format("Bundle index %s is invalid", options.bundleIndex));
       }
     }
 
     ActorId actorId = ActorId.fromRandom();
-    TaskSpec taskSpec = getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
-        .setNumReturns(1)
-        .setActorCreationTaskSpec(ActorCreationTaskSpec.newBuilder()
-            .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-            .build())
-        .build();
+    TaskSpec taskSpec =
+        getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)
+            .setNumReturns(1)
+            .setActorCreationTaskSpec(
+                ActorCreationTaskSpec.newBuilder()
+                    .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
+                    .build())
+            .build();
     submitTaskSpec(taskSpec);
-    final LocalModeActorHandle actorHandle
-        = new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
+    final LocalModeActorHandle actorHandle =
+        new LocalModeActorHandle(actorId, getReturnIds(taskSpec).get(0));
     actorHandles.put(actorId, actorHandle.copy());
     if (StringUtils.isNotBlank(options.name)) {
-      String fullName = options.global ? options.name :
-          String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
-      Preconditions.checkArgument(!namedActors.containsKey(fullName),
-          String.format("Actor of name %s exists", fullName));
+      String fullName =
+          options.global
+              ? options.name
+              : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), options.name);
+      Preconditions.checkArgument(
+          !namedActors.containsKey(fullName), String.format("Actor of name %s exists", fullName));
       namedActors.put(fullName, actorHandle);
     }
     return actorHandle;
@@ -201,22 +218,29 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public List<ObjectId> submitActorTask(
-      BaseActorHandle actor, FunctionDescriptor functionDescriptor,
-      List<FunctionArg> args, int numReturns, CallOptions options) {
+      BaseActorHandle actor,
+      FunctionDescriptor functionDescriptor,
+      List<FunctionArg> args,
+      int numReturns,
+      CallOptions options) {
     Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
-    List<ObjectId> returnIds = getReturnIds(
-        TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns + 1);
-    TaskSpec taskSpec = builder
-        .setNumReturns(numReturns + 1)
-        .setActorTaskSpec(
-            ActorTaskSpec.newBuilder().setActorId(ByteString.copyFrom(actor.getId().getBytes()))
-                .setPreviousActorTaskDummyObjectId(ByteString.copyFrom(
-                    ((LocalModeActorHandle) actor)
-                        .exchangePreviousActorTaskDummyObjectId(returnIds.get(returnIds.size() - 1))
-                        .getBytes()))
-                .build())
-        .build();
+    List<ObjectId> returnIds =
+        getReturnIds(TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns + 1);
+    TaskSpec taskSpec =
+        builder
+            .setNumReturns(numReturns + 1)
+            .setActorTaskSpec(
+                ActorTaskSpec.newBuilder()
+                    .setActorId(ByteString.copyFrom(actor.getId().getBytes()))
+                    .setPreviousActorTaskDummyObjectId(
+                        ByteString.copyFrom(
+                            ((LocalModeActorHandle) actor)
+                                .exchangePreviousActorTaskDummyObjectId(
+                                    returnIds.get(returnIds.size() - 1))
+                                .getBytes()))
+                    .build())
+            .build();
     submitTaskSpec(taskSpec);
     if (numReturns == 0) {
       return ImmutableList.of();
@@ -226,11 +250,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(String name, List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
-    PlacementGroupImpl placementGroup = new PlacementGroupImpl.Builder()
-        .setId(PlacementGroupId.fromRandom()).setName(name)
-        .setBundles(bundles).setStrategy(strategy).build();
+  public PlacementGroup createPlacementGroup(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    PlacementGroupImpl placementGroup =
+        new PlacementGroupImpl.Builder()
+            .setId(PlacementGroupId.fromRandom())
+            .setName(name)
+            .setBundles(bundles)
+            .setStrategy(strategy)
+            .build();
     placementGroups.put(placementGroup.getId(), placementGroup);
     return placementGroup;
   }
@@ -251,8 +279,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public Optional<BaseActorHandle> getActor(String name, boolean global) {
-    String fullName = global ? name :
-        String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
+    String fullName =
+        global ? name : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
     ActorHandle actorHandle = namedActors.get(fullName);
     if (null == actorHandle) {
       return Optional.empty();
@@ -289,14 +317,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     synchronized (taskAndObjectLock) {
       Set<ObjectId> unreadyObjects = getUnreadyObjects(taskSpec);
 
-      final Runnable runnable = () -> {
-        try {
-          executeTask(taskSpec);
-        } catch (Exception ex) {
-          LOGGER.error("Unexpected exception when executing a task.", ex);
-          System.exit(-1);
-        }
-      };
+      final Runnable runnable =
+          () -> {
+            try {
+              executeTask(taskSpec);
+            } catch (Exception ex) {
+              LOGGER.error("Unexpected exception when executing a task.", ex);
+              System.exit(-1);
+            }
+          };
 
       if (unreadyObjects.isEmpty()) {
         // If all dependencies are ready, execute this task.
@@ -318,7 +347,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
           executorService.submit(runnable);
         } catch (RejectedExecutionException e) {
           if (executorService.isShutdown()) {
-            LOGGER.warn("Ignore task submission due to the ExecutorService is shutdown. Task: {}",
+            LOGGER.warn(
+                "Ignore task submission due to the ExecutorService is shutdown. Task: {}",
                 taskSpec);
           }
         }
@@ -338,16 +368,20 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       Preconditions.checkNotNull(actorContext);
     }
     taskExecutor.setActorContext(actorContext);
-    List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
-        .map(arg -> arg.id != null ?
-            objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
-            : arg.value)
-        .collect(Collectors.toList());
+    List<NativeRayObject> args =
+        getFunctionArgs(taskSpec).stream()
+            .map(
+                arg ->
+                    arg.id != null
+                        ? objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
+                        : arg.value)
+            .collect(Collectors.toList());
     runtime.setIsContextSet(true);
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
-    UniqueId workerId = actorContext != null
-        ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
-        : UniqueId.randomId();
+    UniqueId workerId =
+        actorContext != null
+            ? ((LocalModeTaskExecutor.LocalActorContext) actorContext).getWorkerId()
+            : UniqueId.randomId();
     ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentWorkerId(workerId);
     List<String> rayFunctionInfo = getJavaFunctionDescriptor(taskSpec).toList();
     taskExecutor.checkByteBufferArguments(rayFunctionInfo);
@@ -379,10 +413,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   private static JavaFunctionDescriptor getJavaFunctionDescriptor(TaskSpec taskSpec) {
-    Common.FunctionDescriptor functionDescriptor =
-        taskSpec.getFunctionDescriptor();
-    if (functionDescriptor.getFunctionDescriptorCase() ==
-        Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
+    Common.FunctionDescriptor functionDescriptor = taskSpec.getFunctionDescriptor();
+    if (functionDescriptor.getFunctionDescriptorCase()
+        == Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
       return new JavaFunctionDescriptor(
           functionDescriptor.getJavaFunctionDescriptor().getClassName(),
           functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
@@ -397,30 +430,35 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     for (int i = 0; i < taskSpec.getArgsCount(); i++) {
       TaskArg arg = taskSpec.getArgs(i);
       if (arg.getObjectRef().getObjectId() != ByteString.EMPTY) {
-        functionArgs.add(FunctionArg
-            .passByReference(new ObjectId(arg.getObjectRef().getObjectId().toByteArray()),
-            Address.getDefaultInstance()));
+        functionArgs.add(
+            FunctionArg.passByReference(
+                new ObjectId(arg.getObjectRef().getObjectId().toByteArray()),
+                Address.getDefaultInstance()));
       } else {
-        functionArgs.add(FunctionArg.passByValue(
-            new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));
+        functionArgs.add(
+            FunctionArg.passByValue(
+                new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));
       }
     }
     return functionArgs;
   }
 
   private static List<ObjectId> getReturnIds(TaskSpec taskSpec) {
-    return getReturnIds(TaskId.fromBytes(taskSpec.getTaskId().toByteArray()),
-        taskSpec.getNumReturns());
+    return getReturnIds(
+        TaskId.fromBytes(taskSpec.getTaskId().toByteArray()), taskSpec.getNumReturns());
   }
 
   private static List<ObjectId> getReturnIds(TaskId taskId, long numReturns) {
     List<ObjectId> returnIds = new ArrayList<>();
     for (int i = 0; i < numReturns; i++) {
-      returnIds.add(ObjectId.fromByteBuffer(
-          (ByteBuffer) ByteBuffer.allocate(ObjectId.LENGTH).put(taskId.getBytes())
-              .putInt(TaskId.LENGTH, i + 1).position(0)));
+      returnIds.add(
+          ObjectId.fromByteBuffer(
+              (ByteBuffer)
+                  ByteBuffer.allocate(ObjectId.LENGTH)
+                      .put(taskId.getBytes())
+                      .putInt(TaskId.LENGTH, i + 1)
+                      .position(0)));
     }
     return returnIds;
   }
-
 }

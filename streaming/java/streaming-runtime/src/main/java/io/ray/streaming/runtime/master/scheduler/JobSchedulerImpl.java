@@ -17,9 +17,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Job scheduler implementation.
- */
+/** Job scheduler implementation. */
 public class JobSchedulerImpl implements JobScheduler {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobSchedulerImpl.class);
@@ -96,16 +94,15 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Create JobWorker actors according to the physical plan.
    *
-   * @param executionGraph physical plan
-   * @return actor creation result
+   * @param executionGraph physical plan Returns actor creation result
    */
   public boolean createWorkers(ExecutionGraph executionGraph) {
     LOG.info("Begin creating workers.");
     long startTs = System.currentTimeMillis();
 
     // create JobWorker actors
-    boolean createResult = workerLifecycleController
-        .createWorkers(executionGraph.getAllAddedExecutionVertices());
+    boolean createResult =
+        workerLifecycleController.createWorkers(executionGraph.getAllAddedExecutionVertices());
 
     if (createResult) {
       LOG.info("Finished creating workers. Cost {} ms.", System.currentTimeMillis() - startTs);
@@ -124,8 +121,10 @@ public class JobSchedulerImpl implements JobScheduler {
   protected boolean initWorkers(Map<ExecutionVertex, JobWorkerContext> vertexToContextMap) {
     boolean result;
     try {
-      result = workerLifecycleController.initWorkers(vertexToContextMap,
-          jobConfig.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
+      result =
+          workerLifecycleController.initWorkers(
+              vertexToContextMap,
+              jobConfig.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to initiate workers.", e);
       return false;
@@ -133,15 +132,15 @@ public class JobSchedulerImpl implements JobScheduler {
     return result;
   }
 
-  /**
-   * Start JobWorkers according to the physical plan.
-   */
+  /** Start JobWorkers according to the physical plan. */
   public boolean startWorkers(ExecutionGraph executionGraph, long checkpointId) {
     boolean result;
     try {
-      result = workerLifecycleController.startWorkers(
-          executionGraph, checkpointId,
-          jobConfig.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
+      result =
+          workerLifecycleController.startWorkers(
+              executionGraph,
+              checkpointId,
+              jobConfig.masterConfig.schedulerConfig.workerStartingWaitTimeoutMs());
     } catch (Exception e) {
       LOG.error("Failed to start workers.", e);
       return false;
@@ -152,8 +151,7 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Build workers context.
    *
-   * @param executionGraph execution graph
-   * @return vertex to worker context map
+   * @param executionGraph execution graph Returns vertex to worker context map
    */
   protected Map<ExecutionVertex, JobWorkerContext> buildWorkersContext(
       ExecutionGraph executionGraph) {
@@ -161,22 +159,21 @@ public class JobSchedulerImpl implements JobScheduler {
 
     // build workers' context
     Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = new HashMap<>();
-    executionGraph.getAllExecutionVertices().forEach(vertex -> {
-      JobWorkerContext context = buildJobWorkerContext(vertex, masterActor);
-      vertexToContextMap.put(vertex, context);
-    });
+    executionGraph
+        .getAllExecutionVertices()
+        .forEach(
+            vertex -> {
+              JobWorkerContext context = buildJobWorkerContext(vertex, masterActor);
+              vertexToContextMap.put(vertex, context);
+            });
     return vertexToContextMap;
   }
 
   private JobWorkerContext buildJobWorkerContext(
-      ExecutionVertex executionVertex,
-      ActorHandle<JobMaster> masterActor) {
+      ExecutionVertex executionVertex, ActorHandle<JobMaster> masterActor) {
 
     // create java worker context
-    JobWorkerContext context = new JobWorkerContext(
-        masterActor,
-        executionVertex
-    );
+    JobWorkerContext context = new JobWorkerContext(masterActor, executionVertex);
 
     return context;
   }
@@ -200,5 +197,4 @@ public class JobSchedulerImpl implements JobScheduler {
   private void initMaster() {
     jobMaster.init(false);
   }
-
 }
