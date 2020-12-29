@@ -27,7 +27,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 # TODO(sven): Use RLlib's FCNet instead.
-class PositionwiseFeedforward(tf.keras.layers.Layer):
+class PositionwiseFeedforward(tf.keras.layers.Layer if tf else object):
     """A 2x linear layer with ReLU activation in between described in [1].
 
     Each timestep coming from the attention head will be passed through this

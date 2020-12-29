@@ -698,11 +698,11 @@ class ModelCatalog:
         Raises:
             ValueError: If something is wrong with the given config.
         """
-        if config["use_lstm"] and config["use_attention"]:
+        if config.get("use_attention") and config.get("use_lstm"):
             raise ValueError("Only one of `use_lstm` or `use_attention` may "
                              "be set to True!")
         if framework == "jax":
-            if config["use_attention"]:
+            if config.get("use_attention"):
                 raise ValueError("`use_attention` not available for "
                                  "framework=jax so far!")
             elif config.get("use_lstm"):
