@@ -5,8 +5,7 @@ import ray
 from ray.streaming import StreamingContext
 
 
-def test_union_stream():
-    ray.init(job_config=ray.job_config.JobConfig(code_search_path=sys.path))
+def test_union_stream(ray_start_forcibly):
     ctx = StreamingContext.Builder() \
         .option("streaming.metrics.reporters", "") \
         .build()
@@ -41,8 +40,8 @@ def test_union_stream():
         print("Wait finish...")
         time.sleep(1)
 
-    ray.shutdown()
-
 
 if __name__ == "__main__":
-    test_union_stream()
+    from ray.streaming.tests.conftest import ray_start
+    with ray_start() as res:
+        test_union_stream(None)

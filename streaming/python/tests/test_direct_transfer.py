@@ -99,8 +99,7 @@ class Worker:
         return result.to_pybytes()
 
 
-def test_queue():
-    ray.init()
+def test_queue(ray_start_forcibly):
     writer = Worker._remote()
     reader = Worker._remote()
     channel_id_str = transfer.ChannelID.gen_random_id()
@@ -115,8 +114,9 @@ def test_queue():
     writer.start_write.remote(msg_nums)
     while not ray.get(reader.is_finished.remote()):
         time.sleep(0.1)
-    ray.shutdown()
 
 
 if __name__ == "__main__":
-    test_queue()
+    ray.init()
+    test_queue(None)
+    ray.shutdown()
