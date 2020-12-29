@@ -34,7 +34,7 @@ class HTTPProxy:
         })
 
         self.request_counter = metrics.Count(
-            "num_http_requests",
+            "serve_num_http_requests",
             description="The number of HTTP requests processed",
             tag_keys=("route", ))
 
