@@ -356,11 +356,8 @@ async def test_graceful_shutdown(serve_instance, router,
 
     # All queries should complete successfully
     ray.get(refs)
-
-    # The replica should shutdown after that
+    # The draining operation should be completed.
     ray.get(shutdown_ref)
-    with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(backend_worker.ready.remote())
 
 
 if __name__ == "__main__":
