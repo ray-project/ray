@@ -166,8 +166,8 @@ class RayServeReplica:
 
         self.request_counter = metrics.Count(
             "serve_backend_request_counter",
-            description=("Number of queries that have been "
-                         "processed in this replica"),
+            description=("The number of queries that have been "
+                         "processed in this replica."),
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
@@ -177,14 +177,14 @@ class RayServeReplica:
 
         self.error_counter = metrics.Count(
             "serve_backend_error_counter",
-            description=("Number of exceptions that have "
-                         "occurred in the backend"),
+            description=("The number of exceptions that have "
+                         "occurred in the backend."),
             tag_keys=("backend", ))
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
         self.restart_counter = metrics.Count(
             "serve_backend_replica_starts",
-            description=("The number of time this replica "
+            description=("The number of times this replica "
                          "has been restarted due to failure."),
             tag_keys=("backend", "replica"))
         self.restart_counter.set_default_tags({
@@ -194,9 +194,8 @@ class RayServeReplica:
 
         self.queuing_latency_tracker = metrics.Histogram(
             "serve_backend_queuing_latency_ms",
-            description=(
-                "The latency for queries waiting in the replica's queue "
-                "waiting to be processed or batched."),
+            description=("The latency for queries in the replica's queue "
+                         "waiting to be processed or batched."),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("backend", "replica"))
         self.queuing_latency_tracker.set_default_tags({
@@ -206,7 +205,7 @@ class RayServeReplica:
 
         self.processing_latency_tracker = metrics.Histogram(
             "serve_backend_processing_latency_ms",
-            description="The latency for queries to be processed",
+            description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("backend", "replica", "batch_size"))
         self.processing_latency_tracker.set_default_tags({
@@ -216,8 +215,8 @@ class RayServeReplica:
 
         self.num_queued_items = metrics.Gauge(
             "serve_replica_queued_queries",
-            description=("Current number of queries queued in the "
-                         "the backend replicas"),
+            description=("The current number of queries queued in "
+                         "the backend replicas."),
             tag_keys=("backend", "replica"))
         self.num_queued_items.set_default_tags({
             "backend": self.backend_tag,
@@ -226,7 +225,7 @@ class RayServeReplica:
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
-            description="Current number of queries being processed",
+            description="The current number of queries being processed.",
             tag_keys=("backend", "replica"))
         self.num_processing_items.set_default_tags({
             "backend": self.backend_tag,

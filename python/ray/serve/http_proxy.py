@@ -35,7 +35,7 @@ class HTTPProxy:
 
         self.request_counter = metrics.Count(
             "serve_num_http_requests",
-            description="The number of HTTP requests processed",
+            description="The number of HTTP requests processed.",
             tag_keys=("route", ))
 
     async def setup(self):
