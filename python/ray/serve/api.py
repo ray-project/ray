@@ -329,7 +329,7 @@ class Client:
             func_or_class (callable, class): a function or a class implementing
                 __call__, returning a JSON-serializable object or a
                 Starlette Response object.
-            actor_init_args (optional): the arguments to pass to the class.
+            *actor_init_args (optional): the arguments to pass to the class
                 initialization method.
             ray_actor_options (optional): options to be passed into the
                 @ray.remote decorator for the backend actor.
@@ -409,12 +409,18 @@ class Client:
         return ray.get(self._controller.get_all_backends.remote())
 
     @_ensure_connected
-    def delete_backend(self, backend_tag: str) -> None:
+    def delete_backend(self, backend_tag: str, force: bool = False) -> None:
         """Delete the given backend.
 
         The backend must not currently be used by any endpoints.
+
+        Args:
+            backend_tag (str): The backend tag to be deleted.
+            force (bool): Whether or not to force the deletion, without waiting
+              for graceful shutdown. Default to false.
         """
-        self._get_result(self._controller.delete_backend.remote(backend_tag))
+        self._get_result(
+            self._controller.delete_backend.remote(backend_tag, force))
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
