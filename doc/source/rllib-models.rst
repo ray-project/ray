@@ -31,9 +31,18 @@ have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2]
 Thereby, always make sure that the last Conv2D output has an output shape of `[B, 1, 1, X]` (`[B, X, 1, 1]` for Torch), where B=batch and
 X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
 
-In addition, if you set ``"model": {"use_lstm": true}``, the model output will be further processed by an LSTM cell (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__).
-More generally, RLlib supports the use of recurrent models for its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into its policy evaluation utilities.
-For custom RNN/LSTM setups, see the `Recurrent Models`_. section below.
+In addition, if you set ``"model": {"use_lstm": True}`` or ``"model": {"use_attention": True}``,
+the model's output will be further processed by an LSTM cell
+(`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__),
+or an attention network
+(`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/attention_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/attention_net.py>`__),
+respectively.
+More generally, RLlib supports the use of recurrent/attention models for all
+its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into
+its policy evaluation utilities.
+For custom RNN/LSTM/Attention-Net setups,
+see the `Recurrent Models`_ and `Attention Networks/Transformers`_ sections below.
+
 
 Built-in Model Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -44,6 +53,46 @@ The following is a list of the built-in model hyperparameters:
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+
+
+Customizing Preprocessors and Models
+------------------------------------
+
+Custom Preprocessors
+~~~~~~~~~~~~~~~~~~~~
+
+.. warning::
+
+    Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
+    Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
+
+Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/rllib/models/preprocessors.py>`__ and be registered in the model catalog:
+
+.. code-block:: python
+
+    import ray
+    import ray.rllib.agents.ppo as ppo
+    from ray.rllib.models import ModelCatalog
+    from ray.rllib.models.preprocessors import Preprocessor
+
+    class MyPreprocessorClass(Preprocessor):
+        def _init_shape(self, obs_space, options):
+            return new_shape  # can vary depending on inputs
+
+        def transform(self, observation):
+            return ...  # return the preprocessed observation
+
+    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
+
+    ray.init()
+    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
+        "model": {
+            "custom_preprocessor": "my_prep",
+            # Extra kwargs to be passed to your model's c'tor.
+            "custom_model_config": {},
+        },
+    })
+
 
 TensorFlow Models
 -----------------
@@ -142,8 +191,11 @@ Once implemented, the model can then be registered and used in place of a built-
 See the `torch model examples <https://github.com/ray-project/ray/blob/master/rllib/examples/models/>`__ for various examples on how to build a custom Torch model (including recurrent ones).
 You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
+Custom Models (tf or torch)
+---------------------------
+
 Recurrent Models
-~~~~~~~~~~~~~~~~
+----------------
 
 Instead of using the ``use_lstm: True`` option, it can be preferable to use a custom recurrent model.
 This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input.
@@ -157,53 +209,19 @@ You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/mas
     .. automethod:: get_initial_state
 
 Attention Networks/Transformers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 RLlib now also has experimental built-in support for attention/transformer nets (the GTrXL model in particular).
 Here is `an example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ on how to use these with some of our algorithms.
 `There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/tests/test_attention_net_learning.py>`__, which confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
-~~~~~~~~~~~~~~~~~~~
+-------------------
 
 You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
 In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
 
-Custom Preprocessors
---------------------
-
-.. warning::
-
-    Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
-    Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
-
-Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/rllib/models/preprocessors.py>`__ and be registered in the model catalog:
-
-.. code-block:: python
-
-    import ray
-    import ray.rllib.agents.ppo as ppo
-    from ray.rllib.models import ModelCatalog
-    from ray.rllib.models.preprocessors import Preprocessor
-
-    class MyPreprocessorClass(Preprocessor):
-        def _init_shape(self, obs_space, options):
-            return new_shape  # can vary depending on inputs
-
-        def transform(self, observation):
-            return ...  # return the preprocessed observation
-
-    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
-
-    ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
-        "model": {
-            "custom_preprocessor": "my_prep",
-            # Extra kwargs to be passed to your model's c'tor.
-            "custom_model_config": {},
-        },
-    })
 
 Custom Models on Top of Built-In Ones
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -226,7 +244,8 @@ Here is an example of how to construct a dueling layer head (for DQN) on top of 
             super(DuelingQModel, self).__init__(
                 obs_space, action_space, None, model_config, name)
             # Now: self.num_outputs contains the last layer's size, which
-            # we can use to construct the dueling head.
+            # we can use to construct the dueling head (see torch: SlimFC
+            # below).
 
             # Construct advantage head ...
             self.A = tf.keras.layers.Dense(num_outputs)
