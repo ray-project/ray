@@ -187,6 +187,10 @@ install_nvm() {
         "nvm() { \"\${NVM_HOME}/nvm.exe\" \"\$@\"; }" \
         > "${NVM_HOME}/nvm.sh"
     fi
+  elif [ -n "${BUILDKITE-}" ]; then
+    # https://github.com/nodesource/distributions/blob/master/README.md#installation-instructions
+    curl -sL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+    sudo apt-get install -y nodejs
   else
     test -f "${NVM_HOME}/nvm.sh"  # double-check NVM is already available on other platforms
   fi
@@ -227,7 +231,9 @@ install_node() {
 }
 
 install_toolchains() {
-  "${ROOT_DIR}"/install-toolchains.sh
+  if [ -z "${BUILDKITE-}" ]; then
+    "${ROOT_DIR}"/install-toolchains.sh
+  fi
 }
 
 install_dependencies() {
@@ -251,11 +257,13 @@ install_dependencies() {
   if [ -n "${PYTHON-}" ]; then
     # PyTorch is installed first since we are using a "-f" directive to find the wheels.
     # We want to install the CPU version only.
-    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-    case "${OSTYPE}" in
-      darwin*) pip install torch torchvision;;
-      *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
-    esac
+    if [ -z "${BUILDKITE-}" ]; then
+      local torch_url="https://download.pytorch.org/whl/torch_stable.html"
+      case "${OSTYPE}" in
+        darwin*) pip install torch torchvision;;
+        *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
+      esac
+    fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case

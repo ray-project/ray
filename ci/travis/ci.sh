@@ -208,9 +208,12 @@ build_dashboard_front_end() {
   else
     (
       cd ray/new_dashboard/client
-      set +x  # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+
+      if [ -z "${BUILDKITE-}" ]; then
+        set +x  # suppress set -x since it'll get very noisy here
+        . "${HOME}/.nvm/nvm.sh"
+        nvm use --silent node
+      fi
       install_npm_project
       npm run -s build
     )
