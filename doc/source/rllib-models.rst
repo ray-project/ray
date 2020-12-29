@@ -14,40 +14,64 @@ Default Behaviours
 Built-in Preprocessors
 ~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib tries to pick one of its built-in preprocessor based on the environment's observation space.
-Discrete observations are one-hot encoded, Atari observations downscaled, and Tuple and Dict observations flattened (these are unflattened and accessible via the ``input_dict`` parameter in custom models).
-Note that for Atari, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/atari_wrappers.py>`__, which are also used by the OpenAI baselines library.
+RLlib tries to pick one of its built-in preprocessors based on the environment's observation space.
+Thereby, the following simple rules apply:
+
+- Discrete observations are one-hot encoded, e.g. ``Discrete(3) and value=1 -> [0, 1, 0]``.
+
+- MultiDiscrete observations are "multi" one-hot encoded,
+  e.g. ``MultiDiscrete([3, 4]) and value=[1, 0] -> [0 1 0 1 0 0 0]``.
+
+- Tuple and Dict observations are flattened:
+  The original dict/tuple observations are still available inside a) the Model via the input
+  dict's "obs" key (the flattened observations are in "obs_flat"), as well as b) the Policy
+  via the following line of code (e.g. put this into your loss function to access the original
+  observations: ``dict_or_tuple_obs = restore_original_dimensions(input_dict["obs"], self.obs_space, "tf|torch")``
+
+For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/atari_wrappers.py>`__,
+which are also used by the OpenAI baselines library.
+However, if the main config key ``preprocessor_pref`` is set to "rllib"
+(instead of "deepmind"), the following mappings apply for Atari-type observation spaces:
+
+- Images of shape ``(210, 160, 3)`` are downscaled to ``dim x dim``, where
+  ``dim`` is a model config key (see default Model config below). Also, you can set
+  ``grayscale=True`` for reducing the color channel to 1, or ``zero_mean=True`` for
+  producing -1.0 to 1.0 values (instead of 0.0 to 1.0 values by default).
+
+- Atari RAM observations (1D space of shape ``(128, )``) are zero-averaged
+  (values between -1.0 and 1.0).
+
 
 Built-in Models
 ~~~~~~~~~~~~~~~
 
-After preprocessing raw environment outputs, these preprocessed observations are then fed through a policy's model.
+After preprocessing raw environment outputs, the preprocessed observations are then fed through a policy's model.
 RLlib picks default models based on a simple heuristic: A vision network (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/visionnet.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__)
-for observations that have a shape of length larger than 2 (for example, (84 x 84 x 3)),
+for observations that have a shape of length larger than 2 (for example, ``(84 x 84 x 3)``),
 and a fully connected network (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/fcnet.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__)
 for everything else. These models can be configured via the ``model`` config key, documented in the model `catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__.
 Note that for the vision network case, you'll probably have to configure ``conv_filters`` if your environment observations
 have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
-Thereby, always make sure that the last Conv2D output has an output shape of `[B, 1, 1, X]` (`[B, X, 1, 1]` for Torch), where B=batch and
+Thereby, always make sure that the last Conv2D output has an output shape of ``[B, 1, 1, X]`` (``[B, X, 1, 1]`` for PyTorch), where B=batch and
 X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
 
-In addition, if you set ``"model": {"use_lstm": True}`` or ``"model": {"use_attention": True}``,
+In addition, if you set ``"model": {"use_lstm": True}`` or ``"model": {"use_attention": True}`` in your Trainer's config,
 the model's output will be further processed by an LSTM cell
 (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__),
 or an attention network
 (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/attention_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/attention_net.py>`__),
 respectively.
 More generally, RLlib supports the use of recurrent/attention models for all
-its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into
+its policy-gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into
 its policy evaluation utilities.
 For custom RNN/LSTM/Attention-Net setups,
-see the `Recurrent Models`_ and `Attention Networks/Transformers`_ sections below.
+see the `Recurrent Models <Custom Recurrent Models (TF and PyTorch)>`_ and `Attention Networks/Transformers <Attention Networks/Transformers (TF and PyTorch)>`_ sections below.
 
 
 Built-in Model Parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The following is a list of the built-in model hyperparameters:
+The following is a list of the default model configuration values:
 
 .. literalinclude:: ../../rllib/models/catalog.py
    :language: python
@@ -66,43 +90,44 @@ Custom Preprocessors
     Custom preprocessors are deprecated, since they sometimes conflict with the built-in preprocessors for handling complex observation spaces.
     Please use `wrapper classes <https://github.com/openai/gym/tree/master/gym/wrappers>`__ around your environment instead of preprocessors.
 
-Custom preprocessors should subclass the RLlib `preprocessor class <https://github.com/ray-project/ray/blob/master/rllib/models/preprocessors.py>`__ and be registered in the model catalog:
+To preprocess your environment's output (observations and rewards), but also your Model's
+computed actions before sending them back to the environment, you should use ``gym.Wrappers``.
+For example, for manipulating your env's observations or rewards, do:
 
 .. code-block:: python
 
-    import ray
-    import ray.rllib.agents.ppo as ppo
-    from ray.rllib.models import ModelCatalog
-    from ray.rllib.models.preprocessors import Preprocessor
+    import gym
+    from ray.rllib.utils.numpy import one_hot
 
-    class MyPreprocessorClass(Preprocessor):
-        def _init_shape(self, obs_space, options):
-            return new_shape  # can vary depending on inputs
-
-        def transform(self, observation):
-            return ...  # return the preprocessed observation
-
-    ModelCatalog.register_custom_preprocessor("my_prep", MyPreprocessorClass)
-
-    ray.init()
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
-        "model": {
-            "custom_preprocessor": "my_prep",
-            # Extra kwargs to be passed to your model's c'tor.
-            "custom_model_config": {},
-        },
-    })
+    class OneHotEnv(gym.core.ObservationWrapper):
+        # Override `observation` to custom process the original observation
+        # coming from the env.
+        def observation(self, observation):
+            # E.g. one-hotting a float obs [0.0, 5.0[.
+            return one_hot(observation, depth=5)
 
 
-TensorFlow Models
------------------
+    class ClipRewardEnv(gym.core.RewardWrapper):
+        def __init__(self, env, min_, max_):
+            super().__init__(env)
+            self.min = min_
+            self.max = max_
 
-.. note::
+        # Override `reward` to custom process the original reward coming
+        # from the env.
+        def reward(self, reward):
+            # E.g. simple clipping between min and max.
+            return np.clip(reward, self.min, self.max)
 
-    TFModelV2 replaces the previous ``rllib.models.Model`` class, which did not support Keras-style reuse of variables. The ``rllib.models.Model`` class (aka "ModelV1") is deprecated and should no longer be used.
+Custom TensorFlow Models
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Custom TF models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/tf/tf_modelv2.py>`__ to implement the ``__init__()`` and ``forward()`` methods. Forward takes in a dict of tensor inputs (the observation ``obs``, ``prev_action``, and ``prev_reward``, ``is_training``), optional RNN state,
-and returns the model output of size ``num_outputs`` and the new state. You can also override extra methods of the model such as ``value_function`` to implement a custom value branch.
+Custom TensorFlow models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/tf/tf_modelv2.py>`__ and implement the ``__init__()`` and ``forward()`` methods.
+``forward()`` takes a dict of tensor inputs, whose items depend on the `view requirements <rllib-sample-collection.html>`__ of
+the model. Usually, the dict contains only the current observation ``obs`` and an ``is_training`` flag, as well as an optional list of RNN states.
+``forward()`` should returns the model output of size ``num_outputs`` and - if applicable - a new list of internal states (in case of RNNs or attention nets).
+You can also override extra methods of the model such as ``value_function`` to implement a custom value branch.
+
 Additional supervised / self-supervised losses can be added via the ``custom_loss`` method:
 
 .. autoclass:: ray.rllib.models.tf.tf_modelv2.TFModelV2
@@ -117,7 +142,7 @@ Additional supervised / self-supervised losses can be added via the ``custom_los
     .. automethod:: variables
     .. automethod:: trainable_variables
 
-Once implemented, the model can then be registered and used in place of a built-in model:
+Once implemented, your TF model can then be registered and used in place of a built-in default model:
 
 .. code-block:: python
 
@@ -131,12 +156,12 @@ Once implemented, the model can then be registered and used in place of a built-
         def forward(self, input_dict, state, seq_lens): ...
         def value_function(self): ...
 
-    ModelCatalog.register_custom_model("my_model", MyModelClass)
+    ModelCatalog.register_custom_model("my_tf_model", MyModelClass)
 
     ray.init()
     trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "model": {
-            "custom_model": "my_model",
+            "custom_model": "my_tf_model",
             # Extra kwargs to be passed to your model's c'tor.
             "custom_model_config": {},
         },
@@ -145,8 +170,8 @@ Once implemented, the model can then be registered and used in place of a built-
 See the `keras model example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_keras_model.py>`__ for a full example of a TF custom model.
 You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
-PyTorch Models
---------------
+Custom PyTorch Models
+~~~~~~~~~~~~~~~~~~~~~
 
 Similarly, you can create and register custom PyTorch models.
 See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ torch models.
@@ -160,7 +185,7 @@ See these examples of `fully connected <https://github.com/ray-project/ray/blob/
     .. automethod:: metrics
     .. automethod:: get_initial_state
 
-Once implemented, the model can then be registered and used in place of a built-in model:
+Once implemented, your PyTorch model can then be registered and used in place of a built-in model:
 
 .. code-block:: python
 
@@ -176,13 +201,13 @@ Once implemented, the model can then be registered and used in place of a built-
         def forward(self, input_dict, state, seq_lens): ...
         def value_function(self): ...
 
-    ModelCatalog.register_custom_model("my_model", CustomTorchModel)
+    ModelCatalog.register_custom_model("my_torch_model", CustomTorchModel)
 
     ray.init()
     trainer = ppo.PPOTrainer(env="CartPole-v0", config={
         "framework": "torch",
         "model": {
-            "custom_model": "my_model",
+            "custom_model": "my_torch_model",
             # Extra kwargs to be passed to your model's c'tor.
             "custom_model_config": {},
         },
@@ -191,11 +216,9 @@ Once implemented, the model can then be registered and used in place of a built-
 See the `torch model examples <https://github.com/ray-project/ray/blob/master/rllib/examples/models/>`__ for various examples on how to build a custom Torch model (including recurrent ones).
 You can also reference the `unit tests <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__ for Tuple and Dict spaces, which show how to access nested observation fields.
 
-Custom Models (tf or torch)
----------------------------
 
-Recurrent Models
-----------------
+Custom Recurrent Models (TF and PyTorch)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Instead of using the ``use_lstm: True`` option, it can be preferable to use a custom recurrent model.
 This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input.
@@ -208,27 +231,38 @@ You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/mas
     .. automethod:: forward_rnn
     .. automethod:: get_initial_state
 
-Attention Networks/Transformers
--------------------------------
+Attention Networks/Transformers (TF and PyTorch)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib now also has experimental built-in support for attention/transformer nets (the GTrXL model in particular).
+RLlib also has built-in support for attention/transformer nets (the GTrXL model in particular).
 Here is `an example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ on how to use these with some of our algorithms.
 `There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/tests/test_attention_net_learning.py>`__, which confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 You can use ``tf.layers.batch_normalization(x, training=input_dict["is_training"])`` to add batch norm layers to your custom model: `code example <https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py>`__. RLlib will automatically run the update ops for the batch norm layers during optimization (see `tf_policy.py <https://github.com/ray-project/ray/blob/master/rllib/policy/tf_policy.py>`__ and `multi_gpu_impl.py <https://github.com/ray-project/ray/blob/master/rllib/execution/multi_gpu_impl.py>`__ for the exact handling of these updates).
 
 In case RLlib does not properly detect the update ops for your custom model, you can override the ``update_ops()`` method to return the list of ops to run for updates.
 
 
-Custom Models on Top of Built-In Ones
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Custom Models in Combination with Built-In Ones
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A common use case is to construct a custom model on top of one of RLlib's built-in ones (e.g. a special output head on top of an fcnet, or an action + observation concat operation at the beginning or
-after a conv2d stack).
-Here is an example of how to construct a dueling layer head (for DQN) on top of an RLlib default model (either a Conv2D or an FCNet):
+
+A common use case is to construct a custom model on top of one of RLlib's built-in ones
+(e.g. a special output head on top of a ``FullyConnectedNetwork``, or an action + observation concat operation at the beginning or
+after a Conv2D stack).
+
+TODO: more examples here:
+
+Here are some examples of how to construct these more complex models:
+
+1) A dueling layer head (for DQN)
+`````````````````````````````````
+
+
+on top of an RLlib default model (either a Conv2D or an FCNet):
 
 .. code-block:: python
 
@@ -267,8 +301,8 @@ Here is an example of how to construct a dueling layer head (for DQN) on top of 
             return v + advantages_centered  # q-values
 
 
-In order to construct an instance of the above model, you can still use the `catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__
-`get_model_v2` convenience method:
+In order to construct an instance of the above model, you can still use the `catalog's <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__
+``get_model_v2()`` convenience method:
 
 .. code-block:: python
 
@@ -284,8 +318,8 @@ In order to construct an instance of the above model, you can still use the `cat
 
 
 Now, with the model object, you can get the underlying intermediate output (before the dueling head)
-by calling `dueling_model` directly (`out = dueling_model([input_dict])`), and then passing `out` into
-your custom `get_q_values` method: `q_values = dueling_model.get_q_values(out)`.
+by calling ``dueling_model`` directly (``out = dueling_model([input_dict])``), and then passing ``out`` into
+your custom ``get_q_values`` method: ``q_values = dueling_model.get_q_values(out)``.
 
 
 Custom Action Distributions
