@@ -211,13 +211,14 @@ class BackendState:
             desired_info = self.backends.get(backend_tag)
             existing_info = backend_replicas.get(backend_tag)
             # Check for deleting
-            if (not desired_info or desired_info.backend_config.num_replicas == 0) and \
-                (not existing_info or len(existing_info) == 0):
+            if (not desired_info or
+                    desired_info.backend_config.num_replicas == 0) and \
+                    (not existing_info or len(existing_info) == 0):
                 completed_goals.append(self.goals[backend_tag])
 
             # Check for a non-zero number of backends
-            if desired_info and existing_info and desired_info.backend_config.num_replicas == len(
-                    existing_info):
+            if desired_info and existing_info and desired_info.backend_config.\
+                    num_replicas == len(existing_info):
                 completed_goals.append(self.goals[backend_tag])
         return completed_goals
 
@@ -811,8 +812,8 @@ class ServeController:
             await self.do_autoscale()
             async with self.write_lock:
                 self.http_state.update()
-                delta_workers = await self.actor_reconciler.backend_control_loop(
-                    start_time)
+                delta_workers = await self.\
+                    actor_reconciler.backend_control_loop(start_time)
                 if delta_workers:
                     self.notify_replica_handles_changed()
                     self.notify_backend_configs_changed()
