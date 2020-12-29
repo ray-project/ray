@@ -8,6 +8,7 @@ from socket import socket
 import subprocess
 import sys
 from tabulate import tabulate
+from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse

@@ -62,7 +62,7 @@ def node_stats():
     return node_stats
 
 
-def free(object_refs, local_only=False):
+def free(object_refs, local_only=False, delete_creating_tasks=False):
     """Free a list of IDs from the in-process and plasma object stores.
 
     This function is a low-level API which should be used in restricted
