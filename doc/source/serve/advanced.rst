@@ -329,10 +329,22 @@ To see this in action, run ``ray start --head --metrics-export-port=8080`` in yo
 In your web browser, navigate to ``localhost:8080``.
 In the output there, you can search for ``serve_`` to locate the metrics above.
 The metrics are updated once every ten seconds, and you will need to refresh the page to see the new values.
-For the quick example above, you can see that ``serve_backend_request_counter`` increases, and that the processing latency per request is just over a second, as expected.
+
+For example, after running the script for some time and refreshing ``localhost:8080`` you might see something that looks like::
+
+  ray_serve_backend_processing_latency_ms_count{...,backend="f",...} 99.0
+  ray_serve_backend_processing_latency_ms_sum{...,backend="f",...} 99279.30498123169
+
+which indicates that the average processing latency is just over one second, as expected.
+
+You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your backend, and tag it with the current backend or replica.
+Here's an example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
+  :lines: 11-23
 
 See the
-`Ray Monitoring documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus and defining your own custom metrics.
+`Ray Monitoring documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
 
 Reconfiguring Backends (Experimental)
 =====================================

@@ -108,7 +108,8 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
                      backend_config: BackendConfig, controller_name: str):
             # Set the controller name so that serve.connect() will connect to
             # the instance that this backend is running in.
-            ray.serve.api._set_internal_controller_name(controller_name)
+            ray.serve.api._set_internal_replica_context(
+                backend_tag, replica_tag, controller_name)
             if is_function:
                 _callable = func_or_class
             else:
