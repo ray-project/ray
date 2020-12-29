@@ -35,7 +35,7 @@ def serve_instance(_shared_serve_instance):
     for endpoint in ray.get(controller.get_all_endpoints.remote()):
         _shared_serve_instance.delete_endpoint(endpoint)
     for backend in ray.get(controller.get_all_backends.remote()).keys():
-        _shared_serve_instance.delete_backend(backend)
+        _shared_serve_instance.delete_backend(backend, force=True)
 
 
 @pytest.fixture
