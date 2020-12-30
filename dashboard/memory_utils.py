@@ -57,6 +57,28 @@ class ReferenceType:
     CAPTURED_IN_OBJECT = "CAPTURED_IN_OBJECT"
     UNKNOWN_STATUS = "UNKNOWN_STATUS"
 
+def get_sorting_type(sort_by: str):
+    """Translate string input into SortingType instance"""
+    sort_by = sort_by.upper()
+    if sort_by == 'PID':
+        return SortingType.PID
+    elif sort_by == 'OBJECT_SIZE':
+        return SortingType.OBJECT_SIZE
+    elif sort_by == 'REFERENCE_TYPE':
+        return SortingType.REFERENCE_TYPE
+    else: 
+        raise Exception("The sort-by input you provided is not one of PID, OBJECT_SIZE, or REFERENCE_TYPE. Check your spelling and try again.")
+
+def get_group_by_type(group_by: str):
+    """Translate string input into GroupByType instance"""
+    group_by = group_by.upper()
+    if group_by == 'NODE_ADDRESS':
+        return GroupByType.NODE_ADDRESS
+    elif group_by == 'STACK_TRACE':
+        return GroupByType.STACK_TRACE
+    else: 
+        raise Exception("The group-by input you provided is not one of NODE_ADDRESS or STACK_TRACE. Check your spelling and try again.")
+
 
 class MemoryTableEntry:
     def __init__(self, *, object_ref: dict, node_address: str, is_driver: bool,

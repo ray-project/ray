@@ -13,8 +13,8 @@ def f(arg):
 a = ray.put(None)
 b = f.remote(None)
 c = ray.put([1, 2, 3])
-d = ray.put([c])
+d, e = ray.put([c]), ray.put(['hello'])
 del c
 
 # Give some time to test 'ray memory'
-time.sleep(3600)
+time.sleep(7200)
