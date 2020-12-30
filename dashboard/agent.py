@@ -65,7 +65,7 @@ class DashboardAgent(object):
         # TODO(edoakes): RAY_RAYLET_PID isn't properly set on Windows. This is
         # only used for fate-sharing with the raylet and we need a different
         # fate-sharing mechanism for Windows anyways.
-        if sys.platform != "win32":
+        if sys.platform not in ["win32", "cygwin"]:
             self.ppid = int(os.environ["RAY_RAYLET_PID"])
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
@@ -111,7 +111,7 @@ class DashboardAgent(object):
                 logger.error("Failed to check parent PID, exiting.")
                 sys.exit(1)
 
-        if sys.platform != "win32":
+        if sys.platform not in ["win32", "cygwin"]:
             check_parent_task = create_task(_check_parent())
 
         # Create an aioredis client for all modules.
