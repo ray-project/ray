@@ -18,9 +18,9 @@ public interface RuntimeContext {
   ActorId getCurrentActorId();
 
   /**
-   * Returns true if the current actor was restarted, false if it's created for the first time.
+   * Returns true if the current actor was restarted, otherwise false.
    *
-   * <p>Note, this method should only be called from an actor creation task.
+   * <p>Note, this method can be called from both an actor creation task and an actor task.
    */
   boolean wasCurrentActorRestarted();
 
