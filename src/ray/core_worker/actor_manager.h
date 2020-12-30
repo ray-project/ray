@@ -149,6 +149,9 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
+  /// Get actor handle of named actor by the given name.
+  /// Note that if it cached in local, return it immediately,
+  /// otherwise fetch from Gcs and then return it synchronously.
   std::pair<const ActorHandle *, Status> GetNamedActorHandle(
       const std::string &name, const TaskID &caller_id, const std::string &call_site,
       const rpc::Address &rpc_address);
@@ -176,6 +179,7 @@ class ActorManager {
                       const rpc::Address &caller_address, const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id);
 
+  /// Helper to add a new actor handle for named actor.
   void AddNewActorHandleForNamedActor(const std::string &name,
                                       std::unique_ptr<ActorHandle> actor_handle,
                                       const TaskID &caller_id,
