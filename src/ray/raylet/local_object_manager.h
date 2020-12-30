@@ -24,6 +24,7 @@
 #include "ray/object_manager/common.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 

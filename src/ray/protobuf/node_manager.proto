@@ -167,6 +167,9 @@ message FormatGlobalMemoryInfoReply {
   // A tabular summary of the memory stats. To get this data in structured form,
   // you can instead use GetNodeStats() directly.
   string memory_summary = 1;
+  // Aggregate store stats across all nodes. To get the individual node data,
+  // you can instead use GetNodeStats() directly.
+  ObjectStoreStats store_stats = 2;
 }
 
 message RequestObjectSpillageRequest {
