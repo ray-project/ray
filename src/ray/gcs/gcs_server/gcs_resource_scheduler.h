@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 #pragma once
 
 #include "absl/container/flat_hash_set.h"
@@ -90,8 +91,8 @@ class GcsResourceScheduler {
   /// \param scheduling_type This scheduling strategy.
   /// \param node_filter_func This function is used to filter candidate nodes. By default,
   /// all nodes in the cluster can be used for scheduling.
-  /// \return Scheduling selected nodes, it corresponds to `required_resources` one by
-  /// one. If the scheduling fails, an empty vector is returned.
+  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
+  /// by one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> Schedule(
       const std::vector<ResourceSet> &required_resources_list,
       const SchedulingType &scheduling_type,
@@ -121,26 +122,55 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
-  /// \return The Sorted resources.
+  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
+  /// by one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> StrictSpreadSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
+  /// Schedule resources according to `SPREAD` strategy.
+  ///
+  /// \param required_resources_list The resources to be scheduled.
+  /// \param candidate_nodes The nodes can be used for scheduling.
+  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
+  /// by one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> SpreadSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
+  /// Schedule resources according to `STRICT_PACK` strategy.
+  ///
+  /// \param required_resources_list The resources to be scheduled.
+  /// \param candidate_nodes The nodes can be used for scheduling.
+  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
+  /// by one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> StrictPackSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
+  /// Schedule resources according to `PACK` strategy.
+  ///
+  /// \param required_resources_list The resources to be scheduled.
+  /// \param candidate_nodes The nodes can be used for scheduling.
+  /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
+  /// by one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> PackSchedule(
       const std::vector<ResourceSet> &required_resources_list,
       const absl::flat_hash_set<NodeID> &candidate_nodes);
 
+  /// Score all nodes according to the specified resources.
+  ///
+  /// \param required_resources The resources to be scheduled.
+  /// \param candidate_nodes The nodes can be used for scheduling.
+  /// \return Score of all nodes.
   std::list<NodeScore> ScoreNodes(const ResourceSet &required_resources,
                                   const absl::flat_hash_set<NodeID> &candidate_nodes);
 
+  /// Return the resources temporarily deducted from gcs resource manager.
+  ///
+  /// \param required_resources_list The resources to be scheduled.
+  /// \param nodes Scheduling selected nodes, it corresponds to `required_resources_list`
+  /// one by one.
   void ReleaseTemporarilyDeductedResources(
       const std::vector<ResourceSet> &required_resources_list,
       const std::vector<NodeID> &nodes);

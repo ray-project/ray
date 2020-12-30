@@ -109,7 +109,6 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
 
 std::vector<ResourceSet> GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceSet> &required_resources) {
-  // TODO(ffbin): We will implement it in next pr.
   // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
   // schedule bundles with special resource requirements first, which will be implemented
   // in the next pr.
@@ -277,6 +276,7 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
     double node_grade = node_scorer_->MakeGrade(required_resources, iter->second);
     node_scores.emplace_back(node_id, node_grade);
   }
+
   node_scores.sort([](const NodeScore &left, const NodeScore &right) {
     return right.second < left.second;
   });
