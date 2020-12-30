@@ -2984,13 +2984,14 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   std::ostringstream builder;
   builder
       << "----------------------------------------------------------------------------"
-         "-------------------------\n";
+         "-----------------------------------------\n";
   builder
-      << " Object ID                                Reference Type       Object Size  "
+      << " Object ID                                                Reference Type    "
+         "   Object Size  "
          " Reference Creation Site\n";
   builder
       << "============================================================================"
-         "=========================\n";
+         "=========================================\n";
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
@@ -3040,7 +3041,7 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   }
   builder
       << "----------------------------------------------------------------------------"
-         "-------------------------\n";
+         "-----------------------------------------\n";
 
   return builder.str();
 }

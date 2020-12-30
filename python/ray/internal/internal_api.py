@@ -20,7 +20,8 @@ def memory_summary():
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 
-    # We can ask any Raylet for the global memory info.
+    # We can ask any Raylet for the global memory info, that Raylet internally
+    # asks all nodes in the cluster for memory stats.
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     ray.nodes()[0]["NodeManagerPort"])
