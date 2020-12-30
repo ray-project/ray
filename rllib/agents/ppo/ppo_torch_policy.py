@@ -7,7 +7,6 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -171,6 +170,23 @@ def vf_preds_fetches(
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
     }
+
+
+def apply_grad_clipping(policy, optimizer, loss):
+    info = {}
+    if policy.config["grad_clip"]:
+        for param_group in optimizer.param_groups:
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(
+                filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                grad_gnorm = nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"])
+                if isinstance(grad_gnorm, torch.Tensor):
+                    grad_gnorm = grad_gnorm.cpu().numpy()
+                info["grad_gnorm"] = grad_gnorm
+    return info
 
 
 class KLCoeffMixin:

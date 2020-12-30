@@ -1,7 +1,7 @@
 import logging
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+from ray.rllib.agents.ppo.ppo_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
     get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \

@@ -3,12 +3,12 @@ import logging
 from typing import Tuple, Type
 
 import ray
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.maml.maml_torch_policy import setup_mixins, \
     maml_loss, maml_stats, maml_optimizer_fn, KLCoeffMixin
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
-from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches
+from ray.rllib.agents.ppo.ppo_torch_policy import apply_grad_clipping, \
+    vf_preds_fetches
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper

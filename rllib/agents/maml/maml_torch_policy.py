@@ -6,9 +6,8 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
     setup_config
-from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
-    ValueNetworkMixin
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
+from ray.rllib.agents.ppo.ppo_torch_policy import apply_grad_clipping, \
+    vf_preds_fetches, ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
