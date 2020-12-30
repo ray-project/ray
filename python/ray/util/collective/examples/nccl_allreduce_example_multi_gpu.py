@@ -19,7 +19,7 @@ class Worker:
         return True
 
     def compute(self):
-        collective.allreduce([self.send1, self.send2], "default")
+        collective.allreduce_multigpu([self.send1, self.send2], "default")
         return [self.send1, self.send2], self.send1.device, self.send2.device
 
     def destroy(self):
@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     send = cp.ones((4, ), dtype=cp.float32)
 
- #   ray.init(num_gpus=4)
+    ray.init(address='auto')
 
     num_workers = 2
     workers = []

@@ -114,6 +114,7 @@ class NCCLGroup(BaseGroup):
         # TODO(Hao): fix this cache to accommodate `_dev_comm_map` below.
         self._collective_comm_cache = None
         self._p2p_comm_cache = {}
+        self._p2p_stream_cache = {}
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
@@ -124,10 +125,10 @@ class NCCLGroup(BaseGroup):
         # Setup a tensor for barrier calls
         self._barrier_tensor = cupy.array([1])
 
-        self._dev_comm_map = dict()
+        self._dev_comm_map = {}
 
         # check the stream correctness.
-        self._dev_streams_map = dict()
+        self._dev_streams_map = {}
 
     def destroy_group(self):
         """Destroy the group and release NCCL communicators."""
@@ -168,6 +169,12 @@ class NCCLGroup(BaseGroup):
                 del self._p2p_comm_cache[key]
             self._p2p_comm_cache = None
 
+        if self._p2p_stream_cache:
+            for _, stream in self._p2p_stream_cache.items():
+                runtime.streamDestroy(stream)
+                self._p2p_stream_cache[key] = None
+            for key in list(self._p2p_stream_cache.keys()):
+                del self._p2p_stream_cache[key]
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
@@ -303,15 +310,19 @@ class NCCLGroup(BaseGroup):
         comms = self._get_nccl_communicator(devices)
         # First wait for current tensor allocation stream
         streams = self._dev_streams_map[key]
+        self.sync_streams()
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        send_ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor[0])
         flattened = _flatten_for_scatter_gather(tensor_list, copy=False)
         recv_ptr = nccl_util.get_tensor_ptr(flattened)
-        comm.allGather(send_ptr, recv_ptr, n_elems, dtype, stream.ptr)
-        for i, t in enumerate(tensor_list):
-            nccl_util.copy_tensor(t, flattened[i])
+        GroupStart()
+        for i in range(len(tensor)):
+            send_ptr = nccl_util.get_tensor_ptr(tensor[i])
+            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
+            comms[i].allGather(send_ptr, recv_ptr, n_elems, dtype, streams[i].ptr)
+            for index, t in enumerate(tensor_list[i]):
+                nccl_util.copy_tensor(t, flattened[i][index])
+        GroupEnd()
 
     def reducescatter(self,
                       tensor,
@@ -320,8 +331,8 @@ class NCCLGroup(BaseGroup):
         """Reducescatter a list of tensors across the group.
 
         Args:
-            tensor: the output after reducescatter (could be unspecified).
-            tensor_list: the list of tensor to be reduce and scattered.
+            tensor(list(tensor)): the output after reducescatter (could be unspecified).
+            tensor_list(list(list(tensor))): the list of tensor to be reduce and scattered.
             reducescatter_options: reducescatter options.
 
         Returns:
@@ -329,27 +340,33 @@ class NCCLGroup(BaseGroup):
         """
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
 
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
-        n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
-        reduce_op = nccl_util.get_nccl_reduce_op(
-            reducescatter_options.reduceOp)
+        devices = nccl_util.get_devices(tensor)
+        key = nccl_util.get_key_from_devices(devices)
+        comms = self._get_nccl_communicator(devices)
+        # First wait for current tensor allocation stream
+        streams = self._dev_streams_map[key]
+        self.sync_streams()
 
-        # get the send_ptr
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor[0])
         flattened = _flatten_for_scatter_gather(tensor_list, copy=True)
         send_ptr = nccl_util.get_tensor_ptr(flattened)
-        recv_ptr = nccl_util.get_tensor_ptr(tensor)
-        comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
-                           stream.ptr)
+        reduce_op = nccl_util.get_nccl_reduce_op(
+            reducescatter_options.reduceOp)
+        GroupStart()
+        for i in range(len(tensor)):
+            recv_ptr = nccl_util.get_tensor_ptr(tensor[i])
+            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
+            comms[i].reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
+                               streams[i].ptr)
+        GroupEnd()
 
-    def send(self, tensor, dst_rank):
+    def send(self, tensor, dst_rank, dst_index):
         """Send tensor to a destination process in the group.
 
         Args:
             tensor: the tensor to send.
             dst_rank: the rank of the destination process.
-
+            dst_index: the index at the destination
         Returns:
             None
         """
@@ -359,17 +376,18 @@ class NCCLGroup(BaseGroup):
             raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
                                "Got '{}'.".format(
                                    nccl_util.get_nccl_runtime_version()))
-
-        peer_p2p_rank = 0 if self.rank > dst_rank else 1
-        comm = self._get_nccl_p2p_communicator(self.rank, dst_rank)
-        stream = self._get_cuda_stream()
+        src_index = nccl_utils.get_devices([tensor])
+        src_index = src_index[0]
+        comm, peer_p2p_rank, key = self._get_nccl_p2p_communicator_and_info(
+                           self.rank, src_index, dst_rank, dst_index)
+        stream = self._p2p_stream_cache[key]
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
         ptr = nccl_util.get_tensor_ptr(tensor)
         n_elems = nccl_util.get_tensor_n_elements(tensor)
         comm.send(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
 
-    def recv(self, tensor, src_rank):
+    def recv(self, tensor, src_rank, src_index):
         """Receive tensor from a source process in the group.
 
         Args:
@@ -383,15 +401,17 @@ class NCCLGroup(BaseGroup):
             raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
                                "Got '{}'.".format(
                                    nccl_util.get_nccl_runtime_version()))
-        peer_p2p_rank = 0 if self.rank > src_rank else 1
-        comm = self._get_nccl_p2p_communicator(src_rank, self.rank)
-        stream = self._get_cuda_stream()
+        dst_index = nccl_utils.get_devices([tensor])
+        dst_index = dst_index[0]
+        comm, peer_p2p_rank, key = self._get_nccl_p2p_communicator_and_info(
+                           src_rank, src_index, self.rank, dst_index)
+        stream = self._p2p_stream_cache[key]
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor)
         ptr = nccl_util.get_tensor_ptr(tensor)
         n_elems = nccl_util.get_tensor_n_elements(tensor)
         comm.recv(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
-
+        
     def _get_nccl_collective_communicator(self):
         """Create or retrieve a cached NCCL communicator.
 
@@ -399,6 +419,7 @@ class NCCLGroup(BaseGroup):
             communicator
         """
         # TODO(Hao): implement a thin wrapper
+        raise RuntimeError("Deprecated.")
         if not self._collective_comm_cache:
             # create the communicator
             if self.rank == 0:
@@ -468,34 +489,53 @@ class NCCLGroup(BaseGroup):
         # cupy allocate tensors on null streams.
         cupy.cuda.Stream.null.synchronize()
 
-    def _get_nccl_p2p_communicator(self, src_rank, dst_rank):
+    def _get_nccl_p2p_communicator_and_info(self, src_rank, src_index, dst_rank, dst_index):
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Args:
             src_rank (int): source rank.
+            src_index (int): GPU index at source rank
             dst_rank (int): destination rank.
+            dst_index (int): GPU index at destination rank
+
 
         Returns:
             communicator
         """
-        min_rank = min(src_rank, dst_rank)
-        max_rank = max(src_rank, dst_rank)
-        my_rank = 0 if self.rank == min_rank else 1
-        p2p_group_key = self._generate_p2p_group_key(min_rank, max_rank)
+        if src_rank < dst_rank:
+            my_rank = 0 if self.rank == src_rank else 1
+            min_str = str(src_rank) + "." + str(src_index)
+            max_str = str(dst_rank) + "." + str(dst_index)
+        elif scr_rank > dst_rank:
+            my_rank = 0 if self.rank == dst_rank else 1
+            min_str = str(dst_rank) + "." + str(dst_index)
+            max_str = str(src_rank) + "." + str(src_index)
+        else:
+            #FIXME: Should we also implement this?
+            raise RuntimeError(f"Sending data to the same machine at 
+                                 rank {src_rank}.")
+            
+        p2p_group_key = self._generate_p2p_group_key(min_str, max_str)
         comm = self._p2p_comm_cache.get(p2p_group_key)
         if not comm:
-            if self.rank == min_rank:
+            if my_rank == 0:
                 group_uid = self._generate_nccl_uid(p2p_group_key)
             else:
                 rendezvous = Rendezvous(p2p_group_key)
                 rendezvous.meet()
                 group_uid = rendezvous.get_nccl_id()
-            comm = nccl_util.create_nccl_communicator(2, group_uid, my_rank)
+            my_device = src_index if self.rank == src_rank else dst_index
+            with Device(my_device):
+                comm = nccl_util.create_nccl_communicator(2, group_uid, my_rank)
+                stream = Stream(non_blocking=True)
             self._p2p_comm_cache[p2p_group_key] = comm
-        return comm
+            self._p2p_stream_cache[p2p_group_key] = stream
+        
+        peer_rank = 1 if my_rank == 0 else 0
+        return comm, peer_rank, p2p_group_key
 
-    def _generate_p2p_group_key(self, min_rank, max_rank):
-        return self.group_name + "_" + str(min_rank) + "_" + str(max_rank)
+    def _generate_p2p_group_key(self, min_str, max_str):
+        return self.group_name + "_" + min_rank + "_" + max_rank
 
     @staticmethod
     def _parse_p2p_group_key(key):
@@ -556,37 +596,54 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
     """
     if not tensor_list:
         raise RuntimeError("Received an empty list.")
-    t = tensor_list[0]
+    t = tensor_list[0][0]
     # note we need a cupy dtype here.
     dtype = nccl_util.get_cupy_tensor_dtype(t)
-    buffer_shape = [len(tensor_list)] + nccl_util.get_tensor_shape(t)
+    buffer_shape = [len(tensor_list)] + [len(tensor_list[0]]\
+                   + nccl_util.get_tensor_shape(t)
     buffer = cupy.empty(buffer_shape, dtype=dtype)
     if copy:
-        for i, tensor in enumerate(tensor_list):
-            nccl_util.copy_tensor(buffer[i], tensor)
+        for i in range(len(buffer)):
+            for index, tensor in enumerate(tensor_list[i]):
+                nccl_util.copy_tensor(buffer[i][index], tensor)
     return buffer
 
 
 def _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list):
     """Check the compatibility between tensor input and tensor list inputs."""
-    pass
     if not tensor_list:
         raise RuntimeError("Got empty list of tensors.")
     if not tensor:
         raise RuntimeError("Got empty tensor.")
-    #for i in range(len(tensor_list)):
-    dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-    shape = nccl_util.get_tensor_shape(tensor)
-    for t in tensor_list:
-        # check dtype
-        dt = nccl_util.get_nccl_tensor_dtype(t)
+    # note: tensor is a list of tensors, with shape num_gpus * len(tensor)
+    # tensor_list is a list of list of tensors, with shape num_gpus * 
+    # world_size * len(tensor)
+    num_gpu = len(tensor_list)
+    world_size = len(tensor_list[0])
+    dtype = nccl_util.get_nccl_tensor_dtype(tensor[0])
+    shape = nccl_util.get_tensor_shape(tensor[0])
+    for i in range(num_gpu):
+        # check the ith tensor component the same as the first
+        dt = nccl_util.get_nccl_tensor_dtype(tensor[i])
         if dt != dtype:
             raise RuntimeError("All tensor operands to scatter/gather must "
                                "have the same dtype. Got '{}' and '{}'"
                                "".format(dt, dtype))
-        # Note: typically CCL libraries only requires they have the same
-        # number of elements;
-        # Here we make it more strict -- we require exact shape match.
-        if nccl_util.get_tensor_shape(t) != shape:
+        if nccl_util.get_tensor_shape(tensor[i]) != shape:
             raise RuntimeError("All tensor operands to scatter/gather must "
-                               "have the same shape.")
+                                "have the same shape.")
+        # check every element of the ith tensor_list component the same
+        # as the first component of tensor
+        for t in tensor_list[i]:
+            # check dtype
+            dt = nccl_util.get_nccl_tensor_dtype(t)
+            if dt != dtype:
+                raise RuntimeError("All tensor operands to scatter/gather must "
+                                   "have the same dtype. Got '{}' and '{}'"
+                                   "".format(dt, dtype))
+            # Note: typically CCL libraries only requires they have the same
+            # number of elements;
+            # Here we make it more strict -- we require exact shape match.
+            if nccl_util.get_tensor_shape(t) != shape:
+                raise RuntimeError("All tensor operands to scatter/gather must "
+                                   "have the same shape.")

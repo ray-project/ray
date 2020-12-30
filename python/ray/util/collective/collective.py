@@ -360,7 +360,7 @@ def reducescatter(tensor,
             "must not be equal to world_size.")
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
-    g.reducescatter(tensor, tensor_list, opts)
+    g.reducescatter([tensor], [tensor_list], opts)
 
 
 def reducescatter_multigpu(output_tensor_list,
@@ -368,7 +368,16 @@ def reducescatter_multigpu(output_tensor_list,
                            group_name: str = "default",
                            op=types.ReduceOp.SUM):
     """TODO(Dacheng)."""
-    pass
+    _check_tensor_lists_input(input_tensor_lists)
+    _check_tensor_list_input(output_tensor_list)
+    g = _check_and_get_group(group_name)
+    if len(tensor_list) != g.world_size:
+        raise RuntimeError(
+            "The length of the tensor list operands to reducescatter "
+            "must not be equal to world_size.")
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
+    g.reducescatter(output_tensor_lisr, input_tensor_lists, opts)
 
 
 def send(tensor, dst_rank: int, group_name: str = "default"):
@@ -388,7 +397,7 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     if dst_rank == g.rank:
         raise RuntimeError(
             "The destination rank '{}' is self.".format(dst_rank))
-    g.send(tensor, dst_rank)
+    g.send(tensor, dst_rank, 0)
 
 
 def send_multigpu(tensor,
@@ -396,8 +405,13 @@ def send_multigpu(tensor,
                   dst_gpu_index: int,
                   group_name: str = "default"):
     """TODO(Dacheng)."""
-    pass
-
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, dst_rank)
+    if dst_rank == g.rank:
+        raise RuntimeError(
+            "The destination rank '{}' is self.".format(dst_rank))
+    g.send(tensor, dst_rank, dst_gpu_index)
 
 def recv(tensor, src_rank: int, group_name: str = "default"):
     """Receive a tensor from a remote process synchronously.
@@ -416,7 +430,7 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     if src_rank == g.rank:
         raise RuntimeError(
             "The destination rank '{}' is self.".format(src_rank))
-    g.recv(tensor, src_rank)
+    g.recv(tensor, src_rank, 0)
 
 
 def recv_multigpu(tensor,
@@ -424,7 +438,14 @@ def recv_multigpu(tensor,
                   src_gpu_index: int,
                   group_name: str = "default"):
     """TODO(Dacheng).."""
-    pass
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, src_rank)
+    if src_rank == g.rank:
+        raise RuntimeError(
+            "The destination rank '{}' is self.".format(src_rank))
+    g.recv(tensor, src_rank, src_gpu_index)
+
 
 
 def _check_and_get_group(group_name):

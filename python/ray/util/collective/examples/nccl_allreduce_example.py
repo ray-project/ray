@@ -15,7 +15,7 @@ class Worker:
         return True
 
     def compute(self):
-        collective.allreduce([self.send], "default")
+        collective.allreduce(self.send, "default")
         print(self.send)
         return self.send
 
