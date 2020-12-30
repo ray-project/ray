@@ -20,10 +20,16 @@
 namespace ray {
 namespace gcs {
 
+// Type of resource scheduling strategy.
 enum SchedulingType {
+  // Places resources across distinct nodes as even as possible.
   SPREAD = 0,
+  // Places resources across distinct nodes.
+  // It is not allowed to deploy more than one resource on a node.
   STRICT_SPREAD = 1,
+  // Packs resources into as few nodes as possible.
   PACK = 2,
+  // Packs resources within one node. It is not allowed to span multiple nodes.
   STRICT_PACK = 3,
   SchedulingType_MAX = 4,
 };

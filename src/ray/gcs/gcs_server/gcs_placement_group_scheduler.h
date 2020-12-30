@@ -113,9 +113,18 @@ class GcsScheduleStrategy {
       const std::unique_ptr<ScheduleContext> &context) = 0;
 
  protected:
+  /// Get required resources from bundles.
+  ///
+  /// \param bundles Bundles to be scheduled.
+  /// \return Required resources.
   std::vector<ResourceSet> GetRequiredResourcesFromBundles(
       const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles);
 
+  /// Generate `ScheduleMap` from bundles and nodes .
+  ///
+  /// \param bundles Bundles to be scheduled.
+  /// \param selected_nodes selected_nodes to be scheduled.
+  /// \return Required resources.
   ScheduleMap GenerateScheduleMap(
       const std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
       const std::vector<NodeID> &selected_nodes);
