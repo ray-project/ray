@@ -54,7 +54,7 @@ ScheduleMap GcsScheduleStrategy::GenerateScheduleMap(
   if (!selected_nodes.empty()) {
     RAY_CHECK(bundles.size() == selected_nodes.size());
     int index = 0;
-    for (auto &bundle : bundles) {
+    for (const auto &bundle : bundles) {
       schedule_map[bundle->BundleId()] = selected_nodes[index++];
     }
   }
@@ -154,7 +154,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .second);
 
   /// TODO(AlisaWu): Change the strategy when reserve resource failed.
-  for (auto &bundle : bundles) {
+  for (const auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
     const auto &node_id = selected_nodes[bundle_id];
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
