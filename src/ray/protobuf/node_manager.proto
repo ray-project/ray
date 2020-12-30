@@ -143,6 +143,9 @@ message ObjectStoreStats {
 
   // The max capacity of the object store.
   int64 object_store_bytes_avail = 8;
+
+  // The number of local objects total.
+  int64 num_local_objects = 9;
 }
 
 message GetNodeStatsReply {
@@ -160,6 +163,8 @@ message GlobalGCRequest {
 message GlobalGCReply {
 }
 
+// Accumulates memory info across all nodes. To access per-node memory info,
+// use GetNodeStats() calls instead.
 message FormatGlobalMemoryInfoRequest {
 }
 

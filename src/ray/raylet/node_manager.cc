@@ -2895,6 +2895,8 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
   // Report object spilling stats.
   local_object_manager_.FillObjectSpillingStats(reply);
+  // Report object store stats.
+  object_manager_.FillObjectStoreStats(reply);
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
     RecordMetrics();
@@ -2990,6 +2992,8 @@ rpc::ObjectStoreStats AccumulateStoreStats(
                                             cur_store.object_store_bytes_used());
     store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
                                              cur_store.object_store_bytes_avail());
+    store_stats.set_num_local_objects(store_stats.num_local_objects() +
+                                      cur_store.num_local_objects());
   }
   return store_stats;
 }
@@ -3090,7 +3094,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
     replies->push_back(local_reply);
     if (replies->size() >= num_nodes) {
       reply->set_memory_summary(FormatMemoryInfo(*replies));
-      reply->set_store_stats(AccumulateStoreStats(*replies));
+      reply->mutable_store_stats()->CopyFrom(AccumulateStoreStats(*replies));
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
