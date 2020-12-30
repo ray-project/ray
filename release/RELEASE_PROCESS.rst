@@ -1,11 +1,9 @@
 Release Process
 ===============
 
-This document describes the process for creating new releases.
-
 Before Branch Cut
 -----------------
-1. Create a document to track release-blocking commits. These may be pull
+1. **Create a document to track release-blocking commits.** These may be pull
    requests that are not ready at the time of branch cut, or they may be
    fixes for issues that you encounter during release testing later.
    The only PRs that should be considered release-blocking are those which
@@ -17,7 +15,7 @@ Before Branch Cut
    Make sure to share this document with the folks at Ant Financial
    in our open-source collaboration channel.
 
-2. Announce the release over email to the engineering@anyscale.com mailing 
+2. **Announce the release** over email to the engineering@anyscale.com mailing 
    group. The announcement should
    contain at least the following information: the release version, 
    the date when branch-cut will occur, the date the release is expected
@@ -34,11 +32,11 @@ After Branch Cut
 
 2. **Update the release branch version:** Push a commit directly to the
    newly-created release branch that increments the Python package version in
-   python/ray/__init__.py and src/ray/raylet/main.cc. See this
+   ``python/ray/__init__.py``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
    `sample commit for bumping the release branch version`_.
 
 3. **Create PR to update the master branch version:**
-   For a new minor release (e.g., 0.7.0): Create a pull request to
+   For a new minor release (e.g., ``0.6.3 -> 0.7.0``): Create a pull request to
    increment the dev version in of the master branch. See this
    `sample PR for bumping a minor release version`_. **NOTE:** Not all of
    the version numbers should be replaced. For example, ``0.7.0`` appears in
@@ -49,7 +47,8 @@ After Branch Cut
 
    TIP: search the code base for instances of ``https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0`` (but replace ray-1.1.0 with the current version) to find links to the nightly wheel to update.
 
-   You should also cherry pick this pull request onto the release branch prior
+   You should also cherry pick parts of this pull request referencing the
+   latest wheels onto the release branch prior
    to making the release. This will ensure that the ``install-nightly`` of
    the new release correctly points at the latest version on master.
 
@@ -59,13 +58,17 @@ After Branch Cut
    command points to 1.1.0.dev0, so when you bump master to 1.2.0.dev0, it no
    longer finds the latest commit.)
 
-   For a new micro release (e.g., 0.7.1): No action is required.
+   For a new micro release (e.g., ``0.7.0 -> 0.7.1``): No action is required.
 
 4. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
 
    You will also need to create a spreadsheet with information about the PRs 
    included in the release to jog people's memories. You can collect this
-   information by running ``git log --date=local --pretty=format:"%h%x09%an%x09%ad%x09%s" releases/1.0.1..releases/1.1.0 > release-commits.tsv``. Then, upload this tsv file to Google sheets
+   information by running
+   .. code-block:: bash
+     git log --date=local --pretty=format:"%h%x09%an%x09%ad%x09%s" releases/1.0.1..releases/1.1.0 > release-commits.tsv
+
+   Then, upload this tsv file to Google sheets
    and sort by description. 
 
    Ask team leads to contribute notes for their teams' projects. Include both
@@ -83,8 +86,10 @@ these tests right after branch cut in order to identify any regressions early.
 The `Releaser`_ tool is used to run release tests in the Anyscale product, and
 is generally the easiest way to run release tests. 
 
-**Overview of Tests**
-1. Microbenchmark - This is a simple test of Ray functionality and performance
+
+1. **Microbenchmark** 
+
+   This is a simple test of Ray functionality and performance
    across several dimensions. You can run it locally with the release commit
    installed using the command ``ray microbenchmark`` for a quick sanity check.
 
@@ -99,7 +104,8 @@ is generally the easiest way to run release tests.
    You can also get the performance change rate from the previous version using
    ``util/microbenchmark_analysis.py``.
 
-2. Long-running tests
+2. **Long-running tests**
+
    These tests should run for at least 24 hours without erroring or hanging (ensure that it is printing new iterations and CPU load is
    stable in the AWS console or in the Anyscale Product's Grafana integration).
 
@@ -109,7 +115,7 @@ is generally the easiest way to run release tests.
 
    Follow the instructions to kick off the tests and check the status of the workloads.
 
-3. Long-running multi-node tests
+3. **Long-running multi-node tests**
 
    .. code-block:: bash
 
@@ -124,7 +130,8 @@ is generally the easiest way to run release tests.
    (and not increasing or decreasing over time, which indicates a leak). You can see the head node
    and worker node CPU utilizations in the AWS console.
 
-4. Multi-node regression tests
+4. **Multi-node regression tests**
+
    Follow the same instruction as long running stress tests. The large scale distributed
    regression tests identify potential performance regression in distributed environment.
    The following test should be run, and can be run with the `Releaser`_ tool
@@ -147,7 +154,8 @@ is generally the easiest way to run release tests.
    The summaries printed by each test should be checked in under
    ``release_logs/<version>`` on the **master** branch (make a pull request).
 
-5. ASAN tests
+5. **ASAN tests**
+
    Run the ``ci/asan_tests`` with the commit. This will enable ASAN build and run the
    whole Python tests to detect memory leaks.
 
@@ -157,11 +165,12 @@ If a release blocking issue arises in the course of testing, you should
 reach out to the team to which the issue corresponds. They should either
 work on a fix immediately or tell you which changes ought to be reverted.
 
-There are two ways the issue can be resolved: 1) Fix the issue on the master 
-branch and
-cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
-branch (recommended). 2) Revert the commit that introduced the bug on the
-release branch (using ``git revert``), but not on the master (not recommended).
+There are two ways the issue can be resolved: 
+1. Fix the issue on the master branch and
+   cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
+   branch (recommended). 
+2. Revert the commit that introduced the bug on the
+   release branch (using ``git revert``), but not on the master (not recommended).
 
 These changes should then be pushed directly to the release branch.
 
@@ -281,17 +290,17 @@ to proceed with the final stages of the release!
    ``rayproject/ray`` and ``rayproject/ray-ml`` Docker images to point to the Docker images built from the release. (If you have privileges in these
    docker projects, you can do this step yourself.)
 
-8. **Send out an email announcing the release to the engineering@anyscale.com
+8. **Send out an email announcing the release** to the engineering@anyscale.com
    Google group, and post a slack message in the Announcements channel of the
    Ray slack (message a team lead if you do not have permissions.)
 
 9. **Improve the release process:** Find some way to improve the release
-    process so that whoever manages the release next will have an easier time.
-    If you had to make any changes to tests or cluster configurations, make
-    sure they are contributed back! If you've noticed anything in the docs that
-    was out-of-date, please patch them.
+   process so that whoever manages the release next will have an easier time.
+   If you had to make any changes to tests or cluster configurations, make
+   sure they are contributed back! If you've noticed anything in the docs that
+   was out-of-date, please patch them.
 
-**You're done! Congratulations!**
+**You're done! Congratulations and good job!**
 
 Resources and Troubleshooting
 -----------------------------
