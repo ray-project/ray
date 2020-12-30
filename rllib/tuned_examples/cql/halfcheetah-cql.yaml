@@ -39,7 +39,7 @@ halfcheetah_cql:
         bc_iters: 20000
         temperature: 1.0
         num_actions: 10
-        lagrangian: True
+        lagrangian: False
         evaluation_config:
             input: sampler
 
