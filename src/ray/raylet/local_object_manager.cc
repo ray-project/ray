@@ -414,6 +414,15 @@ void LocalObjectManager::DeleteSpilledObjects(std::vector<std::string> &urls_to_
       });
 }
 
+void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const {
+  reply->set_spill_time_total_s(spill_time_total_s_);
+  reply->set_spilled_bytes_total(spilled_bytes_total_);
+  reply->set_spilled_objects_total(spilled_objects_total_);
+  reply->set_restore_time_total_s(restore_time_total_s_);
+  reply->set_restored_bytes_total(restored_bytes_total_);
+  reply->set_restored_objects_total(restored_objects_total_);
+}
+
 };  // namespace raylet
 
 };  // namespace ray

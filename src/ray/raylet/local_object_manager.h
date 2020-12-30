@@ -117,6 +117,11 @@ class LocalObjectManager {
   /// \return True if spilling is still in progress. False otherwise.
   bool IsSpillingInProgress();
 
+  /// Populate object spilling stats.
+  ///
+  /// \param Output parameter.
+  void FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) const;
+
  private:
   FRIEND_TEST(LocalObjectManagerTest, TestSpillObjectsOfSize);
   FRIEND_TEST(LocalObjectManagerTest,

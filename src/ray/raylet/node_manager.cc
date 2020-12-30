@@ -2893,6 +2893,8 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
       ready_task->ParseFromString(task.GetTaskSpecification().Serialize());
     }
   }
+  // Report object spilling stats.
+  local_object_manager_->FillObjectSpillingStats(reply);
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
     RecordMetrics();
