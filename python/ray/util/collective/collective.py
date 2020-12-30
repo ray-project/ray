@@ -186,14 +186,17 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g.allreduce([tensor], opts)
 
 
-def allreduce_multigpu(tensor_list, group_name: str = "default", op=types.ReduceOp.SUM):
-    """Collective allrecue a list of tensors across the group."""
+def allreduce_multigpu(tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM):
+    """Collective allrecue a list of tensors across the group.
+    tensor_list (list(tensor)): list of tensor to be allreduced.
+                                shape: num_gpus * tensor_shape
+    """
     # nccl_util.check_collective_input(tensor)
-    _check_tensor_list_input(tensor)
+    _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
     opts.reduceOp = op
-    g.allreduce(tensor, opts)
+    g.allreduce(tensor_list, opts)
 
 def barrier(group_name: str = "default"):
     """Barrier all processes in the collective group.
@@ -235,13 +238,26 @@ def reduce(tensor,
     g.reduce([tensor], opts)
 
 
-def reduce_multigpu(tensor_list,
+def reduce_multigpu(tensor_list: list,
                     dst_rank: int = 0,
                     dst_tensor: int = 0,
                     group_name: str = "default",
                     op=types.ReduceOp.SUM):
-    """TODO(Dacheng)"""
-    _check_list_tensor_input(tensor)
+    """Reduce the tensor across the group to the destination rank
+    and destination tensor.
+
+    Args:
+        tensor: the list of tensor to be reduced on this process.
+        dst_rank: the rank of the destination process.
+        dst_tensor: the index of GPU at the destination.
+        group_name: the collective group name to perform reduce.
+        op: The reduce operation.
+
+    Returns:
+        None
+    """
+
+    _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
 
     # check dst rank
@@ -280,8 +296,19 @@ def broadcast_multigpu(tensor_list,
                        src_rank: int = 0,
                        src_tensor: int = 0,
                        group_name: str = "default"):
-    """TODO(Dacheng)"""
-    _check_list_tensor_input(tensor_list)
+    """Broadcast the tensor from a source process at source
+    GPU to all others.
+
+    Args:
+        tensor_list: the tensor list to be broadcasted (src) or received (destination).
+        src_rank: the rank of the source process.
+        src_tensor: the index of the source GPU
+        group_name: he collective group name to perform broadcast.
+
+    Returns:
+        None
+    """
+    _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
 
     # check src rank

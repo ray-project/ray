@@ -19,7 +19,7 @@ class Worker:
         return True
 
     def compute(self):
-        collective.allreduce_multigpu([self.send1, self.send2], "177")
+        collective.reduce_multigpu([self.send1, self.send2], 1, 1, "177")
         return [self.send1, self.send2], self.send1.device, self.send2.device
 
     def destroy(self):

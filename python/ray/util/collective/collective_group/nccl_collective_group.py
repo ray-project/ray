@@ -148,15 +148,16 @@ class NCCLGroup(BaseGroup):
         if len(self._dev_comm_map.keys()) > 0:
             self.barrier()
             # destroy the streams and communicator
-            for _, stream in self._dev_streams_map.items():
-                runtime.streamDestroy(stream)
+            #for _, streams in self._dev_streams_map.items():
+            #    for stream in streams:
+            #        runtime.streamDestroy(stream.ptr)
             for _, comms in self._dev_comm_map.items():
                 for c in comms:
                     c.destroy()
 
-            self._barrier_tensor = None
-            self._dev_comm_map = None
-            self._dev_streams_map = None
+        self._barrier_tensor = None
+        self._dev_comm_map = None
+        self._dev_streams_map = None
 
         if self._p2p_comm_cache:
             for key, comm in self._p2p_comm_cache.items():
@@ -169,12 +170,12 @@ class NCCLGroup(BaseGroup):
                 del self._p2p_comm_cache[key]
             self._p2p_comm_cache = None
 
-        if self._p2p_stream_cache:
-            for _, stream in self._p2p_stream_cache.items():
-                runtime.streamDestroy(stream)
-                self._p2p_stream_cache[key] = None
-            for key in list(self._p2p_stream_cache.keys()):
-                del self._p2p_stream_cache[key]
+       # if self._p2p_stream_cache:
+        #    for _, stream in self._p2p_stream_cache.items():
+        #        runtime.streamDestroy(stream.ptr)
+        #        self._p2p_stream_cache[key] = None
+        #    for key in list(self._p2p_stream_cache.keys()):
+        #        del self._p2p_stream_cache[key]
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
@@ -274,8 +275,8 @@ class NCCLGroup(BaseGroup):
         self._sync_streams()
        
         # compute the actual root rank
-        root_rank = reduce_options.root_rank
-        root_tensor = reduce_options.root_tensor
+        root_rank = broadcast_options.root_rank
+        root_tensor = broadcast_options.root_tensor
         _root_rank = root_rank * len(tensor) + root_tensor
         # for non-blocking calls of all-reduce
         groupStart()
@@ -511,10 +512,8 @@ class NCCLGroup(BaseGroup):
             min_str = str(dst_rank) + "." + str(dst_index)
             max_str = str(src_rank) + "." + str(src_index)
         else:
-            #FIXME: Should we also implement this?
-            raise RuntimeError(f"Sending data to the same machine at 
-                                 rank {src_rank}.")
-            
+           raise RuntimeError(f"Sending data to the same machine.")
+
         p2p_group_key = self._generate_p2p_group_key(min_str, max_str)
         comm = self._p2p_comm_cache.get(p2p_group_key)
         if not comm:
@@ -599,8 +598,8 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
     t = tensor_list[0][0]
     # note we need a cupy dtype here.
     dtype = nccl_util.get_cupy_tensor_dtype(t)
-    buffer_shape = [len(tensor_list)] + [len(tensor_list[0]]\
-                   + nccl_util.get_tensor_shape(t)
+    buffer_shape = [len(tensor_list)] + [len(tensor_list[0])]+ \
+                    nccl_util.get_tensor_shape(t)
     buffer = cupy.empty(buffer_shape, dtype=dtype)
     if copy:
         for i in range(len(buffer)):

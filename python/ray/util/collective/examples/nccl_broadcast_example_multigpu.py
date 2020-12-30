@@ -15,11 +15,15 @@ class Worker:
         self.recv = cp.zeros((4, ), dtype=cp.float32)
 
     def setup(self, world_size, rank):
+        with Device(0):
+            self.send1 *= (rank + 2)
+        with Device(1):
+            self.send2 *= (rank + 2)
         collective.init_collective_group(world_size, rank, "nccl", "177")
         return True
 
     def compute(self):
-        collective.allreduce_multigpu([self.send1, self.send2], "177")
+        collective.broadcast_multigpu([self.send1, self.send2], 1, 1, "177")
         return [self.send1, self.send2], self.send1.device, self.send2.device
 
     def destroy(self):
