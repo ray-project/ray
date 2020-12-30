@@ -13,12 +13,10 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
-#include "absl/container/flat_hash_set.h"
 
 namespace ray {
 namespace gcs {
 
-//////////////////////////////////// Begin of NodeScorer ////////////////////////////////
 double LeastResourceScorer::MakeGrade(const ResourceSet &required_resources,
                                       const SchedulingResources &node_resources) {
   const auto &available_resources = node_resources.GetAvailableResources();
@@ -51,9 +49,9 @@ double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requeste
   }
   return (available - requested).ToDouble() / available.ToDouble();
 }
-//////////////////////////////////// End of NodeScorer ////////////////////////////////
 
-/////////////////////////////// Begin of GcsResourceScheduler ///////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+
 std::vector<NodeID> GcsResourceScheduler::Schedule(
     const std::vector<ResourceSet> &required_resources_list,
     const SchedulingType &scheduling_type,
@@ -270,6 +268,8 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
   std::list<NodeScore> node_scores;
   const auto &cluster_resources = gcs_resource_manager_.GetClusterResources();
+
+  // Score the nodes.
   for (const auto &node_id : candidate_nodes) {
     const auto &iter = cluster_resources.find(node_id);
     RAY_CHECK(iter != cluster_resources.end());
@@ -277,6 +277,7 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
     node_scores.emplace_back(node_id, node_grade);
   }
 
+  // Sort node scores, the large score is in the front.
   node_scores.sort([](const NodeScore &left, const NodeScore &right) {
     return right.second < left.second;
   });
@@ -287,14 +288,13 @@ void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(
     const std::vector<ResourceSet> &required_resources_list,
     const std::vector<NodeID> &nodes) {
   for (int index = 0; index < (int)nodes.size(); ++index) {
+    // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!nodes[index].IsNil()) {
-      gcs_resource_manager_.ReleaseResources(nodes[index],
-                                             required_resources_list[index]);
+      RAY_CHECK(gcs_resource_manager_.ReleaseResources(nodes[index],
+                                                       required_resources_list[index]));
     }
   }
 }
-
-/////////////////////////////// End of GcsResourceScheduler ///////////////////////////
 
 }  // namespace gcs
 }  // namespace ray
