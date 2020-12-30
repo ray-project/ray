@@ -189,9 +189,9 @@ class BackendState:
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
 
-    def add_or_modify_backend_goal(self, backend_tag: BackendTag,
-                                   backend_info: Optional[BackendInfo],
-                                   goal_id: GoalId) -> Optional[GoalId]:
+    def _set_backend_goal(self, backend_tag: BackendTag,
+                          backend_info: Optional[BackendInfo],
+                          goal_id: GoalId) -> Optional[GoalId]:
         existing_goal = self.goals.get(backend_tag)
         self.backends[backend_tag] = backend_info
         if not backend_info:
@@ -201,15 +201,15 @@ class BackendState:
 
     def completed_goals(
             self,
-            backend_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]
+            current_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]
     ) -> List[GoalId]:
         completed_goals = []
-        all_tags = set(backend_replicas.keys()).union(
+        all_tags = set(current_replicas.keys()).union(
             set(self.backends.keys()))
 
         for backend_tag in all_tags:
             desired_info = self.backends.get(backend_tag)
-            existing_info = backend_replicas.get(backend_tag)
+            existing_info = current_replicas.get(backend_tag)
             # Check for deleting
             if (not desired_info or
                     desired_info.backend_config.num_replicas == 0) and \
@@ -500,26 +500,22 @@ class ActorStateReconciler:
 
         return len(in_flight)
 
-    async def backend_control_loop(self, start_time: float) -> bool:
+    async def update_actor_state(self, start_time: float) -> bool:
         """Returns whether the number of backends has changed."""
         num_starting = len(self.currently_starting_replicas)
         num_stopping = len(self.currently_stopping_replicas)
-        need_to_continue = True
-        num_pending_starts, num_pending_stops = 0, 0
-        while need_to_continue:
-            if int(time.time() -
-                   start_time) % REPLICA_STARTUP_TIME_WARNING_S == 0:
-                delta = time.time() - start_time
-                logger.warning(
-                    f"Waited {delta:.2f}s for {num_pending_starts} replicas "
-                    f"to start up or {num_pending_stops} replicas to shutdown."
-                    " Make sure there are enough resources to create the "
-                    "replicas.")
 
-            num_pending_starts = await self._check_currently_starting_replicas(
-            )
-            num_pending_stops = await self._check_currently_stopping_replicas()
-            need_to_continue = num_pending_starts or num_pending_stops
+        num_pending_starts = await self._check_currently_starting_replicas()
+        num_pending_stops = await self._check_currently_stopping_replicas()
+        time_running = int(time.time() - start_time)
+        if (time_running > 0
+                and time_running % REPLICA_STARTUP_TIME_WARNING_S == 0):
+            delta = time.time() - start_time
+            logger.warning(
+                f"Waited {delta:.2f}s for {num_pending_starts} replicas "
+                f"to start up or {num_pending_stops} replicas to shutdown."
+                " Make sure there are enough resources to create the "
+                "replicas.")
 
         return (len(self.currently_starting_replicas) != num_starting) or \
             (len(self.currently_stopping_replicas) != num_stopping)
@@ -812,8 +808,8 @@ class ServeController:
             await self.do_autoscale()
             async with self.write_lock:
                 self.http_state.update()
-                delta_workers = await self.\
-                    actor_reconciler.backend_control_loop(start_time)
+                delta_workers = await self.actor_reconciler.update_actor_state(
+                    start_time)
                 if delta_workers:
                     self.notify_replica_handles_changed()
                     self.notify_backend_configs_changed()
@@ -989,13 +985,14 @@ class ServeController:
             self.set_goal_id(return_uuid)
             return return_uuid
 
-    async def modify_backend_goal(self, backend_tag: BackendTag,
-                                  backend_info: BackendInfo,
-                                  new_id: GoalId) -> None:
+    async def set_backend_goal(self, backend_tag: BackendTag,
+                               backend_info: BackendInfo,
+                               new_id: GoalId) -> None:
         # NOTE(ilr) Must checkpoint after doing this!
-        existing_id_to_set = self.backend_state.add_or_modify_backend_goal(
+        existing_id_to_set = self.backend_state._set_backend_goal(
             backend_tag, backend_info, new_id)
-        self.set_goal_id(existing_id_to_set)
+        if existing_id_to_set:
+            self.set_goal_id(existing_id_to_set)
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
@@ -1018,13 +1015,17 @@ class ServeController:
                 worker_class=backend_replica,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            self.backend_state.add_or_modify_backend_goal(
-                backend_tag, backend_info, uuid4())
             metadata = backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
                     backend_tag] = BasicAutoscalingPolicy(
                         backend_tag, metadata.autoscaling_config)
+
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
+
+            await self.set_backend_goal(backend_tag, backend_info, return_uuid)
 
             try:
                 # This call should be to run control loop
@@ -1034,13 +1035,6 @@ class ServeController:
             except RayServeException as e:
                 del self.backend_state.backends[backend_tag]
                 raise e
-
-            return_uuid = self._create_event_with_result({
-                backend_tag: backend_info
-            })
-
-            await self.modify_backend_goal(backend_tag, backend_info,
-                                           return_uuid)
 
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we
@@ -1094,7 +1088,7 @@ class ServeController:
 
             return_uuid = self._create_event_with_result({backend_tag: None})
             # Remove the backend's metadata.
-            await self.modify_backend_goal(backend_tag, None, return_uuid)
+            await self.set_backend_goal(backend_tag, None, return_uuid)
             # NOTE(edoakes): we must write a checkpoint before removing the
             # backend from the routers to avoid inconsistent state if we crash
             # after pushing the update.
@@ -1123,6 +1117,11 @@ class ServeController:
                 backend_tag).backend_config = backend_config
             backend_info = self.backend_state.get_backend(backend_tag)
 
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
+            await self.set_backend_goal(backend_tag, backend_info, return_uuid)
+
             # Scale the replicas with the new configuration.
 
             # This should be to run the control loop
@@ -1130,14 +1129,9 @@ class ServeController:
                 self.backend_state.backends, backend_tag,
                 backend_config.num_replicas)
 
-            return_uuid = self._create_event_with_result({
-                backend_tag: backend_info
-            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
-            await self.modify_backend_goal(backend_tag, backend_info,
-                                           return_uuid)
             self._checkpoint()
 
             # Inform the routers about change in configuration
