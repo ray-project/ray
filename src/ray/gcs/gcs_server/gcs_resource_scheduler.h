@@ -84,34 +84,59 @@ class GcsResourceScheduler {
 
   virtual ~GcsResourceScheduler() = default;
 
+  /// Schedule the specified resources to the cluster nodes.
+  ///
+  /// \param required_resources_list The resources to be scheduled.
+  /// \param scheduling_type This scheduling strategy.
+  /// \param node_filter_func This function is used to filter candidate nodes. By default,
+  /// all nodes in the cluster can be used for scheduling.
+  /// \return Scheduling selected nodes, it corresponds to `required_resources` one by
+  /// one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> Schedule(
-      const std::vector<ResourceSet> &required_resources,
+      const std::vector<ResourceSet> &required_resources_list,
       const SchedulingType &scheduling_type,
       const std::function<bool(const NodeID &)> &node_filter_func = nullptr);
 
  private:
+  /// Filter out candidate nodes which can be used for scheduling.
+  ///
+  /// \param cluster_resources The cluster node resources.
+  /// \param node_filter_func This function is used to filter candidate nodes. By default,
+  /// all nodes in the cluster can be used for scheduling.
+  /// \return The candidate nodes which can be used for scheduling.
   absl::flat_hash_set<NodeID> FilterCandidateNodes(
       const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,
       const std::function<bool(const NodeID &)> &node_filter_func);
 
+  /// Sort required resources according to the scarcity and capacity of resources.
+  /// We will first schedule scarce resources (such as GPU) and large capacity resources
+  /// to improve the scheduling success rate.
+  ///
+  /// \param required_resources The resources to be scheduled.
+  /// \return The Sorted resources.
   std::vector<ResourceSet> SortRequiredResources(
       const std::vector<ResourceSet> &required_resources);
 
-  void StrictSpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
-                            const absl::flat_hash_set<NodeID> &candidate_nodes,
-                            std::vector<NodeID> *result);
+  /// Schedule resources according to `STRICT_SPREAD` strategy.
+  ///
+  /// \param required_resources_list The resources to be scheduled.
+  /// \param candidate_nodes The nodes can be used for scheduling.
+  /// \return The Sorted resources.
+  std::vector<NodeID> StrictSpreadSchedule(
+      const std::vector<ResourceSet> &required_resources_list,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
-  void SpreadSchedule(const std::vector<ResourceSet> &required_resources_list,
-                      const absl::flat_hash_set<NodeID> &candidate_nodes,
-                      std::vector<NodeID> *result);
+  std::vector<NodeID> SpreadSchedule(
+      const std::vector<ResourceSet> &required_resources_list,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
-  void StrictPackSchedule(const std::vector<ResourceSet> &required_resources_list,
-                          const absl::flat_hash_set<NodeID> &candidate_nodes,
-                          std::vector<NodeID> *result);
+  std::vector<NodeID> StrictPackSchedule(
+      const std::vector<ResourceSet> &required_resources_list,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
-  void PackSchedule(const std::vector<ResourceSet> &required_resources_list,
-                    const absl::flat_hash_set<NodeID> &candidate_nodes,
-                    std::vector<NodeID> *result);
+  std::vector<NodeID> PackSchedule(
+      const std::vector<ResourceSet> &required_resources_list,
+      const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   std::list<NodeScore> ScoreNodes(const ResourceSet &required_resources,
                                   const absl::flat_hash_set<NodeID> &candidate_nodes);
