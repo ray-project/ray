@@ -1374,8 +1374,7 @@ def memory(address, redis_password, group_by, sort_by):
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
     print(
-        f"\nWelcome to Ray Memory, an interactive CLI that lets you see information\
-            about the data stored in the Ray Object store.\n")
+        f"\nWelcome to Ray Memory, an interactive CLI that lets you see information about the data stored in the Ray Object store.\n")
     print(group_by, sort_by)
 
     # Step 1: Fetch core memory worker stats and convert into a dictionary
@@ -1387,7 +1386,7 @@ def memory(address, redis_password, group_by, sort_by):
         stats["coreWorkersStats"], group_by, sort_by)
 
     # Step 3: Display
-    print(f"Grouping by {group_by.name}. Sorting by {sort_by.name}.")
+    print(f"Grouping by {group_by.name}. Sorting by {sort_by.name}. \n")
     for key, group in memory_table.as_dict()["group"].items():
         # Part A: Group summary
         summary = group["summary"]
