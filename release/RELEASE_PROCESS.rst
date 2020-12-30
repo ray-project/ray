@@ -1,6 +1,12 @@
 Release Process
 ===============
 
+The following documents the Ray release process. Please use the
+`Release Checklist`_ to keep track of your progress, as it is meant
+to be used alongside this process document. Also, please keep the
+team up-to-date on any major regressions or changes to the timeline
+via emails to the engineering@anyscale.com Google Group.
+
 Before Branch Cut
 -----------------
 1. **Create a document to track release-blocking commits.** These may be pull
@@ -166,8 +172,9 @@ reach out to the team to which the issue corresponds. They should either
 work on a fix immediately or tell you which changes ought to be reverted.
 
 There are two ways the issue can be resolved: 
+
 1. Fix the issue on the master branch and
-   cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
+   cherry-pick the relevant commit (using ``git cherry-pick``) onto the release
    branch (recommended). 
 2. Revert the commit that introduced the bug on the
    release branch (using ``git revert``), but not on the master (not recommended).
@@ -308,7 +315,7 @@ Resources and Troubleshooting
 
 Assuming you followed the naming convention and have completed the step of
 updating the version on the release branch, you will be able to find wheels
-for your release at the following URL (with, e.g. VERSION=1.3.0): https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<VERSION>/bfc8d1be43b86a9d3008aa07ca9f36664e02d1ba1/<VERSION>-cp37-cp37m-macosx_10_13_intel.whl
+for your release at the following URL (with, e.g. VERSION=1.3.0): ``https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<VERSION>/bfc8d1be43b86a9d3008aa07ca9f36664e02d1ba1/<VERSION>-cp37-cp37m-macosx_10_13_intel.whl``
 (Note, the exact URL varies a bit by python version and platform,
 this is for OSX on Python 3.7)
 
@@ -322,4 +329,5 @@ in case you're having trouble with the above link.
 .. _`GitHub release`: https://github.com/ray-project/ray/releases
 .. _`Ray Readthedocs version page`: https://readthedocs.org/projects/ray/versions/
 .. _`Ray Readthedocs advanced settings page`: https://readthedocs.org/dashboard/ray/advanced/
+.. _`Release Checklist`: https://github.com/ray-project/ray/release/RELEASE_CHECKLIST.md
 .. _`Releaser`: https://github.com/ray-project/releaser
