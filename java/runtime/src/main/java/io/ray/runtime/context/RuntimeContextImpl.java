@@ -7,7 +7,6 @@ import io.ray.api.runtimecontext.NodeInfo;
 import io.ray.api.runtimecontext.RuntimeContext;
 import io.ray.runtime.RayRuntimeInternal;
 import io.ray.runtime.config.RunMode;
-import io.ray.runtime.generated.Common.TaskType;
 import java.util.List;
 
 public class RuntimeContextImpl implements RuntimeContext {
