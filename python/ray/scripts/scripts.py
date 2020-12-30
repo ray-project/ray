@@ -1364,13 +1364,15 @@ def timeline(address):
     type=click.Choice([e.name for e in memory_utils.GroupByType]),
     prompt="Select an option to group object references by",
     default=memory_utils.GroupByType.NODE_ADDRESS.name,
-    help="Group object references by a GroupByType (e.g. NODE_ADDRESS or STACK_TRACE).")
+    help="Group object references by a GroupByType\
+        (e.g. NODE_ADDRESS or STACK_TRACE).")
 @click.option(
     "--sort-by",
     type=click.Choice([e.name for e in memory_utils.SortingType]),
     prompt="Select an option to sort object references by within each group",
     default=memory_utils.SortingType.OBJECT_SIZE.name,
-    help="Sort object references in ascending order by a SortingType (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
+    help="Sort object references in ascending order by a SortingType\
+        (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 def memory(address, redis_password, group_by, sort_by, pagination):
     """Welcome to Ray Memory, an interactive CLI that prints information
     about the object references in the Ray Object store."""
@@ -1384,29 +1386,30 @@ def memory(address, redis_password, group_by, sort_by, pagination):
     stats = stats_collector.node_stats_to_dict(stats)
 
     # Step 2: Build memory table with "group_by" and "sort_by" parameters
-    group_by, sort_by = memory_utils.get_group_by_type(group_by), memory_utils.get_sorting_type(sort_by)
+    group_by, sort_by = memory_utils.get_group_by_type(
+        group_by), memory_utils.get_sorting_type(sort_by)
     memory_table = memory_utils.construct_memory_table(
         stats["coreWorkersStats"], group_by, sort_by).as_dict()
 
-    # Step 3: Display
-    group_by_label, sort_by_label = group_by.name.lower().replace("_", " "), sort_by.name.lower().replace("_", " ")
+    # Step 3: Display ObjectRef info for each group
+    group_by_label, sort_by_label = group_by.name.lower().replace(
+        "_", " "), sort_by.name.lower().replace("_", " ")
     summary_labels = [
-                    "Memory Used by Objects", "Local Reference Ct",
-                    "Pinned in Memory Ct", "Used by Pending Tasks Ct",
-                    "Captured in Objects Ct", "Actor Handle Ct"
-                ]
+        "Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct",
+        "Used by Pending Tasks Ct", "Captured in Objects Ct", "Actor Handle Ct"
+    ]
     curr_group, num_groups = 1, len(memory_table["group"])
-    print(f"Grouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
+    print(
+        f"Grouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
     for key, group in memory_table["group"].items():
         # Part A: Group summary
         summary = group["summary"]
-        summary["total_object_size"] = str(summary["total_object_size"]) + " MiB"
+        summary["total_object_size"] = str(
+            summary["total_object_size"]) + " MiB"
         print(f"Summary for {group_by_label}: {key}")
         print(
             tabulate(
-                [summary.values()],
-                headers=summary_labels,
-                tablefmt="psql"))
+                [summary.values()], headers=summary_labels, tablefmt="psql"))
 
         # Part B: Memory table
         rows = []
@@ -1426,24 +1429,34 @@ def memory(address, redis_password, group_by, sort_by, pagination):
                     "Reference Type", "Call Site"
                 ],
                 tablefmt="psql"))
-        
+
         # Pagination option
-        if pagination and not click.confirm(f"Showing results for group {curr_group} out of {num_groups} group(s). Proceed to the next page?", default=True):
+        if pagination and not click.confirm(
+                f"Showing results for group {curr_group} out of {num_groups} group(s).\
+                    Proceed to the next page?",
+                default=True):
             break
         curr_group += 1
         print("\n")
-    
-    # Part C: Overall summary
-    print(f"\n\nFinished computing Ray object references across {num_groups} group(s). Overall summary:")
-    memory_table["summary"]["total_object_size"] = str(memory_table["summary"]["total_object_size"]) + " MiB"
-    print(tabulate([memory_table["summary"].values()], headers=summary_labels, tablefmt="psql"))
-    
 
-def f_newline(string, group=39, char='\n'):
+    # Step 4: Display overall summary
+    print(f"\n\nFinished computing Ray object references across\
+            {num_groups} group(s). Overall summary:")
+    memory_table["summary"]["total_object_size"] = str(
+        memory_table["summary"]["total_object_size"]) + " MiB"
+    print(
+        tabulate(
+            [memory_table["summary"].values()],
+            headers=summary_labels,
+            tablefmt="psql"))
+
+
+def f_newline(string, group=39, char="\n"):
     """Insert 'char; after every 'group' chars in a string.
     Useful for setting the max width of tabulate table columns."""
     string = str(string)
-    return char.join(string[i:i+group] for i in range(0, len(string), group))
+    return char.join(string[i:i + group] for i in range(0, len(string), group))
+
 
 @cli.command()
 @click.option(
