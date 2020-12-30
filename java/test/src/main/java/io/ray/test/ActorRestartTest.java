@@ -95,7 +95,8 @@ public class ActorRestartTest extends BaseTest {
    * @param actor The counter actor to be killed.
    * @return The pid of the actor.
    */
-  private static void killActorProcess(ActorHandle<Counter> actor) throws IOException, InterruptedException {
+  private static void killActorProcess(ActorHandle<Counter> actor)
+      throws IOException, InterruptedException {
     // Kill the actor process.
     int pid = actor.task(Counter::getPid).remote().get();
     Process p = Runtime.getRuntime().exec("kill -9 " + pid);
