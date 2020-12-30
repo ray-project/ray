@@ -304,12 +304,12 @@ def try_schedule_resources_on_nodes(
             feasible = True
 
             for key, count in resource_dict.items():
-                # Fix legacy behaviour in all memory objects 
+                # Fix legacy behaviour in all memory objects
                 if "memory" in key:
                     memory_resource = node_resource.get(key, 0)
                     if memory_resource > 0:
-                        # Convert from chunks of 50mb to bytes
-                        memory_resource = memory_resource * MEMORY_RESOURCE_UNIT_BYTES
+                        # Convert from chunks to bytes
+                        memory_resource *= MEMORY_RESOURCE_UNIT_BYTES
                     if memory_resource - count < 0:
                         feasible = False
 
