@@ -546,7 +546,6 @@ class ActorStateReconciler:
 
         # Start/stop any pending backend replicas.
         await self._enqueue_pending_scale_changes_loop(backend_state)
-        # await self.backend_control_loop()
 
         return autoscaling_policies
 
@@ -1042,13 +1041,7 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.backend_state)
-            # await self.actor_reconciler.backend_control_loop()
 
-            # self.notify_replica_handles_changed()
-
-            # # Set the backend config inside routers
-            # # (particularly for max_concurrent_queries).
-            # self.notify_backend_configs_changed()
             return return_uuid
 
     async def delete_backend(self,
@@ -1072,7 +1065,6 @@ class ServeController:
 
             # Scale its replicas down to 0. This will also remove the backend
             # from self.backend_state.backends and
-            # self.actor_reconciler.backend_replicas.
 
             # This should be a call to the control loop
             self.actor_reconciler._scale_backend_replicas(
@@ -1095,9 +1087,6 @@ class ServeController:
             self._checkpoint()
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.backend_state)
-            # await self.actor_reconciler.backend_control_loop()
-
-            # self.notify_replica_handles_changed()
             return return_uuid
 
     async def update_backend_config(self, backend_tag: BackendTag,
@@ -1139,10 +1128,7 @@ class ServeController:
 
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.backend_state)
-            # await self.actor_reconciler.backend_control_loop()
 
-            # self.notify_replica_handles_changed()
-            # self.notify_backend_configs_changed()
             return return_uuid
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
