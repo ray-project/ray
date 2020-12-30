@@ -273,17 +273,17 @@ to proceed with the final stages of the release!
      pip install -U ray
 
 5. **Create a point release on readthedocs page:** Go to the `Ray Readthedocs version page`_.
-    Scroll to "Activate a version" and mark the *release branch* as "active" and "public". This creates a point release for the documentation.
-    Message @richardliaw to add you if you don't have access.
+   Scroll to "Activate a version" and mark the *release branch* as "active" and "public". This creates a point release for the documentation.
+   Message @richardliaw to add you if you don't have access.
 
 6. **Update 'Default Branch' on the readthedocs page:**
-    Go to the `Ray Readthedocs advanced settings page`_.
-    In 'Global Settings', set the 'Default Branch' to the *release branch*. This redirects the documentation to the latest pip release.
-    Message @richardliaw to add you if you don't have access.
+   Go to the `Ray Readthedocs advanced settings page`_.
+   In 'Global Settings', set the 'Default Branch' to the *release branch*. This redirects the documentation to the latest pip release.
+   Message @richardliaw to add you if you don't have access.
 
-    If, after completing this step, you still do not see the correct version
-    of the docs, trigger a new build of the "latest" branch in
-    readthedocs to see if that fixes it.
+   If, after completing this step, you still do not see the correct version
+   of the docs, trigger a new build of the "latest" branch in
+   readthedocs to see if that fixes it.
 
 7. **Update latest Docker Image:** Message Ian Rodney to bump the "latest" tag
    in Dockerhub for the 
@@ -305,15 +305,17 @@ to proceed with the final stages of the release!
 Resources and Troubleshooting
 -----------------------------
 **Link to latest wheel:**
-   Assuming you followed the naming convention and have completed the step of
-   updating the version on the release branch, you will be able to find wheels
-   for your release at the following URL (with, e.g. VERSION=1.3.0): https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<VERSION>/bfc8d1be43b86a9d3008aa07ca9f36664e02d1ba1/<VERSION>-cp37-cp37m-macosx_10_13_intel.whl
-   (Note, the exact URL varies a bit by python version and platform,
-    this is for OSX on Python 3.7)
+
+Assuming you followed the naming convention and have completed the step of
+updating the version on the release branch, you will be able to find wheels
+for your release at the following URL (with, e.g. VERSION=1.3.0): https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<VERSION>/bfc8d1be43b86a9d3008aa07ca9f36664e02d1ba1/<VERSION>-cp37-cp37m-macosx_10_13_intel.whl
+(Note, the exact URL varies a bit by python version and platform,
+this is for OSX on Python 3.7)
 
 **AWS link for all Ray wheels:**
-   The AWS s3 file hierarchy for Ray wheels can be found `here <https://s3.console.aws.amazon.com/s3/buckets/ray-wheels/?region=us-west-2&tab=objects>`_
-   in case you're having trouble with the above link.
+
+The AWS s3 file hierarchy for Ray wheels can be found `here <https://s3.console.aws.amazon.com/s3/buckets/ray-wheels/?region=us-west-2&tab=objects>`_
+in case you're having trouble with the above link.
 
 .. _`sample PR for bumping a minor release version`: https://github.com/ray-project/ray/pull/12856
 .. _`sample commit for bumping the release branch version`: https://github.com/ray-project/ray/pull/12856/
