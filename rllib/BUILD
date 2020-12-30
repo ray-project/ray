@@ -2078,9 +2078,9 @@ py_test(
     name = "examples/two_step_game_maddpg",
     main = "examples/two_step_game.py",
     tags = ["examples", "examples_T"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/two_step_game.py"],
-    args = ["--as-test", "--stop-reward=7.5", "--run=contrib/MADDPG"]
+    args = ["--as-test", "--stop-reward=7.1", "--run=contrib/MADDPG"]
 )
 
 py_test(
