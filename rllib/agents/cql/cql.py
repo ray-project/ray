@@ -13,7 +13,7 @@ from ray.rllib.utils import merge_dicts
 # __sphinx_doc_begin__
 CQL_DEFAULT_CONFIG = merge_dicts(
     SAC_CONFIG, {
-        # You should override this to point to an offline dataset (see agent.py).
+        # You should override this to point to an offline dataset.
         "input": "sampler",
         # Number of iterations with Behavior Cloning Pretraining
         "bc_iters": 20000,
@@ -36,6 +36,7 @@ def validate_config(config: TrainerConfigDict):
     if config["framework"] == "tf":
         raise ValueError("Tensorflow CQL not implemented yet!")
 
+
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
     if config["framework"] == "torch":
         return CQLTorchPolicy
@@ -45,6 +46,6 @@ CQLTrainer = SACTrainer.with_updates(
     name="CQL",
     default_config=CQL_DEFAULT_CONFIG,
     validate_config=validate_config,
-    default_policy = CQLTorchPolicy,
+    default_policy=CQLTorchPolicy,
     get_policy_class=get_policy_class,
 )
