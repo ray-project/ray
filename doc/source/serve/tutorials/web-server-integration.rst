@@ -3,9 +3,11 @@
 Web Server Integration Tutorial
 ===============================
 
-In this guide, you will learn how to use Ray Serve to scale up your existing web application.  The key feature of Ray Serve that makes this possible is the Python-native ServeHandle API, which allows you to offload your heavy computation to Ray Serve.
+In this guide, you will learn how to use Ray Serve to scale up your existing web application.  The key feature of Ray Serve that makes this possible is the Python-native ServeHandle API, which allows you keep using your same Python web server while offloading your heavy computation to Ray Serve in a few lines of code.
 
-We give two examples, one using a FastAPI web server and another using a simple AIOHTTP web server.
+We give two examples, one using a FastAPI web server and another using an AIOHTTP web server.
+
+TODO(architkulkarni): Add all hyperlinks
 
 Scaling Up a FastAPI Application
 --------------------------------
@@ -20,63 +22,57 @@ To scale this up, we define a Ray Serve backend containing our text model and ca
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/servehandle_fastapi.py
 
-To run this example, save it as ``main.py`` and then run the following in your terminal to start a local Ray cluster and run the FastAPI application:
+To run this example, save it as ``main.py`` and then in the same directory, run the following commands to start a local Ray cluster on your machine and run the FastAPI application:
 
-.. code-block:: console
+.. code-block:: bash
 
   ray start --head
   uvicorn main:app
 
 Now you can query your web server, for example by running the following in another terminal:
 
-.. code-block:: console
+.. code-block:: bash
 
   curl "http://127.0.0.1:8000/generate?query=Hello%20friend%2C%20how"
   
-The terminal should then output the generated text:
+The terminal should then print the generated text:
 
-.. code-block:: console
+.. code-block:: bash
 
   [{"generated_text":"Hello friend, how's your morning?\n\nSven: Thank you.\n\nMRS. MELISSA: I feel like it really has done to you.\n\nMRS. MELISSA: The only thing I"}]%
+
+To clean up the Ray cluster, you may use the command ``ray stop`` in the terminal.
 
 According to the configuration parameter ``num_replicas``, Ray Serve will place multiple replicas of your model across multiple CPU cores and multiple machines (provided you have started a multi-node Ray cluster), which will increase your throughput.
 
 Scaling Up an AIOHTTP Application
 ---------------------------------
 
-.. code-block:: bash
+In this section, we'll integrate Ray Serve with an AIOHTTP server.
 
-    pip install "tensorflow>=2.0"
+First, here is the script that defines the AIOHTTP server:
 
-Let's import Ray Serve and some other helpers.
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp_app.py
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
-    :start-after: __doc_import_begin__
-    :end-before: __doc_import_end__
+Finally, here is the script that deploys Ray Serve:
 
-We will train a simple MNIST model using Keras.
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp_deploy.py
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
-    :start-after: __doc_train_model_begin__
-    :end-before: __doc_train_model_end__
 
-Services are just defined as normal classes with ``__init__`` and ``__call__`` methods.
-The ``__call__`` method will be invoked per request.
+Here are the steps to run this example:
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
-    :start-after: __doc_define_servable_begin__
-    :end-before: __doc_define_servable_end__
+1. Run ``ray start --head`` to start a local Ray cluster in the background.
 
-Now that we've defined our services, let's deploy the model to Ray Serve. We will
-define an :ref:`endpoint <serve-endpoint>` for the route representing the digit classifier task, a
-:ref:`backend <serve-backend>` correspond the physical implementation, and connect them together.
+2. In the directory where the example files are saved, run ``python deploy_serve.py`` to deploy our Ray Serve endpoint.  
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
-    :start-after: __doc_deploy_begin__
-    :end-before: __doc_deploy_end__
+.. note::
+  Because we have omitted the keyword argument ``route`` in ``client.create_endpoint()``, our endpoint will not be exposed over HTTP by Ray Serve.
 
-Let's query it!
+3. Run ``gunicorn aiohttp_app:app --worker-class aiohttp.GunicornWebWorker --bind localhost:8001`` to start the AIOHTTP app using gunicorn. We bind to port 8001 because the Ray Dashboard is already using port 8000 by default.
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_tensorflow.py
-    :start-after: __doc_query_begin__
-    :end-before: __doc_query_end__
+.. tip::
+  You can change the Ray Dashboard port with the command ``ray start --dashboard-port XXXX``.
+
+4. To test out the server, run ``curl localhost:8001/single``.  This should output ``Model received data: dummy input``.
+
+5. To clean up, you can press Ctrl-C to stop the Gunicorn server, and run `ray stop` to stop the background Ray cluster.
