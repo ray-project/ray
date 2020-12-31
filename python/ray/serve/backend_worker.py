@@ -413,9 +413,7 @@ class RayServeReplica:
 
         self.num_ongoing_requests -= 1
         # Returns a small object for router to track request status.
-        # The self.num_ongoing_requests is chosen because it's small and may
-        # be useful for the router.
-        return self.num_ongoing_requests, result
+        return b"", result
 
     async def drain_pending_queries(self):
         """Perform graceful shutdown.

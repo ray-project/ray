@@ -38,7 +38,7 @@ def mock_task_runner():
                 request = Query.ray_deserialize(request)
             self.query = request
             self.queries.append(request)
-            return 0, "DONE"
+            return b"", "DONE"
 
         def get_recent_call(self):
             return self.query
@@ -200,7 +200,7 @@ async def test_replica_set(ray_instance):
         async def handle_request(self, request):
             self._num_queries += 1
             await signal.wait.remote()
-            return 0, "DONE"
+            return b"", "DONE"
 
         async def num_queries(self):
             return self._num_queries
