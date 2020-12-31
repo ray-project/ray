@@ -18,7 +18,7 @@ class TestTFModel(TFModelV2):
         input_ = tf.keras.layers.Input(shape=(3, ))
         output = tf.keras.layers.Dense(2)(input_)
         # A keras model inside.
-        self.base_model = tf.keras.models.Model([input_], [output])
+        self.keras_model = tf.keras.models.Model([input_], [output])
         # A RLlib FullyConnectedNetwork (tf) inside (which is also a keras
         # Model).
         self.fc_net = FullyConnectedNetwork(
@@ -32,7 +32,7 @@ class TestTFModel(TFModelV2):
 
 
 class TestModels(unittest.TestCase):
-    """Tests ModelV2 classes."""
+    """Tests ModelV2 classes and their modularization capabilities."""
 
     def test_tf_modelv2(self):
         obs_space = Box(-1.0, 1.0, (3, ))
@@ -40,7 +40,11 @@ class TestModels(unittest.TestCase):
         my_tf_model = TestTFModel(
             obs_space, action_space, 5, {}, "my_tf_model")
         # Call the model.
-        test = my_tf_model({"obs": np.array([obs_space.sample()])})
+        out, states = my_tf_model({"obs": np.array([obs_space.sample()])})
+        self.assertTrue(out.shape == (1, 5))
+        self.assertTrue(out.dtype == tf.float32)
+        self.assertTrue(states == [])
+        self.assertTrue()
 
 
 if __name__ == "__main__":
