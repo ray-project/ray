@@ -1,9 +1,12 @@
 import inspect
-
-from pydantic import BaseModel, PositiveInt, validator, PositiveFloat
-from ray.serve.constants import ASYNC_CONCURRENCY
-from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, PositiveFloat, PositiveInt, validator
+
+import ray
+from ray.serve.constants import ASYNC_CONCURRENCY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 
 
 def _callable_accepts_batch(func_or_class):
@@ -198,8 +201,23 @@ class ReplicaConfig:
             self.resource_dict.update(custom_resources)
 
 
+class DeploymentMode(Enum, str):
+    NoServer = "NoServer"
+    NodePort = "NodePort"
+    HeadOnly = "HeadOnly"
+
+
 @dataclass
-class HTTPConfig:
-    host: str = field(init=True)
-    port: int = field(init=True)
-    middlewares: List[Any] = field(init=True)
+class HTTPOptions:
+    host: Union[None, str] = DEFAULT_HTTP_HOST
+    port: int = DEFAULT_HTTP_PORT
+    middlewares: List[Any] = field(default_factory=list)
+    mode: Union[None, DeploymentMode] = DeploymentMode.HeadOnly
+    _head_node_id: Optional[ray._raylet.NodeID] = None
+
+    def __post_init__(self):
+        if self.mode is None or self.host is None:
+            self.mode = DeploymentMode.NoServer
+
+        if self._head_node_id is None:
+            self._head_node_id = ray.get_runtime_context().node_id

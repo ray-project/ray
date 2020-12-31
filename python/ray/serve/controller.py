@@ -24,7 +24,7 @@ from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
-from ray.serve.config import BackendConfig, ReplicaConfig, HTTPConfig
+from ray.serve.config import BackendConfig, DeploymentMode, ReplicaConfig, HTTPOptions
 from ray.serve.long_poll import LongPollHost
 from ray.actor import ActorHandle
 
@@ -87,7 +87,7 @@ class TrafficPolicy:
 
 class HTTPState:
     def __init__(self, controller_name: str, detached: bool,
-                 config: HTTPConfig):
+                 config: HTTPOptions):
         self._controller_name = controller_name
         self._detached = detached
         self._config = config
@@ -108,8 +108,15 @@ class HTTPState:
 
     def _start_proxies_if_needed(self) -> None:
         """Start a proxy on every node if it doesn't already exist."""
-        if self._config.host is None:
+        mode = self._config.mode
+        target_nodes = get_all_node_ids()
+
+        if mode == DeploymentMode.NoServer:
             return
+
+        if mode == DeploymentMode.HeadOnly:
+            head_node_id = self._config._head_node_id
+            target_nodes = {head_node_id: target_nodes[head_node_id]}
 
         for node_id, node_resource in get_all_node_ids():
             if node_id in self._proxy_actors:
@@ -593,7 +600,7 @@ class ServeController:
 
     async def __init__(self,
                        controller_name: str,
-                       http_config: HTTPConfig,
+                       http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
