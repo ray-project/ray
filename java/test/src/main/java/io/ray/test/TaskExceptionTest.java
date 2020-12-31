@@ -36,8 +36,8 @@ public class TaskExceptionTest extends BaseTest {
   @Test
   public void testThrowUnserializableExceptionInNormalTask() {
     // Test that if a task throws an unserializable exception, the worker won't crash.
-    Assert.assertThrows((() -> Ray.task(
-      TaskExceptionTest::throwUnserializableException).remote().get()));
+    Assert.assertThrows(
+        (() -> Ray.task(TaskExceptionTest::throwUnserializableException).remote().get()));
   }
 
   @Test
