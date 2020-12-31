@@ -1364,15 +1364,15 @@ def timeline(address):
     type=click.Choice([e.name for e in memory_utils.GroupByType]),
     prompt="Select an option to group object references by",
     default=memory_utils.GroupByType.NODE_ADDRESS.name,
-    help="Group object references by a GroupByType\
-        (e.g. NODE_ADDRESS or STACK_TRACE).")
+    help="Group object references by a GroupByType \
+(e.g. NODE_ADDRESS or STACK_TRACE).")
 @click.option(
     "--sort-by",
     type=click.Choice([e.name for e in memory_utils.SortingType]),
     prompt="Select an option to sort object references by within each group",
     default=memory_utils.SortingType.OBJECT_SIZE.name,
-    help="Sort object references in ascending order by a SortingType\
-        (e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
+    help="Sort object references in ascending order by a SortingType \
+(e.g. PID, OBJECT_SIZE, or REFERENCE_TYPE).")
 def memory(address, redis_password, group_by, sort_by, pagination):
     """Welcome to Ray Memory, an interactive CLI that prints information
     about the object references in the Ray Object store."""
@@ -1432,16 +1432,16 @@ def memory(address, redis_password, group_by, sort_by, pagination):
 
         # Pagination option
         if pagination and not click.confirm(
-                f"Showing results for group {curr_group} out of {num_groups} group(s).\
-                    Proceed to the next page?",
+                f"Showing results for group {curr_group} out of {num_groups} group(s). \
+Proceed to the next page?",
                 default=True):
             break
         curr_group += 1
         print("\n")
 
     # Step 4: Display overall summary
-    print(f"\n\nFinished computing Ray object references across\
-            {num_groups} group(s). Overall summary:")
+    print(f"\n\nFinished computing Ray object references across \
+{num_groups} group(s). Overall summary:")
     memory_table["summary"]["total_object_size"] = str(
         memory_table["summary"]["total_object_size"]) + " MiB"
     print(
