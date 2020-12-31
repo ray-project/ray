@@ -689,13 +689,15 @@ class ServeController:
         while True:
             async with self.write_lock:
                 self.http_state.update()
+
+                completed_ids = self.backend_state.completed_goals()
+                for done_id in completed_ids:
+                    self.set_goal_id(done_id)
                 delta_workers = await self.backend_state.update()
                 if delta_workers:
                     self.notify_replica_handles_changed()
                     self._checkpoint()
-                completed_ids = self.backend_state.completed_goals()
-                for done_id in completed_ids:
-                    self.set_goal_id(done_id)
+
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _all_replica_handles(
