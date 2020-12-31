@@ -109,7 +109,7 @@ class TestPPO(unittest.TestCase):
                     config["model"]["lstm_use_prev_reward"] = lstm
                     trainer = ppo.PPOTrainer(config=config, env=env)
                     for i in range(num_iterations):
-                        trainer.train()
+                        print(trainer.train())
                     check_compute_single_action(
                         trainer,
                         include_prev_action_reward=True,
