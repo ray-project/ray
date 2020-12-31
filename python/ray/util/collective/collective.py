@@ -19,7 +19,7 @@ except ImportError:
     _NCCL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel("DEBUG")
 
 def nccl_available():
     return _NCCL_AVAILABLE
@@ -375,6 +375,8 @@ def reducescatter(tensor,
     _check_single_tensor_input(tensor)
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
+    logger.debug(len(tensor_list))
+    logger.debug(g.world_size)
     if len(tensor_list) != g.world_size:
         raise RuntimeError(
             "The length of the tensor list operands to reducescatter "

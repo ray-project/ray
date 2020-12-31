@@ -354,12 +354,15 @@ class NCCLGroup(BaseGroup):
         self._sync_streams()
 
         dtype = nccl_util.get_nccl_tensor_dtype(tensor[0])
-        flattened = _flatten_for_scatter_gather(tensor_list, copy=True)
-        send_ptr = nccl_util.get_tensor_ptr(flattened)
         reduce_op = nccl_util.get_nccl_reduce_op(
             reducescatter_options.reduceOp)
+        flattened_list = [None] * len(tensor)
+        for i in range(len(tensor)):
+            flattened_list[i] = _flatten_for_scatter_gather(tensor_list[i], copy=True)
+
         groupStart()
         for i in range(len(tensor)):
+            send_ptr = nccl_util.get_tensor_ptr(flattened_list[i])
             recv_ptr = nccl_util.get_tensor_ptr(tensor[i])
             n_elems = nccl_util.get_tensor_n_elements(tensor[i])
             comms[i].reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
