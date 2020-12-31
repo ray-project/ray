@@ -31,7 +31,6 @@ class Counter {
     return count;
   }
 };
-}
 
 int main(int argc, char **argv) {
   /// Currently, we compile `default_worker` and `example` in one single binary,
@@ -63,7 +62,7 @@ int main(int argc, char **argv) {
 
   /// common task with args
   task_obj = Ray::Task(Plus1, 5).Remote();
-  task_result2 = *(Ray::Get(task_obj));
+  int task_result2 = *(Ray::Get(task_obj));
   std::cout << "task_result2=" << task_result2 << std::endl;
 
   /// actor task without args
