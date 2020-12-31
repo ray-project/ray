@@ -477,6 +477,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
-    app.add_stylesheet('css/custom.css')
+    app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

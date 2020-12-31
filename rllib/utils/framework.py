@@ -253,6 +253,7 @@ def get_variable(value,
     return value
 
 
+# Deprecated: Use rllib.models.utils::get_activation_fn instead.
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
@@ -283,6 +284,16 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
+    elif framework == "jax":
+        if name in ["linear", None]:
+            return None
+        jax, flax = try_import_jax()
+        if name == "swish":
+            return jax.nn.swish
+        if name == "relu":
+            return jax.nn.relu
+        elif name == "tanh":
+            return jax.nn.hard_tanh
     else:
         if name in ["linear", None]:
             return None
