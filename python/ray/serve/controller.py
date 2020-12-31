@@ -1,7 +1,6 @@
 import asyncio
 from asyncio.futures import Future
 from collections import defaultdict
-from itertools import chain
 import os
 import random
 import time
@@ -222,11 +221,7 @@ class BackendState:
         }
 
     def get_replica_handles(self) -> List[ActorHandle]:
-        return list(
-            chain.from_iterable([
-                replica_dict.values()
-                for replica_dict in self.backend_replicas.values()
-            ]))
+        return self.backend_replicas
 
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
@@ -421,7 +416,6 @@ class BackendState:
                         pass
                     if len(backend) == 0:
                         del self.backend_replicas_to_start[backend_tag]
-        return len(in_flight)
 
     async def _check_currently_stopping_replicas(self) -> int:
         """Returns the number of replicas waiting to stop"""
@@ -455,9 +449,7 @@ class BackendState:
                     if len(self.backend_replicas[backend_tag]) == 0:
                         del self.backend_replicas[backend_tag]
 
-        return len(in_flight)
-
-    async def update(self, start_time: float) -> bool:
+    async def update(self) -> bool:
         """Returns whether the number of backends has changed."""
         self._start_pending_replicas()
         self._stop_pending_replicas()
@@ -465,17 +457,8 @@ class BackendState:
         num_starting = len(self.currently_starting_replicas)
         num_stopping = len(self.currently_stopping_replicas)
 
-        num_pending_starts = await self._check_currently_starting_replicas()
-        num_pending_stops = await self._check_currently_stopping_replicas()
-        time_running = int(time.time() - start_time)
-        if (time_running > 0
-                and time_running % REPLICA_STARTUP_TIME_WARNING_S == 0):
-            delta = time.time() - start_time
-            logger.warning(
-                f"Waited {delta:.2f}s for {num_pending_starts} replicas "
-                f"to start up or {num_pending_stops} replicas to shutdown."
-                " Make sure there are enough resources to create the "
-                "replicas.")
+        await self._check_currently_starting_replicas()
+        await self._check_currently_stopping_replicas()
 
         return (len(self.currently_starting_replicas) != num_starting) or \
             (len(self.currently_stopping_replicas) != num_stopping)
@@ -630,7 +613,6 @@ class ServeController:
         event = asyncio.Event()
         event.result = FutureResult(goal_state)
         uuid_val = recreation_uuid or uuid4()
-        logger.debug(f"Creating goal uuid {uuid_val}")
         self.inflight_results[uuid_val] = event
         self._serializable_inflight_results[uuid_val] = event.result
         return uuid_val
@@ -700,21 +682,17 @@ class ServeController:
 
     def set_goal_id(self, goal_id: UUID) -> None:
         event = self.inflight_results.get(goal_id)
-        logger.debug(f"Setting Goal Id: {goal_id}")
         if event:
             event.set()
 
     async def run_control_loop(self) -> None:
-        start_time = time.time()
         while True:
             async with self.write_lock:
                 self.http_state.update()
-                delta_workers = await self.backend_state.update(start_time)
+                delta_workers = await self.backend_state.update()
                 if delta_workers:
                     self.notify_replica_handles_changed()
                     self._checkpoint()
-                else:
-                    start_time = time.time()
                 completed_ids = self.backend_state.completed_goals()
                 for done_id in completed_ids:
                     self.set_goal_id(done_id)
@@ -723,7 +701,7 @@ class ServeController:
     def _all_replica_handles(
             self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         """Used for testing."""
-        return self.actor_reconciler.backend_replicas
+        return self.backend_state.get_replica_handles()
 
     def get_all_backends(self) -> Dict[BackendTag, BackendConfig]:
         """Returns a dictionary of backend tag to backend config."""
@@ -1029,6 +1007,8 @@ class ServeController:
         async with self.write_lock:
             for proxy in self.http_state.get_http_proxy_handles().values():
                 ray.kill(proxy, no_restart=True)
-            for replica in self.backend_state.get_replica_handles():
-                ray.kill(replica, no_restart=True)
+            for replica_dict in self.backend_state.get_replica_handles(
+            ).values():
+                for replica in replica_dict.values():
+                    ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)
