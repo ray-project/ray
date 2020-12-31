@@ -394,13 +394,9 @@ def reducescatter_multigpu(output_tensor_list,
     _check_tensor_lists_input(input_tensor_lists)
     _check_tensor_list_input(output_tensor_list)
     g = _check_and_get_group(group_name)
-    if len(tensor_list) != g.world_size:
-        raise RuntimeError(
-            "The length of the tensor list operands to reducescatter "
-            "must not be equal to world_size.")
     opts = types.ReduceScatterOptions()
     opts.reduceOp = op
-    g.reducescatter(output_tensor_lisr, input_tensor_lists, opts)
+    g.reducescatter(output_tensor_list, input_tensor_lists, opts)
 
 
 def send(tensor, dst_rank: int, group_name: str = "default"):
