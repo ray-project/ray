@@ -226,8 +226,9 @@ def test_create_backend_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.create_backend.remote("my_backend", backend_config,
-                                             replica_config))
+            controller.wait_for_event.remote(
+                controller.create_backend.remote("my_backend", backend_config,
+                                                 replica_config)))
 
     assert len(ray.get(controller.get_all_backends.remote())) == 1
     client.create_endpoint(
@@ -248,8 +249,9 @@ def test_create_endpoint_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.create_endpoint.remote(
-                "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"]))
+            controller.wait_for_event.remote(
+                controller.create_endpoint.remote(
+                    "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"])))
 
     assert len(ray.get(controller.get_all_endpoints.remote())) == 1
     assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"
