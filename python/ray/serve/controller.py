@@ -934,7 +934,6 @@ class ServeController:
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
             self._checkpoint()
-
             self.notify_backend_configs_changed()
             return return_uuid
 
@@ -959,7 +958,6 @@ class ServeController:
 
             # Scale its replicas down to 0. This will also remove the backend
             # from self.backend_state.backends and
-            # self.actor_reconciler.backend_replicas.
 
             # This should be a call to the control loop
             self.backend_state.scale_backend_replicas(
@@ -979,7 +977,6 @@ class ServeController:
             # after pushing the update.
             self._checkpoint()
             self.backend_state.stop_pending_actors()
-
             return return_uuid
 
     async def update_backend_config(self, backend_tag: BackendTag,

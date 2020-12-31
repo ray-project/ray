@@ -172,8 +172,8 @@ class Router:
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
-            "num_router_requests",
-            description="Number of requests processed by the router.",
+            "serve_num_router_requests",
+            description="The number of requests processed by the router.",
             tag_keys=("endpoint", ))
 
     async def setup_in_async_loop(self):
