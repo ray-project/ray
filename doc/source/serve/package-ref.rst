@@ -17,6 +17,10 @@ Backend Configuration
 
 .. autoclass:: ray.serve.CondaEnv
 
+.. autofunction:: ray.serve.get_current_backend_tag
+
+.. autofunction:: ray.serve.get_current_replica_tag
+
 .. _`servehandle-api`:
 
 ServeHandle API
@@ -35,4 +39,5 @@ Batching Requests
 .. autofunction:: ray.serve.accept_batch
 
 Built-in Backends
+-----------------
 .. autoclass:: ray.serve.backends.ImportedBackend
