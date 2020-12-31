@@ -184,11 +184,11 @@ class BackendState:
 
         # Checkpointed state.
         self.backends: Dict[BackendTag, BackendInfo] = dict()
-        self.backend_replicas: Dict[BackendTag, Dict[ReplicaTag,
-                                                     ActorHandle]] = dict()
+        self.backend_replicas: Dict[BackendTag, Dict[
+            ReplicaTag, ActorHandle]] = defaultdict(dict)
         self.goals: Dict[BackendTag, GoalId] = dict()
         self.backend_replicas_to_start: Dict[BackendTag, List[
-            ReplicaTag]] = dict()
+            ReplicaTag]] = defaultdict(list)
         self.backend_replicas_to_stop: Dict[BackendTag, List[Tuple[
             ReplicaTag, Duration]]] = defaultdict(list)
         self.backends_to_remove: List[BackendTag] = list()
@@ -213,7 +213,7 @@ class BackendState:
         return pickle.dumps(
             (self.backends, self.backend_replicas, self.goals,
              self.backend_replicas_to_start, self.backend_replicas_to_stop,
-             self.backend_to_remove))
+             self.backends_to_remove))
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
         return {
@@ -294,7 +294,6 @@ class BackendState:
 
     def scale_backend_replicas(
             self,
-            backends: Dict[BackendTag, BackendInfo],
             backend_tag: BackendTag,
             num_replicas: int,
             force_kill: bool = False,
@@ -311,7 +310,7 @@ class BackendState:
 
         logger.debug("Scaling backend '{}' to {} replicas".format(
             backend_tag, num_replicas))
-        assert (backend_tag in backends
+        assert (backend_tag in self.backends
                 ), "Backend {} is not registered.".format(backend_tag)
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
@@ -319,7 +318,7 @@ class BackendState:
         current_num_replicas = len(self.backend_replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
-        backend_info: BackendInfo = backends[backend_tag]
+        backend_info: BackendInfo = self.backends[backend_tag]
         if delta_num_replicas > 0:
             can_schedule = try_schedule_resources_on_nodes(requirements=[
                 backend_info.replica_config.resource_dict
@@ -631,7 +630,7 @@ class ServeController:
         event = asyncio.Event()
         event.result = FutureResult(goal_state)
         uuid_val = recreation_uuid or uuid4()
-        logger.debug(f"Creating uuid {uuid_val} for result of {goal_state}")
+        logger.debug(f"Creating goal uuid {uuid_val}")
         self.inflight_results[uuid_val] = event
         self._serializable_inflight_results[uuid_val] = event.result
         return uuid_val
@@ -924,8 +923,7 @@ class ServeController:
             try:
                 # This call should be to run control loop
                 self.backend_state.scale_backend_replicas(
-                    self.backend_state.backends, backend_tag,
-                    backend_config.num_replicas)
+                    backend_tag, backend_config.num_replicas)
             except RayServeException as e:
                 del self.backend_state.backends[backend_tag]
                 raise e
@@ -960,14 +958,14 @@ class ServeController:
             # from self.backend_state.backends and
 
             # This should be a call to the control loop
-            self.backend_state.scale_backend_replicas(
-                self.backend_state.backends, backend_tag, 0, force_kill)
+            self.backend_state.scale_backend_replicas(backend_tag, 0,
+                                                      force_kill)
 
             # Remove the backend's metadata.
             del self.backend_state.backends[backend_tag]
 
             # Add the intention to remove the backend from the routers.
-            self.actor_reconciler.backends_to_remove.append(backend_tag)
+            self.backend_state.backends_to_remove.append(backend_tag)
 
             return_uuid = self._create_event_with_result({backend_tag: None})
             # Remove the backend's metadata.
@@ -976,7 +974,6 @@ class ServeController:
             # backend from the routers to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
-            self.backend_state.stop_pending_actors()
             return return_uuid
 
     async def update_backend_config(self, backend_tag: BackendTag,
@@ -1005,8 +1002,7 @@ class ServeController:
 
             # This should be to run the control loop
             self.backend_state.scale_backend_replicas(
-                self.backend_state.backends, backend_tag,
-                backend_config.num_replicas)
+                backend_tag, backend_config.num_replicas)
 
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
