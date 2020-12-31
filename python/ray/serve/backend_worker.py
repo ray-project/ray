@@ -121,6 +121,7 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
             self.backend = RayServeReplica(_callable, backend_config,
                                            is_function, controller_handle)
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
 
@@ -411,7 +412,8 @@ class RayServeReplica:
             self.replica_tag, request.metadata.request_id, request_time_ms))
 
         self.num_ongoing_requests -= 1
-        return result
+        # Returns a small object for router to track request status.
+        return b"", result
 
     async def drain_pending_queries(self):
         """Perform graceful shutdown.

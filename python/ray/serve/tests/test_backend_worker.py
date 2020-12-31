@@ -33,6 +33,7 @@ def setup_worker(name,
         def ready(self):
             pass
 
+        @ray.method(num_returns=2)
         async def handle_request(self, *args, **kwargs):
             return await self.worker.handle_request(*args, **kwargs)
 
