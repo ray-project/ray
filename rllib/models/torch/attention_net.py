@@ -170,19 +170,17 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         else:
             self.num_outputs = self.attention_dim
 
-        # Setup inference view (`memory-inference` x past observations +
-        # current one (0))
-        # 1 to `num_transformer_units`: Memory data (one per transformer unit).
+        # Setup trajectory views (`memory-inference` x past memory outs).
         for i in range(self.num_transformer_units):
             space = Box(-1.0, 1.0, shape=(self.attention_dim, ))
-            self.inference_view_requirements["state_in_{}".format(i)] = \
+            self.view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
                     shift="-{}:-1".format(self.memory_inference),
                     # Repeat the incoming state every max-seq-len times.
                     batch_repeat_value=self.max_seq_len,
                     space=space)
-            self.inference_view_requirements["state_out_{}".format(i)] = \
+            self.view_requirements["state_out_{}".format(i)] = \
                 ViewRequirement(
                     space=space,
                     used_for_training=False)
