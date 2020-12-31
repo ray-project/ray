@@ -8,28 +8,29 @@ RLlib Algorithms
 Available Algorithms - Overview
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-=================== ========== ======================= ================== =========== =============================================================
-Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
-=================== ========== ======================= ================== =========== =============================================================
-`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
-`ARS`_              tf + torch **Yes**                 **Yes**            No
-`BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
-`ES`_               tf + torch **Yes**                 **Yes**            No
-`DDPG`_, `TD3`_     tf + torch No                      **Yes**            **Yes**
-`APEX-DDPG`_        tf + torch No                      **Yes**            **Yes**
-`Dreamer`_          torch      No                      **Yes**            No          `+RNN`_
-`DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
-`APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
-`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
-`MAML`_             tf + torch No                      **Yes**            No
-`MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
-`MBMPO`_            torch      No                      **Yes**            No
-`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
-`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
-`SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
-`LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
-`AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
-=================== ========== ======================= ================== =========== =============================================================
+=================== ============== ======================= ================== =========== ============================================================= =========
+Algorithm           Frameworks     Discrete Actions        Continuous Actions Multi-Agent Model Support                                                 Multi-GPU
+=================== ============== ======================= ================== =========== ============================================================= =========
+`A2C, A3C`_         TF PyTorch     **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_ No
+`ARS`_              TF PyTorch     **Yes**                 **Yes**            No                                                                        No
+`BC`_               TF PyTorch     **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       No
+CQL (doc to follow) PyTorch        No                      **Yes**            **Yes**                                                                   No
+`ES`_               TF PyTorch     **Yes**                 **Yes**            No                                                                        No
+`DDPG`_, `TD3`_     TF PyTorch     No                      **Yes**            **Yes**                                                                   No
+`APEX-DDPG`_        TF PyTorch     No                      **Yes**            **Yes**                                                                   No
+`Dreamer`_          PyTorch        No                      **Yes**            No          `+RNN`_                                                       No
+`DQN`_, `Rainbow`_  TF PyTorch     **Yes** `+parametric`_  No                 **Yes**                                                                   No
+`APEX-DQN`_         TF PyTorch     **Yes** `+parametric`_  No                 **Yes**                                                                   No
+`IMPALA`_           TF PyTorch     **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_ **Yes**
+`MAML`_             TF PyTorch     No                      **Yes**            No                                                                        No
+`MARWIL`_           TF PyTorch     **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_                                                       No
+`MBMPO`_            PyTorch        No                      **Yes**            No                                                                        No
+`PG`_               TF PyTorch     **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_ No
+`PPO`_, `APPO`_     TF PyTorch JAX **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_ **Yes**
+`SAC`_              TF PyTorch     **Yes**                 **Yes**            **Yes**                                                                   No
+`LinUCB`_, `LinTS`_ PyTorch        **Yes** `+parametric`_  No                 **Yes**                                                                   No
+`AlphaZero`_        PyTorch        **Yes** `+parametric`_  No                 No                                                                        No
+=================== ============== ======================= ================== =========== ============================================================= =========
 
 Multi-Agent only Methods
 
@@ -348,7 +349,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Proximal Policy Optimization (PPO)
 ----------------------------------
-|pytorch| |tensorflow|
+|pytorch| |tensorflow| |jax|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__
 PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. PPO scales out using multiple workers for experience collection, and also to multiple GPUs for SGD.
@@ -679,11 +680,15 @@ Tuned examples: `SimpleContextualBandit <https://github.com/ray-project/ray/blob
    :end-before: __sphinx_doc_end__
 
 
-.. |tensorflow| image:: tensorflow.png
+.. |jax| image:: images/jax.png
     :class: inline-figure
     :width: 24
 
-.. |pytorch| image:: pytorch.png
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 24
+
+.. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 24
 

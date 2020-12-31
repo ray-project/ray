@@ -105,7 +105,7 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
-   -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
+   -  |pytorch| |tensorflow| |jax| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
    -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
@@ -220,10 +220,14 @@ TensorFlow 2.0
 
 RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
 
-.. |tensorflow| image:: tensorflow.png
+.. |jax| image:: images/jax.png
     :class: inline-figure
     :width: 16
 
-.. |pytorch| image:: pytorch.png
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 16
+
+.. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16

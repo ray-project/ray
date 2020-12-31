@@ -271,6 +271,16 @@ py_test(
 
 # PPO
 py_test(
+    name = "run_regression_tests_cartpole_ppo_jax",
+    main = "tests/run_regression_tests.py",
+    tags = ["learning_tests_jax", "learning_tests_cartpole"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/cartpole-ppo.yaml"],
+    args = ["--yaml-dir=tuned_examples/ppo", "--framework=jax"]
+)
+
+py_test(
     name = "run_regression_tests_cartpole_ppo_tf",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests_tf", "learning_tests_cartpole"],
@@ -1237,20 +1247,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_dependency_tf",
-    tags = ["tests_dir", "tests_dir_D"],
-    size = "small",
-    srcs = ["tests/test_dependency_tf.py"]
-)
-
-py_test(
-    name = "tests/test_dependency_torch",
-    tags = ["tests_dir", "tests_dir_D"],
-    size = "small",
-    srcs = ["tests/test_dependency_torch.py"]
-)
-
-py_test(
     name = "tests/test_eager_support_pg",
     main = "tests/test_eager_support.py",
     tags = ["tests_dir", "tests_dir_E"],
@@ -1323,6 +1319,30 @@ py_test(
     tags = ["tests_dir", "tests_dir_F"],
     size = "small",
     srcs = ["tests/test_filters.py"]
+)
+
+py_test(
+    name = "tests/test_framework_dependencies",
+    tags = ["tests_dir", "tests_dir_F"],
+    size = "small",
+    srcs = ["tests/test_framework_dependencies.py"],
+    args = ["--framework=tf"],
+)
+
+py_test(
+    name = "tests/test_framework_dependencies",
+    tags = ["tests_dir", "tests_dir_F"],
+    size = "small",
+    srcs = ["tests/test_framework_dependencies.py"],
+    args = ["--framework=torch"],
+)
+
+py_test(
+    name = "tests/test_framework_dependencies",
+    tags = ["tests_dir", "tests_dir_F"],
+    size = "small",
+    srcs = ["tests/test_framework_dependencies.py"],
+    args = ["--framework=jax"]
 )
 
 #py_test(

@@ -3,7 +3,7 @@
 RLlib: Scalable Reinforcement Learning
 ======================================
 
-RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications. RLlib natively supports TensorFlow, TensorFlow Eager, and PyTorch, but most of its internals are framework agnostic.
+RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications. RLlib natively supports TensorFlow, TensorFlow Eager, PyTorch, and - to some extend - JAX, but most of its internals are framework agnostic.
 
 .. image:: rllib-stack.svg
 
@@ -14,7 +14,11 @@ To get started, take a look over the `custom env example <https://github.com/ray
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__. Look out for the |tensorflow| and |pytorch| icons to see which algorithms are `available <rllib-toc.html#algorithms>`__ for each framework.
+The following is a whirlwind overview of RLlib. For a more in-depth guide, see also
+the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__.
+You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__.
+Look out for the |tensorflow|, |pytorch|, and |jax| icons to see which algorithms
+are `available <rllib-toc.html#algorithms>`__ for each framework.
 
 Running RLlib
 ~~~~~~~~~~~~~
@@ -121,10 +125,14 @@ and the `sample collection process <rllib-sample-collection.html>`__
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 
-.. |tensorflow| image:: tensorflow.png
+.. |jax| image:: images/jax.png
     :class: inline-figure
     :width: 24
 
-.. |pytorch| image:: pytorch.png
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 24
+
+.. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 24
