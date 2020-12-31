@@ -73,7 +73,9 @@ class Rendezvous:
             break
         if not self._store:
             raise RuntimeError("Unable to meet other processes "
-                               "at the rendezvous store.")
+                               "at the rendezvous store. If you are using
+                               P2P communication, please check if tensors
+                               are put in the correct GPU. ")
 
     @property
     def store(self):
@@ -377,7 +379,7 @@ class NCCLGroup(BaseGroup):
             raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
                                "Got '{}'.".format(
                                    nccl_util.get_nccl_runtime_version()))
-        src_index = nccl_utils.get_devices([tensor])
+        src_index = nccl_util.get_devices([tensor])
         src_index = src_index[0]
         comm, peer_p2p_rank, key = self._get_nccl_p2p_communicator_and_info(
                            self.rank, src_index, dst_rank, dst_index)
@@ -402,8 +404,10 @@ class NCCLGroup(BaseGroup):
             raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
                                "Got '{}'.".format(
                                    nccl_util.get_nccl_runtime_version()))
-        dst_index = nccl_utils.get_devices([tensor])
+        dst_index = nccl_util.get_devices([tensor])
+        logger.debug(dst_index)
         dst_index = dst_index[0]
+        
         comm, peer_p2p_rank, key = self._get_nccl_p2p_communicator_and_info(
                            src_rank, src_index, self.rank, dst_index)
         stream = self._p2p_stream_cache[key]
@@ -513,7 +517,6 @@ class NCCLGroup(BaseGroup):
             max_str = str(src_rank) + "." + str(src_index)
         else:
            raise RuntimeError(f"Sending data to the same machine.")
-
         p2p_group_key = self._generate_p2p_group_key(min_str, max_str)
         comm = self._p2p_comm_cache.get(p2p_group_key)
         if not comm:
@@ -526,7 +529,7 @@ class NCCLGroup(BaseGroup):
             my_device = src_index if self.rank == src_rank else dst_index
             with Device(my_device):
                 comm = nccl_util.create_nccl_communicator(2, group_uid, my_rank)
-                stream = Stream(non_blocking=True)
+                stream =  cupy.cuda.Stream.null #Stream(non_blocking=True)
             self._p2p_comm_cache[p2p_group_key] = comm
             self._p2p_stream_cache[p2p_group_key] = stream
         
@@ -534,12 +537,12 @@ class NCCLGroup(BaseGroup):
         return comm, peer_rank, p2p_group_key
 
     def _generate_p2p_group_key(self, min_str, max_str):
-        return self.group_name + "_" + min_rank + "_" + max_rank
+        return self.group_name + "_" + min_str + "_" + max_str
 
     @staticmethod
     def _parse_p2p_group_key(key):
         strs = key.split("_")
-        return int(strs[-2]), int(strs[-1])
+        return int(strs[-2].split(".")[0]), int(strs[-1].split(".")[0])
 
     @staticmethod
     def _destroy_store(group_name):
