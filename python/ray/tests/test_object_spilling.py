@@ -201,7 +201,10 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
-def test_spill_stats(object_spilling_config, shutdown_only):
+def test_spill_stats(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
     ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
@@ -213,7 +216,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
                 {
                     "type": "filesystem",
                     "params": {
-                        "directory_path": "/tmp/spill"
+                        "directory_path": str(temp_folder)
                     }
                 },
                 separators=(",", ":"))
