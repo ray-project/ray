@@ -31,7 +31,10 @@ have custom sizes, e.g., ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2]
 Thereby, always make sure that the last Conv2D output has an output shape of `[B, 1, 1, X]` (`[B, X, 1, 1]` for Torch), where B=batch and
 X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
 
-In addition, if you set ``"model": {"use_lstm": true}``, the model output will be further processed by an LSTM cell (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__).
+In addition, if you set ``"model": {"use_lstm": true}``, the model output will be further processed by an LSTM cell.
+
+.. TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>
+
 More generally, RLlib supports the use of recurrent models for its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into its policy evaluation utilities.
 For custom RNN/LSTM setups, see the `Recurrent Models`_. section below.
 
@@ -100,7 +103,9 @@ PyTorch Models
 --------------
 
 Similarly, you can create and register custom PyTorch models.
-See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ torch models.
+See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__ and `convolutional <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__ torch models.
+
+.. and `recurrent <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ torch models.
 
 .. autoclass:: ray.rllib.models.torch.torch_modelv2.TorchModelV2
 
@@ -150,11 +155,10 @@ This provides more control over postprocessing of the LSTM output and can also a
 For an RNN model it is preferred to subclass ``RecurrentNetwork`` (either the TF or Torch versions) and to implement ``__init__()``, ``get_initial_state()``, and ``forward_rnn()``.
 You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/models/rnn_model.py>`__ models as examples to implement your own (either TF or Torch):
 
-.. autoclass:: ray.rllib.models.tf.recurrent_net.RecurrentNetwork
-
-    .. automethod:: __init__
-    .. automethod:: forward_rnn
-    .. automethod:: get_initial_state
+.. .. autoclass:: ray.rllib.models.tf.recurrent_net.RecurrentNetwork
+..    .. automethod:: __init__
+..    .. automethod:: forward_rnn
+..    .. automethod:: get_initial_state
 
 Attention Networks/Transformers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
