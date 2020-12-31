@@ -2,9 +2,7 @@
 
 package io.ray.api.function;
 
-/**
- * Functional interface for a remote function that has 1 parameter.
- */
+/** Functional interface for a remote function that has 1 parameter. */
 @FunctionalInterface
 public interface RayFuncVoid1<T0> extends RayFuncVoid {
 

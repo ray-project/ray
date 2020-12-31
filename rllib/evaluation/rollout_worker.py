@@ -143,6 +143,7 @@ class RolloutWorker(ParallelIteratorWorker):
             policies_to_train: Optional[List[PolicyID]] = None,
             tf_session_creator: Optional[Callable[[], "tf1.Session"]] = None,
             rollout_fragment_length: int = 100,
+            count_steps_by: str = "env_steps",
             batch_mode: str = "truncate_episodes",
             episode_horizon: int = None,
             preprocessor_pref: str = "deepmind",
@@ -208,8 +209,11 @@ class RolloutWorker(ParallelIteratorWorker):
             tf_session_creator (Optional[Callable[[], tf1.Session]]): A
                 function that returns a TF session. This is optional and only
                 useful with TFPolicy.
-            rollout_fragment_length (int): The target number of env transitions
-                to include in each sample batch returned from this worker.
+            rollout_fragment_length (int): The target number of steps
+                (maesured in `count_steps_by`) to include in each sample
+                batch returned from this worker.
+            count_steps_by (str): The unit in which to count fragment
+                lengths. One of env_steps or agent_steps.
             batch_mode (str): One of the following batch modes:
                 "truncate_episodes": Each call to sample() will return a batch
                     of at most `rollout_fragment_length * num_envs` in size.
@@ -356,6 +360,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Policy mapping function not callable?")
         self.env_creator: Callable[[EnvContext], EnvType] = env_creator
         self.rollout_fragment_length: int = rollout_fragment_length * num_envs
+        self.count_steps_by: str = count_steps_by
         self.batch_mode: str = batch_mode
         self.compress_observations: bool = compress_observations
         self.preprocessing_enabled: bool = True
@@ -468,7 +473,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # state.
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added:
-                pol._update_model_inference_view_requirements_from_init_state()
+                pol._update_model_view_requirements_from_init_state()
 
         if (ray.is_initialized()
                 and ray.worker._mode() != ray.worker.LOCAL_MODE):
@@ -538,6 +543,7 @@ class RolloutWorker(ParallelIteratorWorker):
             raise ValueError("Unsupported batch mode: {}".format(
                 self.batch_mode))
 
+        # Create the IOContext for this worker.
         self.io_context: IOContext = IOContext(log_dir, policy_config,
                                                worker_index, self)
         self.reward_estimators: List[OffPolicyEstimator] = []
@@ -570,6 +576,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -580,6 +587,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
                 _use_trajectory_view_api=_use_trajectory_view_api,
+                sample_collector_class=policy_config.get(
+                    "sample_collector_class"),
             )
             # Start the Sampler thread.
             self.sampler.start()
@@ -593,6 +602,7 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_filters=self.filters,
                 clip_rewards=clip_rewards,
                 rollout_fragment_length=rollout_fragment_length,
+                count_steps_by=count_steps_by,
                 callbacks=self.callbacks,
                 horizon=episode_horizon,
                 multiple_episodes_in_batch=pack,
@@ -602,6 +612,8 @@ class RolloutWorker(ParallelIteratorWorker):
                 no_done_at_end=no_done_at_end,
                 observation_fn=observation_fn,
                 _use_trajectory_view_api=_use_trajectory_view_api,
+                sample_collector_class=policy_config.get(
+                    "sample_collector_class"),
             )
 
         self.input_reader: InputReader = input_creator(self.io_context)
@@ -636,7 +648,9 @@ class RolloutWorker(ParallelIteratorWorker):
                 self.rollout_fragment_length))
 
         batches = [self.input_reader.next()]
-        steps_so_far = batches[0].count
+        steps_so_far = batches[0].count if \
+            self.count_steps_by == "env_steps" else \
+            batches[0].agent_steps()
 
         # In truncate_episodes mode, never pull more than 1 batch per env.
         # This avoids over-running the target batch size.
@@ -648,7 +662,9 @@ class RolloutWorker(ParallelIteratorWorker):
         while (steps_so_far < self.rollout_fragment_length
                and len(batches) < max_batches):
             batch = self.input_reader.next()
-            steps_so_far += batch.count
+            steps_so_far += batch.count if \
+                self.count_steps_by == "env_steps" else \
+                batch.agent_steps()
             batches.append(batch)
         batch = batches[0].concat_samples(batches) if len(batches) > 1 else \
             batches[0]
@@ -659,7 +675,7 @@ class RolloutWorker(ParallelIteratorWorker):
         # for better compression inside the writer.
         self.output_writer.write(batch)
 
-        # Do off-policy estimation if needed
+        # Do off-policy estimation, if needed.
         if self.reward_estimators:
             for sub_batch in batch.split_by_episode():
                 for estimator in self.reward_estimators:

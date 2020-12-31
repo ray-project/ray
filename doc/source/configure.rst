@@ -60,7 +60,9 @@ If using the command line, connect to the Ray cluster as follow:
     override this by explicitly setting ``OMP_NUM_THREADS``. ``OMP_NUM_THREADS`` is commonly
     used in numpy, PyTorch, and Tensorflow to perform multit-threaded linear algebra.
     In multi-worker setting, we want one thread per worker instead of many threads
-    per worker to avoid contention.
+    per worker to avoid contention. Some other libraries may have their own way to configure
+    parallelism. For example, if you're using OpenCV, you should manually set the number of
+    threads using cv2.setNumThreads(num_threads) (set to 0 to disable multi-threading).
 
 
 .. _temp-dir-log-files:
@@ -243,23 +245,31 @@ Java Applications
 Code Search Path
 ~~~~~~~~~~~~~~~~
 
-If you want to run a Java application in cluster mode, you must first run ``ray start`` to start the Ray cluster. In addition to any ``ray start`` parameters mentioned above, you must add ``--code-search-path`` to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to all nodes of the Ray cluster before running your code, and this parameter must be set on both the head node and non-head nodes.
+If you want to run a Java application in a multi-node cluster, you must specify the code search path in your driver. The code search path is to tell Ray where to load jars when starting Java workers. Your jar files must be distributed to the same path(s) on all nodes of the Ray cluster before running your code.
 
 .. code-block:: bash
 
-  $ ray start ... --code-search-path=/path/to/jars
+  $ java -classpath <classpath> \
+      -Dray.address=<address> \
+      -Dray.job.code-search-path=/path/to/jars/ \
+      <classname> <args>
 
-The ``/path/to/jars`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
+The ``/path/to/jars/`` here points to a directory which contains jars. All jars in the directory will be loaded by workers. You can also provide multiple directories for this parameter.
 
 .. code-block:: bash
 
-  $ ray start ... --code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2
+  $ java -classpath <classpath> \
+      -Dray.address=<address> \
+      -Dray.job.code-search-path=/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2 \
+      <classname> <args>
 
-Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+You don't need to configure code search path if you run a Java application in a single-node cluster.
 
-You don't need to configure code search path if you run a Java application in single machine mode.
+See ``ray.job.code-search-path`` under :ref:`Driver Options <java-driver-options>` for more information.
 
 .. note:: Currently we don't provide a way to configure Ray when running a Java application in single machine mode. If you need to configure Ray, run ``ray start`` to start the Ray cluster first.
+
+.. _java-driver-options:
 
 Driver Options
 ~~~~~~~~~~~~~~
@@ -286,5 +296,12 @@ The list of available driver options:
   - If it's set to ``true``, the driver will run in :ref:`local_mode`.
   - Type: ``Boolean``
   - Default: ``false``
+
+- ``ray.job.code-search-path``
+
+  - The paths for Java workers to load code from. Currently only directories are supported. You can specify one or more directories split by a ``:``. You don't need to configure code search path if you run a Java application in single machine mode or local mode. Code search path is also used for loading Python code if it's specified. This is required for :ref:`cross_language`. If code search path is specified, you can only run Python remote functions which can be found in the code search path.
+  - Type: ``String``
+  - Default: empty string.
+  - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
 
 .. _`Apache Arrow`: https://arrow.apache.org/

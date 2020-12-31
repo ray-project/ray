@@ -25,7 +25,8 @@ shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
   auto connection = client_factory_(addr_proto);
   client_map_[id] = connection;
 
-  RAY_LOG(INFO) << "Connected to " << addr_proto.ip_address() << ":" << addr_proto.port();
+  RAY_LOG(DEBUG) << "Connected to " << addr_proto.ip_address() << ":"
+                 << addr_proto.port();
   return connection;
 }
 

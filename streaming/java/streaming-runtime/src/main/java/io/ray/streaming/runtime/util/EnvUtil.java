@@ -1,6 +1,5 @@
 package io.ray.streaming.runtime.util;
 
-import io.ray.runtime.RayNativeRuntime;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.lang.management.ManagementFactory;
@@ -37,13 +36,14 @@ public class EnvUtil {
   /**
    * Execute an external command.
    *
-   * @return Whether the command succeeded.
+   * <p>Returns Whether the command succeeded.
    */
   public static boolean executeCommand(List<String> command, int waitTimeoutSeconds) {
     try {
-      ProcessBuilder processBuilder = new ProcessBuilder(command)
-          .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-          .redirectError(ProcessBuilder.Redirect.INHERIT);
+      ProcessBuilder processBuilder =
+          new ProcessBuilder(command)
+              .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+              .redirectError(ProcessBuilder.Redirect.INHERIT);
       Process process = processBuilder.start();
       boolean exit = process.waitFor(waitTimeoutSeconds, TimeUnit.SECONDS);
       if (!exit) {
@@ -54,5 +54,4 @@ public class EnvUtil {
       throw new RuntimeException("Error executing command " + String.join(" ", command), e);
     }
   }
-
 }

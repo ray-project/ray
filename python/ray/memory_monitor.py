@@ -91,7 +91,7 @@ class MemoryMonitor:
         if not psutil:
             logger.warn("WARNING: Not monitoring node memory since `psutil` "
                         "is not installed. Install this with "
-                        "`pip install psutil` (or ray[debug]) to enable "
+                        "`pip install psutil` to enable "
                         "debugging of memory-related crashes.")
 
     def get_memory_usage(self):
