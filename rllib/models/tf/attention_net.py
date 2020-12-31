@@ -405,8 +405,7 @@ class AttentionWrapper(TFModelV2):
         self._value_branch = tf.keras.models.Model([input_], [out])
         self.register_variables(self._value_branch.variables)
 
-        self.inference_view_requirements = \
-            self.gtrxl.inference_view_requirements
+        self.view_requirements = self.gtrxl.view_requirements
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],

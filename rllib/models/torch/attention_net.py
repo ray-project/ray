@@ -298,8 +298,7 @@ class AttentionWrapper(TorchModelV2, nn.Module):
             activation_fn=None,
             initializer=torch.nn.init.xavier_uniform_)
 
-        self.inference_view_requirements = \
-            self.gtrxl.inference_view_requirements
+        self.view_requirements = self.gtrxl.view_requirements
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
