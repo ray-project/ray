@@ -56,7 +56,7 @@ In this section, we'll integrate Ray Serve with an `AIOHTTP <https://docs.aiohtt
 
 First, here is the script that deploys Ray Serve:
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp/aiohttp_deploy.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp/aiohttp_deploy_serve.py
 
 Next is the script that defines the AIOHTTP server:
 
