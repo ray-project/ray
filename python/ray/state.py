@@ -781,8 +781,10 @@ class GlobalState:
             for node in self.node_table() if (node["Alive"])
         }
 
-    def _available_resources_per_node(self):
-        """Returns a dictionary mapping node id to avaiable resources."""
+    def available_resources_per_node(self):
+        """Returns a dictionary mapping node id to available resources."""
+        self._check_connected()
+
         available_resources_by_id = {}
 
         all_available_resources = \
@@ -822,7 +824,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        available_resources_by_id = self._available_resources_per_node()
+        available_resources_by_id = self.available_resources_per_node()
 
         # Calculate total available resources.
         total_available_resources = defaultdict(int)

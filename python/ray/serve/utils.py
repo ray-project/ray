@@ -282,7 +282,7 @@ def try_schedule_resources_on_nodes(
         requirements(List[dict]): The list of resource requirements.
         ray_nodes(Optional[Dict[str, Dict]]): The resource dictionary keyed by
             node id. By default it reads from
-            ``ray.state.state._available_resources_per_node()``.
+            ``ray.state.state.available_resources_per_node()``.
     Returns:
         successfully_scheduled(List[bool]): A list with the same length as
             requirements. Each element indicates whether or not the requirement
@@ -290,7 +290,7 @@ def try_schedule_resources_on_nodes(
     """
 
     if ray_resource is None:
-        ray_resource = ray.state.state._available_resources_per_node()
+        ray_resource = ray.state.state.available_resources_per_node()
 
     successfully_scheduled = []
 
