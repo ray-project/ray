@@ -79,6 +79,7 @@ from ray.includes.unique_ids cimport (
     CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
+    ActorHandleSharedPtr,
     CActorCreationOptions,
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
@@ -1321,7 +1322,12 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, const CActorHandle *c_actor_handle):
+    cdef make_actor_handle(self, ActorHandleSharedPtr actor_handle_shared_ptr):
+        cdef:
+            # NOTE: 1) This handle should not be stored anywhere.
+            # 2) This handle is valid within this function as the shared_ptr won't
+            #    be destructed.
+            const CActorHandle *c_actor_handle = actor_handle_shared_ptr.get()
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -1372,27 +1378,21 @@ cdef class CoreWorker:
                       .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
                           bytes, c_outer_object_id))
-        cdef:
-            # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle = (
-                CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
-        return self.make_actor_handle(c_actor_handle)
+        return self.make_actor_handle(
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
-            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
-            # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle
+            pair[ActorHandleSharedPtr, CRayStatus] named_actor_handle_pair
 
         # We need it because GetNamedActorHandle needs
         # to call a method that holds the gil.
         with nogil:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
-        c_actor_handle = named_actor_handle_pair.first
         check_status(named_actor_handle_pair.second)
 
-        return self.make_actor_handle(c_actor_handle)
+        return self.make_actor_handle(named_actor_handle_pair.first)
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
