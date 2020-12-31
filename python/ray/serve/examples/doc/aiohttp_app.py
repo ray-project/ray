@@ -20,9 +20,9 @@ async def handle_request(request):
     return web.Response(text=result)
 
 
+# Set up an HTTP endpoint.
 app = web.Application()
-app.add_routes([web.get('/dummy-model',
-                        handle_request)])  # Sets up an HTTP endpoint.
+app.add_routes([web.get("/dummy-model", handle_request)])
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     web.run_app(app)

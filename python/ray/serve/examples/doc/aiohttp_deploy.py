@@ -14,6 +14,7 @@ async def my_model(request):
     data = await request.body()
     return f"Model received data: {data}"
 
-
-client.create_backend("my_backend", my_model)
+# Set up a backend with the desired number of replicas and set up an endpoint.
+backend_config = serve.BackendConfig(num_replicas=2)
+client.create_backend("my_backend", my_model, config=backend_config)
 client.create_endpoint("my_endpoint", backend="my_backend")
