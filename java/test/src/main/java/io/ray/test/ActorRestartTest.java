@@ -48,8 +48,10 @@ public class ActorRestartTest extends BaseTest {
     }
 
     // Check if actor was restarted.
-    Assert.assertFalse(actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
-    Assert.assertFalse(actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
+    Assert.assertFalse(
+        actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
+    Assert.assertFalse(
+        actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process.
     killActorProcess(actor);
@@ -58,19 +60,19 @@ public class ActorRestartTest extends BaseTest {
     Assert.assertEquals(value, 1);
 
     // Check if actor was restarted again.
-    Assert.assertTrue(actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
+    Assert.assertTrue(
+        actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
     Assert.assertTrue(actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process again.
     killActorProcess(actor);
 
     // Try calling increase on this actor again and this should fail.
-    Assert.assertThrows(RayActorException.class, () -> actor.task(Counter::increase).remote().get());
+    Assert.assertThrows(
+        RayActorException.class, () -> actor.task(Counter::increase).remote().get());
   }
 
-  /**
-   * The helper to kill a counter actor.
-   */
+  /** The helper to kill a counter actor. */
   private static void killActorProcess(ActorHandle<Counter> actor)
       throws IOException, InterruptedException {
     // Kill the actor process.

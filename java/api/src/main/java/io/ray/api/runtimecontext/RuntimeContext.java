@@ -17,9 +17,7 @@ public interface RuntimeContext {
    */
   ActorId getCurrentActorId();
 
-  /**
-   * Returns true if the current actor was restarted, otherwise false.
-   */
+  /** Returns true if the current actor was restarted, otherwise false. */
   boolean wasCurrentActorRestarted();
 
   /**
