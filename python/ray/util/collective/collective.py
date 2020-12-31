@@ -340,7 +340,7 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
             "The length of the tensor list operands to allgather "
             "must be equal to world_size.")
     opts = types.AllGatherOptions()
-    g.allgather([tensor_list], [tensor], opts)
+    g.allgather([tensor_list],[tensor], opts)
 
 
 def allgather_multigpu(output_tensor_lists: list,
