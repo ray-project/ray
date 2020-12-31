@@ -68,7 +68,7 @@ The first approach is easy to get started with, but it's hard to scale each comp
 requires vendor lock-in (SageMaker), framework-specific tooling (TFServing), and a general
 lack of flexibility.
 
-Ray Serve solves these problems by giving you a simple web server (and the ability to use your own) while still handling the complex routing, scaling, and testing logic
+Ray Serve solves these problems by giving you a simple web server (and the ability to :ref:`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
 Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
