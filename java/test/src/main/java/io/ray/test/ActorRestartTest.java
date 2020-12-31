@@ -70,4 +70,3 @@ public class ActorRestartTest extends BaseTest {
     }
   }
 }
-

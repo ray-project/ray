@@ -29,8 +29,10 @@ To scale out a backend to many instances, simply configure the number of replica
 
 This will scale up or down the number of replicas that can accept requests.
 
-Using Resources (CPUs, GPUs)
-============================
+.. _`serve-cpus-gpus`:
+
+Resource Management (CPUs, GPUs)
+================================
 
 To assign hardware resources per replica, you can pass resource requirements to
 ``ray_actor_options``.
@@ -89,7 +91,7 @@ If you *do* want to enable this parallelism in your Serve backend, just set OMP_
 
 .. _serve-batching:
 
-Batching to improve performance
+Batching to Improve Performance
 ===============================
 
 You can also have Ray Serve batch requests for performance. In order to do use this feature, you need to:
@@ -291,10 +293,58 @@ Monitoring
 ==========
 
 Ray Serve exposes important system metrics like the number of successful and
-errored requests through the Ray metrics monitoring infrastructure. By default,
-the metrics are exposed in Prometheus format on each node. See the
-`Ray Monitoring documentation <../ray-metrics.html>`__ for more information.
+errored requests through the `Ray metrics monitoring infrastructure <../ray-metrics.html>`__. By default,
+the metrics are exposed in Prometheus format on each node.
 
+The following metrics are exposed by Ray Serve:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Name
+     - Description
+   * - ``serve_backend_request_counter``
+     - The number of queries that have been processed in this replica.
+   * - ``serve_backend_error_counter``
+     - The number of exceptions that have occurred in the backend.
+   * - ``serve_backend_replica_starts``
+     - The number of times this replica has been restarted due to failure.
+   * - ``serve_backend_queuing_latency_ms``
+     - The latency for queries in the replica's queue waiting to be processed or batched.
+   * - ``serve_backend_processing_latency_ms``
+     - The latency for queries to be processed.
+   * - ``serve_replica_queued_queries``
+     - The current number of queries queued in the backend replicas.
+   * - ``serve_replica_processing_queries``
+     - The current number of queries being processed.
+   * - ``serve_num_http_requests``
+     - The number of HTTP requests processed.
+   * - ``serve_num_router_requests``
+     - The number of requests processed by the router.
+
+To see this in action, run ``ray start --head --metrics-export-port=8080`` in your terminal, and then run the following script:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_metrics.py
+
+In your web browser, navigate to ``localhost:8080``.
+In the output there, you can search for ``serve_`` to locate the metrics above.
+The metrics are updated once every ten seconds, and you will need to refresh the page to see the new values.
+
+For example, after running the script for some time and refreshing ``localhost:8080`` you might see something that looks like::
+
+  ray_serve_backend_processing_latency_ms_count{...,backend="f",...} 99.0
+  ray_serve_backend_processing_latency_ms_sum{...,backend="f",...} 99279.30498123169
+
+which indicates that the average processing latency is just over one second, as expected.
+
+You can even define a `custom metric <..ray-metrics.html#custom-metrics>`__ to use in your backend, and tag it with the current backend or replica.
+Here's an example:
+
+.. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_custom_metric.py
+  :lines: 11-23
+
+See the
+`Ray Monitoring documentation <../ray-metrics.html>`__ for more details, including instructions for scraping these metrics using Prometheus.
 
 Reconfiguring Backends (Experimental)
 =====================================
