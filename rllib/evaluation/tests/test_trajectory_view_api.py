@@ -63,7 +63,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
             assert len(view_req_policy) == 8, view_req_policy
@@ -108,7 +108,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
