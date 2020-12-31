@@ -11,15 +11,9 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
-from ray.rllib.models.tf.attention_net import AttentionWrapper
-from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
-from ray.rllib.models.torch.attention_net import AttentionWrapper as \
-    TorchAttentionWrapper
-from ray.rllib.models.torch.recurrent_net import LSTMWrapper as \
-    TorchLSTMWrapper
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
@@ -355,6 +349,10 @@ class ModelCatalog:
                 # Try wrapping custom model with LSTM/attention, if required.
                 if model_config.get("use_lstm") or \
                         model_config.get("use_attention"):
+                    from ray.rllib.models.tf.attention_net import \
+                        AttentionWrapper
+                    from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+
                     wrapped_cls = model_cls
                     forward = wrapped_cls.forward
                     model_cls = ModelCatalog._wrap_if_needed(
@@ -408,12 +406,16 @@ class ModelCatalog:
                 # Try wrapping custom model with LSTM/attention, if required.
                 if model_config.get("use_lstm") or \
                         model_config.get("use_attention"):
+                    from ray.rllib.models.torch.attention_net import \
+                        AttentionWrapper
+                    from ray.rllib.models.torch.recurrent_net import \
+                        LSTMWrapper
+
                     wrapped_cls = model_cls
                     forward = wrapped_cls.forward
                     model_cls = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, TorchLSTMWrapper
-                        if model_config.get("use_lstm") else
-                        TorchAttentionWrapper)
+                        wrapped_cls, LSTMWrapper
+                        if model_config.get("use_lstm") else AttentionWrapper)
                     model_cls._wrapped_forward = forward
 
                 # PyTorch automatically tracks nn.Modules inside the parent
@@ -458,6 +460,11 @@ class ModelCatalog:
 
             if model_config.get("use_lstm") or \
                     model_config.get("use_attention"):
+
+                from ray.rllib.models.tf.attention_net import \
+                    AttentionWrapper
+                from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
                 if model_config.get("use_lstm"):
@@ -487,14 +494,18 @@ class ModelCatalog:
             if model_config.get("use_lstm") or \
                     model_config.get("use_attention"):
 
+                from ray.rllib.models.torch.attention_net import \
+                    AttentionWrapper
+                from ray.rllib.models.torch.recurrent_net import LSTMWrapper
+
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
                 if model_config.get("use_lstm"):
                     v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, TorchLSTMWrapper)
+                        wrapped_cls, LSTMWrapper)
                 else:
                     v2_class = ModelCatalog._wrap_if_needed(
-                        wrapped_cls, TorchAttentionWrapper)
+                        wrapped_cls, AttentionWrapper)
 
                 v2_class._wrapped_forward = forward
 
