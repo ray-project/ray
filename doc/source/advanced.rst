@@ -398,3 +398,19 @@ To enable object spilling to remote storage (any URI supported by `smart_open <h
             )
         },
     )
+
+When spilling is happening, the following INFO level messages will be printed to the raylet logs:
+
+.. code-block:: 
+
+  local_object_manager.cc:166: Spilled 50 MiB, 1 objects, write throughput 230 MiB/s
+  local_object_manager.cc:334: Restored 50 MiB, 1 objects, read throughput 505 MiB/s
+
+You can also view cluster-wide spill stats by using the ``ray memory`` command:
+
+.. code-block:: 
+
+  --- Aggregate object store stats across all nodes ---
+  Plasma memory usage 50 MiB, 1 objects, 50.0% full
+  Spilled 200 MiB, 4 objects, avg write throughput 570 MiB/s
+  Restored 150 MiB, 3 objects, avg read throughput 1361 MiB/s
