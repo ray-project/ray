@@ -347,11 +347,15 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
-void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker) {
+void NodeManager::DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
+                                          rpc::ClientDisconnectType disconnect_type) {
+  // Used to destroy a worker when its bundle resource is released (unused or
+  // placementgroup is deleted.)
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+  DisconnectClient(worker->Connection(), disconnect_type);
+  RAY_LOG(ERROR) << "DisconnectAndKillWorker" << disconnect_type;
   worker->MarkDead();
   KillWorker(worker);
 }
@@ -602,9 +606,9 @@ void NodeManager::HandleReleaseUnusedBundles(
   }
 
   // Kill all workers that are currently associated with the unused bundles.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_unused_bundles` separately.
+  // NOTE: We can't traverse directly with `leased_workers_`, because
+  // `DisconnectAndKillWorker` will delete the element of `leased_workers_`. So we need to
+  // filter out `workers_associated_with_unused_bundles` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_unused_bundles;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
@@ -623,7 +627,7 @@ void NodeManager::HandleReleaseUnusedBundles(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker);
+    DisconnectAndKillWorker(worker, rpc::ClientDisconnectType::UNUSED_RESOURCE_RELEASED);
   }
 
   // Return unused bundle resources.
@@ -709,7 +713,7 @@ void NodeManager::WarnResourceDeadlock() {
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale.";
-    auto error_data_ptr = gcs::CreateErrorTableData(
+    const auto error_data_ptr = gcs::CreateErrorTableData(
         "resource_deadlock", error_message.str(), current_time_ms(),
         exemplar.GetTaskSpecification().JobId());
     RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
@@ -1255,7 +1259,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
         fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
           if (!status.ok()) {
-            ProcessDisconnectClientMessage(client);
+            DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXIT);
           }
         });
   };
@@ -1354,8 +1358,9 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   }
 }
 
-void NodeManager::ProcessDisconnectClientMessage(
-    const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
+void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                                   rpc::ClientDisconnectType disconnect_type) {
+  RAY_LOG(ERROR) << "DisconnectClient*****" << disconnect_type;
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
@@ -1378,7 +1383,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   if (is_worker && worker->IsDead()) {
     // If the worker was killed by us because the driver exited,
     // treat it as intentionally disconnected.
-    intentional_disconnect = true;
     // Don't need to unblock the client if it's a worker and is already dead.
     // Because in this case, its task is already cleaned up.
     RAY_LOG(DEBUG) << "Skip unblocking worker because it's already dead.";
@@ -1400,32 +1404,50 @@ void NodeManager::ProcessDisconnectClientMessage(
   // Publish the worker failure.
   auto worker_failure_data_ptr =
       gcs::CreateWorkerFailureData(self_node_id_, worker->WorkerId(), worker->IpAddress(),
-                                   worker->Port(), time(nullptr), intentional_disconnect);
+                                   worker->Port(), time(nullptr), disconnect_type);
   RAY_CHECK_OK(
       gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
 
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const TaskID &task_id = worker->GetAssignedTaskId();
-    // If the worker was running a task or actor, clean up the task and push an
-    // error to the driver, unless the worker is already dead.
+
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
+      // If the worker was running a task or actor, clean up the task and push an
+      // error to the driver, unless the worker is already dead.
+      ErrorType error_type = ErrorType::WORKER_DIED;
+      // TODO(rkn): Define this constant somewhere else.
+      std::string type_str;
+      std::ostringstream error_message;
+
+      bool intentional_exit = false;
+      switch (disconnect_type) {
+      case rpc::ClientDisconnectType::UNEXPECTED_EXIT: {
+        type_str = "worker_died";
+        error_message << "A worker died or was killed while executing task " << task_id
+                      << ".";
+      } break;
+      case rpc::ClientDisconnectType::PLACEGROUP_REMOVED: {
+        error_type = ErrorType::PLACEMENT_GROUP_ERROR;
+        type_str = "placement_group";
+        error_message << "A worker was killed while executing task " << task_id
+                      << " due to placement group removal"
+                      << ".";
+      } break;
+      default:
+        intentional_exit = true;
+      }
+
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         Task task;
         static_cast<void>(local_queues_.RemoveTask(task_id, &task));
       }
-
-      if (!intentional_disconnect) {
+      if (!intentional_exit) {
         // Push the error to driver.
         const JobID &job_id = worker->GetAssignedJobId();
-        // TODO(rkn): Define this constant somewhere else.
-        std::string type = "worker_died";
-        std::ostringstream error_message;
-        error_message << "A worker died or was killed while executing task " << task_id
-                      << ".";
-        auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
-                                                        current_time_ms(), job_id);
+        const auto error_data_ptr = gcs::CreateErrorTableData(
+            type_str, error_message.str(), current_time_ms(), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
@@ -1479,6 +1501,15 @@ void NodeManager::ProcessDisconnectClientMessage(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
+}
+
+void NodeManager::ProcessDisconnectClientMessage(
+    const std::shared_ptr<ClientConnection> &client, bool intentional_disconnect) {
+  if (intentional_disconnect) {
+    DisconnectClient(client, rpc::ClientDisconnectType::FINISHED);
+    return;
+  }
+  DisconnectClient(client);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1569,7 +1600,7 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
-          ProcessDisconnectClientMessage(client);
+          DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXIT);
         }
       });
   RAY_CHECK_OK(status);
@@ -1618,7 +1649,8 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto const &error_message = string_from_flatbuf(*message->error_message());
   double timestamp = message->timestamp();
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
-  auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
+  const auto error_data_ptr =
+      gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
@@ -1789,9 +1821,9 @@ void NodeManager::HandleCancelResourceReserve(
                 << bundle_spec.DebugString();
 
   // Kill all workers that are currently associated with the placement group.
-  // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
-  // delete the element of `leased_workers_`. So we need to filter out
-  // `workers_associated_with_pg` separately.
+  // NOTE: We can't traverse directly with `leased_workers_`, because
+  // `DisconnectAndKillWorker` will delete the element of `leased_workers_`. So we need to
+  // filter out `workers_associated_with_pg` separately.
   std::vector<std::shared_ptr<WorkerInterface>> workers_associated_with_pg;
   for (const auto &worker_it : leased_workers_) {
     auto &worker = worker_it.second;
@@ -1807,7 +1839,7 @@ void NodeManager::HandleCancelResourceReserve(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DestroyWorker(worker);
+    DisconnectAndKillWorker(worker, rpc::ClientDisconnectType::PLACEGROUP_REMOVED);
   }
 
   // Return bundle resources.
@@ -1838,7 +1870,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   if (worker) {
     if (request.disconnect_worker()) {
-      ProcessDisconnectClientMessage(worker->Connection());
+      DisconnectClient(worker->Connection(), rpc::ClientDisconnectType::UNEXPECTED_EXIT);
     } else {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
@@ -2683,7 +2715,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<WorkerInterface> &worke
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
     // We failed to send the task to the worker, so disconnect the worker.
-    ProcessDisconnectClientMessage(worker->Connection());
+    DisconnectClient(worker->Connection());
     // Queue this task for future assignment. We need to do this since
     // DispatchTasks() removed it from the ready queue. The task will be
     // assigned to a worker once one becomes available.

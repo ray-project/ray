@@ -33,6 +33,8 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
+  private static final byte[] PLACEMENT_GROUP_ERROR_META =
+      String.valueOf(ErrorType.PLACEMENT_GROUP_ERROR.getNumber()).getBytes();
 
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();

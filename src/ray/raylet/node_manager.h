@@ -384,12 +384,23 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void KillWorker(std::shared_ptr<WorkerInterface> worker);
 
-  /// Destroy a worker.
+  /// Disconnect and kill a worker.
   /// We will disconnect the worker connection first and then kill the worker.
   ///
-  /// \param worker The worker to destroy.
+  /// \param worker The worker to stop.
   /// \return Void.
-  void DestroyWorker(std::shared_ptr<WorkerInterface> worker);
+  void DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
+                               rpc::ClientDisconnectType disconnect_type =
+                                   rpc::ClientDisconnectType::UNEXPECTED_EXIT);
+
+  /// Disconnect a client.
+  ///
+  /// \param client The client that sent the message.
+  /// \param disconnect_type The reason to disconnect the specified client.
+  /// \return Void.
+  void DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                        rpc::ClientDisconnectType disconnect_type =
+                            rpc::ClientDisconnectType::UNEXPECTED_EXIT);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.
@@ -472,7 +483,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// client.
   ///
   /// \param client The client that sent the message.
-  /// \param intentional_disconnect Whether the client was intentionally disconnected.
+  /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessDisconnectClientMessage(const std::shared_ptr<ClientConnection> &client,
                                       bool intentional_disconnect = false);
