@@ -18,8 +18,7 @@ Before Branch Cut
    be avoided where possible).
    You may make a copy of the following `template <https://docs.google.com/spreadsheets/d/1qeOYErAn3BzGgtEilBePjN6tavdbabCEEqglDsjrq1g/edit#gid=0>`_.
 
-   Make sure to share this document with the folks at Ant Financial
-   in our open-source collaboration channel.
+   Make sure to share this document with major contributors who may have release blockers.
 
 2. **Announce the release** over email to the engineering@anyscale.com mailing 
    group. The announcement should
