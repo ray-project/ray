@@ -92,6 +92,7 @@ public class ActorRestartTest extends BaseTest {
 
   /**
    * The helper to kill a counter actor.
+   *
    * @param actor The counter actor to be killed.
    * @return The pid of the actor.
    */
