@@ -11,7 +11,7 @@ from ray.util.collective.collective_group.base_collective_group \
 from ray.util.collective.const import get_nccl_store_name
 from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
-    AllGatherOptions, ReduceScatterOptions
+    AllGatherOptions, ReduceScatterOptions, OpType
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +287,32 @@ class NCCLGroup(BaseGroup):
         comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
                            stream.ptr)
 
+    # def send(self, tensor, dst_rank):
+    #     """Send tensor to a destination process in the group.
+    #
+    #     Args:
+    #         tensor: the tensor to send.
+    #         dst_rank: the rank of the destination process.
+    #
+    #     Returns:
+    #         None
+    #     """
+    #
+    #     # check whether send/recv is available
+    #     if nccl_util.get_nccl_runtime_version() < 2704:
+    #         raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
+    #                            "Got '{}'.".format(
+    #                                nccl_util.get_nccl_runtime_version()))
+    #
+    #     peer_p2p_rank = 0 if self.rank > dst_rank else 1
+    #     comm = self._get_nccl_p2p_communicator(self.rank, dst_rank)
+    #     stream = self._get_cuda_stream()
+    #
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    #     ptr = nccl_util.get_tensor_ptr(tensor)
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor)
+    #     comm.send(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
+
     def send(self, tensor, dst_rank):
         """Send tensor to a destination process in the group.
 
@@ -297,21 +323,33 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
+        def fn(comm, ptr, n_elems, dtype, rank, stream):
+            comm.send(ptr, n_elems, dtype, rank, stream)
 
-        # check whether send/recv is available
-        if nccl_util.get_nccl_runtime_version() < 2704:
-            raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(
-                                   nccl_util.get_nccl_runtime_version()))
+        self._point2point(tensor, fn, dst_rank)
 
-        peer_p2p_rank = 0 if self.rank > dst_rank else 1
-        comm = self._get_nccl_p2p_communicator(self.rank, dst_rank)
-        stream = self._get_cuda_stream()
-
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        comm.send(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
+    # def recv(self, tensor, src_rank):
+    #     """Receive tensor from a source process in the group.
+    #
+    #     Args:
+    #         tensor: the received tensor.
+    #         src_rank: the rank of the source process.
+    #
+    #     Returns:
+    #         None
+    #     """
+    #     if nccl_util.get_nccl_runtime_version() < 2704:
+    #         raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
+    #                            "Got '{}'.".format(
+    #                                nccl_util.get_nccl_runtime_version()))
+    #     peer_p2p_rank = 0 if self.rank > src_rank else 1
+    #     comm = self._get_nccl_p2p_communicator(src_rank, self.rank)
+    #     stream = self._get_cuda_stream()
+    #
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    #     ptr = nccl_util.get_tensor_ptr(tensor)
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor)
+    #     comm.recv(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
 
     def recv(self, tensor, src_rank):
         """Receive tensor from a source process in the group.
@@ -323,18 +361,10 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        if nccl_util.get_nccl_runtime_version() < 2704:
-            raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(
-                                   nccl_util.get_nccl_runtime_version()))
-        peer_p2p_rank = 0 if self.rank > src_rank else 1
-        comm = self._get_nccl_p2p_communicator(src_rank, self.rank)
-        stream = self._get_cuda_stream()
+        def fn(comm, ptr, n_elems, dtype, rank, stream):
+            comm.recv(ptr, n_elems, dtype, rank, stream)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        comm.recv(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
+        self._point2point(tensor, fn, src_rank)
 
     def _get_nccl_collective_communicator(self):
         """Create or retrieve a cached NCCL communicator.
@@ -357,18 +387,18 @@ class NCCLGroup(BaseGroup):
                                                    self.rank)
         return self._collective_comm_cache
 
-    def _get_nccl_p2p_communicator(self, src_rank, dst_rank):
+    def _get_nccl_p2p_communicator(self, rank1, rank2):
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Args:
-            src_rank (int): source rank.
-            dst_rank (int): destination rank.
+            rank1 (int): source rank.
+            rank2 (int): destination rank.
 
         Returns:
             communicator
         """
-        min_rank = min(src_rank, dst_rank)
-        max_rank = max(src_rank, dst_rank)
+        min_rank = min(rank1, rank2)
+        max_rank = max(rank1, rank2)
         my_rank = 0 if self.rank == min_rank else 1
         p2p_group_key = self._generate_p2p_group_key(min_rank, max_rank)
         comm = self._p2p_comm_cache.get(p2p_group_key)
@@ -422,11 +452,34 @@ class NCCLGroup(BaseGroup):
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
 
-    # Note(Hao): too many bipolate code -- make some abstraction.
-    # def _collective_call(self, *args):
-    #     """Private method to encapsulate all collective calls"""
-    #     pass
+    def _collective(self):
+        """A method to encapsulate all collective calls."""
+        pass
 
+    def _point2point(self, tensor, fn, peer_rank: int):
+        """A method to encapsulate all p2p calls.
+
+        Args:
+            tensor: the tensor to be sent/received.
+            op_type: OpType.SEND or OpType.Recv.
+            peer_rank (int): the target rank in the send/recv pair.
+
+        Returns:
+            None
+        """
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("P2p send/recv requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(
+                                   nccl_util.get_nccl_runtime_version()))
+
+        # We have made sure that self.rank != peer_rank during API check.
+        peer_p2p_rank = 0 if self.rank > peer_rank else 1
+        comm = self._get_nccl_p2p_communicator(self.rank, peer_rank)
+        stream = self._get_cuda_stream()
+        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+        ptr = nccl_util.get_tensor_ptr(tensor)
+        n_elems = nccl_util.get_tensor_n_elements(tensor)
+        fn(comm, ptr, n_elems, dtype, peer_p2p_rank, stream)
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
     """Flatten the tensor for gather/scatter operations.
