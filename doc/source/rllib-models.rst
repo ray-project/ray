@@ -152,6 +152,7 @@ For an RNN model it is preferred to subclass ``RecurrentNetwork`` (either the TF
 You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/models/rnn_model.py>`__ models as examples to implement your own (either TF or Torch):
 
 .. autoclass:: ray.rllib.models.tf.recurrent_net.RecurrentNetwork
+
     .. automethod:: __init__
     .. automethod:: forward_rnn
     .. automethod:: get_initial_state
