@@ -122,28 +122,20 @@ message GetNodeStatsRequest {
 message ObjectStoreStats {
   // The amount of wall time total where spilling was happening.
   double spill_time_total_s = 1;
-
   // The number of bytes spilled total.
   int64 spilled_bytes_total = 2;
-
   // The number of objects spilled total.
   int64 spilled_objects_total = 3;
-
   // The amount of wall time total where object restore was happening.
   double restore_time_total_s = 4;
-
   // The number of bytes restored total.
   int64 restored_bytes_total = 5;
-
   // The number of objects restored total.
   int64 restored_objects_total = 6;
-
   // The current usage of the object store.
   int64 object_store_bytes_used = 7;
-
   // The max capacity of the object store.
   int64 object_store_bytes_avail = 8;
-
   // The number of local objects total.
   int64 num_local_objects = 9;
 }
