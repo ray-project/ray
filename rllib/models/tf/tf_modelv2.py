@@ -11,8 +11,8 @@ tf1, tf, tfv = try_import_tf()
 
 
 @PublicAPI
-class TFModelV2(ModelV2):
-    """TF version of ModelV2.
+class TFModelV2(ModelV2, tf.keras.models.Model if tf else object):
+    """TF version of ModelV2, which is always also a keras Model.
 
     Note that this class by itself is not a valid model unless you
     implement forward() in a subclass."""
@@ -35,7 +35,7 @@ class TFModelV2(ModelV2):
                     input_layer, [output_layer, value_layer])
                 self.register_variables(self.base_model.variables)
         """
-
+        tf.keras.models.Model.__init__(self, name=name)
         ModelV2.__init__(
             self,
             obs_space,
@@ -81,3 +81,7 @@ class TFModelV2(ModelV2):
                 for k, v in self.variables(as_dict=True).items() if v.trainable
             }
         return [v for v in self.variables() if v.trainable]
+
+    @override(tf.keras.models.Model)
+    def call(self, *args, **kwargs):
+        return self.__call__(*args, **kwargs)

@@ -35,7 +35,8 @@ class ModelV2:
 
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
-                 model_config: ModelConfigDict, name: str, framework: str):
+                 model_config: ModelConfigDict, name: str,
+                 framework: str):
         """Initializes a ModelV2 object.
 
         This method should create any variables used by the model.
@@ -57,7 +58,8 @@ class ModelV2:
         self.action_space: gym.spaces.Space = action_space
         self.num_outputs: int = num_outputs
         self.model_config: ModelConfigDict = model_config
-        self.name: str = name or "default_model"
+        if not hasattr(self, "name"):
+            self.name: str = name or "default_model"
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
