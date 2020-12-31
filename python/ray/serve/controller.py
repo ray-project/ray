@@ -220,7 +220,8 @@ class BackendState:
             for tag, info in self.backends.items()
         }
 
-    def get_replica_handles(self) -> List[ActorHandle]:
+    def get_replica_handles(
+            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
         return self.backend_replicas
 
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
@@ -682,6 +683,7 @@ class ServeController:
 
     def set_goal_id(self, goal_id: UUID) -> None:
         event = self.inflight_results.get(goal_id)
+        logger.debug(f"Setting goal id {goal_id}")
         if event:
             event.set()
 
