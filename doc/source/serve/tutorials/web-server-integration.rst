@@ -19,11 +19,11 @@ For this example, you must have either `Pytorch <https://pytorch.org/>`_ or `Ten
 
 Here’s a simple FastAPI web server. It uses Huggingface Transformers to auto-generate text based on a short initial input using `OpenAI’s GPT-2 model <https://openai.com/blog/better-language-models/>`_.
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/fastapi.py
 
 To scale this up, we define a Ray Serve backend containing our text model and call it from Python using a ServeHandle:
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/servehandle_fastapi.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/fastapi/servehandle_fastapi.py
 
 To run this example, save it as ``main.py`` and then in the same directory, run the following commands to start a local Ray cluster on your machine and run the FastAPI application:
 
@@ -56,11 +56,11 @@ In this section, we'll integrate Ray Serve with an `AIOHTTP <https://docs.aiohtt
 
 First, here is the script that deploys Ray Serve:
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp_deploy.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp/aiohttp_deploy.py
 
 Next is the script that defines the AIOHTTP server:
 
-.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp_app.py
+.. literalinclude:: ../../../../python/ray/serve/examples/doc/aiohttp/aiohttp_app.py
 
 Here's how to run this example:
 
