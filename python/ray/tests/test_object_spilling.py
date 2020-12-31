@@ -232,7 +232,7 @@ def test_spill_stats(object_spilling_config, shutdown_only):
     while ids:
         print(ray.get(ids.pop()))
 
-    x_id = f.remote() # noqa
+    x_id = f.remote()  # noqa
     ray.get(x_id)
     s = memory_summary()
     assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
