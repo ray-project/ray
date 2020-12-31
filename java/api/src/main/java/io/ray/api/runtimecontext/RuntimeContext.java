@@ -19,8 +19,6 @@ public interface RuntimeContext {
 
   /**
    * Returns true if the current actor was restarted, otherwise false.
-   *
-   * <p>Note, this method can be called from both an actor creation task and an actor task.
    */
   boolean wasCurrentActorRestarted();
 

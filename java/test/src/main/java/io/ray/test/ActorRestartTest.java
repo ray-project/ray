@@ -22,7 +22,7 @@ public class ActorRestartTest extends BaseTest {
       wasCurrentActorRestarted = Ray.getRuntimeContext().wasCurrentActorRestarted();
     }
 
-    public boolean wasCurrentActorRestarted() {
+    public boolean checkWasCurrentActorRestartedInActorCreationTask() {
       return wasCurrentActorRestarted;
     }
 
@@ -31,7 +31,7 @@ public class ActorRestartTest extends BaseTest {
       return value;
     }
 
-    public boolean askRayWasCurrentActorRestarted() {
+    public boolean checkWasCurrentActorRestartedInActorTask() {
       return Ray.getRuntimeContext().wasCurrentActorRestarted();
     }
 
@@ -47,7 +47,9 @@ public class ActorRestartTest extends BaseTest {
       actor.task(Counter::increase).remote().get();
     }
 
-    Assert.assertFalse(actor.task(Counter::wasCurrentActorRestarted).remote().get());
+    // Check if actor was restarted.
+    Assert.assertFalse(actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
+    Assert.assertFalse(actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process.
     killActorProcess(actor);
@@ -55,46 +57,19 @@ public class ActorRestartTest extends BaseTest {
     int value = actor.task(Counter::increase).remote().get();
     Assert.assertEquals(value, 1);
 
-    Assert.assertTrue(actor.task(Counter::wasCurrentActorRestarted).remote().get());
+    // Check if actor was restarted again.
+    Assert.assertTrue(actor.task(Counter::checkWasCurrentActorRestartedInActorCreationTask).remote().get());
+    Assert.assertTrue(actor.task(Counter::checkWasCurrentActorRestartedInActorTask).remote().get());
 
     // Kill the actor process again.
     killActorProcess(actor);
 
     // Try calling increase on this actor again and this should fail.
-    try {
-      actor.task(Counter::increase).remote().get();
-      Assert.fail("The above task didn't fail.");
-    } catch (RayActorException e) {
-      // We should receive a RayActorException because the actor is dead.
-    }
-  }
-
-  @Test
-  public void testWasCurrentActorRestartedInActorTask() throws IOException, InterruptedException {
-    ActorHandle<Counter> actor = Ray.actor(Counter::new).setMaxRestarts(1).remote();
-    actor.task(Counter::getPid).remote().get();
-    Assert.assertFalse(actor.task(Counter::askRayWasCurrentActorRestarted).remote().get());
-    // Kill the actor process.
-    killActorProcess(actor);
-    int value = actor.task(Counter::increase).remote().get();
-    Assert.assertEquals(value, 1);
-    Assert.assertTrue(actor.task(Counter::wasCurrentActorRestarted).remote().get());
-    // Kill the actor process again.
-    killActorProcess(actor);
-    // Try calling increase on this actor again and this should fail.
-    try {
-      actor.task(Counter::increase).remote().get();
-      Assert.fail("The above task didn't fail.");
-    } catch (RayActorException e) {
-      // We should receive a RayActorException because the actor is dead.
-    }
+    Assert.assertThrows(RayActorException.class, () -> actor.task(Counter::increase).remote().get());
   }
 
   /**
    * The helper to kill a counter actor.
-   *
-   * @param actor The counter actor to be killed.
-   * @return The pid of the actor.
    */
   private static void killActorProcess(ActorHandle<Counter> actor)
       throws IOException, InterruptedException {
