@@ -211,7 +211,7 @@ def test_fast(shutdown_only, use_force):
         x = fast.remote("a")
         ray.cancel(x, force=use_force)
         ids.append(x)
-
+    print("c")
     @ray.remote
     def wait_for(y):
         return y

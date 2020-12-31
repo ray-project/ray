@@ -1994,7 +1994,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   // Increment the task_queue_length
   task_queue_length_ += 1;
 
-  // For actor tasks, we just need to post a HandleActorTask instance to the task
+  /*// For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post([=] {
@@ -2013,7 +2013,12 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
       if (exiting_) return;
       direct_task_receiver_->RunNormalTasksFromQueue();
     });
-  }
+  }*/
+
+  task_execution_service_.post([=] {
+    if (exiting_) return;
+    direct_task_receiver_->HandlePushTask(request,reply,send_reply_callback);
+  });
 }
 
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
