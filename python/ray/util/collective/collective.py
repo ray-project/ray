@@ -351,12 +351,6 @@ def allgather_multigpu(output_tensor_lists: list,
     _check_tensor_list_input(input_tensor_list)
     _check_tensor_lists_input(output_tensor_lists)
     g = _check_and_get_group(group_name)
-    if len(output_tensor_lists[0]) != g.world_size:
-        # Typically CLL lib requires len(tensor_list) >= world_size;
-        # Here we make it more strict: len(tensor_list) == world_size.
-        raise RuntimeError(
-            "The length of elements of the output tensor lists operands to\
-            allgather_multigpu must be equal to world_size.")
     opts = types.AllGatherOptions()
     g.allgather(output_tensor_lists, input_tensor_list, opts)
 

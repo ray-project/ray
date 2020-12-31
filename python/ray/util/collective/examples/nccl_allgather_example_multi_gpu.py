@@ -26,15 +26,15 @@ class Worker:
             self.recv.append(recv)
 
     def setup(self, world_size, rank):
-        collective.init_collective_group(world_size, rank, "nccl", "177")
+        collective.init_collective_group(world_size, rank, "nccl", "178")
         return True
 
     def compute(self):
-        collective.allgather_multigpu(self.recv, [self.send1, self.send2], "177")
+        collective.allgather_multigpu(self.recv, [self.send1, self.send2], "178")
         return self.recv
 
     def destroy(self):
-        collective.destroy_collective_group("177")
+        collective.destroy_collective_group("178")
 
 
 if __name__ == "__main__":
