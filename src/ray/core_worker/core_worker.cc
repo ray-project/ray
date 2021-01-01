@@ -434,9 +434,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           uint32_t delay = RayConfig::instance().task_retry_delay_ms();
           RAY_LOG(ERROR) << "Will resubmit task after a " << delay
                          << "ms delay: " << spec.DebugString();
-          //RAY_LOG(INFO) << "CoreWorker,TaskMng grabbing CW_lock";
           absl::MutexLock lock(&mutex_);
-          //RAY_LOG(INFO) << "CoreWorker,TaskMng grabbed CW_lock";
           to_resubmit_.push_back(std::make_pair(current_time_ms() + delay, spec));
         } else {
           RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
@@ -601,9 +599,7 @@ void CoreWorker::Exit(bool intentional) {
     task_execution_service_.post([this, shutdown]() {
       bool not_actor_task = false;
       {
-        //RAY_LOG(INFO) << "Exit grabbing CW_lock";
-      absl::MutexLock lock(&mutex_);
-      //RAY_LOG(INFO) << "Exit grabbed CW_lock";
+        absl::MutexLock lock(&mutex_);
         not_actor_task = actor_id_.IsNil();
       }
       if (not_actor_task) {
@@ -682,9 +678,7 @@ const WorkerID &CoreWorker::GetWorkerID() const { return worker_context_.GetWork
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   {
-    //RAY_LOG(INFO) << "SetCurrentTaskId grabbing CW_lock";
     absl::MutexLock lock(&mutex_);
-    //RAY_LOG(INFO) << "SetCurrentTaskId grabbed CW_lock";
     main_thread_task_id_ = task_id;
   }
 }
@@ -747,9 +741,8 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
     return;
   }
 
-  //RAY_LOG(INFO) << "InternalHeartbeat grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "InternalHeartbeat grabbed CW_lock";
+
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto &spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
@@ -1160,9 +1153,7 @@ TaskID CoreWorker::GetCallerId() const {
   if (!actor_id.IsNil()) {
     caller_id = TaskID::ForActorCreationTask(actor_id);
   } else {
-    //RAY_LOG(INFO) << "GetCallerId grabbing CW_lock";
     absl::MutexLock lock(&mutex_);
-    //RAY_LOG(INFO) << "GetCallerId grabbed CW_lock";
     caller_id = main_thread_task_id_;
   }
   return caller_id;
@@ -1700,9 +1691,7 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandleLocalMode(
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {
-  //RAY_LOG(INFO) << "GetResourceIDs grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "GetResourceIDs grabbed CW_lock";
   return *resource_ids_;
 }
 
@@ -1773,9 +1762,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     SetCurrentTaskId(task_spec.TaskId());
   }
   {
-    //RAY_LOG(INFO) << "ExecuteTask grabbing CW_lock";
     absl::MutexLock lock(&mutex_);
-    //RAY_LOG(INFO) << "ExecuteTask grabbed CW_lock";
     current_task_ = task_spec;
     if (resource_ids) {
       resource_ids_ = resource_ids;
@@ -1872,9 +1859,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     worker_context_.ResetCurrentTask();
   }
   {
-    //RAY_LOG(INFO) << "ExecuteTask2 grabbing CW_lock";
     absl::MutexLock lock(&mutex_);
-    //RAY_LOG(INFO) << "ExecuteTask2 grabbed CW_lock";
     current_task_ = TaskSpecification();
     if (task_spec.IsNormalTask()) {
       resource_ids_.reset(new ResourceMappingType());
@@ -2214,9 +2199,7 @@ void CoreWorker::HandleRemoteCancelTask(const rpc::RemoteCancelTaskRequest &requ
 void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  //RAY_LOG(INFO) << "HandleCancelTask grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "HandleCancelTask grabbed CW_lock";
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   bool requested_task_running = main_thread_task_id_ == task_id;
   bool success = requested_task_running;
@@ -2250,11 +2233,8 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     // NOTE(hchen): Use `_Exit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    //RAY_LOG(INFO) << "HandleCancelTask released CW_lock (exiting after force kill)";
     _Exit(1);
-  }/*else {
-    RAY_LOG(INFO) << "HandleCancelTask released CW_lock (exiting)";
-  }*/
+  }
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
@@ -2301,9 +2281,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  //RAY_LOG(INFO) << "HandleGetCoreWorkerStats grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "HandleGetCoreWorkerStats grabbed CW_lock";
   auto stats = reply->mutable_core_worker_stats();
   // TODO(swang): Differentiate between tasks that are currently pending
   // execution and tasks that have finished but may be retried.
@@ -2508,9 +2486,7 @@ void CoreWorker::HandlePlasmaObjectReady(const rpc::PlasmaObjectReadyRequest &re
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
-  //RAY_LOG(INFO) << "SetActorId grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "SetActorId grabbed CW_lock";
   if (!options_.is_local_mode) {
     RAY_CHECK(actor_id_.IsNil());
   }
@@ -2518,16 +2494,12 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
 }
 
 void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
-  //RAY_LOG(INFO) << "SetWebuiDisplay grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "SetWebuiDisplay grabbed CW_lock";
   webui_display_[key] = message;
 }
 
 void CoreWorker::SetActorTitle(const std::string &title) {
-  //RAY_LOG(INFO) << "SetActorTitle grabbing CW_lock";
   absl::MutexLock lock(&mutex_);
-  //RAY_LOG(INFO) << "SetActorTitle grabbed CW_lock";
   actor_title_ = title;
 }
 

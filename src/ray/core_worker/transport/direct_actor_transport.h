@@ -529,9 +529,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
   NormalSchedulingQueue(){};
 
   bool TaskQueueEmpty() const {
-    //RAY_LOG(INFO) << "TaskQueueEmpty grabbing lock";
     absl::MutexLock lock(&mu_);
-    //RAY_LOG(INFO) << "TaskQueueEmpty grabbed & released lock";
     return pending_normal_tasks_.empty();
   }
 
@@ -540,69 +538,44 @@ class NormalSchedulingQueue : public SchedulingQueue {
            std::function<void()> accept_request, std::function<void()> reject_request,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    //RAY_LOG(INFO) << "Add grabbing lock";
     absl::MutexLock lock(&mu_);
-    //RAY_LOG(INFO) << "Add grabbed lock";
     // Normal tasks should not have ordering constraints.
     RAY_CHECK(seq_no == -1);
     // Create a InboundRequest object for the new task, and add it to the queue.
     pending_normal_tasks_.push_back(
         InboundRequest(accept_request, reject_request, task_id, dependencies.size() > 0));
-    //RAY_LOG(INFO) << "Add released lock";
   }
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.
   // If found, remove the InboundRequest from the queue and return true. Otherwise, return
   // false.
   bool CancelTaskIfFound(TaskID task_id) {
-    //RAY_LOG(INFO) << "CancelTaskIfFound grabbing lock";
     absl::MutexLock lock(&mu_);
-    //RAY_LOG(INFO) << "CancelTaskIfFound grabbed lock";
     for (std::deque<InboundRequest>::reverse_iterator it = pending_normal_tasks_.rbegin();
          it != pending_normal_tasks_.rend(); ++it) {
       if (it->TaskID() == task_id) {
         pending_normal_tasks_.erase(std::next(it).base());
-        //RAY_LOG(INFO) << "CancelTaskIfFound released lock";
         return true;
       }
     }
-    //RAY_LOG(INFO) << "CancelTaskIfFound released lock";
     return false;
   }
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
-    // RAY_LOG(INFO) << "ScheduleRequests grabbing lock";
-    // absl::MutexLock lock(&mu_);
-    // RAY_LOG(INFO) << "ScheduleRequests grabbed lock";
-    // while (!pending_normal_tasks_.empty()) {
-    //   auto &head = pending_normal_tasks_.front();
-    //   RAY_LOG(INFO) << "\tCalling head.Accept()";
-    //   head.Accept();
-    //   RAY_LOG(INFO) << "\tComing back from head.Accept()";
-    //   pending_normal_tasks_.pop_front();
-    // }
-
-    while(true) {
+    while (true) {
       InboundRequest head;
       {
-        //RAY_LOG(INFO) << "ScheduleRequests grabbing lock";
         absl::MutexLock lock(&mu_);
         if (!pending_normal_tasks_.empty()) {
           head = pending_normal_tasks_.front();
           pending_normal_tasks_.pop_front();
         } else {
-          //RAY_LOG(INFO) << "ScheduleRequests released lock";
           return;
         }
       }
-      //RAY_LOG(INFO) << "ScheduleRequests released lock";
-      //RAY_LOG(INFO) << "\tCalling head.Accept()";
       head.Accept();
-      //RAY_LOG(INFO) << "\tComing back from head.Accept()";
     }
-
-    
   }
 
  private:
