@@ -47,7 +47,7 @@ cc_library(
 cc_binary(
     name = "example",
     srcs = glob([
-        "src/ray/example.cc",
+        "src/ray/example/*.cc",
     ]),
     copts = COPTS,
     linkstatic = True,

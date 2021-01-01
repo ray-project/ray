@@ -124,7 +124,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     - Run `bazel build //cpp:example`.
     - Run `bazel run //cpp:example`.
 
-    .. literalinclude:: ../../cpp/src/ray/example.cc
+    .. literalinclude:: ../../cpp/src/ray/example/example.cc
        :language: cpp
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
