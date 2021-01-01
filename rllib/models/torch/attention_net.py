@@ -8,15 +8,17 @@
       Z. Dai, Z. Yang, et al. - Carnegie Mellon U - 2019.
       https://www.aclweb.org/anthology/P19-1285.pdf
 """
-import numpy as np
 import gym
-from gym.spaces import Box
+from gym.spaces import Box, Discrete, MultiDiscrete
+import numpy as np
+from typing import Dict, Optional, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.modules import GRUGate, \
     RelativeMultiHeadAttention, SkipConnection
 from ray.rllib.models.torch.recurrent_net import RecurrentNetwork
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
@@ -41,7 +43,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         >> config["model"]["max_seq_len"] = 10
         >> config["model"]["custom_model_config"] = {
         >>     num_transformer_units=1,
-        >>     attn_dim=32,
+        >>     attention_dim=32,
         >>     num_heads=2,
         >>     memory_tau=50,
         >>     etc..
@@ -51,24 +53,25 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
     def __init__(self,
                  observation_space: gym.spaces.Space,
                  action_space: gym.spaces.Space,
-                 num_outputs: int,
+                 num_outputs: Optional[int],
                  model_config: ModelConfigDict,
                  name: str,
-                 num_transformer_units: int,
-                 attn_dim: int,
-                 num_heads: int,
-                 memory_inference: int,
-                 memory_training: int,
-                 head_dim: int,
-                 ff_hidden_dim: int,
-                 init_gate_bias: float = 2.0):
+                 *,
+                 num_transformer_units: int = 1,
+                 attention_dim: int = 64,
+                 num_heads: int = 2,
+                 memory_inference: int = 50,
+                 memory_training: int = 50,
+                 head_dim: int = 32,
+                 position_wise_mlp_dim: int = 32,
+                 init_gru_gate_bias: float = 2.0):
         """Initializes a GTrXLNet.
 
         Args:
             num_transformer_units (int): The number of Transformer repeats to
                 use (denoted L in [2]).
-            attn_dim (int): The input and output dimensions of one Transformer
-                unit.
+            attention_dim (int): The input and output dimensions of one
+                Transformer unit.
             num_heads (int): The number of attention heads to use in parallel.
                 Denoted as `H` in [3].
             memory_inference (int): The number of timesteps to concat (time
@@ -80,16 +83,16 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
                 input (plus the actual input sequence of len=max_seq_len).
                 The first transformer unit will receive this number of
                 past observations (plus the input sequence), instead.
-            head_dim (int): The dimension of a single(!) head.
-                Denoted as `d` in [3].
-            ff_hidden_dim (int): The dimension of the hidden layer within
-                the position-wise MLP (after the multi-head attention block
-                within one Transformer unit). This is the size of the first
-                of the two layers within the PositionwiseFeedforward. The
-                second layer always has size=`attn_dim`.
-            init_gate_bias (float): Initial bias values for the GRU gates (two
-                GRUs per Transformer unit, one after the MHA, one after the
-                position-wise MLP).
+            head_dim (int): The dimension of a single(!) attention head within
+                a multi-head attention unit. Denoted as `d` in [3].
+            position_wise_mlp_dim (int): The dimension of the hidden layer
+                within the position-wise MLP (after the multi-head attention
+                block within one Transformer unit). This is the size of the
+                first of the two layers within the PositionwiseFeedforward. The
+                second layer always has size=`attention_dim`.
+            init_gru_gate_bias (float): Initial bias values for the GRU gates
+                (two GRUs per Transformer unit, one after the MHA, one after
+                the position-wise MLP).
         """
 
         super().__init__(observation_space, action_space, num_outputs,
@@ -98,7 +101,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         nn.Module.__init__(self)
 
         self.num_transformer_units = num_transformer_units
-        self.attn_dim = attn_dim
+        self.attention_dim = attention_dim
         self.num_heads = num_heads
         self.memory_inference = memory_inference
         self.memory_training = memory_training
@@ -107,7 +110,7 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.obs_dim = observation_space.shape[0]
 
         self.linear_layer = SlimFC(
-            in_size=self.obs_dim, out_size=self.attn_dim)
+            in_size=self.obs_dim, out_size=self.attention_dim)
 
         self.layers = [self.linear_layer]
 
@@ -117,29 +120,29 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
             # RelativeMultiHeadAttention part.
             MHA_layer = SkipConnection(
                 RelativeMultiHeadAttention(
-                    in_dim=self.attn_dim,
-                    out_dim=self.attn_dim,
+                    in_dim=self.attention_dim,
+                    out_dim=self.attention_dim,
                     num_heads=num_heads,
                     head_dim=head_dim,
                     input_layernorm=True,
                     output_activation=nn.ReLU),
-                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
+                fan_in_layer=GRUGate(self.attention_dim, init_gru_gate_bias))
 
             # Position-wise MultiLayerPerceptron part.
             E_layer = SkipConnection(
                 nn.Sequential(
-                    torch.nn.LayerNorm(self.attn_dim),
+                    torch.nn.LayerNorm(self.attention_dim),
                     SlimFC(
-                        in_size=self.attn_dim,
-                        out_size=ff_hidden_dim,
+                        in_size=self.attention_dim,
+                        out_size=position_wise_mlp_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU),
                     SlimFC(
-                        in_size=ff_hidden_dim,
-                        out_size=self.attn_dim,
+                        in_size=position_wise_mlp_dim,
+                        out_size=self.attention_dim,
                         use_bias=False,
                         activation_fn=nn.ReLU)),
-                fan_in_layer=GRUGate(self.attn_dim, init_gate_bias))
+                fan_in_layer=GRUGate(self.attention_dim, init_gru_gate_bias))
 
             # Build a list of all attanlayers in order.
             attention_layers.extend([MHA_layer, E_layer])
@@ -149,20 +152,27 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         self.attention_layers = nn.Sequential(*attention_layers)
         self.layers.extend(attention_layers)
 
-        # Postprocess GTrXL output with another hidden layer.
-        self.logits = SlimFC(
-            in_size=self.attn_dim,
-            out_size=self.num_outputs,
-            activation_fn=nn.ReLU)
-
-        # Value function used by all RLlib Torch RL implementations.
+        # Final layers if num_outputs not None.
+        self.logits = None
+        self.values_out = None
+        # Last value output.
         self._value_out = None
-        self.values_out = SlimFC(
-            in_size=self.attn_dim, out_size=1, activation_fn=None)
+        # Postprocess GTrXL output with another hidden layer.
+        if self.num_outputs is not None:
+            self.logits = SlimFC(
+                in_size=self.attention_dim,
+                out_size=self.num_outputs,
+                activation_fn=nn.ReLU)
+
+            # Value function used by all RLlib Torch RL implementations.
+            self.values_out = SlimFC(
+                in_size=self.attention_dim, out_size=1, activation_fn=None)
+        else:
+            self.num_outputs = self.attention_dim
 
         # Setup trajectory views (`memory-inference` x past memory outs).
         for i in range(self.num_transformer_units):
-            space = Box(-1.0, 1.0, shape=(self.attn_dim, ))
+            space = Box(-1.0, 1.0, shape=(self.attention_dim, ))
             self.view_requirements["state_in_{}".format(i)] = \
                 ViewRequirement(
                     "state_out_{}".format(i),
@@ -205,11 +215,16 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
         # layer).
         memory_outs = memory_outs[:-1]
 
-        logits = self.logits(all_out)
-        self._value_out = self.values_out(all_out)
+        if self.logits is not None:
+            out = self.logits(all_out)
+            self._value_out = self.values_out(all_out)
+            out_dim = self.num_outputs
+        else:
+            out = all_out
+            out_dim = self.attention_dim
 
-        return torch.reshape(logits, [-1, self.num_outputs]), [
-            torch.reshape(m, [-1, self.attn_dim]) for m in memory_outs
+        return torch.reshape(out, [-1, out_dim]), [
+            torch.reshape(m, [-1, self.attention_dim]) for m in memory_outs
         ]
 
     # TODO: (sven) Deprecate this once trajectory view API has fully matured.
@@ -219,4 +234,92 @@ class GTrXLNet(RecurrentNetwork, nn.Module):
 
     @override(ModelV2)
     def value_function(self) -> TensorType:
+        assert self._value_out is not None,\
+            "Must call forward first AND must have value branch!"
         return torch.reshape(self._value_out, [-1])
+
+
+class AttentionWrapper(TorchModelV2, nn.Module):
+    """GTrXL wrapper serving as interface for ModelV2s that set use_attention.
+    """
+
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
+
+        nn.Module.__init__(self)
+        super().__init__(obs_space, action_space, None, model_config, name)
+
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+        elif isinstance(action_space, MultiDiscrete):
+            self.action_dim = np.product(action_space.nvec)
+        elif action_space.shape is not None:
+            self.action_dim = int(np.product(action_space.shape))
+        else:
+            self.action_dim = int(len(action_space))
+
+        cfg = model_config
+
+        self.attention_dim = cfg["attention_dim"]
+
+        # Construct GTrXL sub-module w/ num_outputs=None (so it does not
+        # create a logits/value output; we'll do this ourselves in this wrapper
+        # here).
+        self.gtrxl = GTrXLNet(
+            obs_space,
+            action_space,
+            None,
+            model_config,
+            "gtrxl",
+            num_transformer_units=cfg["attention_num_transformer_units"],
+            attention_dim=self.attention_dim,
+            num_heads=cfg["attention_num_heads"],
+            head_dim=cfg["attention_head_dim"],
+            memory_inference=cfg["attention_memory_inference"],
+            memory_training=cfg["attention_memory_training"],
+            position_wise_mlp_dim=cfg["attention_position_wise_mlp_dim"],
+            init_gru_gate_bias=cfg["attention_init_gru_gate_bias"],
+        )
+
+        # Set final num_outputs to correct value (depending on action space).
+        self.num_outputs = num_outputs
+
+        # Postprocess GTrXL output with another hidden layer and compute
+        # values.
+        self._logits_branch = SlimFC(
+            in_size=self.attention_dim,
+            out_size=self.num_outputs,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+        self._value_branch = SlimFC(
+            in_size=self.attention_dim,
+            out_size=1,
+            activation_fn=None,
+            initializer=torch.nn.init.xavier_uniform_)
+
+        self.view_requirements = self.gtrxl.view_requirements
+
+    @override(RecurrentNetwork)
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+        assert seq_lens is not None
+        # Push obs through "unwrapped" net's `forward()` first.
+        wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
+
+        # Then through our GTrXL.
+        input_dict["obs_flat"] = wrapped_out
+
+        self._features, memory_outs = self.gtrxl(input_dict, state, seq_lens)
+        model_out = self._logits_branch(self._features)
+        return model_out, [torch.squeeze(m, 0) for m in memory_outs]
+
+    @override(ModelV2)
+    def get_initial_state(self) -> Union[List[np.ndarray], List[TensorType]]:
+        return []
+
+    @override(ModelV2)
+    def value_function(self) -> TensorType:
+        assert self._features is not None, "Must call forward() first!"
+        return torch.reshape(self._value_branch(self._features), [-1])

@@ -32,6 +32,7 @@ Thereby, always make sure that the last Conv2D output has an output shape of `[B
 X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
 
 In addition, if you set ``"model": {"use_lstm": true}``, the model output will be further processed by an LSTM cell (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__).
+
 More generally, RLlib supports the use of recurrent models for its policy gradient algorithms (A3C, PPO, PG, IMPALA), and RNN support is built into its policy evaluation utilities.
 For custom RNN/LSTM setups, see the `Recurrent Models`_. section below.
 
