@@ -1415,7 +1415,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was running a task or actor, clean up the task and push an
       // error to the driver, unless the worker is already dead.
-      ErrorType error_type = ErrorType::WORKER_DIED;
       // TODO(rkn): Define this constant somewhere else.
       std::string type_str;
       std::ostringstream error_message;
@@ -1428,7 +1427,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << ".";
       } break;
       case rpc::ClientDisconnectType::PLACEGROUP_REMOVED: {
-        error_type = ErrorType::PLACEMENT_GROUP_ERROR;
         type_str = "placement_group";
         error_message << "A worker was killed while executing task " << task_id
                       << " due to placement group removal"
