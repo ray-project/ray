@@ -23,7 +23,7 @@ class CommandRunnerInterface:
             run_env: str = "auto",
             ssh_options_override_ssh_key: str = "",
             shutdown_after_run: bool = False,
-    ) -> str:
+    ) -> Optional[str]:
         """Run the given command on the cluster node and optionally get output.
 
         WARNING: the cloudgateway needs arguments of "run" function to be json

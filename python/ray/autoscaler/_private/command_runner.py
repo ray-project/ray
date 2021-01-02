@@ -78,8 +78,8 @@ def set_using_login_shells(val):
     _config["use_login_shells"] = val
 
 
-def _with_environment_variables(cmd: str,
-                                environment_variables: Dict[str, object]):
+def _with_environment_variables(
+        cmd: str, environment_variables: Dict[str, object]) -> str:
     """Prepend environment variables to a shell command.
 
     Args:
