@@ -119,9 +119,9 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
     | - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
     | - Run `"cd ray/cpp"`.
     | - Run `"cp dev_BUILD.bazel BUILD.bazel"`.
-    | - Modify `src/ray/example.cc`.
+    | - Modify `src/ray/example/example.cc`.
     | - Run `"ray stop"`.
-    | - Run `"bazel build //cpp:example"`.
+    | - Run `"bazel build //cpp:all"`.
     | - Run `"bazel run //cpp:example"`.
 
     .. literalinclude:: ../../cpp/src/ray/example/example.cc
