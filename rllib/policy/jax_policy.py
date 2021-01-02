@@ -157,6 +157,9 @@ class JAXPolicy(Policy):
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
 
+        import time#TODO
+        start = time.time()
+
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -168,49 +171,49 @@ class JAXPolicy(Policy):
         seq_lens = np.array([1] * len(input_dict["obs"])) \
             if state_batches else None
 
-        if self.action_sampler_fn:
-            action_dist = dist_inputs = None
-            state_out = state_batches
-            actions, logp, state_out = self.action_sampler_fn(
-                self,
-                self.model,
-                input_dict,
-                state_out,
-                explore=explore,
-                timestep=timestep)
-        else:
-            # Call the exploration before_compute_actions hook.
-            self.exploration.before_compute_actions(
-                explore=explore, timestep=timestep)
-            if self.action_distribution_fn:
-                dist_inputs, dist_class, state_out = \
-                    self.action_distribution_fn(
-                        self,
-                        self.model,
-                        input_dict[SampleBatch.CUR_OBS],
-                        explore=explore,
-                        timestep=timestep,
-                        is_training=False)
-            else:
-                dist_class = self.dist_class
-                dist_inputs, state_out = self.model(input_dict, state_batches,
-                                                    seq_lens)
+        #if self.action_sampler_fn:
+        #    action_dist = dist_inputs = None
+        #    state_out = state_batches
+        #    actions, logp, state_out = self.action_sampler_fn(
+        #        self,
+        #        self.model,
+        #        input_dict,
+        #        state_out,
+        #        explore=explore,
+        #        timestep=timestep)
+        #else:
+        # Call the exploration before_compute_actions hook.
+        #self.exploration.before_compute_actions(
+        #    explore=explore, timestep=timestep)
+        #if self.action_distribution_fn:
+        #    dist_inputs, dist_class, state_out = \
+        #        self.action_distribution_fn(
+        #            self,
+        #            self.model,
+        #            input_dict[SampleBatch.CUR_OBS],
+        #            explore=explore,
+        #            timestep=timestep,
+        #            is_training=False)
+        #else:
+        dist_class = self.dist_class
+        dist_inputs, state_out = self.model(input_dict, state_batches,
+                                            seq_lens)
 
-            if not (isinstance(dist_class, functools.partial)
-                    or issubclass(dist_class, JAXDistribution)):
-                raise ValueError(
-                    "`dist_class` ({}) not a JAXDistribution "
-                    "subclass! Make sure your `action_distribution_fn` or "
-                    "`make_model_and_action_dist` return a correct "
-                    "distribution class.".format(dist_class.__name__))
-            action_dist = dist_class(dist_inputs, self.model)
+        #if not (isinstance(dist_class, functools.partial)
+        #        or issubclass(dist_class, JAXDistribution)):
+        #    raise ValueError(
+        #        "`dist_class` ({}) not a JAXDistribution "
+        #        "subclass! Make sure your `action_distribution_fn` or "
+        #        "`make_model_and_action_dist` return a correct "
+        #        "distribution class.".format(dist_class.__name__))
+        action_dist = dist_class(dist_inputs, self.model)
 
-            # Get the exploration action from the forward results.
-            actions, logp = \
-                self.exploration.get_exploration_action(
-                    action_distribution=action_dist,
-                    timestep=timestep,
-                    explore=explore)
+        # Get the exploration action from the forward results.
+        actions, logp = \
+            self.exploration.get_exploration_action(
+                action_distribution=action_dist,
+                timestep=timestep,
+                explore=explore)
 
         input_dict[SampleBatch.ACTIONS] = actions
 
@@ -230,6 +233,9 @@ class JAXPolicy(Policy):
 
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
+
+        #TODO
+        print("action pass={}".format(time.time() - start))
 
         return convert_to_non_jax_type((actions, state_out, extra_fetches))
 
