@@ -103,9 +103,9 @@ class ReplicaSet:
                 continue
             logger.debug(f"Assigned query {query.metadata.request_id} "
                          f"to replica {replica}.")
-            ref = replica.handle_request.remote(query)
-            self.in_flight_queries[replica].add(ref)
-            return ref
+            tracker_ref, user_ref = replica.handle_request.remote(query)
+            self.in_flight_queries[replica].add(tracker_ref)
+            return user_ref
         return None
 
     @property
