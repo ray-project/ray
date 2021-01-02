@@ -1,5 +1,6 @@
 package io.ray.streaming.runtime.master.scheduler;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.ActorHandle;
 import io.ray.streaming.runtime.config.StreamingConfig;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
@@ -82,7 +83,7 @@ public class JobSchedulerImpl implements JobScheduler {
     Map<ExecutionVertex, JobWorkerContext> vertexToContextMap = buildWorkersContext(executionGraph);
 
     // init workers
-    initWorkers(vertexToContextMap);
+    Preconditions.checkState(initWorkers(vertexToContextMap));
 
     // init master
     initMaster();
@@ -119,17 +120,13 @@ public class JobSchedulerImpl implements JobScheduler {
    * @param vertexToContextMap vertex - context map
    */
   protected boolean initWorkers(Map<ExecutionVertex, JobWorkerContext> vertexToContextMap) {
-    boolean result;
-    try {
-      result =
-          workerLifecycleController.initWorkers(
-              vertexToContextMap,
-              jobConfig.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs());
-    } catch (Exception e) {
-      LOG.error("Failed to initiate workers.", e);
-      return false;
+    boolean succeed;
+    int timeoutMs = jobConfig.masterConfig.schedulerConfig.workerInitiationWaitTimeoutMs();
+    succeed = workerLifecycleController.initWorkers(vertexToContextMap, timeoutMs);
+    if (!succeed) {
+      LOG.error("Failed to initiate workers in {} milliseconds", timeoutMs);
     }
-    return result;
+    return succeed;
   }
 
   /** Start JobWorkers according to the physical plan. */

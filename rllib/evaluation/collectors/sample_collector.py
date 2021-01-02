@@ -1,16 +1,22 @@
 from abc import abstractmethod, ABCMeta
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import AgentID, EnvID, EpisodeID, PolicyID, \
     TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.agents.callbacks import DefaultCallbacks
+
 logger = logging.getLogger(__name__)
 
 
-class _SampleCollector(metaclass=ABCMeta):
+# yapf: disable
+# __sphinx_doc_begin__
+class SampleCollector(metaclass=ABCMeta):
     """Collects samples for all policies and agents from a multi-agent env.
 
     Note: This is an experimental class only used when
@@ -28,6 +34,34 @@ class _SampleCollector(metaclass=ABCMeta):
     inputs fed into different policies (e.g. multi-agent case with inter-agent
     communication channel).
     """
+
+    def __init__(self,
+                 policy_map: Dict[PolicyID, Policy],
+                 clip_rewards: Union[bool, float],
+                 callbacks: "DefaultCallbacks",
+                 multiple_episodes_in_batch: bool = True,
+                 rollout_fragment_length: int = 200,
+                 count_steps_by: str = "env_steps"):
+        """Initializes a SampleCollector instance.
+
+        Args:
+            policy_map (Dict[str, Policy]): Maps policy ids to policy
+                instances.
+            clip_rewards (Union[bool, float]): Whether to clip rewards before
+                postprocessing (at +/-1.0) or the actual value to +/- clip.
+            callbacks (DefaultCallbacks): RLlib callbacks.
+            multiple_episodes_in_batch (bool): Whether it's allowed to pack
+                multiple episodes into the same built batch.
+            rollout_fragment_length (int): The
+
+        """
+
+        self.policy_map = policy_map
+        self.clip_rewards = clip_rewards
+        self.callbacks = callbacks
+        self.multiple_episodes_in_batch = multiple_episodes_in_batch
+        self.rollout_fragment_length = rollout_fragment_length
+        self.count_steps_by = count_steps_by
 
     @abstractmethod
     def add_init_obs(self, episode: MultiAgentEpisode, agent_id: AgentID,
@@ -55,7 +89,7 @@ class _SampleCollector(metaclass=ABCMeta):
 
         Examples:
             >>> obs = env.reset()
-            >>> collector.add_init_obs(12345, 0, "pol0", obs)
+            >>> collector.add_init_obs(my_episode, 0, "pol0", -1, obs)
             >>> obs, r, done, info = env.step(action)
             >>> collector.add_action_reward_next_obs(12345, 0, "pol0", False, {
             ...     "action": action, "obs": obs, "reward": r, "done": done
@@ -227,3 +261,4 @@ class _SampleCollector(metaclass=ABCMeta):
                 `self.rollout_fragment_length` has not been reached yet.
         """
         raise NotImplementedError
+# __sphinx_doc_end__

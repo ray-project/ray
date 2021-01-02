@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -159,9 +160,26 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
         boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
         if (hasReturn || isCrossLanguage) {
-          returnObjects.add(
-              ObjectSerializer.serialize(
-                  new RayTaskException("Error executing task " + taskId, e)));
+          NativeRayObject serializedException;
+          try {
+            serializedException =
+                ObjectSerializer.serialize(
+                    new RayTaskException("Error executing task " + taskId, e));
+          } catch (Exception unserializable) {
+            // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
+            // application-level exception is not serializable. `ObjectSerializer.serialize`
+            // will throw an exception and crash the worker.
+            // Refer to the case `TaskExceptionTest.java` for more details.
+            LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
+            serializedException =
+                ObjectSerializer.serialize(
+                    new RayTaskException(
+                        String.format(
+                            "Error executing task %s with the exception: %s",
+                            taskId, ExceptionUtils.getStackTrace(e))));
+          }
+          Preconditions.checkNotNull(serializedException);
+          returnObjects.add(serializedException);
         }
       } else {
         actorContext.actorCreationException = e;
