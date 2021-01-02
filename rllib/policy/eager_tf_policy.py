@@ -256,15 +256,14 @@ def build_eager_tf_policy(name,
                     framework=self.framework,
                 )
             # Auto-update model's inference view requirements, if recurrent.
-            self._update_model_inference_view_requirements_from_init_state()
+            self._update_model_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
             self._state_inputs = self.model.get_initial_state()
             self._is_recurrent = len(self._state_inputs) > 0
 
             # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(
-                self.model.inference_view_requirements)
+            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)

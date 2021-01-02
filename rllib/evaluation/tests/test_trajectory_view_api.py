@@ -17,7 +17,7 @@ from ray.rllib.examples.policy.episode_env_aware_policy import \
     EpisodeEnvAwareAttentionPolicy, EpisodeEnvAwareLSTMPolicy
 from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
@@ -63,7 +63,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 config,
                 env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
             assert len(view_req_policy) == 8, view_req_policy
@@ -108,7 +108,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
@@ -146,7 +146,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"]["custom_model"] = GTrXLNet
         config["model"]["custom_model_config"] = {
             "num_transformer_units": 1,
-            "attn_dim": 64,
+            "attention_dim": 64,
             "num_heads": 2,
             "memory_inference": 50,
             "memory_training": 50,
@@ -288,11 +288,11 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         )
         # Add the next action to the view reqs of the policy.
         # This should be visible then in postprocessing and train batches.
-        rollout_worker_w_api.policy_map["default_policy"].view_requirements[
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "next_actions"] = ViewRequirement(
                 SampleBatch.ACTIONS, shift=1, space=action_space)
         # Make sure, we have DONEs as well.
-        rollout_worker_w_api.policy_map["default_policy"].view_requirements[
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
             "dones"] = ViewRequirement()
         batch = rollout_worker_w_api.sample()
         self.assertTrue("next_actions" in batch.data)

@@ -46,7 +46,7 @@ def test_allreduce_destroy(ray_start_single_node_2_gpus,
     assert (results[1] == cp.ones((10, ), dtype=cp.float32) * world_size).all()
 
     # destroy the group and try do work, should fail
-    ray.wait([a.destroy_group.remote() for a in actors])
+    ray.get([a.destroy_group.remote() for a in actors])
     with pytest.raises(RuntimeError):
         results = ray.get([a.do_allreduce.remote() for a in actors])
 

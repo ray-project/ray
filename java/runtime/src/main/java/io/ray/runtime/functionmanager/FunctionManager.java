@@ -34,9 +34,7 @@ import org.objectweb.asm.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Manages functions by job id.
- */
+/** Manages functions by job id. */
 public class FunctionManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FunctionManager.class);
@@ -52,21 +50,16 @@ public class FunctionManager {
   private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, JavaFunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
-  /**
-   * Mapping from the job id to the functions that belong to this job.
-   */
+  /** Mapping from the job id to the functions that belong to this job. */
   private ConcurrentMap<JobId, JobFunctionTable> jobFunctionTables = new ConcurrentHashMap<>();
 
-  /**
-   * The resource path which we can load the job's jar resources.
-   */
+  /** The resource path which we can load the job's jar resources. */
   private final List<String> codeSearchPath;
 
   /**
    * Construct a FunctionManager with the specified code search path.
    *
-   * @param codeSearchPath The specified job resource that can store the job's
-   *                        resources.
+   * @param codeSearchPath The specified job resource that can store the job's resources.
    */
   public FunctionManager(List<String> codeSearchPath) {
     this.codeSearchPath = codeSearchPath;
@@ -76,8 +69,7 @@ public class FunctionManager {
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
    * @param jobId current job id.
-   * @param func  The lambda.
-   * @return A RayFunction object.
+   * @param func The lambda. Returns A RayFunction object.
    */
   public RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
@@ -97,12 +89,10 @@ public class FunctionManager {
   /**
    * Get the RayFunction from a function descriptor.
    *
-   * @param jobId              Current job id.
-   * @param functionDescriptor The function descriptor.
-   * @return A RayFunction object.
+   * @param jobId Current job id.
+   * @param functionDescriptor The function descriptor. Returns A RayFunction object.
    */
-  public RayFunction getFunction(JobId jobId,
-                                 JavaFunctionDescriptor functionDescriptor) {
+  public RayFunction getFunction(JobId jobId, JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
     if (jobFunctionTable == null) {
       synchronized (this) {
@@ -121,30 +111,37 @@ public class FunctionManager {
     if (codeSearchPath == null || codeSearchPath.isEmpty()) {
       classLoader = getClass().getClassLoader();
     } else {
-      URL[] urls = codeSearchPath.stream()
-          .filter(p -> StringUtils.isNotBlank(p) && Files.exists(Paths.get(p)))
-          .flatMap(p -> {
-            try {
-              if (!Files.isDirectory(Paths.get(p))) {
-                if (!p.endsWith(".jar")) {
-                  return Stream.of(Paths.get(p).getParent().toAbsolutePath().toUri().toURL());
-                } else {
-                  return Stream.of(Paths.get(p).toAbsolutePath().toUri().toURL());
-                }
-              } else {
-                List<URL> subUrls = new ArrayList<>();
-                subUrls.add(Paths.get(p).toAbsolutePath().toUri().toURL());
-                Collection<File> jars = FileUtils.listFiles(new File(p),
-                    new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
-                for (File jar : jars) {
-                  subUrls.add(jar.toPath().toUri().toURL());
-                }
-                return subUrls.stream();
-              }
-            } catch (MalformedURLException e) {
-              throw new RuntimeException(String.format("Illegal %s resource path", p));
-            }
-          }).toArray(URL[]::new);
+      URL[] urls =
+          codeSearchPath.stream()
+              .filter(p -> StringUtils.isNotBlank(p) && Files.exists(Paths.get(p)))
+              .flatMap(
+                  p -> {
+                    try {
+                      if (!Files.isDirectory(Paths.get(p))) {
+                        if (!p.endsWith(".jar")) {
+                          return Stream.of(
+                              Paths.get(p).getParent().toAbsolutePath().toUri().toURL());
+                        } else {
+                          return Stream.of(Paths.get(p).toAbsolutePath().toUri().toURL());
+                        }
+                      } else {
+                        List<URL> subUrls = new ArrayList<>();
+                        subUrls.add(Paths.get(p).toAbsolutePath().toUri().toURL());
+                        Collection<File> jars =
+                            FileUtils.listFiles(
+                                new File(p),
+                                new RegexFileFilter(".*\\.jar"),
+                                DirectoryFileFilter.DIRECTORY);
+                        for (File jar : jars) {
+                          subUrls.add(jar.toPath().toUri().toURL());
+                        }
+                        return subUrls.stream();
+                      }
+                    } catch (MalformedURLException e) {
+                      throw new RuntimeException(String.format("Illegal %s resource path", p));
+                    }
+                  })
+              .toArray(URL[]::new);
       classLoader = new URLClassLoader(urls);
       LOGGER.debug("Resource loaded for job {} from path {}.", jobId, urls);
     }
@@ -152,18 +149,12 @@ public class FunctionManager {
     return new JobFunctionTable(classLoader);
   }
 
-  /**
-   * Manages all functions that belong to one job.
-   */
+  /** Manages all functions that belong to one job. */
   static class JobFunctionTable {
 
-    /**
-     * The job's corresponding class loader.
-     */
+    /** The job's corresponding class loader. */
     final ClassLoader classLoader;
-    /**
-     * Functions per class, per function name + type descriptor.
-     */
+    /** Functions per class, per function name + type descriptor. */
     ConcurrentMap<String, Map<Pair<String, String>, RayFunction>> functions;
 
     JobFunctionTable(ClassLoader classLoader) {
@@ -187,19 +178,18 @@ public class FunctionManager {
       if (func == null) {
         if (classFunctions.containsKey(key)) {
           throw new RuntimeException(
-                  String.format("RayFunction %s is overloaded, the signature can't be empty.",
-                          descriptor.toString()));
+              String.format(
+                  "RayFunction %s is overloaded, the signature can't be empty.",
+                  descriptor.toString()));
         } else {
           throw new RuntimeException(
-                  String.format("RayFunction %s not found", descriptor.toString()));
+              String.format("RayFunction %s not found", descriptor.toString()));
         }
       }
       return func;
     }
 
-    /**
-     * Load all functions from a class.
-     */
+    /** Load all functions from a class. */
     Map<Pair<String, String>, RayFunction> loadFunctionsForClass(String className) {
       // If RayFunction is null, the function is overloaded.
       Map<Pair<String, String>, RayFunction> map = new HashMap<>();
@@ -232,8 +222,9 @@ public class FunctionManager {
           final Type type =
               e instanceof Method ? Type.getType((Method) e) : Type.getType((Constructor) e);
           final String signature = type.getDescriptor();
-          RayFunction rayFunction = new RayFunction(e, classLoader,
-              new JavaFunctionDescriptor(className, methodName, signature));
+          RayFunction rayFunction =
+              new RayFunction(
+                  e, classLoader, new JavaFunctionDescriptor(className, methodName, signature));
           map.put(ImmutablePair.of(methodName, signature), rayFunction);
           // For cross language call java function without signature
           final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");

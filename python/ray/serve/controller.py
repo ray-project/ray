@@ -1,11 +1,12 @@
 import asyncio
+from asyncio.futures import Future
 from collections import defaultdict
 from itertools import chain
 import os
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Set, Tuple
 from uuid import uuid4, UUID
 from pydantic import BaseModel
 
@@ -13,14 +14,17 @@ import ray
 import ray.cloudpickle as pickle
 from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
 from ray.serve.backend_worker import create_backend_replica
-from ray.serve.constants import (ASYNC_CONCURRENCY, SERVE_PROXY_NAME,
-                                 LongPollKey)
+from ray.serve.constants import (
+    ASYNC_CONCURRENCY,
+    SERVE_PROXY_NAME,
+    LongPollKey,
+)
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
-from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.config import BackendConfig, ReplicaConfig, HTTPConfig
 from ray.serve.long_poll import LongPollHost
 from ray.actor import ActorHandle
 
@@ -45,7 +49,8 @@ BackendTag = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
-GoalId = int
+GoalId = UUID
+Duration = float
 
 
 class TrafficPolicy:
@@ -80,6 +85,77 @@ class TrafficPolicy:
         return f"<Traffic {self.traffic_dict}; Shadow {self.shadow_dict}>"
 
 
+class HTTPState:
+    def __init__(self, controller_name: str, detached: bool,
+                 config: HTTPConfig):
+        self._controller_name = controller_name
+        self._detached = detached
+        self._config = config
+        self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
+
+        # Will populate self.proxy_actors with existing actors.
+        self._start_proxies_if_needed()
+
+    def get_config(self):
+        return self._config
+
+    def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
+        return self._proxy_actors
+
+    def update(self):
+        self._start_proxies_if_needed()
+        self._stop_proxies_if_needed()
+
+    def _start_proxies_if_needed(self) -> None:
+        """Start a proxy on every node if it doesn't already exist."""
+        if self._config.host is None:
+            return
+
+        for node_id, node_resource in get_all_node_ids():
+            if node_id in self._proxy_actors:
+                continue
+
+            name = format_actor_name(SERVE_PROXY_NAME, self._controller_name,
+                                     node_id)
+            try:
+                proxy = ray.get_actor(name)
+            except ValueError:
+                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
+                            "listening on '{}:{}'".format(
+                                name, node_id, self._config.host,
+                                self._config.port))
+                proxy = HTTPProxyActor.options(
+                    name=name,
+                    lifetime="detached" if self._detached else None,
+                    max_concurrency=ASYNC_CONCURRENCY,
+                    max_restarts=-1,
+                    max_task_retries=-1,
+                    resources={
+                        node_resource: 0.01
+                    },
+                ).remote(
+                    self._config.host,
+                    self._config.port,
+                    controller_name=self._controller_name,
+                    http_middlewares=self._config.middlewares)
+
+            self._proxy_actors[node_id] = proxy
+
+    def _stop_proxies_if_needed(self) -> bool:
+        """Removes proxy actors from any nodes that no longer exist."""
+        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
+        to_stop = []
+        for node_id in self._proxy_actors:
+            if node_id not in all_node_ids:
+                logger.info("Removing HTTP proxy on removed node '{}'.".format(
+                    node_id))
+                to_stop.append(node_id)
+
+        for node_id in to_stop:
+            proxy = self._proxy_actors.pop(node_id)
+            ray.kill(proxy, no_restart=True)
+
+
 class BackendInfo(BaseModel):
     # TODO(architkulkarni): Add type hint for worker_class after upgrading
     # cloudpickle and adding types to RayServeWrappedReplica
@@ -91,6 +167,60 @@ class BackendInfo(BaseModel):
         # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
         # model
         arbitrary_types_allowed = True
+
+
+class BackendState:
+    def __init__(self, checkpoint: bytes = None):
+        self.backends: Dict[BackendTag, BackendInfo] = dict()
+        self.goals: Dict[BackendTag, GoalId] = dict()
+
+        if checkpoint is not None:
+            self.backends, self.goals = pickle.loads(checkpoint)
+
+    def checkpoint(self):
+        return pickle.dumps([self.backends, self.goals])
+
+    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
+        return {
+            tag: info.backend_config
+            for tag, info in self.backends.items()
+        }
+
+    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
+        return self.backends.get(backend_tag)
+
+    def _set_backend_goal(self, backend_tag: BackendTag,
+                          backend_info: Optional[BackendInfo],
+                          goal_id: GoalId) -> Optional[GoalId]:
+        existing_goal = self.goals.get(backend_tag)
+        self.backends[backend_tag] = backend_info
+        if not backend_info:
+            del self.backends[backend_tag]
+        self.goals[backend_tag] = goal_id
+        return existing_goal
+
+    def completed_goals(
+            self,
+            current_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]
+    ) -> List[GoalId]:
+        completed_goals = []
+        all_tags = set(current_replicas.keys()).union(
+            set(self.backends.keys()))
+
+        for backend_tag in all_tags:
+            desired_info = self.backends.get(backend_tag)
+            existing_info = current_replicas.get(backend_tag)
+            # Check for deleting
+            if (not desired_info or
+                    desired_info.backend_config.num_replicas == 0) and \
+                    (not existing_info or len(existing_info) == 0):
+                completed_goals.append(self.goals[backend_tag])
+
+            # Check for a non-zero number of backends
+            if desired_info and existing_info and desired_info.backend_config.\
+                    num_replicas == len(existing_info):
+                completed_goals.append(self.goals[backend_tag])
+        return completed_goals
 
 
 class EndpointState:
@@ -124,44 +254,18 @@ class EndpointState:
         return endpoints
 
 
-class BackendState:
-    def __init__(self, checkpoint: bytes = None):
-        self.backends: Dict[BackendTag, BackendInfo] = dict()
-
-        if checkpoint is not None:
-            self.backends = pickle.loads(checkpoint)
-
-    def checkpoint(self):
-        return pickle.dumps(self.backends)
-
-    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
-        return {
-            tag: info.backend_config
-            for tag, info in self.backends.items()
-        }
-
-    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
-        return self.backends.get(backend_tag)
-
-    def add_backend(self,
-                    backend_tag: BackendTag,
-                    backend_info: BackendInfo,
-                    goal_id: GoalId = 0) -> None:
-        self.backends[backend_tag] = backend_info
-
-
 @dataclass
 class ActorStateReconciler:
     controller_name: str = field(init=True)
     detached: bool = field(init=True)
 
-    http_proxy_cache: Dict[NodeId, ActorHandle] = field(default_factory=dict)
     backend_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]] = field(
         default_factory=lambda: defaultdict(dict))
     backend_replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
         default_factory=lambda: defaultdict(list))
-    backend_replicas_to_stop: Dict[BackendTag, List[ReplicaTag]] = field(
-        default_factory=lambda: defaultdict(list))
+    backend_replicas_to_stop: Dict[BackendTag, List[Tuple[
+        ReplicaTag, Duration]]] = field(
+            default_factory=lambda: defaultdict(list))
     backends_to_remove: List[BackendTag] = field(default_factory=list)
 
     # NOTE(ilr): These are not checkpointed, but will be recreated by
@@ -183,9 +287,6 @@ class ActorStateReconciler:
         self.currently_starting_replicas = {}
 
     # TODO(edoakes): consider removing this and just using the names.
-
-    def http_proxy_handles(self) -> List[ActorHandle]:
-        return list(self.http_proxy_cache.values())
 
     def get_replica_handles(self) -> List[ActorHandle]:
         return list(
@@ -233,9 +334,13 @@ class ActorStateReconciler:
 
         return replica_handle
 
-    def _scale_backend_replicas(self, backends: Dict[BackendTag, BackendInfo],
-                                backend_tag: BackendTag,
-                                num_replicas: int) -> None:
+    def _scale_backend_replicas(
+            self,
+            backends: Dict[BackendTag, BackendInfo],
+            backend_tag: BackendTag,
+            num_replicas: int,
+            force_kill: bool = False,
+    ) -> None:
         """Scale the given backend to the number of replicas.
 
         NOTE: this does not actually start or stop the replicas, but instead
@@ -256,7 +361,7 @@ class ActorStateReconciler:
         current_num_replicas = len(self.backend_replicas[backend_tag])
         delta_num_replicas = num_replicas - current_num_replicas
 
-        backend_info = backends[backend_tag]
+        backend_info: BackendInfo = backends[backend_tag]
         if delta_num_replicas > 0:
             can_schedule = try_schedule_resources_on_nodes(requirements=[
                 backend_info.replica_config.resource_dict
@@ -285,12 +390,18 @@ class ActorStateReconciler:
                 -delta_num_replicas, backend_tag))
             assert len(
                 self.backend_replicas[backend_tag]) >= delta_num_replicas
+            replicas_copy = self.backend_replicas.copy()
             for _ in range(-delta_num_replicas):
-                replica_tag, _ = self.backend_replicas[backend_tag].popitem()
-                if len(self.backend_replicas[backend_tag]) == 0:
-                    del self.backend_replicas[backend_tag]
+                replica_tag, _ = replicas_copy[backend_tag].popitem()
 
-                self.backend_replicas_to_stop[backend_tag].append(replica_tag)
+                graceful_timeout_s = (backend_info.backend_config.
+                                      experimental_graceful_shutdown_timeout_s)
+                if force_kill:
+                    graceful_timeout_s = 0
+                self.backend_replicas_to_stop[backend_tag].append((
+                    replica_tag,
+                    graceful_timeout_s,
+                ))
 
     async def _enqueue_pending_scale_changes_loop(self,
                                                   backend_state: BackendState):
@@ -303,9 +414,9 @@ class ActorStateReconciler:
                 self.currently_starting_replicas[ready_future] = (
                     backend_tag, replica_tag, replica_handle)
 
-        for backend_tag, replicas_to_stop in self.backend_replicas_to_stop.\
-                items():
-            for replica_tag in replicas_to_stop:
+        for backend_tag, replicas_to_stop in (
+                self.backend_replicas_to_stop.items()):
+            for replica_tag, shutdown_timeout in replicas_to_stop:
                 replica_name = format_actor_name(replica_tag,
                                                  self.controller_name)
 
@@ -317,19 +428,24 @@ class ActorStateReconciler:
                     except ValueError:
                         return
 
-                    # TODO(edoakes): this logic isn't ideal because there may
-                    # be pending tasks still executing on the replica. However,
-                    # if we use replica.__ray_terminate__, we may send it while
-                    # the replica is being restarted and there's no way to tell
-                    # if it successfully killed the worker or not.
-                    ray.kill(replica, no_restart=True)
+                    try:
+                        await asyncio.wait_for(
+                            replica.drain_pending_queries.remote(),
+                            timeout=shutdown_timeout)
+                    except asyncio.TimeoutError:
+                        # Graceful period passed, kill it forcefully.
+                        logger.debug(
+                            f"{replica_name_to_use} did not shutdown after "
+                            f"{shutdown_timeout}s, killing.")
+                    finally:
+                        ray.kill(replica, no_restart=True)
 
                 self.currently_stopping_replicas[asyncio.ensure_future(
                     kill_actor(replica_name))] = (backend_tag, replica_tag)
 
-    async def _check_currently_starting_replicas(self) -> bool:
-        """Returns a boolean specifying if there are more replicas to start"""
-        in_flight = list()
+    async def _check_currently_starting_replicas(self) -> int:
+        """Returns the number of pending replicas waiting to start"""
+        in_flight: Set[Future[Any]] = set()
 
         if self.currently_starting_replicas:
             done, in_flight = await asyncio.wait(
@@ -348,11 +464,12 @@ class ActorStateReconciler:
                         pass
                     if len(backend) == 0:
                         del self.backend_replicas_to_start[backend_tag]
-        return len(in_flight) > 0
+        return len(in_flight)
 
-    async def _check_currently_stopping_replicas(self) -> bool:
-        """Returns a boolean specifying if there are more replicas to stop"""
-        in_flight = list()
+    async def _check_currently_stopping_replicas(self) -> int:
+        """Returns the number of replicas waiting to stop"""
+        in_flight: Set[Future[Any]] = set()
+
         if self.currently_stopping_replicas:
             done_stoppping, in_flight = await asyncio.wait(
                 list(self.currently_stopping_replicas.keys()), timeout=0)
@@ -360,99 +477,50 @@ class ActorStateReconciler:
                 (backend_tag,
                  replica_tag) = self.currently_stopping_replicas.pop(fut)
 
-                backend = self.backend_replicas_to_stop.get(backend_tag)
+                backend_to_stop = self.backend_replicas_to_stop.get(
+                    backend_tag)
 
-                if backend:
+                if backend_to_stop:
                     try:
-                        backend.remove(replica_tag)
+                        backend_to_stop.remove(replica_tag)
                     except ValueError:
                         pass
-                    if len(backend) == 0:
+                    if len(backend_to_stop) == 0:
                         del self.backend_replicas_to_stop[backend_tag]
 
-        return len(in_flight) > 0
+                backend = self.backend_replicas.get(backend_tag)
+                if backend:
+                    try:
+                        del backend[replica_tag]
+                    except KeyError:
+                        pass
 
-    async def backend_control_loop(self):
-        start = time.time()
-        prev_warning = start
-        need_to_continue = True
-        while need_to_continue:
-            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
-                prev_warning = time.time()
-                logger.warning("Waited {:.2f}s for replicas to start up. Make "
-                               "sure there are enough resources to create the "
-                               "replicas.".format(time.time() - start))
+                    if len(self.backend_replicas[backend_tag]) == 0:
+                        del self.backend_replicas[backend_tag]
 
-            need_to_continue = (
-                await self._check_currently_starting_replicas()
-                or await self._check_currently_stopping_replicas())
+        return len(in_flight)
 
-            asyncio.sleep(1)
+    async def update_actor_state(self, start_time: float) -> bool:
+        """Returns whether the number of backends has changed."""
+        num_starting = len(self.currently_starting_replicas)
+        num_stopping = len(self.currently_stopping_replicas)
 
-    def _start_http_proxies_if_needed(self, http_host: str, http_port: str,
-                                      http_middlewares: List[Any]) -> None:
-        """Start an HTTP proxy on every node if it doesn't already exist."""
-        if http_host is None:
-            return
+        num_pending_starts = await self._check_currently_starting_replicas()
+        num_pending_stops = await self._check_currently_stopping_replicas()
+        time_running = int(time.time() - start_time)
+        if (time_running > 0
+                and time_running % REPLICA_STARTUP_TIME_WARNING_S == 0):
+            delta = time.time() - start_time
+            logger.warning(
+                f"Waited {delta:.2f}s for {num_pending_starts} replicas "
+                f"to start up or {num_pending_stops} replicas to shutdown."
+                " Make sure there are enough resources to create the "
+                "replicas.")
 
-        for node_id, node_resource in get_all_node_ids():
-            if node_id in self.http_proxy_cache:
-                continue
-
-            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
-                                     node_id)
-            try:
-                proxy = ray.get_actor(name)
-            except ValueError:
-                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
-                            "listening on '{}:{}'".format(
-                                name, node_id, http_host, http_port))
-                proxy = HTTPProxyActor.options(
-                    name=name,
-                    lifetime="detached" if self.detached else None,
-                    max_concurrency=ASYNC_CONCURRENCY,
-                    max_restarts=-1,
-                    max_task_retries=-1,
-                    resources={
-                        node_resource: 0.01
-                    },
-                ).remote(
-                    http_host,
-                    http_port,
-                    controller_name=self.controller_name,
-                    http_middlewares=http_middlewares)
-
-            self.http_proxy_cache[node_id] = proxy
-
-    def _stop_http_proxies_if_needed(self) -> bool:
-        """Removes HTTP proxy actors from any nodes that no longer exist.
-
-        Returns whether or not any actors were removed (a checkpoint should
-        be taken).
-        """
-        actor_stopped = False
-        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
-        to_stop = []
-        for node_id in self.http_proxy_cache:
-            if node_id not in all_node_ids:
-                logger.info("Removing HTTP proxy on removed node '{}'.".format(
-                    node_id))
-                to_stop.append(node_id)
-
-        for node_id in to_stop:
-            proxy = self.http_proxy_cache.pop(node_id)
-            ray.kill(proxy, no_restart=True)
-            actor_stopped = True
-
-        return actor_stopped
+        return (len(self.currently_starting_replicas) != num_starting) or \
+            (len(self.currently_stopping_replicas) != num_stopping)
 
     def _recover_actor_handles(self) -> None:
-        # Refresh the RouterCache
-        for node_id in self.http_proxy_cache.keys():
-            name = format_actor_name(SERVE_PROXY_NAME, self.controller_name,
-                                     node_id)
-            self.http_proxy_cache[node_id] = ray.get_actor(name)
-
         # Fetch actor handles for all of the backend replicas in the system.
         # All of these backend_replicas are guaranteed to already exist because
         #  they would not be written to a checkpoint in self.backend_replicas
@@ -478,7 +546,6 @@ class ActorStateReconciler:
 
         # Start/stop any pending backend replicas.
         await self._enqueue_pending_scale_changes_loop(backend_state)
-        await self.backend_control_loop()
 
         return autoscaling_policies
 
@@ -526,9 +593,7 @@ class ServeController:
 
     async def __init__(self,
                        controller_name: str,
-                       http_host: str,
-                       http_port: str,
-                       http_middlewares: List[Any],
+                       http_config: HTTPConfig,
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
@@ -544,19 +609,13 @@ class ServeController:
         # at any given time.
         self.write_lock = asyncio.Lock()
 
-        self.http_host = http_host
-        self.http_port = http_port
-        self.http_middlewares = http_middlewares
-
-        # If starting the actor for the first time, starts up the other system
-        # components. If recovering, fetches their actor handles.
-        self.actor_reconciler._start_http_proxies_if_needed(
-            self.http_host, self.http_port, self.http_middlewares)
-
         # Map of awaiting results
         # TODO(ilr): Checkpoint this once this becomes asynchronous
         self.inflight_results: Dict[UUID, asyncio.Event] = dict()
         self._serializable_inflight_results: Dict[UUID, FutureResult] = dict()
+
+        # HTTP state doesn't currently require a checkpoint.
+        self.http_state = HTTPState(controller_name, detached, http_config)
 
         checkpoint_bytes = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint_bytes is None:
@@ -589,7 +648,9 @@ class ServeController:
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_event(self, uuid: UUID) -> bool:
+        start = time.time()
         if uuid not in self.inflight_results:
+            logger.debug(f"UUID ({uuid}) not found!!!")
             return True
         event = self.inflight_results[uuid]
         await event.wait()
@@ -597,6 +658,7 @@ class ServeController:
         self._serializable_inflight_results.pop(uuid)
         async with self.write_lock:
             self._checkpoint()
+        logger.debug(f"Waiting for {uuid} took {time.time() - start} seconds")
 
         return True
 
@@ -607,8 +669,8 @@ class ServeController:
         # NOTE(ilr) Must be called before checkpointing!
         event = asyncio.Event()
         event.result = FutureResult(goal_state)
-        event.set()
         uuid_val = recreation_uuid or uuid4()
+        logger.debug(f"Creating uuid {uuid_val} for result of {goal_state}")
         self.inflight_results[uuid_val] = event
         self._serializable_inflight_results[uuid_val] = event.result
         return uuid_val
@@ -650,9 +712,9 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    def get_http_proxies(self) -> Dict[str, ActorHandle]:
+    def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
-        return self.actor_reconciler.http_proxy_cache
+        return self.http_state.get_http_proxy_handles()
 
     def _checkpoint(self) -> None:
         """Checkpoint internal state and write it to the KV store."""
@@ -733,17 +795,30 @@ class ServeController:
     async def reconcile_current_and_goal_backends(self):
         pass
 
+    def set_goal_id(self, goal_id: UUID) -> None:
+        event = self.inflight_results.get(goal_id)
+        logger.debug(f"Setting Goal Id: {goal_id}")
+        if event:
+            event.set()
+
     async def run_control_loop(self) -> None:
+        start_time = time.time()
         while True:
             await self.do_autoscale()
             async with self.write_lock:
-                self.actor_reconciler._start_http_proxies_if_needed(
-                    self.http_host, self.http_port, self.http_middlewares)
-                checkpoint_required = self.actor_reconciler.\
-                    _stop_http_proxies_if_needed()
-                if checkpoint_required:
+                self.http_state.update()
+                delta_workers = await self.actor_reconciler.update_actor_state(
+                    start_time)
+                if delta_workers:
+                    self.notify_replica_handles_changed()
+                    self.notify_backend_configs_changed()
                     self._checkpoint()
-
+                else:
+                    start_time = time.time()
+                completed_ids = self.backend_state.completed_goals(
+                    self.actor_reconciler.backend_replicas)
+                for done_id in completed_ids:
+                    self.set_goal_id(done_id)
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _all_replica_handles(
@@ -785,6 +860,7 @@ class ServeController:
         # update.
         self._checkpoint()
         self.notify_traffic_policies_changed()
+        self.set_goal_id(return_uuid)
         return return_uuid
 
     async def set_traffic(self, endpoint_name: str,
@@ -822,6 +898,7 @@ class ServeController:
             # update.
             self._checkpoint()
             self.notify_traffic_policies_changed()
+            self.set_goal_id(return_uuid)
             return return_uuid
 
     # TODO(architkulkarni): add Optional for route after cloudpickle upgrade
@@ -904,7 +981,17 @@ class ServeController:
             # after pushing the update.
             self._checkpoint()
             self.notify_route_table_changed()
+            self.set_goal_id(return_uuid)
             return return_uuid
+
+    async def set_backend_goal(self, backend_tag: BackendTag,
+                               backend_info: BackendInfo,
+                               new_id: GoalId) -> None:
+        # NOTE(ilr) Must checkpoint after doing this!
+        existing_id_to_set = self.backend_state._set_backend_goal(
+            backend_tag, backend_info, new_id)
+        if existing_id_to_set:
+            self.set_goal_id(existing_id_to_set)
 
     async def create_backend(self, backend_tag: BackendTag,
                              backend_config: BackendConfig,
@@ -927,12 +1014,17 @@ class ServeController:
                 worker_class=backend_replica,
                 backend_config=backend_config,
                 replica_config=replica_config)
-            self.backend_state.add_backend(backend_tag, backend_info)
             metadata = backend_config.internal_metadata
             if metadata.autoscaling_config is not None:
                 self.autoscaling_policies[
                     backend_tag] = BasicAutoscalingPolicy(
                         backend_tag, metadata.autoscaling_config)
+
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
+
+            await self.set_backend_goal(backend_tag, backend_info, return_uuid)
 
             try:
                 # This call should be to run control loop
@@ -943,25 +1035,18 @@ class ServeController:
                 del self.backend_state.backends[backend_tag]
                 raise e
 
-            return_uuid = self._create_event_with_result({
-                backend_tag: backend_info
-            })
             # NOTE(edoakes): we must write a checkpoint before starting new
             # or pushing the updated config to avoid inconsistent state if we
             # crash while making the change.
             self._checkpoint()
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.backend_state)
-            await self.actor_reconciler.backend_control_loop()
 
-            self.notify_replica_handles_changed()
-
-            # Set the backend config inside routers
-            # (particularly for max_concurrent_queries).
-            self.notify_backend_configs_changed()
             return return_uuid
 
-    async def delete_backend(self, backend_tag: BackendTag) -> UUID:
+    async def delete_backend(self,
+                             backend_tag: BackendTag,
+                             force_kill: bool = False) -> UUID:
         async with self.write_lock:
             # This method must be idempotent. We should validate that the
             # specified backend exists on the client.
@@ -980,11 +1065,10 @@ class ServeController:
 
             # Scale its replicas down to 0. This will also remove the backend
             # from self.backend_state.backends and
-            # self.actor_reconciler.backend_replicas.
 
             # This should be a call to the control loop
             self.actor_reconciler._scale_backend_replicas(
-                self.backend_state.backends, backend_tag, 0)
+                self.backend_state.backends, backend_tag, 0, force_kill)
 
             # Remove the backend's metadata.
             del self.backend_state.backends[backend_tag]
@@ -995,15 +1079,14 @@ class ServeController:
             self.actor_reconciler.backends_to_remove.append(backend_tag)
 
             return_uuid = self._create_event_with_result({backend_tag: None})
+            # Remove the backend's metadata.
+            await self.set_backend_goal(backend_tag, None, return_uuid)
             # NOTE(edoakes): we must write a checkpoint before removing the
             # backend from the routers to avoid inconsistent state if we crash
             # after pushing the update.
             self._checkpoint()
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.backend_state)
-            await self.actor_reconciler.backend_control_loop()
-
-            self.notify_replica_handles_changed()
             return return_uuid
 
     async def update_backend_config(self, backend_tag: BackendTag,
@@ -1023,6 +1106,11 @@ class ServeController:
                 backend_tag).backend_config = backend_config
             backend_info = self.backend_state.get_backend(backend_tag)
 
+            return_uuid = self._create_event_with_result({
+                backend_tag: backend_info
+            })
+            await self.set_backend_goal(backend_tag, backend_info, return_uuid)
+
             # Scale the replicas with the new configuration.
 
             # This should be to run the control loop
@@ -1030,9 +1118,6 @@ class ServeController:
                 self.backend_state.backends, backend_tag,
                 backend_config.num_replicas)
 
-            return_uuid = self._create_event_with_result({
-                backend_tag: backend_info
-            })
             # NOTE(edoakes): we must write a checkpoint before pushing the
             # update to avoid inconsistent state if we crash after pushing the
             # update.
@@ -1043,10 +1128,7 @@ class ServeController:
 
             await self.actor_reconciler._enqueue_pending_scale_changes_loop(
                 self.backend_state)
-            await self.actor_reconciler.backend_control_loop()
 
-            self.notify_replica_handles_changed()
-            self.notify_backend_configs_changed()
             return return_uuid
 
     def get_backend_config(self, backend_tag: BackendTag) -> BackendConfig:
@@ -1057,13 +1139,13 @@ class ServeController:
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
-        return self.http_host, self.http_port
+        return self.http_state.get_config()
 
     async def shutdown(self) -> None:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            for http_proxy in self.actor_reconciler.http_proxy_handles():
-                ray.kill(http_proxy, no_restart=True)
+            for proxy in self.http_state.get_http_proxy_handles().values():
+                ray.kill(proxy, no_restart=True)
             for replica in self.actor_reconciler.get_replica_handles():
                 ray.kill(replica, no_restart=True)
             self.kv_store.delete(CHECKPOINT_KEY)

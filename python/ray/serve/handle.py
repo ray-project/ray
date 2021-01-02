@@ -100,7 +100,7 @@ class RayServeHandle:
 class RayServeSyncHandle(RayServeHandle):
     def remote(self, request_data: Optional[Union[Dict, Any]] = None,
                **kwargs):
-        """Issue an asynchrounous request to the endpoint.
+        """Issue an asynchronous request to the endpoint.
 
         Returns a Ray ObjectRef whose results can be waited for or retrieved
         using ray.wait or ray.get (or ``await object_ref``), respectively.
@@ -110,7 +110,9 @@ class RayServeSyncHandle(RayServeHandle):
         Args:
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
-                Otherwise, it will be available in ``request.data``.
+                If it's a Starlette Request object, it will be passed in to the
+                backend directly, unmodified. Otherwise, the data will be
+                available in ``request.data``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.
         """

@@ -46,6 +46,5 @@ public class GcsClientTest extends BaseTest {
     for (int i = 2; i < 100; ++i) {
       Assert.assertEquals(gcsClient.nextJobId(), JobId.fromInt(i));
     }
-
   }
 }
