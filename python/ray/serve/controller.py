@@ -41,6 +41,478 @@ CONTROL_LOOP_PERIOD_S = 1.0
 
 REPLICA_STARTUP_TIME_WARNING_S = 5
 
+# TypeDefs
+BackendTag = str
+EndpointTag = str
+ReplicaTag = str
+NodeId = str
+GoalId = int
+Duration = float
+
+
+class TrafficPolicy:
+    def __init__(self, traffic_dict: Dict[str, float]) -> None:
+        self.traffic_dict: Dict[str, float] = dict()
+        self.shadow_dict: Dict[str, float] = dict()
+        self.set_traffic_dict(traffic_dict)
+
+    def set_traffic_dict(self, traffic_dict: Dict[str, float]) -> None:
+        prob = 0
+        for backend, weight in traffic_dict.items():
+            if weight < 0:
+                raise ValueError(
+                    "Attempted to assign a weight of {} to backend '{}'. "
+                    "Weights cannot be negative.".format(weight, backend))
+            prob += weight
+
+        # These weights will later be plugged into np.random.choice, which
+        # uses a tolerance of 1e-8.
+        if not np.isclose(prob, 1, atol=1e-8):
+            raise ValueError("Traffic dictionary weights must sum to 1, "
+                             "currently they sum to {}".format(prob))
+        self.traffic_dict = traffic_dict
+
+    def set_shadow(self, backend: str, proportion: float):
+        if proportion == 0 and backend in self.shadow_dict:
+            del self.shadow_dict[backend]
+        else:
+            self.shadow_dict[backend] = proportion
+
+    def __repr__(self) -> str:
+        return f"<Traffic {self.traffic_dict}; Shadow {self.shadow_dict}>"
+
+
+class HTTPState:
+    def __init__(self, controller_name: str, detached: bool,
+                 config: HTTPConfig):
+        self._controller_name = controller_name
+        self._detached = detached
+        self._config = config
+        self._proxy_actors: Dict[NodeId, ActorHandle] = dict()
+
+        # Will populate self.proxy_actors with existing actors.
+        self._start_proxies_if_needed()
+
+    def get_config(self):
+        return self._config
+
+    def get_http_proxy_handles(self) -> Dict[NodeId, ActorHandle]:
+        return self._proxy_actors
+
+    def update(self):
+        self._start_proxies_if_needed()
+        self._stop_proxies_if_needed()
+
+    def _start_proxies_if_needed(self) -> None:
+        """Start a proxy on every node if it doesn't already exist."""
+        if self._config.host is None:
+            return
+
+        for node_id, node_resource in get_all_node_ids():
+            if node_id in self._proxy_actors:
+                continue
+
+            name = format_actor_name(SERVE_PROXY_NAME, self._controller_name,
+                                     node_id)
+            try:
+                proxy = ray.get_actor(name)
+            except ValueError:
+                logger.info("Starting HTTP proxy with name '{}' on node '{}' "
+                            "listening on '{}:{}'".format(
+                                name, node_id, self._config.host,
+                                self._config.port))
+                proxy = HTTPProxyActor.options(
+                    name=name,
+                    lifetime="detached" if self._detached else None,
+                    max_concurrency=ASYNC_CONCURRENCY,
+                    max_restarts=-1,
+                    max_task_retries=-1,
+                    resources={
+                        node_resource: 0.01
+                    },
+                ).remote(
+                    self._config.host,
+                    self._config.port,
+                    controller_name=self._controller_name,
+                    http_middlewares=self._config.middlewares)
+
+            self._proxy_actors[node_id] = proxy
+
+    def _stop_proxies_if_needed(self) -> bool:
+        """Removes proxy actors from any nodes that no longer exist."""
+        all_node_ids = {node_id for node_id, _ in get_all_node_ids()}
+        to_stop = []
+        for node_id in self._proxy_actors:
+            if node_id not in all_node_ids:
+                logger.info("Removing HTTP proxy on removed node '{}'.".format(
+                    node_id))
+                to_stop.append(node_id)
+
+        for node_id in to_stop:
+            proxy = self._proxy_actors.pop(node_id)
+            ray.kill(proxy, no_restart=True)
+
+
+class BackendInfo(BaseModel):
+    # TODO(architkulkarni): Add type hint for worker_class after upgrading
+    # cloudpickle and adding types to RayServeWrappedReplica
+    worker_class: Any
+    backend_config: BackendConfig
+    replica_config: ReplicaConfig
+
+    class Config:
+        # TODO(architkulkarni): Remove once ReplicaConfig is a pydantic
+        # model
+        arbitrary_types_allowed = True
+
+
+class BackendState:
+    def __init__(self, checkpoint: bytes = None):
+        self.backends: Dict[BackendTag, BackendInfo] = dict()
+
+        if checkpoint is not None:
+            self.backends = pickle.loads(checkpoint)
+
+    def checkpoint(self):
+        return pickle.dumps(self.backends)
+
+    def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
+        return {
+            tag: info.backend_config
+            for tag, info in self.backends.items()
+        }
+
+    def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
+        return self.backends.get(backend_tag)
+
+    def add_backend(self,
+                    backend_tag: BackendTag,
+                    backend_info: BackendInfo,
+                    goal_id: GoalId = 0) -> None:
+        self.backends[backend_tag] = backend_info
+
+
+class EndpointState:
+    def __init__(self, checkpoint: bytes = None):
+        self.routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = dict()
+        self.traffic_policies: Dict[EndpointTag, TrafficPolicy] = dict()
+
+        if checkpoint is not None:
+            self.routes, self.traffic_policies = pickle.loads(checkpoint)
+
+    def checkpoint(self):
+        return pickle.dumps((self.routes, self.traffic_policies))
+
+    def get_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+        endpoints = {}
+        for route, (endpoint, methods) in self.routes.items():
+            if endpoint in self.traffic_policies:
+                traffic_policy = self.traffic_policies[endpoint]
+                traffic_dict = traffic_policy.traffic_dict
+                shadow_dict = traffic_policy.shadow_dict
+            else:
+                traffic_dict = {}
+                shadow_dict = {}
+
+            endpoints[endpoint] = {
+                "route": route if route.startswith("/") else None,
+                "methods": methods,
+                "traffic": traffic_dict,
+                "shadows": shadow_dict,
+            }
+        return endpoints
+
+
+@dataclass
+class ActorStateReconciler:
+    controller_name: str = field(init=True)
+    detached: bool = field(init=True)
+
+    backend_replicas: Dict[BackendTag, Dict[ReplicaTag, ActorHandle]] = field(
+        default_factory=lambda: defaultdict(dict))
+    backend_replicas_to_start: Dict[BackendTag, List[ReplicaTag]] = field(
+        default_factory=lambda: defaultdict(list))
+    backend_replicas_to_stop: Dict[BackendTag, List[Tuple[
+        ReplicaTag, Duration]]] = field(
+            default_factory=lambda: defaultdict(list))
+    backends_to_remove: List[BackendTag] = field(default_factory=list)
+
+    # NOTE(ilr): These are not checkpointed, but will be recreated by
+    # `_enqueue_pending_scale_changes_loop`.
+    currently_starting_replicas: Dict[asyncio.Future, Tuple[
+        BackendTag, ReplicaTag, ActorHandle]] = field(default_factory=dict)
+    currently_stopping_replicas: Dict[asyncio.Future, Tuple[
+        BackendTag, ReplicaTag]] = field(default_factory=dict)
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["currently_stopping_replicas"]
+        del state["currently_starting_replicas"]
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.currently_stopping_replicas = {}
+        self.currently_starting_replicas = {}
+
+    # TODO(edoakes): consider removing this and just using the names.
+
+    def get_replica_handles(self) -> List[ActorHandle]:
+        return list(
+            chain.from_iterable([
+                replica_dict.values()
+                for replica_dict in self.backend_replicas.values()
+            ]))
+
+    def get_replica_tags(self) -> List[ReplicaTag]:
+        return list(
+            chain.from_iterable([
+                replica_dict.keys()
+                for replica_dict in self.backend_replicas.values()
+            ]))
+
+    async def _start_backend_replica(self, backend_state: BackendState,
+                                     backend_tag: BackendTag,
+                                     replica_tag: ReplicaTag) -> ActorHandle:
+        """Start a replica and return its actor handle.
+
+        Checks if the named actor already exists before starting a new one.
+
+        Assumes that the backend configuration is already in the Goal State.
+        """
+        # NOTE(edoakes): the replicas may already be created if we
+        # failed after creating them but before writing a
+        # checkpoint.
+        replica_name = format_actor_name(replica_tag, self.controller_name)
+        try:
+            replica_handle = ray.get_actor(replica_name)
+        except ValueError:
+            logger.debug("Starting replica '{}' for backend '{}'.".format(
+                replica_tag, backend_tag))
+            backend_info = backend_state.get_backend(backend_tag)
+
+            replica_handle = ray.remote(backend_info.worker_class).options(
+                name=replica_name,
+                lifetime="detached" if self.detached else None,
+                max_restarts=-1,
+                max_task_retries=-1,
+                **backend_info.replica_config.ray_actor_options).remote(
+                    backend_tag, replica_tag,
+                    backend_info.replica_config.actor_init_args,
+                    backend_info.backend_config, self.controller_name)
+
+        return replica_handle
+
+    def _scale_backend_replicas(
+            self,
+            backends: Dict[BackendTag, BackendInfo],
+            backend_tag: BackendTag,
+            num_replicas: int,
+            force_kill: bool = False,
+    ) -> None:
+        """Scale the given backend to the number of replicas.
+
+        NOTE: this does not actually start or stop the replicas, but instead
+        adds the intention to start/stop them to self.backend_replicas_to_start
+        and self.backend_replicas_to_stop. The caller is responsible for then
+        first writing a checkpoint and then actually starting/stopping the
+        intended replicas. This avoids inconsistencies with starting/stopping a
+        replica and then crashing before writing a checkpoint.
+        """
+
+        logger.debug("Scaling backend '{}' to {} replicas".format(
+            backend_tag, num_replicas))
+        assert (backend_tag in backends
+                ), "Backend {} is not registered.".format(backend_tag)
+        assert num_replicas >= 0, ("Number of replicas must be"
+                                   " greater than or equal to 0.")
+
+        current_num_replicas = len(self.backend_replicas[backend_tag]) + len(
+            self.backend_replicas_to_start.get(backend_tag, [])) - len(
+                self.backend_replicas_to_stop.get(backend_tag, []))
+        delta_num_replicas = num_replicas - current_num_replicas
+
+        backend_info: BackendInfo = backends[backend_tag]
+        if delta_num_replicas > 0:
+            can_schedule = try_schedule_resources_on_nodes(requirements=[
+                backend_info.replica_config.resource_dict
+                for _ in range(delta_num_replicas)
+            ])
+
+            if _RESOURCE_CHECK_ENABLED and not all(can_schedule):
+                num_possible = sum(can_schedule)
+                raise RayServeException(
+                    "Cannot scale backend {} to {} replicas. Ray Serve tried "
+                    "to add {} replicas but the resources only allows {} "
+                    "to be added. To fix this, consider scaling to replica to "
+                    "{} or add more resources to the cluster. You can check "
+                    "avaiable resources with ray.nodes().".format(
+                        backend_tag, num_replicas, delta_num_replicas,
+                        num_possible, current_num_replicas + num_possible))
+
+            logger.debug("Adding {} replicas to backend {}".format(
+                delta_num_replicas, backend_tag))
+            for _ in range(delta_num_replicas):
+                replica_tag = "{}#{}".format(backend_tag, get_random_letters())
+                self.backend_replicas_to_start[backend_tag].append(replica_tag)
+
+        elif delta_num_replicas < 0:
+            logger.debug("Removing {} replicas from backend '{}'".format(
+                -delta_num_replicas, backend_tag))
+            assert len(
+                self.backend_replicas[backend_tag]) >= delta_num_replicas
+            for _ in range(-delta_num_replicas):
+                replica_tag, _ = self.backend_replicas[backend_tag].popitem()
+                if len(self.backend_replicas[backend_tag]) == 0:
+                    del self.backend_replicas[backend_tag]
+
+                graceful_timeout_s = (backend_info.backend_config.
+                                      experimental_graceful_shutdown_timeout_s)
+                if force_kill:
+                    graceful_timeout_s = 0
+                self.backend_replicas_to_stop[backend_tag].append((
+                    replica_tag,
+                    graceful_timeout_s,
+                ))
+
+    async def _enqueue_pending_scale_changes_loop(self,
+                                                  backend_state: BackendState):
+        for backend_tag, replicas_to_create in self.backend_replicas_to_start.\
+                items():
+            for replica_tag in replicas_to_create:
+                replica_handle = await self._start_backend_replica(
+                    backend_state, backend_tag, replica_tag)
+                ready_future = replica_handle.ready.remote().as_future()
+                self.currently_starting_replicas[ready_future] = (
+                    backend_tag, replica_tag, replica_handle)
+
+        for backend_tag, replicas_to_stop in (
+                self.backend_replicas_to_stop.items()):
+            for replica_tag, shutdown_timeout in replicas_to_stop:
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
+
+                async def kill_actor(replica_name_to_use):
+                    # NOTE: the replicas may already be stopped if we failed
+                    # after stopping them but before writing a checkpoint.
+                    try:
+                        replica = ray.get_actor(replica_name_to_use)
+                    except ValueError:
+                        return
+
+                    try:
+                        await asyncio.wait_for(
+                            replica.drain_pending_queries.remote(),
+                            timeout=shutdown_timeout)
+                    except asyncio.TimeoutError:
+                        # Graceful period passed, kill it forcefully.
+                        logger.debug(
+                            f"{replica_name_to_use} did not shutdown after "
+                            f"{shutdown_timeout}s, killing.")
+                    finally:
+                        ray.kill(replica, no_restart=True)
+
+                self.currently_stopping_replicas[asyncio.ensure_future(
+                    kill_actor(replica_name))] = (backend_tag, replica_tag)
+
+    async def _check_currently_starting_replicas(self) -> int:
+        """Returns the number of pending replicas waiting to start"""
+        in_flight: Set[Future[Any]] = set()
+
+        if self.currently_starting_replicas:
+            done, in_flight = await asyncio.wait(
+                list(self.currently_starting_replicas.keys()), timeout=0)
+            for fut in done:
+                (backend_tag, replica_tag,
+                 replica_handle) = self.currently_starting_replicas.pop(fut)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = replica_handle
+
+                backend = self.backend_replicas_to_start.get(backend_tag)
+                if backend:
+                    try:
+                        backend.remove(replica_tag)
+                    except ValueError:
+                        pass
+                    if len(backend) == 0:
+                        del self.backend_replicas_to_start[backend_tag]
+        return len(in_flight)
+
+    async def _check_currently_stopping_replicas(self) -> int:
+        """Returns the number of replicas waiting to stop"""
+        in_flight: Set[Future[Any]] = set()
+
+        if self.currently_stopping_replicas:
+            done_stoppping, in_flight = await asyncio.wait(
+                list(self.currently_stopping_replicas.keys()), timeout=0)
+            for fut in done_stoppping:
+                (backend_tag,
+                 replica_tag) = self.currently_stopping_replicas.pop(fut)
+
+                backend = self.backend_replicas_to_stop.get(backend_tag)
+
+                if backend:
+                    try:
+                        backend.remove(replica_tag)
+                    except ValueError:
+                        pass
+                    if len(backend) == 0:
+                        del self.backend_replicas_to_stop[backend_tag]
+
+        return len(in_flight)
+
+    async def backend_control_loop(self):
+        start = time.time()
+        prev_warning = start
+        need_to_continue = True
+        num_pending_starts, num_pending_stops = 0, 0
+        while need_to_continue:
+            if time.time() - prev_warning > REPLICA_STARTUP_TIME_WARNING_S:
+                prev_warning = time.time()
+                delta = time.time() - start
+                logger.warning(
+                    f"Waited {delta:.2f}s for {num_pending_starts} replicas "
+                    f"to start up or {num_pending_stops} replicas to shutdown."
+                    " Make sure there are enough resources to create the "
+                    "replicas.")
+
+            num_pending_starts = await self._check_currently_starting_replicas(
+            )
+            num_pending_stops = await self._check_currently_stopping_replicas()
+            need_to_continue = num_pending_starts or num_pending_stops
+
+            asyncio.sleep(1)
+
+    def _recover_actor_handles(self) -> None:
+        # Fetch actor handles for all of the backend replicas in the system.
+        # All of these backend_replicas are guaranteed to already exist because
+        #  they would not be written to a checkpoint in self.backend_replicas
+        # until they were created.
+        for backend_tag, replica_dict in self.backend_replicas.items():
+            for replica_tag in replica_dict.keys():
+                replica_name = format_actor_name(replica_tag,
+                                                 self.controller_name)
+                self.backend_replicas[backend_tag][
+                    replica_tag] = ray.get_actor(replica_name)
+
+    async def _recover_from_checkpoint(
+            self, backend_state: BackendState, controller: "ServeController"
+    ) -> Dict[BackendTag, BasicAutoscalingPolicy]:
+        self._recover_actor_handles()
+        autoscaling_policies = dict()
+
+        for backend, info in backend_state.backends.items():
+            metadata = info.backend_config.internal_metadata
+            if metadata.autoscaling_config is not None:
+                autoscaling_policies[backend] = BasicAutoscalingPolicy(
+                    backend, metadata.autoscaling_config)
+
+        # Start/stop any pending backend replicas.
+        await self._enqueue_pending_scale_changes_loop(backend_state)
+        await self.backend_control_loop()
+
+        return autoscaling_policies
+
 
 @dataclass
 class FutureResult:
