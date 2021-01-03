@@ -192,7 +192,7 @@ class PlasmaBuffer : public Buffer {
   };
 
  private:
-  /// shared_ptr to arrow buffer which can potentially hold a reference
+  /// shared_ptr to a buffer which can potentially hold a reference
   /// for the object (when it's a plasma::PlasmaBuffer).
   std::shared_ptr<Buffer> buffer_;
   /// Callback to run on destruction.
