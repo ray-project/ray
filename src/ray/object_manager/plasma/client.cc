@@ -54,7 +54,9 @@ class RAY_NO_EXPORT PlasmaBuffer : public SharedMemoryBuffer {
 
   PlasmaBuffer(std::shared_ptr<PlasmaClient::Impl> client, const ObjectID &object_id,
                const std::shared_ptr<Buffer> &buffer)
-      : SharedMemoryBuffer(buffer, 0, buffer->Size()), client_(client), object_id_(object_id) {}
+      : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+        client_(client),
+        object_id_(object_id) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -69,6 +71,7 @@ class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client, uint8_t *mutable_data,
                       int64_t data_size)
       : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
+
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
 };
@@ -389,9 +392,10 @@ Status PlasmaClient::Impl::GetBuffers(
         RAY_LOG(FATAL) << "GPU library is not enabled.";
       }
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
-      object_buffers[i].metadata =
-          SharedMemoryBuffer::Slice(physical_buf, object->data_size, object->metadata_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+      object_buffers[i].metadata = SharedMemoryBuffer::Slice(
+          physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
@@ -447,9 +451,10 @@ Status PlasmaClient::Impl::GetBuffers(
       }
       // Finish filling out the return values.
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
-      object_buffers[i].metadata =
-          SharedMemoryBuffer::Slice(physical_buf, object->data_size, object->metadata_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+      object_buffers[i].metadata = SharedMemoryBuffer::Slice(
+          physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.

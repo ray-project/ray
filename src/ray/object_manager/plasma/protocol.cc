@@ -50,11 +50,11 @@ static uint8_t non_null_filler;
 /// https://github.com/google/flatbuffers/pull/5355 is trying to resolve
 /// them.
 template <typename T>
-inline T* MakeNonNull(T* maybe_null) {
+inline T *MakeNonNull(T *maybe_null) {
   if (RAY_PREDICT_TRUE(maybe_null != nullptr)) {
     return maybe_null;
   }
-  return reinterpret_cast<T*>(&internal::non_null_filler);
+  return reinterpret_cast<T *>(&internal::non_null_filler);
 }
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
@@ -437,9 +437,8 @@ Status SendDeleteReply(const std::shared_ptr<Client> &client,
   auto message = fb::CreatePlasmaDeleteReply(
       fbb, static_cast<int32_t>(object_ids.size()),
       ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
-      fbb.CreateVector(
-          MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
-          object_ids.size()));
+      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
+                       object_ids.size()));
   return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
@@ -596,8 +595,7 @@ Status SendGetReply(const std::shared_ptr<Client> &client, ObjectID object_ids[]
   auto message = fb::CreatePlasmaGetReply(
       fbb, ToFlatbuffer(&fbb, object_ids, num_objects),
       fbb.CreateVectorOfStructs(MakeNonNull(objects.data()), num_objects),
-      fbb.CreateVector(MakeNonNull(store_fds_as_int.data()),
-                       store_fds_as_int.size()),
+      fbb.CreateVector(MakeNonNull(store_fds_as_int.data()), store_fds_as_int.size()),
       fbb.CreateVector(MakeNonNull(mmap_sizes.data()), mmap_sizes.size()),
       fbb.CreateVector(MakeNonNull(handles.data()), handles.size()));
   return PlasmaSend(client, MessageType::PlasmaGetReply, &fbb, message);

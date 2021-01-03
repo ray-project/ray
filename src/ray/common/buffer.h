@@ -129,19 +129,19 @@ class SharedMemoryBuffer : public Buffer {
   /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
   SharedMemoryBuffer(uint8_t *data, size_t size) {
-     data_ = data;
-     size_ = size;
+    data_ = data;
+    size_ = size;
   }
 
   /// Make a slice.
-  SharedMemoryBuffer(const std::shared_ptr<Buffer> &buffer,
-                     int64_t offset, int64_t size): size_(size), parent_(buffer) {
+  SharedMemoryBuffer(const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size)
+      : size_(size), parent_(buffer) {
     data_ = buffer->Data() + offset;
     RAY_CHECK(size_ <= parent_->Size());
   }
 
-  static std::shared_ptr<SharedMemoryBuffer> Slice(
-      const std::shared_ptr<Buffer> &buffer, int64_t offset, int64_t size) {
+  static std::shared_ptr<SharedMemoryBuffer> Slice(const std::shared_ptr<Buffer> &buffer,
+                                                   int64_t offset, int64_t size) {
     return std::make_shared<SharedMemoryBuffer>(buffer, offset, size);
   }
 
