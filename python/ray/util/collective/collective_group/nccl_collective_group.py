@@ -154,28 +154,51 @@ class NCCLGroup(BaseGroup):
     def backend(cls):
         return Backend.NCCL
 
+    # def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
+    #     """AllReduce the tensor across the collective group following options.
+    #
+    #     Args:
+    #         tensor: the tensor to be reduced, each tensor locates on a GPU
+    #         allreduce_options:
+    #
+    #     Returns:
+    #     """
+    #     # obtain the communicator
+    #     comm = self._get_nccl_collective_communicator()
+    #     # obtain the stream: using default stream by now
+    #     stream = self._get_cuda_stream()
+    #
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    #     ptr = nccl_util.get_tensor_ptr(tensor)
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor)
+    #     reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
+    #
+    #     # in-place allreduce
+    #     comm.allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
+
     def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
         """AllReduce the tensor across the collective group following options.
 
         Args:
-            tensor: the tensor to be reduced, each tensor locates on a GPU
-            allreduce_options:
+            tensor: the tensor to be reduced, each tensor locates on a GPU.
+            allreduce_options: allreduce options.
 
         Returns:
+            None
         """
-        # obtain the communicator
-        comm = self._get_nccl_collective_communicator()
-        # obtain the stream: using default stream by now
-        # TODO(Hao): implement a simple stream manager here
-        stream = self._get_cuda_stream()
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allReduce(nccl_util.get_tensor_ptr(input_tensor),
+                           nccl_util.get_tensor_ptr(output_tensor),
+                           nccl_util.get_tensor_n_elements(input_tensor),
+                           nccl_util.get_nccl_tensor_dtype(input_tensor),
+                           nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp),
+                           stream.ptr)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
-
-        # in-place allreduce
-        comm.allReduce(ptr, ptr, n_elems, dtype, reduce_op, stream.ptr)
+        self._collective(tensor,
+                         tensor,
+                         collective_fn,
+                         lambda *args, **kwargs: None,
+                         lambda *args, **kwargs: None)
 
     def barrier(self, barrier_options=BarrierOptions()):
         """Blocks until all processes reach this barrier.
@@ -184,8 +207,31 @@ class NCCLGroup(BaseGroup):
             barrier_options:
 
         Returns:
+            None
         """
         self.allreduce(self._barrier_tensor)
+
+    # def reduce(self, tensor, reduce_options=ReduceOptions()):
+    #     """Reduce tensor to a destination process following options.
+    #
+    #     Args:
+    #         tensor: the tensor to be reduced.
+    #         reduce_options: reduce options
+    #
+    #     Returns:
+    #         None
+    #     """
+    #     comm = self._get_nccl_collective_communicator()
+    #     stream = self._get_cuda_stream()
+    #
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    #     ptr = nccl_util.get_tensor_ptr(tensor)
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor)
+    #     reduce_op = nccl_util.get_nccl_reduce_op(reduce_options.reduceOp)
+    #
+    #     # in-place reduce
+    #     comm.reduce(ptr, ptr, n_elems, dtype, reduce_op,
+    #                 reduce_options.root_rank, stream.ptr)
 
     def reduce(self, tensor, reduce_options=ReduceOptions()):
         """Reduce tensor to a destination process following options.
@@ -197,17 +243,40 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduce(nccl_util.get_tensor_ptr(input_tensor),
+                        nccl_util.get_tensor_ptr(output_tensor),
+                        nccl_util.get_tensor_n_elements(input_tensor),
+                        nccl_util.get_nccl_tensor_dtype(input_tensor),
+                        nccl_util.get_nccl_reduce_op(reduce_options.reduceOp),
+                        reduce_options.root_rank,
+                        stream.ptr)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        reduce_op = nccl_util.get_nccl_reduce_op(reduce_options.reduceOp)
+        self._collective(tensor,
+                         tensor,
+                         collective_fn,
+                         lambda *args, **kwargs: None,
+                         lambda *args, **kwargs: None,)
 
-        # in-place reduce
-        comm.reduce(ptr, ptr, n_elems, dtype, reduce_op,
-                    reduce_options.root_rank, stream.ptr)
+    # def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
+    #     """Broadcast tensor to all other processes following options.
+    #
+    #     Args:
+    #         tensor: the tensor to be broadcasted.
+    #         broadcast_options: broadcast options.
+    #
+    #     Returns:
+    #         None
+    #     """
+    #     comm = self._get_nccl_collective_communicator()
+    #     stream = self._get_cuda_stream()
+    #
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    #     ptr = nccl_util.get_tensor_ptr(tensor)
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor)
+    #     # in-place broadcast
+    #     comm.broadcast(ptr, ptr, n_elems, dtype, broadcast_options.root_rank,
+    #                    stream.ptr)
 
     def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
         """Broadcast tensor to all other processes following options.
@@ -219,15 +288,47 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.broadcast(nccl_util.get_tensor_ptr(input_tensor),
+                           nccl_util.get_tensor_ptr(output_tensor),
+                           nccl_util.get_tensor_n_elements(input_tensor),
+                           nccl_util.get_nccl_tensor_dtype(input_tensor),
+                           broadcast_options.root_rank,
+                           stream.ptr)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        # in-place broadcast
-        comm.broadcast(ptr, ptr, n_elems, dtype, broadcast_options.root_rank,
-                       stream.ptr)
+        self._collective(tensor,
+                         tensor,
+                         collective_fn,
+                         lambda *args, **kwargs: None,
+                         lambda *args, **kwargs: None)
+
+    # def allgather(self,
+    #               tensor_list,
+    #               tensor,
+    #               allgather_options=AllGatherOptions()):
+    #     """Allgather tensors across the group into a list of tensors.
+    #
+    #     Args:
+    #         tensor_list: the tensor list to store the results.
+    #         tensor: the tensor to be allgather-ed across the group.
+    #         allgather_options: allgather options.
+    #
+    #     Returns:
+    #         None
+    #     """
+    #
+    #     _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
+    #     comm = self._get_nccl_collective_communicator()
+    #     stream = self._get_cuda_stream()
+    #
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor)
+    #     send_ptr = nccl_util.get_tensor_ptr(tensor)
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor)
+    #     flattened = _flatten_for_scatter_gather(tensor_list, copy=False)
+    #     recv_ptr = nccl_util.get_tensor_ptr(flattened)
+    #     comm.allGather(send_ptr, recv_ptr, n_elems, dtype, stream.ptr)
+    #     for i, t in enumerate(tensor_list):
+    #         nccl_util.copy_tensor(t, flattened[i])
 
     def allgather(self,
                   tensor_list,
@@ -243,49 +344,81 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allGather(nccl_util.get_tensor_ptr(input_tensor),
+                           nccl_util.get_tensor_ptr(output_tensor),
+                           nccl_util.get_tensor_n_elements(input_tensor),
+                           nccl_util.get_nccl_tensor_dtype(input_tensor),
+                           stream.ptr)
 
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
+        flattened_output_tensor = _flatten_for_scatter_gather(tensor_list, copy=False)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        send_ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        flattened = _flatten_for_scatter_gather(tensor_list, copy=False)
-        recv_ptr = nccl_util.get_tensor_ptr(flattened)
-        comm.allGather(send_ptr, recv_ptr, n_elems, dtype, stream.ptr)
-        for i, t in enumerate(tensor_list):
-            nccl_util.copy_tensor(t, flattened[i])
+        def postprocess_fn(stream):
+            for i, tensor in enumerate(tensor_list):
+                nccl_util.copy_tensor(tensor, flattened_output_tensor[i])
+
+        self._collective(tensor,
+                         flattened_output_tensor,
+                         collective_fn,
+                         lambda *args, **kwargs: None,
+                         postprocess_fn)
+
+    # def reducescatter(self,
+    #                   tensor,
+    #                   tensor_list,
+    #                   reducescatter_options=ReduceScatterOptions()):
+    #     """Reducescatter a list of tensors across the group.
+    #
+    #     Args:
+    #         tensor: the output after reducescatter (could be unspecified).
+    #         tensor_list: the list of tensor to be reduce and scattered.
+    #         reducescatter_options: reducescatter options.
+    #
+    #     Returns:
+    #         None
+    #     """
+    #     _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
+    #
+    #     comm = self._get_nccl_collective_communicator()
+    #     stream = self._get_cuda_stream()
+    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
+    #     n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
+    #     reduce_op = nccl_util.get_nccl_reduce_op(
+    #         reducescatter_options.reduceOp)
+    #
+    #     # get the send_ptr
+    #     flattened = _flatten_for_scatter_gather(tensor_list, copy=True)
+    #     send_ptr = nccl_util.get_tensor_ptr(flattened)
+    #     recv_ptr = nccl_util.get_tensor_ptr(tensor)
+    #     comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
+    #                        stream.ptr)
 
     def reducescatter(self,
                       tensor,
                       tensor_list,
                       reducescatter_options=ReduceScatterOptions()):
-        """Reducescatter a list of tensors across the group.
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduceScatter(nccl_util.get_tensor_ptr(input_tensor),
+                               nccl_util.get_tensor_ptr(output_tensor),
+                               nccl_util.get_tensor_n_elements(output_tensor),
+                               nccl_util.get_nccl_tensor_dtype(output_tensor),
+                               nccl_util.get_nccl_reduce_op(reducescatter_options.reduceOp),
+                               stream.ptr)
 
-        Args:
-            tensor: the output after reducescatter (could be unspecified).
-            tensor_list: the list of tensor to be reduce and scattered.
-            reducescatter_options: reducescatter options.
-
-        Returns:
-            None
-        """
         _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
+        flattened_input_tensor = _flatten_for_scatter_gather(tensor_list, copy=False)
 
-        comm = self._get_nccl_collective_communicator()
-        stream = self._get_cuda_stream()
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
-        n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
-        reduce_op = nccl_util.get_nccl_reduce_op(
-            reducescatter_options.reduceOp)
+        def preprocess_fn(stream):
+            for i, tensor in enumerate(tensor_list):
+                nccl_util.copy_tensor(flattened_input_tensor[i], tensor)
 
-        # get the send_ptr
-        flattened = _flatten_for_scatter_gather(tensor_list, copy=True)
-        send_ptr = nccl_util.get_tensor_ptr(flattened)
-        recv_ptr = nccl_util.get_tensor_ptr(tensor)
-        comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
-                           stream.ptr)
+        self._collective(flattened_input_tensor,
+                         tensor,
+                         collective_fn,
+                         preprocess_fn,
+                         lambda *args, **kwargs: None)
+
 
     # def send(self, tensor, dst_rank):
     #     """Send tensor to a destination process in the group.
@@ -323,10 +456,14 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        def fn(comm, ptr, n_elems, dtype, rank, stream):
-            comm.send(ptr, n_elems, dtype, rank, stream)
+        def p2p_fn(tensor, comm, stream, peer):
+            comm.send(nccl_util.get_tensor_ptr(tensor),
+                      nccl_util.get_tensor_n_elements(tensor),
+                      nccl_util.get_nccl_tensor_dtype(tensor),
+                      peer,
+                      stream.ptr)
 
-        self._point2point(tensor, fn, dst_rank)
+        self._point2point(tensor, p2p_fn, dst_rank)
 
     # def recv(self, tensor, src_rank):
     #     """Receive tensor from a source process in the group.
@@ -361,10 +498,14 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        def fn(comm, ptr, n_elems, dtype, rank, stream):
-            comm.recv(ptr, n_elems, dtype, rank, stream)
+        def p2p_fn(tensor, comm, stream, peer):
+            comm.recv(nccl_util.get_tensor_ptr(tensor),
+                      nccl_util.get_tensor_n_elements(tensor),
+                      nccl_util.get_nccl_tensor_dtype(tensor),
+                      peer,
+                      stream.ptr)
 
-        self._point2point(tensor, fn, src_rank)
+        self._point2point(tensor, p2p_fn, src_rank)
 
     def _get_nccl_collective_communicator(self):
         """Create or retrieve a cached NCCL communicator.
@@ -452,21 +593,45 @@ class NCCLGroup(BaseGroup):
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
 
-    def _collective(self):
-        """A method to encapsulate all collective calls."""
-        pass
-
-    def _point2point(self, tensor, fn, peer_rank: int):
-        """A method to encapsulate all p2p calls.
+    def _collective(self,
+                    input_tensor,
+                    output_tensor,
+                    collective_fn,
+                    preprocess_fn,
+                    postprocess_fn):
+        """A method to encapsulate all collective calls.
 
         Args:
-            tensor: the tensor to be sent/received.
-            op_type: OpType.SEND or OpType.Recv.
-            peer_rank (int): the target rank in the send/recv pair.
+            input_tensor_list: the input tensors.
+            output_tensor_list: the output tensors.
+            collective_fn:  the collective function call.
+            preprocess_fn: preprocessing function to call before collectives.
+            postprocess_fn: postprocessing function to call after collectives.
 
         Returns:
             None
         """
+        # we need to do the following:
+        comm = self._get_nccl_collective_communicator()
+        stream = self._get_cuda_stream()
+
+        # Make the collective call
+        preprocess_fn(stream)
+        collective_fn(input_tensor, output_tensor, comm, stream)
+        postprocess_fn(stream)
+
+    def _point2point(self, tensor, p2p_fn, peer_rank: int):
+        """A method to encapsulate all p2p calls.
+
+        Args:
+            tensor: the tensor to be sent/received.
+            p2p_fn: the p2p function call.
+            peer_rank (int): the peer rank of the current process.
+
+        Returns:
+            None
+        """
+        # check send/recv availability.
         if nccl_util.get_nccl_runtime_version() < 2704:
             raise RuntimeError("P2p send/recv requires NCCL >= 2.7.4. "
                                "Got '{}'.".format(
@@ -476,10 +641,8 @@ class NCCLGroup(BaseGroup):
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
         comm = self._get_nccl_p2p_communicator(self.rank, peer_rank)
         stream = self._get_cuda_stream()
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        fn(comm, ptr, n_elems, dtype, peer_p2p_rank, stream)
+        # Make the p2p call:
+        p2p_fn(tensor, comm, stream, peer_p2p_rank)
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
     """Flatten the tensor for gather/scatter operations.
