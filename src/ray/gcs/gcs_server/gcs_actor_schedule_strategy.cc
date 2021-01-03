@@ -18,7 +18,8 @@
 namespace ray {
 namespace gcs {
 
-std::shared_ptr<rpc::GcsNodeInfo> GcsRandomActorScheduleStrategy::Schedule(std::shared_ptr<GcsActor> actor) {
+std::shared_ptr<rpc::GcsNodeInfo> GcsRandomActorScheduleStrategy::Schedule(
+    std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
 
