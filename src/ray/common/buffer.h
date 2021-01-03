@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 
+#include <functional>
 #include <memory>
 
 #include "ray/common/status.h"
