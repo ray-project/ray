@@ -116,7 +116,7 @@ class LocalMemoryBuffer : public Buffer {
   uint8_t *buffer_ = NULL;
 };
 
-/// Represents a byte buffer in shared_memory.
+/// Represents a byte buffer in shared memory.
 class SharedMemoryBuffer : public Buffer {
  public:
   /// Constructor.
