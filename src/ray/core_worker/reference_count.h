@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -50,7 +51,8 @@ class ReferenceCounterInterface {
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
-class ReferenceCounter : public ReferenceCounterInterface {
+class ReferenceCounter : public ReferenceCounterInterface,
+                         public LocalityDataProviderInterface {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
@@ -385,6 +387,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// This notifies the primary raylet that the object is safe to release and
   /// records that the object has been spilled to suppress reconstruction.
   void HandleObjectSpilled(const ObjectID &object_id);
+
+  /// Get locality data for object.
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
 
  private:
   struct Reference {
