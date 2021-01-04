@@ -18,13 +18,15 @@ logger.propagate = False
 
 
 class LogstreamClient:
-    def __init__(self, channel: "grpc._channel.Channel"):
+    def __init__(self, channel: "grpc._channel.Channel", metadata: list):
         """Initializes a thread-safe log stream over a Ray Client gRPC channel.
 
         Args:
             channel: connected gRPC channel
+            metadata: metadata to pass to gRPC requests
         """
         self.channel = channel
+        self._metadata = metadata
         self.request_queue = queue.Queue()
         self.log_thread = self._start_logthread()
         self.log_thread.start()
@@ -34,7 +36,9 @@ class LogstreamClient:
 
     def _log_main(self) -> None:
         stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.channel)
-        log_stream = stub.Logstream(iter(self.request_queue.get, None))
+        log_stream = stub.Logstream(
+            iter(self.request_queue.get, None),
+            metadata=self._metadata)
         try:
             for record in log_stream:
                 if record.level < 0:

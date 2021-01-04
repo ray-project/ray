@@ -51,10 +51,10 @@ class Worker:
             self.channel = grpc.insecure_channel(conn_str)
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
 
-        self.data_client = DataClient(self.channel, self._client_id)
+        self.data_client = DataClient(self.channel, self._client_id, metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
-        self.log_client = LogstreamClient(self.channel)
+        self.log_client = LogstreamClient(self.channel, metadata)
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
 
