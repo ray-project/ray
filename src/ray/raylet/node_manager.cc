@@ -1427,9 +1427,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       case rpc::ClientDisconnectType::PLACEMENT_GROUP_REMOVED:
         type_str = "placement_group";
         error_message << "A worker was killed while executing task " << task_id
-                      << " due to placement group removal."
-                      << ".";
-        break;
+                      << " due to placement group removal." break;
       case rpc::ClientDisconnectType::FINISHED:
       case rpc::ClientDisconnectType::UNUSED_RESOURCE_RELEASED:
         intentional_exit = true;
