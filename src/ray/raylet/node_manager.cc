@@ -1596,7 +1596,7 @@ void NodeManager::ProcessWaitRequestMessage(
           }
         } else {
           // We failed to write to the client, so disconnect the client.
-          DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXIT);
+          DisconnectClient(client);
         }
       });
   RAY_CHECK_OK(status);
