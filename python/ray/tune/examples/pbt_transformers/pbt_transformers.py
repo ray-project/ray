@@ -92,10 +92,12 @@ def tune_transformer(num_samples=8,
         compute_metrics=build_compute_metrics_fn(task_name))
 
     tune_config = {
+        "per_device_train_batch_size": 32,
         "per_device_eval_batch_size": 32,
         "eval_steps": tune.sample_from(
             lambda spec: len(train_dataset) // spec.config["per_device_train_batch_size"] + 1  # noqa: E501
-        ) if not smoke_test else 1,
+        ) if not smoke_test else tune.sample_from(
+            lambda spec: min(1, spec.config["per_device_train_batch_size"])),
         "save_steps": tune.sample_from(lambda spec: spec.config["eval_steps"]),
         "num_train_epochs": tune.choice([2, 3, 4, 5]),
         "max_steps": 1 if smoke_test else -1,  # Used for smoke test.
