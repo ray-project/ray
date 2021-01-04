@@ -116,7 +116,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
                  model_config: ModelConfigDict, name: str):
 
         nn.Module.__init__(self)
-        super().__init__(obs_space, action_space, None, model_config, name)
+        super(LSTMWrapper, self).__init__(obs_space, action_space, None,
+                                          model_config, name)
 
         # At this point, self.num_outputs is the number of nodes coming
         # from the wrapped (underlying) model. In other words, self.num_outputs
