@@ -3,8 +3,8 @@ import time
 import sys
 import logging
 
-from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.ray_client_helpers import ray_start_client_server
+from ray.util.client.common import ClientObjectRef
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_real_ray_fallback(ray_start_regular_shared):
@@ -267,7 +267,7 @@ def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
     """
-    from ray.experimental.client import ray
+    from ray.util.client import ray
 
     @ray.remote
     class Returner:

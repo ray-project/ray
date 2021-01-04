@@ -1,4 +1,4 @@
-from ray.experimental.client import ray
+from ray.util.client import ray
 
 from ray.tune import tune
 

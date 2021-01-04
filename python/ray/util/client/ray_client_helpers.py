@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
-import ray.experimental.client.server.server as ray_client_server
-from ray.experimental.client import ray
+import ray.util.client.server.server as ray_client_server
+from ray.util.client import ray
 
 
 @contextmanager

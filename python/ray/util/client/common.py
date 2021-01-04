@@ -1,6 +1,6 @@
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
-from ray.experimental.client import ray
-from ray.experimental.client.options import validate_options
+from ray.util.client import ray
+from ray.util.client.options import validate_options
 
 import inspect
 from ray.util.inspect import is_cython
