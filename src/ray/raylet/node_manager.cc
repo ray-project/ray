@@ -350,7 +350,7 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 void NodeManager::DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worker,
                                           rpc::ClientDisconnectType disconnect_type) {
   // Used to destroy a worker when its bundle resource is released (unused or
-  // placementgroup is deleted.)
+  // placement group is deleted).
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
