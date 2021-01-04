@@ -781,7 +781,8 @@ def start_redis(node_ip_address,
                 redis_max_clients=None,
                 redirect_worker_output=False,
                 password=None,
-                fate_share=None):
+                fate_share=None,
+                external_redis_addresses=None):
     """Start the Redis global state store.
 
     Args:
@@ -822,30 +823,41 @@ def start_redis(node_ip_address,
 
     processes = []
 
-    redis_executable = REDIS_EXECUTABLE
-    redis_modules = [REDIS_MODULE]
+    if external_redis_addresses is not None:
+        primary_redis_address = external_redis_addresses[0]
+        [primary_redis_ip, port] = primary_redis_address.split(":")
+        port = int(port)
+        redis_address = address(primary_redis_ip, port)
+        primary_redis_client = create_redis_client(
+            "%s:%s" % (primary_redis_ip, port), password=password)
+        # Deleting the key to avoid duplicated rpush.
+        primary_redis_client.delete("RedisShards")
+    else:
+        redis_executable = REDIS_EXECUTABLE
+        redis_modules = [REDIS_MODULE]
 
-    redis_stdout_file, redis_stderr_file = redirect_files[0]
-    # Start the primary Redis shard.
-    port, p = _start_redis_instance(
-        redis_executable,
-        modules=redis_modules,
-        port=port,
-        password=password,
-        redis_max_clients=redis_max_clients,
-        # Below we use None to indicate no limit on the memory of the
-        # primary Redis shard.
-        redis_max_memory=None,
-        stdout_file=redis_stdout_file,
-        stderr_file=redis_stderr_file,
-        fate_share=fate_share)
-    processes.append(p)
-    redis_address = address(node_ip_address, port)
+        redis_stdout_file, redis_stderr_file = redirect_files[0]
+        # Start the primary Redis shard.
+        port, p = _start_redis_instance(
+            redis_executable,
+            modules=redis_modules,
+            port=port,
+            password=password,
+            redis_max_clients=redis_max_clients,
+            # Below we use None to indicate no limit on the memory of the
+            # primary Redis shard.
+            redis_max_memory=None,
+            stdout_file=redis_stdout_file,
+            stderr_file=redis_stderr_file,
+            fate_share=fate_share)
+        processes.append(p)
+        redis_address = address(node_ip_address, port)
+
+        primary_redis_client = redis.StrictRedis(
+            host=node_ip_address, port=port, password=password)
 
     # Register the number of Redis shards in the primary shard, so that clients
     # know how many redis shards to expect under RedisShards.
-    primary_redis_client = redis.StrictRedis(
-        host=node_ip_address, port=port, password=password)
     primary_redis_client.set("NumRedisShards", str(num_redis_shards))
 
     # Put the redirect_worker_output bool in the Redis shard so that workers
@@ -867,23 +879,27 @@ def start_redis(node_ip_address,
     # prefixed by "redis-<shard number>".
     redis_shards = []
     for i in range(num_redis_shards):
-        redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
-        redis_executable = REDIS_EXECUTABLE
-        redis_modules = [REDIS_MODULE]
+        if external_redis_addresses is not None:
+            shard_address = external_redis_addresses[i + 1]
+        else:
+            redis_stdout_file, redis_stderr_file = redirect_files[i + 1]
+            redis_executable = REDIS_EXECUTABLE
+            redis_modules = [REDIS_MODULE]
 
-        redis_shard_port, p = _start_redis_instance(
-            redis_executable,
-            modules=redis_modules,
-            port=redis_shard_ports[i],
-            password=password,
-            redis_max_clients=redis_max_clients,
-            redis_max_memory=redis_max_memory,
-            stdout_file=redis_stdout_file,
-            stderr_file=redis_stderr_file,
-            fate_share=fate_share)
-        processes.append(p)
+            redis_shard_port, p = _start_redis_instance(
+                redis_executable,
+                modules=redis_modules,
+                port=redis_shard_ports[i],
+                password=password,
+                redis_max_clients=redis_max_clients,
+                redis_max_memory=redis_max_memory,
+                stdout_file=redis_stdout_file,
+                stderr_file=redis_stderr_file,
+                fate_share=fate_share)
+            processes.append(p)
 
-        shard_address = address(node_ip_address, redis_shard_port)
+            shard_address = address(node_ip_address, redis_shard_port)
+
         redis_shards.append(shard_address)
         # Store redis shard information in the primary redis shard.
         primary_redis_client.rpush("RedisShards", shard_address)

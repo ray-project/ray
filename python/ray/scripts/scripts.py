@@ -413,14 +413,15 @@ def debug(address):
     help="the port to use to expose Ray metrics through a "
     "Prometheus endpoint.")
 @add_click_options(logging_options)
-def start(node_ip_address, address, port, redis_password, redis_shard_ports,
-          object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, worker_port_list, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_dashboard, dashboard_host, dashboard_port, block,
-          plasma_directory, autoscaling_config, no_redirect_worker_output,
-          no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, java_worker_options, system_config, lru_evict,
+def start(node_ip_address, external_redis_addresses, address, port,
+          redis_password, redis_shard_ports, object_manager_port,
+          node_manager_port, gcs_server_port, min_worker_port, max_worker_port,
+          worker_port_list, memory, object_store_memory, redis_max_memory,
+          num_cpus, num_gpus, resources, head, include_dashboard,
+          dashboard_host, dashboard_port, block, plasma_directory,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
+          plasma_store_socket_name, raylet_socket_name, temp_dir,
+          java_worker_options, system_config, lru_evict,
           enable_object_reconstruction, metrics_export_port, log_style,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
@@ -496,6 +497,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None:
+            if external_redis_addresses is not None:
+                raise Exception("If --external-redis-addresses is provided, "
+                                "--redis-shard-ports should not be proved.")
             redis_shard_ports = redis_shard_ports.split(",")
             # Infer the number of Redis shards from the ports if the number is
             # not provided.
@@ -509,6 +513,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             raise Exception("If --head is passed in, a Redis server will be "
                             "started, so a Redis address should not be "
                             "provided.")
+
+        if external_redis_addresses is not None:
+            external_redis_addresses = external_redis_addresses.split(",")
+            if len(external_redis_addresses) > 1:
+                num_redis_shards = len(external_redis_addresses) - 1
 
         node_ip_address = services.get_node_ip_address()
 
@@ -577,6 +586,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(cf.bold("  ray stop"))
     else:
         # Start Ray on a non-head node.
+        if external_redis_addresses is not None:
+            cli_logger.abort("`{}` should not be specified without `{}`.",
+                             cf.bold("--external-redis-addresses"),
+                             cf.bold("--head"))
+
+            raise Exception("If --head is not passed in, "
+                            "--external-redis-addresses is not allowed")
         if not (port is None):
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))

@@ -590,7 +590,9 @@ class Node:
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             fate_share=self.kernel_fate_share)
+             fate_share=self.kernel_fate_share,
+             external_redis_addresses=self._ray_params.external_redis_addresses
+         )
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
