@@ -1419,17 +1419,17 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
       bool intentional_exit = false;
       switch (disconnect_type) {
-      case rpc::ClientDisconnectType::UNEXPECTED_EXIT: {
+      case rpc::ClientDisconnectType::UNEXPECTED_EXIT:
         type_str = "worker_died";
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
-      } break;
-      case rpc::ClientDisconnectType::PLACEGROUP_REMOVED: {
+        break;
+      case rpc::ClientDisconnectType::PLACEGROUP_REMOVED:
         type_str = "placement_group";
         error_message << "A worker was killed while executing task " << task_id
                       << " due to placement group removal."
                       << ".";
-      } break;
+        break;
       default:
         intentional_exit = true;
       }
@@ -1866,7 +1866,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   if (worker) {
     if (request.disconnect_worker()) {
-      DisconnectClient(worker->Connection(), rpc::ClientDisconnectType::UNEXPECTED_EXIT);
+      DisconnectClient(worker->Connection());
     } else {
       // Handle the edge case where the worker was returned before we got the
       // unblock RPC by unblocking it immediately (unblock is idempotent).
