@@ -183,14 +183,6 @@ class NodeInfoGcsServiceHandler {
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
-                                         GetAllResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleSetInternalConfig(const SetInternalConfigRequest &request,
                                        SetInternalConfigReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -219,8 +211,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
     NODE_INFO_SERVICE_RPC_HANDLER(SetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
@@ -252,6 +242,14 @@ class NodeResourceInfoGcsServiceHandler {
       const rpc::GetAllAvailableResourcesRequest &request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportResourceUsage(const ReportResourceUsageRequest &request,
+                                         ReportResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetAllResourceUsage(const GetAllResourceUsageRequest &request,
+                                         GetAllResourceUsageReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeResourceInfoGcsService`.
@@ -274,6 +272,8 @@ class NodeResourceInfoGrpcService : public GrpcService {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(UpdateResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(DeleteResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }
 
  private:

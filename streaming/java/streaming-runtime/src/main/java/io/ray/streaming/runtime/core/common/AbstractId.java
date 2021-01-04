@@ -5,9 +5,7 @@ import io.ray.streaming.runtime.core.resource.ContainerId;
 import java.io.Serializable;
 import java.util.UUID;
 
-/**
- * Streaming system unique identity base class. For example, ${@link ContainerId }
- */
+/** Streaming system unique identity base class. For example, ${@link ContainerId } */
 public class AbstractId implements Serializable {
 
   private UUID id;
@@ -27,8 +25,6 @@ public class AbstractId implements Serializable {
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .add("id", id)
-        .toString();
+    return MoreObjects.toStringHelper(this).add("id", id).toString();
   }
 }

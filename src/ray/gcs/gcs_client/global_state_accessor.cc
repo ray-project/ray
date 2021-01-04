@@ -178,7 +178,7 @@ std::string GlobalStateAccessor::GetInternalConfig() {
 std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
   std::unique_ptr<std::string> resource_batch_data;
   std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAllResourceUsage(
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllResourceUsage(
       TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
                                                             promise)));
   promise.get_future().get();

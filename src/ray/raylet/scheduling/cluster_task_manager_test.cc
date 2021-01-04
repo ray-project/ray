@@ -96,14 +96,14 @@ Task CreateTask(const std::unordered_map<std::string, double> &required_resource
 
 class MockTaskDependencyManager : public TaskDependencyManagerInterface {
  public:
-  bool SubscribeGetDependencies(
+  bool RequestTaskDependencies(
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     return task_ready_;
   }
 
-  bool UnsubscribeGetDependencies(const TaskID &task_id) {
-    return subscribed_tasks.erase(task_id);
+  void RemoveTaskDependencies(const TaskID &task_id) {
+    RAY_CHECK(subscribed_tasks.erase(task_id));
   }
 
   bool IsTaskReady(const TaskID &task_id) const { return task_ready_; }

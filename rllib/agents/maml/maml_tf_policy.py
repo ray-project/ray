@@ -1,13 +1,13 @@
 import logging
 
 import ray
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
+    vf_preds_fetches, compute_and_clip_gradients, setup_config, \
+    ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    vf_preds_fetches, compute_and_clip_gradients, setup_config, \
-    ValueNetworkMixin
 from ray.rllib.utils.framework import get_activation_fn
 
 tf1, tf, tfv = try_import_tf()
