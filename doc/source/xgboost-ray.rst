@@ -151,6 +151,7 @@ like operating system requirements and storing of intermediate
 results.
 
 **Example**
+
 - Machine type: AWS m5.xlarge (4 vCPUs, 16 GiB RAM)
 - Usable RAM: ~15,350,000 KiB
 - Dataset: 1,250,000 rows with 1024 features, dtype float32.
