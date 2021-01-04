@@ -9,6 +9,7 @@ import time
 
 import numpy as np
 import pytest
+import random
 import redis
 
 import ray
@@ -293,14 +294,16 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
     p = error_pubsub
     error_message1 = "actor constructor failed"
-    error_flag = "TEST_ERROR_FLAG_666"
+    error_flag_file_name = "/tmp/TEST_ERROR_FLAG_" + str(random.randint(0, 99999))
 
     @ray.remote(max_restarts=2)
     class FailedActor:
         def __init__(self):
-            print("error_flag =", os.environ.get(error_flag))
-            if not os.environ.get(error_flag):
-                os.environ[error_flag] = "1"
+            # This actor will raise error at first time.
+            # Then after restarting, it will be created successfully
+            if not os.path.isfile(error_flag_file_name):
+                open(error_flag_file_name, 'w').close()
+                print("flag not exits, raise error")
                 raise Exception(error_message1)
 
         def ok(self):
@@ -322,6 +325,7 @@ def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
             return False
 
     wait_for_condition(wait_until_ok)
+    os.remove(error_flag_file_name)
 
 
 def test_failed_actor_method(ray_start_regular, error_pubsub):
