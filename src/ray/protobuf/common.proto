@@ -133,7 +133,7 @@ enum ErrorType {
   TASK_CANCELLED = 5;
   // Inidicates that creating the GCS service failed to create the actor.
   ACTOR_CREATION_FAILED = 6;
-  // Indicates failure due to placement group
+  // Indicates failure due to placement group.
   PLACEMENT_GROUP_ERROR = 7;
 }
 
