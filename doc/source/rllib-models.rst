@@ -442,14 +442,32 @@ it (besides 1D Boxes and discrete spaces). You would probably want to preprocess
 image components using some convolutional network, and then concatenate their outputs
 with the remaining non-image (flat) inputs (the 1D Box and discrete/one-hot components).
 
-Take a look at this following model example that does exactly that:
+Take a look at this model example that does exactly that:
 
-
+.. literalinclude:: ../../rllib/examples/models/cnn_plus_fc_concat_model.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
 **Using a Conv2D input stack (for SAC)**
 
 
 **Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
+
+It is sometimes helpful for learning when not only looking at the current observation
+in order to calculate the next action, but also at the past n observations.
+In other cases, you may want to provide the most recent rewards or actions to the model as well.
+All this may even be useful when not working with partially observable environments (PO-MDPs)
+and/or RNN/Attention models.
+
+The `trajectory view API <rllib-sample-collection.html#trajectory-view-api>`__ allows your models
+to specify these more complex "view requirements".
+
+Here is a simple (non-RNN/Attention) example of a Model that takes as input
+the last 3 observations (very similar to the recommended "framestacking" in
+Atari environments):
+
+
 
 
 Custom Action Distributions
