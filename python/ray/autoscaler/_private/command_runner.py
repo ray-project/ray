@@ -312,8 +312,8 @@ class SSHOptions:
         ssh_key_option = ["-i", self.ssh_key] if self.ssh_key else []
         return ssh_key_option + [
             x for y in (["-o", "{}={}".format(k, v)]
-                        for k, v in self.arg_dict.items()
-                        if v is not None) for x in y
+                        for k, v in self.arg_dict.items() if v is not None)
+            for x in y
         ]
 
 
@@ -766,18 +766,19 @@ class DockerCommandRunner(CommandRunnerInterface):
         ]
 
         specific_image = self.docker_config.get(
-            f"{'head' if as_head else 'worker'}_image", self.docker_config.get("image"))
+            f"{'head' if as_head else 'worker'}_image",
+            self.docker_config.get("image"))
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
             assert specific_image, "Image must be included in config if " + \
                 "pull_before_run is specified"
-
             self.run("docker pull {}".format(specific_image), run_env="host")
         else:
 
-            self.run(f"docker image inspect {specific_image} 1> /dev/null  2>&1 || "
-                     f"docker pull {specific_image}")
+            self.run(
+                f"docker image inspect {specific_image} 1> /dev/null  2>&1 || "
+                f"docker pull {specific_image}")
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
@@ -861,9 +862,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             shm_output = self.ssh_command_runner.run(
                 "cat /proc/meminfo || true",
                 with_output=True).decode().strip()
-            available_memory = int([
-                ln for ln in shm_output.split("\n") if "MemAvailable" in ln
-            ][0].split()[1])
+            available_memory = int(
+                [ln for ln in shm_output.split("\n")
+                 if "MemAvailable" in ln][0].split()[1])
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
             shm_size = min((available_memory_bytes *
