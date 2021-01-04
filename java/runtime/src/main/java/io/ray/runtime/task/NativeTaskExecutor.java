@@ -3,13 +3,10 @@ package io.ray.runtime.task;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
 
-/**
- * Task executor for cluster mode.
- */
+/** Task executor for cluster mode. */
 public class NativeTaskExecutor extends TaskExecutor<NativeTaskExecutor.NativeActorContext> {
 
-  static class NativeActorContext extends TaskExecutor.ActorContext {
-  }
+  static class NativeActorContext extends TaskExecutor.ActorContext {}
 
   public NativeTaskExecutor(RayRuntimeInternal runtime) {
     super(runtime);

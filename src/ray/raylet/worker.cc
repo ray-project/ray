@@ -111,11 +111,6 @@ const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
   return blocked_task_ids_;
 }
 
-void Worker::AssignJobId(const JobID &job_id) {
-  RAY_CHECK(!RayConfig::instance().enable_multi_tenancy());
-  assigned_job_id_ = job_id;
-}
-
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {

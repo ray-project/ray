@@ -157,12 +157,15 @@ class ExternalStorage(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
-                                url_with_offset_list: List[str]):
+                                url_with_offset_list: List[str]) -> int:
         """Restore objects from the external storage.
 
         Args:
             object_refs: List of object IDs (note that it is not ref).
             url_with_offset_list: List of url_with_offset.
+
+        Returns:
+            The total number of bytes restored.
         """
 
     @abc.abstractmethod
@@ -215,6 +218,7 @@ class FileSystemStorage(ExternalStorage):
 
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
                                 url_with_offset_list: List[str]):
+        total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
             url_with_offset = url_with_offset_list[i].decode()
@@ -228,9 +232,11 @@ class FileSystemStorage(ExternalStorage):
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 self._size_check(metadata_len, buf_len, parsed_result.size)
+                total += buf_len
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
+        return total
 
     def delete_spilled_objects(self, urls: List[str]):
         for url in urls:
@@ -297,6 +303,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
     def restore_spilled_objects(self, object_refs: List[ObjectRef],
                                 url_with_offset_list: List[str]):
         from smart_open import open
+        total = 0
         for i in range(len(object_refs)):
             object_ref = object_refs[i]
             url_with_offset = url_with_offset_list[i].decode()
@@ -315,9 +322,11 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
                 metadata_len = int.from_bytes(f.read(8), byteorder="little")
                 buf_len = int.from_bytes(f.read(8), byteorder="little")
                 self._size_check(metadata_len, buf_len, parsed_result.size)
+                total += buf_len
                 metadata = f.read(metadata_len)
                 # read remaining data to our buffer
                 self._put_object_to_store(metadata, buf_len, f, object_ref)
+        return total
 
     def delete_spilled_objects(self, urls: List[str]):
         pass
@@ -367,8 +376,8 @@ def restore_spilled_objects(object_refs: List[ObjectRef],
         object_refs: List of object IDs (note that it is not ref).
         url_with_offset_list: List of url_with_offset.
     """
-    _external_storage.restore_spilled_objects(object_refs,
-                                              url_with_offset_list)
+    return _external_storage.restore_spilled_objects(object_refs,
+                                                     url_with_offset_list)
 
 
 def delete_spilled_objects(urls: List[str]):

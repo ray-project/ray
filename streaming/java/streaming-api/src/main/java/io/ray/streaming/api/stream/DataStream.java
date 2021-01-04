@@ -22,6 +22,7 @@ import java.util.List;
 
 /**
  * Represents a stream of data.
+ *
  * <p>This class defines all the streaming operations.
  *
  * @param <T> Type of data in the stream.
@@ -33,9 +34,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   public DataStream(
-      StreamingContext streamingContext,
-      StreamOperator streamOperator,
-      Partition<T> partition) {
+      StreamingContext streamingContext, StreamOperator streamOperator, Partition<T> partition) {
     super(streamingContext, streamOperator, partition);
   }
 
@@ -44,9 +43,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   }
 
   public <R> DataStream(
-      DataStream<R> input,
-      StreamOperator streamOperator,
-      Partition<T> partition) {
+      DataStream<R> input, StreamOperator streamOperator, Partition<T> partition) {
     super(input, streamOperator, partition);
   }
 
@@ -62,8 +59,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    * Apply a map function to this stream.
    *
    * @param mapFunction The map function.
-   * @param <R> Type of data returned by the map function.
-   * @return A new DataStream.
+   * @param <R> Type of data returned by the map function. Returns A new DataStream.
    */
   public <R> DataStream<R> map(MapFunction<T, R> mapFunction) {
     return new DataStream<>(this, new MapOperator<>(mapFunction));
@@ -73,8 +69,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    * Apply a flat-map function to this stream.
    *
    * @param flatMapFunction The FlatMapFunction
-   * @param <R> Type of data returned by the flatmap function.
-   * @return A new DataStream
+   * @param <R> Type of data returned by the flatmap function. Returns A new DataStream
    */
   public <R> DataStream<R> flatMap(FlatMapFunction<T, R> flatMapFunction) {
     return new DataStream<>(this, new FlatMapOperator<>(flatMapFunction));
@@ -89,8 +84,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    * type with each other.
    *
    * @param stream The DataStream to union output with.
-   * @param others The other DataStreams to union output with.
-   * @return A new UnionStream.
+   * @param others The other DataStreams to union output with. Returns A new UnionStream.
    */
   @SafeVarargs
   public final DataStream<T> union(DataStream<T> stream, DataStream<T>... others) {
@@ -104,8 +98,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    * Apply union transformations to this stream by merging {@link DataStream} outputs of the same
    * type with each other.
    *
-   * @param streams The DataStreams to union output with.
-   * @return A new UnionStream.
+   * @param streams The DataStreams to union output with. Returns A new UnionStream.
    */
   public final DataStream<T> union(List<DataStream<T>> streams) {
     if (this instanceof UnionStream) {
@@ -122,8 +115,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    *
    * @param other Another stream.
    * @param <O> The type of the other stream data.
-   * @param <R> The type of the data in the joined stream.
-   * @return A new JoinStream.
+   * @param <R> The type of the data in the joined stream. Returns A new JoinStream.
    */
   public <O, R> JoinStream<T, O, R> join(DataStream<O> other) {
     return new JoinStream<>(this, other);
@@ -137,8 +129,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   /**
    * Apply a sink function and get a StreamSink.
    *
-   * @param sinkFunction The sink function.
-   * @return A new StreamSink.
+   * @param sinkFunction The sink function. Returns A new StreamSink.
    */
   public DataStreamSink<T> sink(SinkFunction<T> sinkFunction) {
     return new DataStreamSink<>(this, new SinkOperator<>(sinkFunction));
@@ -148,8 +139,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    * Apply a key-by function to this stream.
    *
    * @param keyFunction the key function.
-   * @param <K> The type of the key.
-   * @return A new KeyDataStream.
+   * @param <K> The type of the key. Returns A new KeyDataStream.
    */
   public <K> KeyDataStream<K, T> keyBy(KeyFunction<T, K> keyFunction) {
     checkPartitionCall();
@@ -159,7 +149,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   /**
    * Apply broadcast to this stream.
    *
-   * @return This stream.
+   * <p>Returns This stream.
    */
   public DataStream<T> broadcast() {
     checkPartitionCall();
@@ -169,8 +159,7 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
   /**
    * Apply a partition to this stream.
    *
-   * @param partition The partitioning strategy.
-   * @return This stream.
+   * @param partition The partitioning strategy. Returns This stream.
    */
   public DataStream<T> partitionBy(Partition<T> partition) {
     checkPartitionCall();
@@ -183,8 +172,9 @@ public class DataStream<T> extends Stream<DataStream<T>, T> {
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.PYTHON) {
-      throw new RuntimeException("Partition related methods can't be called on a " +
-          "java stream if parent stream is a python stream.");
+      throw new RuntimeException(
+          "Partition related methods can't be called on a "
+              + "java stream if parent stream is a python stream.");
     }
   }
 

@@ -15,10 +15,13 @@ from ray.serve.utils import (parse_request_item, _get_logger, chain_future,
 from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
-from ray.serve.long_poll import LongPollerAsyncClient
+from ray.serve.long_poll import LongPollAsyncClient
 from ray.serve.router import Query
-from ray.serve.constants import (DEFAULT_LATENCY_BUCKET_MS,
-                                 BACKEND_RECONFIGURE_METHOD)
+from ray.serve.constants import (
+    BACKEND_RECONFIGURE_METHOD,
+    DEFAULT_LATENCY_BUCKET_MS,
+    LongPollKey,
+)
 from ray.exceptions import RayTaskError
 
 logger = _get_logger()
@@ -103,9 +106,11 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
     class RayServeWrappedReplica(object):
         def __init__(self, backend_tag, replica_tag, init_args,
                      backend_config: BackendConfig, controller_name: str):
-            # Set the controller name so that serve.connect() will connect to
-            # the instance that this backend is running in.
-            ray.serve.api._set_internal_controller_name(controller_name)
+            # Set the controller name so that serve.connect() in the user's
+            # backend code will connect to the instance that this backend is
+            # running in.
+            ray.serve.api._set_internal_replica_context(
+                backend_tag, replica_tag, controller_name)
             if is_function:
                 _callable = func_or_class
             else:
@@ -113,15 +118,18 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
 
             assert controller_name, "Must provide a valid controller_name"
             controller_handle = ray.get_actor(controller_name)
-            self.backend = RayServeReplica(backend_tag, replica_tag, _callable,
-                                           backend_config, is_function,
-                                           controller_handle)
+            self.backend = RayServeReplica(_callable, backend_config,
+                                           is_function, controller_handle)
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             return await self.backend.handle_request(request)
 
         def ready(self):
             pass
+
+        async def drain_pending_queries(self):
+            return await self.backend.drain_pending_queries()
 
     RayServeWrappedReplica.__name__ = "RayServeReplica_{}".format(
         func_or_class.__name__)
@@ -146,11 +154,10 @@ def ensure_async(func: Callable) -> Callable:
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
-    def __init__(self, backend_tag: str, replica_tag: str, _callable: Callable,
-                 backend_config: BackendConfig, is_function: bool,
-                 controller_handle: ActorHandle) -> None:
-        self.backend_tag = backend_tag
-        self.replica_tag = replica_tag
+    def __init__(self, _callable: Callable, backend_config: BackendConfig,
+                 is_function: bool, controller_handle: ActorHandle) -> None:
+        self.backend_tag = ray.serve.api.get_current_backend_tag()
+        self.replica_tag = ray.serve.api.get_current_replica_tag()
         self.callable = _callable
         self.is_function = is_function
 
@@ -162,72 +169,71 @@ class RayServeReplica:
         self.num_ongoing_requests = 0
 
         self.request_counter = metrics.Count(
-            "backend_request_counter",
-            description=("Number of queries that have been "
-                         "processed in this replica"),
+            "serve_backend_request_counter",
+            description=("The number of queries that have been "
+                         "processed in this replica."),
             tag_keys=("backend", ))
         self.request_counter.set_default_tags({"backend": self.backend_tag})
 
-        self.long_poll_client = LongPollerAsyncClient(controller_handle, {
-            "backend_configs": self._update_backend_configs,
+        self.long_poll_client = LongPollAsyncClient(controller_handle, {
+            LongPollKey.BACKEND_CONFIGS: self._update_backend_configs,
         })
 
         self.error_counter = metrics.Count(
-            "backend_error_counter",
-            description=("Number of exceptions that have "
-                         "occurred in the backend"),
+            "serve_backend_error_counter",
+            description=("The number of exceptions that have "
+                         "occurred in the backend."),
             tag_keys=("backend", ))
         self.error_counter.set_default_tags({"backend": self.backend_tag})
 
         self.restart_counter = metrics.Count(
-            "backend_replica_starts",
-            description=("The number of time this replica "
+            "serve_backend_replica_starts",
+            description=("The number of times this replica "
                          "has been restarted due to failure."),
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.restart_counter.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.queuing_latency_tracker = metrics.Histogram(
-            "backend_queuing_latency_ms",
-            description=(
-                "The latency for queries waiting in the replica's queue "
-                "waiting to be processed or batched."),
+            "serve_backend_queuing_latency_ms",
+            description=("The latency for queries in the replica's queue "
+                         "waiting to be processed or batched."),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag"))
+            tag_keys=("backend", "replica"))
         self.queuing_latency_tracker.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.processing_latency_tracker = metrics.Histogram(
-            "backend_processing_latency_ms",
-            description="The latency for queries to be processed",
+            "serve_backend_processing_latency_ms",
+            description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("backend", "replica_tag", "batch_size"))
+            tag_keys=("backend", "replica", "batch_size"))
         self.processing_latency_tracker.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.num_queued_items = metrics.Gauge(
-            "replica_queued_queries",
-            description=("Current number of queries queued in the "
-                         "the backend replicas"),
-            tag_keys=("backend", "replica_tag"))
+            "serve_replica_queued_queries",
+            description=("The current number of queries queued in "
+                         "the backend replicas."),
+            tag_keys=("backend", "replica"))
         self.num_queued_items.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.num_processing_items = metrics.Gauge(
-            "replica_processing_queries",
-            description="Current number of queries being processed",
-            tag_keys=("backend", "replica_tag"))
+            "serve_replica_processing_queries",
+            description="The current number of queries being processed.",
+            tag_keys=("backend", "replica"))
         self.num_processing_items.set_default_tags({
             "backend": self.backend_tag,
-            "replica_tag": self.replica_tag
+            "replica": self.replica_tag
         })
 
         self.restart_counter.record(1)
@@ -406,4 +412,27 @@ class RayServeReplica:
             self.replica_tag, request.metadata.request_id, request_time_ms))
 
         self.num_ongoing_requests -= 1
-        return result
+        # Returns a small object for router to track request status.
+        return b"", result
+
+    async def drain_pending_queries(self):
+        """Perform graceful shutdown.
+
+        Trigger a graceful shutdown protocol that will wait for all the queued
+        tasks to be completed and return to the controller.
+        """
+        sleep_time = self.config.experimental_graceful_shutdown_wait_loop_s
+        while True:
+            # Sleep first because we want to make sure all the routers receive
+            # the notification to remove this replica first.
+            await asyncio.sleep(sleep_time)
+
+            num_queries_waiting = self.batch_queue.qsize()
+            if (num_queries_waiting == 0) and (self.num_ongoing_requests == 0):
+                break
+            else:
+                logger.info(
+                    f"Waiting for an additional {sleep_time}s "
+                    f"to shutdown replica {self.replica_tag} because "
+                    f"num_queries_waiting {num_queries_waiting} and "
+                    f"num_ongoing_requests {self.num_ongoing_requests}")

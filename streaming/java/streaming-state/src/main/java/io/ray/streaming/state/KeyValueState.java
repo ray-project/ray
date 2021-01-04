@@ -18,18 +18,12 @@
 
 package io.ray.streaming.state;
 
-/**
- * Key Value State interface.
- */
+/** Key Value State interface. */
 public interface KeyValueState<K, V> {
 
-  /**
-   * get value from state
-   */
+  /** get value from state */
   V get(K key);
 
-  /**
-   * put key and value into state
-   */
+  /** put key and value into state */
   void put(K k, V v);
 }

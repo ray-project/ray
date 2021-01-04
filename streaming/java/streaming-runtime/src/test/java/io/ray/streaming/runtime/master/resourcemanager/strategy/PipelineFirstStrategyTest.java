@@ -70,6 +70,4 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
     ResourceAssignmentView assignmentView = strategy.assignResource(containers, executionGraph);
     Assert.assertNotNull(assignmentView);
   }
-
-
 }

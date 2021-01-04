@@ -8,6 +8,14 @@ set -x
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 java -version
 
+pushd "$ROOT_DIR"
+  echo "Check java code format."
+  # check google java style
+  mvn -T16 spotless:check
+  # check naming and others
+  mvn -T16 checkstyle:check
+popd
+
 run_testng() {
     local exit_code
     if "$@"; then
@@ -27,11 +35,6 @@ run_testng() {
 }
 
 pushd "$ROOT_DIR"/..
-echo "Linting Java code with checkstyle."
-# NOTE(hchen): The `test_tag_filters` option causes bazel to ignore caches.
-# Thus, we add the `build_tests_only` option to avoid re-building everything.
-bazel test //java:all --test_tag_filters="checkstyle" --build_tests_only
-
 echo "Build java maven deps."
 bazel build //java:gen_maven_deps
 
@@ -39,7 +42,7 @@ echo "Build test jar."
 bazel build //java:all_tests_deploy.jar
 
 # Enable multi-worker feature in Java test
-TEST_ARGS=(-Dray.raylet.config.num_workers_per_process_java=10 -Dray.job.num-java-workers-per-process=10)
+TEST_ARGS=(-Dray.job.num-java-workers-per-process=10)
 
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
@@ -57,7 +60,7 @@ case "${OSTYPE}" in
   darwin*) ip=$(ipconfig getifaddr en0);;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
-RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456 --code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar"
+RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
 RAY_BACKEND_LOG_LEVEL=debug java -cp bazel-bin/java/all_tests_deploy.jar -Dray.address="$ip:6379"\
  -Dray.redis.password='123456' -Dray.job.code-search-path="$PWD/bazel-bin/java/all_tests_deploy.jar" io.ray.test.MultiDriverTest
 ray stop
@@ -70,13 +73,11 @@ for file in "$docdemo_path"*.java; do
   echo "Running $class"
   java -cp bazel-bin/java/all_tests_deploy.jar "io.ray.docdemo.$class"
 done
-
 popd
-
 
 pushd "$ROOT_DIR"
 echo "Testing maven install."
-mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests
+mvn -Dorg.slf4j.simpleLogger.defaultLogLevel=WARN clean install -DskipTests -Dcheckstyle.skip
 # Ensure mvn test works
 mvn test -pl test -Dtest="io.ray.test.HelloWorldTest"
 popd

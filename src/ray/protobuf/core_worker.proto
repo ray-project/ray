@@ -315,6 +315,7 @@ message RestoreSpilledObjectsRequest {
 }
 
 message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
 }
 
 message DeleteSpilledObjectsRequest {

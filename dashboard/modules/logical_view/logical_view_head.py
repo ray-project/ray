@@ -4,7 +4,7 @@ import ray.utils
 import ray.new_dashboard.utils as dashboard_utils
 import ray.new_dashboard.actor_utils as actor_utils
 from ray.new_dashboard.utils import rest_response
-from ray.new_dashboard.datacenter import DataOrganizer
+from ray.new_dashboard.datacenter import DataOrganizer, DataSource
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 
@@ -28,6 +28,14 @@ class LogicalViewHead(dashboard_utils.DashboardHeadModule):
             success=True,
             message="Fetched actor groups.",
             actor_groups=actor_groups)
+
+    @routes.get("/logical/actors")
+    @dashboard_utils.aiohttp_cache
+    async def get_all_actors(self, req) -> aiohttp.web.Response:
+        return dashboard_utils.rest_response(
+            success=True,
+            message="All actors fetched.",
+            actors=DataSource.actors)
 
     @routes.get("/logical/kill_actor")
     async def kill_actor(self, req) -> aiohttp.web.Response:
