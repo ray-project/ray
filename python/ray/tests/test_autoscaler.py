@@ -1956,8 +1956,6 @@ MemAvailable:   33000000 kB
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        import pdb
-        pdb.set_trace()
         first_pull = [(i, cmd)
                       for i, cmd in enumerate(runner.command_history())
                       if "docker pull" in cmd]
