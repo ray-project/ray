@@ -1433,6 +1433,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       case rpc::ClientDisconnectType::FINISHED:
       case rpc::ClientDisconnectType::UNUSED_RESOURCE_RELEASED:
         intentional_exit = true;
+        break;
       default:
         RAY_LOG(FATAL) << "Unknown client disconnect type " << disconnect_type;
       }
