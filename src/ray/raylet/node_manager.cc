@@ -1424,7 +1424,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
         break;
-      case rpc::ClientDisconnectType::PLACEGROUP_REMOVED:
+      case rpc::ClientDisconnectType::PLACEMENT_GROUP_REMOVED:
         type_str = "placement_group";
         error_message << "A worker was killed while executing task " << task_id
                       << " due to placement group removal."
@@ -1835,7 +1835,7 @@ void NodeManager::HandleCancelResourceReserve(
         << ", task id: " << worker->GetAssignedTaskId()
         << ", actor id: " << worker->GetActorId()
         << ", worker id: " << worker->WorkerId();
-    DisconnectAndKillWorker(worker, rpc::ClientDisconnectType::PLACEGROUP_REMOVED);
+    DisconnectAndKillWorker(worker, rpc::ClientDisconnectType::PLACEMENT_GROUP_REMOVED);
   }
 
   // Return bundle resources.
