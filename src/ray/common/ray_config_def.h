@@ -364,3 +364,8 @@ RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 /// Grace period until we throw the OOM error to the application.
 /// -1 means grace period is infinite.
 RAY_CONFIG(int64_t, oom_grace_period_ns, 10e9)
+
+/* Configuration parameters for locality-aware scheduling. */
+/// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
+/// dependency locality when choosing a worker for leasing.
+RAY_CONFIG(bool, locality_aware_leasing_enabled, true)
