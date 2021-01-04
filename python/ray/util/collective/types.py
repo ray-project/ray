@@ -42,11 +42,6 @@ class Backend(object):
         return backend
 
 
-class OpType(Enum):
-    SEND = 0,
-    RECV = 1
-
-
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
