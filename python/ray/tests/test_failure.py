@@ -290,6 +290,39 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.TASK_PUSH_ERROR
     assert error_message1 in errors[0].error_message
 
+def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
+    p = error_pubsub
+    error_message1 = "actor constructor failed"
+    error_flag = "TEST_ERROR_FLAG_666"
+
+    @ray.remote(max_restarts=2)
+    class FailedActor:
+        def __init__(self):
+            print("error_flag =", os.environ.get(error_flag))
+            if not os.environ.get(error_flag):
+                os.environ[error_flag] = "1"
+                raise Exception(error_message1)
+
+        def ok(self):
+            return "OK"
+
+    # this time actor will raise error in constructor and restart
+    a = FailedActor.remote()
+    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
+    print(errors)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
+    assert error_message1 in errors[0].error_message
+
+    # finally after restarting, actor will be alive
+    def wait_until_ok():
+        try:
+            return ray.get(a.ok.remote()) == "OK"
+        except Exception as e:
+            return False
+
+    wait_for_condition(wait_until_ok)
+
 
 def test_failed_actor_method(ray_start_regular, error_pubsub):
     p = error_pubsub
