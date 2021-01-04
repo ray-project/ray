@@ -1,5 +1,6 @@
 import os
 import pickle
+from collections import Iterable
 from multiprocessing import Process, Queue
 from numbers import Number
 from typing import Any, Callable, Dict, List, Optional, Tuple
