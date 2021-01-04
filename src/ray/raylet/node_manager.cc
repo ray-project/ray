@@ -1258,7 +1258,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
         fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
           if (!status.ok()) {
-            DisconnectClient(client, rpc::ClientDisconnectType::UNEXPECTED_EXIT);
+            DisconnectClient(client);
           }
         });
   };
