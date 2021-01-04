@@ -15,6 +15,8 @@ class LogHead(dashboard_utils.DashboardHeadModule):
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+        # We disable auto_decompress when forward / proxy log url.
+        self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
         mimetypes.add_type("text/plain", ".err")
         mimetypes.add_type("text/plain", ".out")
         routes.static("/logs", self._dashboard_head.log_dir, show_index=True)
@@ -51,6 +53,26 @@ class LogHead(dashboard_utils.DashboardHeadModule):
                     port=self._dashboard_head.http_port))
         return aiohttp.web.Response(
             text=self._directory_as_html(url_list), content_type="text/html")
+
+    @routes.get("/log_proxy")
+    async def get_log_from_proxy(self, req) -> aiohttp.web.StreamResponse:
+        url = req.query.get("url")
+        if not url:
+            raise Exception("url is None.")
+        body = await req.read()
+        async with self._proxy_session.request(
+                req.method, url, data=body, headers=req.headers) as r:
+            sr = aiohttp.web.StreamResponse(
+                status=r.status, reason=r.reason, headers=req.headers)
+            sr.content_length = r.content_length
+            sr.content_type = r.content_type
+            sr.charset = r.charset
+
+            writer = await sr.prepare(req)
+            async for data in r.content.iter_any():
+                await writer.write(data)
+
+            return sr
 
     @staticmethod
     def _directory_as_html(url_list) -> str:
