@@ -132,12 +132,6 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        name = "com_github_checkstyle_java",
-        url = "https://github.com/ray-project/checkstyle_java/archive/ef367030d1433877a3360bbfceca18a5d0791bdd.tar.gz",
-        sha256 = "847d391156d7dcc9424e6a8ba06ff23ea2914c725b18d92028074b2ed8de3da9",
-    )
-
-    auto_http_archive(
         # This rule is used by @com_github_nelhage_rules_boost and
         # declaring it here allows us to avoid patching the latter.
         name = "boost",

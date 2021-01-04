@@ -42,11 +42,12 @@ class TestAttentionNetLearning(unittest.TestCase):
                     "max_seq_len": 10,
                     "custom_model_config": {
                         "num_transformer_units": 1,
-                        "attn_dim": 32,
+                        "attention_dim": 32,
                         "num_heads": 1,
-                        "memory_tau": 5,
+                        "memory_inference": 5,
+                        "memory_training": 5,
                         "head_dim": 32,
-                        "ff_hidden_dim": 32,
+                        "position_wise_mlp_dim": 32,
                     },
                 },
             })
@@ -69,11 +70,12 @@ class TestAttentionNetLearning(unittest.TestCase):
         #            "max_seq_len": 65,
         #            "custom_model_config": {
         #                "num_transformer_units": 1,
-        #                "attn_dim": 64,
+        #                "attention_dim": 64,
         #                "num_heads": 1,
-        #                "memory_tau": 10,
+        #                "memory_inference": 10,
+        #                "memory_training": 10,
         #                "head_dim": 32,
-        #                "ff_hidden_dim": 32,
+        #                "position_wise_mlp_dim": 32,
         #            },
         #        },
         #    })

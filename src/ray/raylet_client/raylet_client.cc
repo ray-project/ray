@@ -189,9 +189,9 @@ Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskBlocked() {
+Status raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
@@ -274,10 +274,10 @@ Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_e
 }
 
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
-                                         bool local_only, bool delete_creating_tasks) {
+                                         bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateFreeObjectsRequest(
-      fbb, local_only, delete_creating_tasks, to_flatbuf(fbb, object_ids));
+  auto message =
+      protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }

@@ -6,7 +6,6 @@ import logging
 import os
 import subprocess
 import sys
-from telnetlib import Telnet
 import time
 import urllib
 import urllib.parse
@@ -172,8 +171,7 @@ def continue_debug_session():
                         ray.experimental.internal_kv._internal_kv_del(key)
                         return
                     host, port = session["pdb_address"].split(":")
-                    with Telnet(host, int(port)) as tn:
-                        tn.interact()
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
                     ray.experimental.internal_kv._internal_kv_del(key)
                     continue_debug_session()
                     return
@@ -215,8 +213,7 @@ def debug(address):
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            with Telnet(host, int(port)) as tn:
-                tn.interact()
+            ray.util.rpdb.connect_pdb_client(host, int(port))
 
 
 @cli.command()

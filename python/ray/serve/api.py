@@ -4,26 +4,52 @@ import time
 from functools import wraps
 import os
 from uuid import UUID
+import threading
+from typing import Any, Callable, Coroutine, Dict, List, Optional, Type, Union
+from dataclasses import dataclass
 
 import ray
 from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
                                  SERVE_CONTROLLER_NAME, HTTP_PROXY_TIMEOUT)
-from ray.serve.controller import ServeController
-from ray.serve.handle import RayServeHandle
+from ray.serve.controller import ServeController, BackendTag, ReplicaTag
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve.utils import (block_until_http_ready, format_actor_name,
                              get_random_letters, logger, get_conda_env_dir)
 from ray.serve.exceptions import RayServeException
-from ray.serve.config import BackendConfig, ReplicaConfig, BackendMetadata
+from ray.serve.config import (BackendConfig, ReplicaConfig, BackendMetadata,
+                              HTTPConfig)
 from ray.serve.env import CondaEnv
+from ray.serve.router import RequestMetadata, Router
 from ray.actor import ActorHandle
-from typing import Any, Callable, Dict, List, Optional, Type, Union
 
-_INTERNAL_CONTROLLER_NAME = None
+_INTERNAL_REPLICA_CONTEXT = None
+global_async_loop = None
 
 
-def _set_internal_controller_name(name):
-    global _INTERNAL_CONTROLLER_NAME
-    _INTERNAL_CONTROLLER_NAME = name
+@dataclass
+class InternalReplicaContext:
+    """Stores data for Serve API calls from within the user's backend code."""
+    backend_tag: BackendTag
+    replica_tag: ReplicaTag
+    controller_name: str
+
+
+def create_or_get_async_loop_in_thread():
+    global global_async_loop
+    if global_async_loop is None:
+        global_async_loop = asyncio.new_event_loop()
+        thread = threading.Thread(
+            daemon=True,
+            target=global_async_loop.run_forever,
+        )
+        thread.start()
+    return global_async_loop
+
+
+def _set_internal_replica_context(backend_tag, replica_tag, controller_name):
+    global _INTERNAL_REPLICA_CONTEXT
+    _INTERNAL_REPLICA_CONTEXT = InternalReplicaContext(
+        backend_tag, replica_tag, controller_name)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -36,6 +62,35 @@ def _ensure_connected(f: Callable) -> Callable:
     return check
 
 
+class ThreadProxiedRouter:
+    def __init__(self, controller_handle, sync: bool):
+        self.router = Router(controller_handle)
+
+        if sync:
+            self.async_loop = create_or_get_async_loop_in_thread()
+            asyncio.run_coroutine_threadsafe(
+                self.router.setup_in_async_loop(),
+                self.async_loop,
+            )
+        else:
+            self.async_loop = asyncio.get_event_loop()
+            self.async_loop.create_task(self.router.setup_in_async_loop())
+
+    def _remote(self, endpoint_name, handle_options, request_data,
+                kwargs) -> Coroutine:
+        request_metadata = RequestMetadata(
+            get_random_letters(10),  # Used for debugging.
+            endpoint_name,
+            call_method=handle_options.method_name,
+            shard_key=handle_options.shard_key,
+            http_method=handle_options.http_method,
+            http_headers=handle_options.http_headers,
+        )
+        coro = self.router.assign_request(request_metadata, request_data,
+                                          **kwargs)
+        return coro
+
+
 class Client:
     def __init__(self,
                  controller: ActorHandle,
@@ -45,15 +100,10 @@ class Client:
         self._controller_name = controller_name
         self._detached = detached
         self._shutdown = False
-        self._http_host, self._http_port = ray.get(
-            controller.get_http_config.remote())
+        self._http_config = ray.get(controller.get_http_config.remote())
 
-        # NOTE(simon): Used to cache client.get_handle(endpoint) call. It will
-        # mostly grow in size, it will only shrink when user calls the
-        # .remove_endpoint method. This is fine because we expect the number of
-        # endpoints to be fairly small. However, in case this dictionary does
-        # grow very big, we can replace it with a LRU cache instead.
-        self._handle_cache: Dict[str, ActorHandle] = dict()
+        self._sync_proxied_router = None
+        self._async_proxied_router = None
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -64,6 +114,18 @@ class Client:
                 self.shutdown()
 
             atexit.register(shutdown_serve_client)
+
+    def _get_proxied_router(self, sync: bool):
+        if sync:
+            if self._sync_proxied_router is None:
+                self._sync_proxied_router = ThreadProxiedRouter(
+                    self._controller, sync=True)
+            return self._sync_proxied_router
+        else:
+            if self._async_proxied_router is None:
+                self._async_proxied_router = ThreadProxiedRouter(
+                    self._controller, sync=False)
+            return self._async_proxied_router
 
     def __del__(self):
         if not self._detached:
@@ -181,8 +243,8 @@ class Client:
                     num_cpus=0, resources={
                         node_id: 0.01
                     }).remote(
-                        "http://{}:{}/-/routes".format(self._http_host,
-                                                       self._http_port),
+                        "http://{}:{}/-/routes".format(self._http_config.host,
+                                                       self._http_config.port),
                         check_ready=check_ready,
                         timeout=HTTP_PROXY_TIMEOUT)
                 futures.append(future)
@@ -198,8 +260,6 @@ class Client:
 
         Does not delete any associated backends.
         """
-        if endpoint in self._handle_cache:
-            del self._handle_cache[endpoint]
         self._get_result(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
@@ -275,7 +335,7 @@ class Client:
             func_or_class (callable, class): a function or a class implementing
                 __call__, returning a JSON-serializable object or a
                 Starlette Response object.
-            actor_init_args (optional): the arguments to pass to the class.
+            *actor_init_args (optional): the arguments to pass to the class
                 initialization method.
             ray_actor_options (optional): options to be passed into the
                 @ray.remote decorator for the backend actor.
@@ -355,12 +415,18 @@ class Client:
         return ray.get(self._controller.get_all_backends.remote())
 
     @_ensure_connected
-    def delete_backend(self, backend_tag: str) -> None:
+    def delete_backend(self, backend_tag: str, force: bool = False) -> None:
         """Delete the given backend.
 
         The backend must not currently be used by any endpoints.
+
+        Args:
+            backend_tag (str): The backend tag to be deleted.
+            force (bool): Whether or not to force the deletion, without waiting
+              for graceful shutdown. Default to false.
         """
-        self._get_result(self._controller.delete_backend.remote(backend_tag))
+        self._get_result(
+            self._controller.delete_backend.remote(backend_tag, force))
 
     @_ensure_connected
     def set_traffic(self, endpoint_name: str,
@@ -410,10 +476,11 @@ class Client:
                                                    proportion))
 
     @_ensure_connected
-    def get_handle(self,
-                   endpoint_name: str,
-                   missing_ok: Optional[bool] = False,
-                   sync: bool = True) -> RayServeHandle:
+    def get_handle(
+            self,
+            endpoint_name: str,
+            missing_ok: Optional[bool] = False,
+            sync: bool = True) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
         Args:
@@ -433,14 +500,26 @@ class Client:
 
         if asyncio.get_event_loop().is_running() and sync:
             logger.warning(
-                "You are retrieving a ServeHandle inside an asyncio loop. "
+                "You are retrieving a sync handle inside an asyncio loop. "
                 "Try getting client.get_handle(.., sync=False) to get better "
-                "performance.")
+                "performance. Learn more at https://docs.ray.io/en/master/"
+                "serve/advanced.html#sync-and-async-handles")
 
-        if endpoint_name not in self._handle_cache:
-            handle = RayServeHandle(self._controller, endpoint_name, sync=sync)
-            self._handle_cache[endpoint_name] = handle
-        return self._handle_cache[endpoint_name]
+        if not asyncio.get_event_loop().is_running() and not sync:
+            logger.warning(
+                "You are retrieving an async handle outside an asyncio loop. "
+                "You should make sure client.get_handle is called inside a "
+                "running event loop. Or call client.get_handle(.., sync=True) "
+                "to create sync handle. Learn more at https://docs.ray.io/en/"
+                "master/serve/advanced.html#sync-and-async-handles")
+
+        if sync:
+            handle = RayServeSyncHandle(
+                self._get_proxied_router(sync=sync), endpoint_name)
+        else:
+            handle = RayServeHandle(
+                self._get_proxied_router(sync=sync), endpoint_name)
+        return handle
 
 
 def start(detached: bool = False,
@@ -492,9 +571,7 @@ def start(detached: bool = False,
         max_task_retries=-1,
     ).remote(
         controller_name,
-        http_host,
-        http_port,
-        http_middlewares,
+        HTTPConfig(http_host, http_port, http_middlewares),
         detached=detached)
 
     if http_host is not None:
@@ -530,12 +607,12 @@ def connect() -> Client:
     if not ray.is_initialized():
         ray.init()
 
-    # When running inside of a backend, _INTERNAL_CONTROLLER_NAME is set to
+    # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
-    if _INTERNAL_CONTROLLER_NAME is None:
+    if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
     else:
-        controller_name = _INTERNAL_CONTROLLER_NAME
+        controller_name = _INTERNAL_REPLICA_CONTEXT.controller_name
 
     # Try to get serve controller if it exists
     try:
@@ -547,6 +624,37 @@ def connect() -> Client:
                                 "one.")
 
     return Client(controller, controller_name, detached=True)
+
+
+def get_current_backend_tag() -> BackendTag:
+    """When called from within a backend, return its backend tag.
+
+    Raises:
+        RayServeException if not called from within a Ray Serve backend.
+    """
+    if _INTERNAL_REPLICA_CONTEXT is None:
+        raise RayServeException("`serve.get_current_backend_tag()`"
+                                "may only be called from within a"
+                                "Ray Serve backend.")
+    else:
+        return _INTERNAL_REPLICA_CONTEXT.backend_tag
+
+
+def get_current_replica_tag() -> ReplicaTag:
+    """When called from within a backend, return its replica tag.
+
+    A replica tag uniquely identifies a single replica (a process)
+    for a Ray Serve backend.
+
+    Raises:
+        RayServeException if not called from within a Ray Serve backend.
+    """
+    if _INTERNAL_REPLICA_CONTEXT is None:
+        raise RayServeException("`serve.get_current_replica_tag()`"
+                                "may only be called from within a"
+                                "Ray Serve backend.")
+    else:
+        return _INTERNAL_REPLICA_CONTEXT.replica_tag
 
 
 def accept_batch(f: Callable) -> Callable:

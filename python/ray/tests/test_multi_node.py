@@ -741,10 +741,10 @@ ray.get(main_wait.release.remote())
     driver1_out_split = driver1_out.split("\n")
     driver2_out_split = driver2_out.split("\n")
 
-    assert driver1_out_split[0][-1] == "1"
-    assert driver1_out_split[1][-1] == "2"
-    assert driver2_out_split[0][-1] == "3"
-    assert driver2_out_split[1][-1] == "4"
+    assert driver1_out_split[0][-1] == "1", driver1_out_split
+    assert driver1_out_split[1][-1] == "2", driver1_out_split
+    assert driver2_out_split[0][-1] == "3", driver2_out_split
+    assert driver2_out_split[1][-1] == "4", driver2_out_split
 
 
 if __name__ == "__main__":
