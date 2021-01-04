@@ -157,7 +157,8 @@ public class JobMaster {
       scheduler = new JobSchedulerImpl(this);
       scheduler.scheduleJob(graphManager.getExecutionGraph());
     } catch (Exception e) {
-      LOG.error("Failed to submit job.", e);
+      e.printStackTrace();
+      LOG.error("Failed to submit job {}.", e, e);
       return false;
     }
     return true;

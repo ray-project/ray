@@ -62,7 +62,7 @@ class ModelV2:
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
-        self.inference_view_requirements = {
+        self.view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
@@ -341,7 +341,7 @@ class ModelV2:
         }
 
         input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
+        for view_col, view_req in self.view_requirements.items():
             # Create batches of size 1 (single-agent input-dict).
             data_col = view_req.data_col or view_col
             if index == "last":

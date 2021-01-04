@@ -32,12 +32,13 @@ def mock_task_runner():
             self.query = None
             self.queries = []
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             if isinstance(request, bytes):
                 request = Query.ray_deserialize(request)
             self.query = request
             self.queries.append(request)
-            return "DONE"
+            return b"", "DONE"
 
         def get_recent_call(self):
             return self.query
@@ -195,10 +196,11 @@ async def test_replica_set(ray_instance):
     class MockWorker:
         _num_queries = 0
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             self._num_queries += 1
             await signal.wait.remote()
-            return "DONE"
+            return b"", "DONE"
 
         async def num_queries(self):
             return self._num_queries

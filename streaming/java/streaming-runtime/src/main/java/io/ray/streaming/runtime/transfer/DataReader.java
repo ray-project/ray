@@ -246,8 +246,8 @@ public class DataReader {
 
     // kMessageBundleHeaderSize + kUniqueIDSize:
     // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
-    // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
-    static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + 20;
+    // + bundleType(4b) + rawBundleSize(4b) + channelID
+    static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + ChannelId.ID_LENGTH;
     private int magicNum;
     private long bundleTs;
     private long lastMessageId;
