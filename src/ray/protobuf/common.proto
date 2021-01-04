@@ -454,5 +454,5 @@ enum ClientDisconnectType {
   // Worker exit due to resource bundle release.
   UNUSED_RESOURCE_RELEASED = 2;
   // Worker exit due to placement group removal.
-  PLACEGROUP_REMOVED = 3;
+  PLACEMENT_GROUP_REMOVED = 3;
 }
