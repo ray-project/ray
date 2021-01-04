@@ -527,7 +527,6 @@ class ActorClass:
             override_environment_variables: Environment variables to override
                 and/or introduce for this actor.  This is a dictionary mapping
                 variable names to their values.
-            collective: what colletive configuration to use
 
         Returns:
             A handle to the newly created actor.
