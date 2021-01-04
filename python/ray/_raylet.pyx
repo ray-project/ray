@@ -1324,9 +1324,8 @@ cdef class CoreWorker:
 
     cdef make_actor_handle(self, ActorHandleSharedPtr actor_handle_shared_ptr):
         cdef:
-            # NOTE: 1) This handle should not be stored anywhere.
-            # 2) This handle is valid within this function as the shared_ptr won't
-            #    be destructed.
+            # NOTE: This raw pointer is only valid in this function, while the
+            # shared_ptr is valid. Do not store it anywhere.
             const CActorHandle *c_actor_handle = actor_handle_shared_ptr.get()
         worker = ray.worker.global_worker
         worker.check_connected()

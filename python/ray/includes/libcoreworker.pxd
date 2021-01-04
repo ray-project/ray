@@ -51,7 +51,7 @@ ctypedef void (*plasma_callback_function) \
 
 # NOTE: This ctypedef is needed, because Cython doesn't compile
 # "pair[shared_ptr[const CActorHandle], CRayStatus]".
-# This looks like a bug of cython.
+# This looks like a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
