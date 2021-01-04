@@ -272,36 +272,6 @@ class NCCLGroup(BaseGroup):
                          lambda *args, **kwargs: None,
                          postprocess_fn)
 
-    # def reducescatter(self,
-    #                   tensor,
-    #                   tensor_list,
-    #                   reducescatter_options=ReduceScatterOptions()):
-    #     """Reducescatter a list of tensors across the group.
-    #
-    #     Args:
-    #         tensor: the output after reducescatter (could be unspecified).
-    #         tensor_list: the list of tensor to be reduce and scattered.
-    #         reducescatter_options: reducescatter options.
-    #
-    #     Returns:
-    #         None
-    #     """
-    #     _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-    #
-    #     comm = self._get_nccl_collective_communicator()
-    #     stream = self._get_cuda_stream()
-    #     dtype = nccl_util.get_nccl_tensor_dtype(tensor_list[0])
-    #     n_elems = nccl_util.get_tensor_n_elements(tensor_list[0])
-    #     reduce_op = nccl_util.get_nccl_reduce_op(
-    #         reducescatter_options.reduceOp)
-    #
-    #     # get the send_ptr
-    #     flattened = _flatten_for_scatter_gather(tensor_list, copy=True)
-    #     send_ptr = nccl_util.get_tensor_ptr(flattened)
-    #     recv_ptr = nccl_util.get_tensor_ptr(tensor)
-    #     comm.reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
-    #                        stream.ptr)
-
     def reducescatter(self,
                       tensor,
                       tensor_list,
