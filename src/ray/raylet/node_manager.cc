@@ -355,7 +355,6 @@ void NodeManager::DisconnectAndKillWorker(std::shared_ptr<WorkerInterface> worke
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
   DisconnectClient(worker->Connection(), disconnect_type);
-  RAY_LOG(ERROR) << "DisconnectAndKillWorker" << disconnect_type;
   worker->MarkDead();
   KillWorker(worker);
 }
@@ -1360,7 +1359,6 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
 
 void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
                                    rpc::ClientDisconnectType disconnect_type) {
-  RAY_LOG(ERROR) << "DisconnectClient*****" << disconnect_type;
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
   if (worker) {
