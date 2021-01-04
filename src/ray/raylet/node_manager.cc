@@ -1430,8 +1430,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                       << " due to placement group removal."
                       << ".";
         break;
-      default:
+      case rpc::ClientDisconnectType::FINISHED:
+      case rpc::ClientDisconnectType::UNUSED_RESOURCE_RELEASED:
         intentional_exit = true;
+      default:
+        RAY_LOG(FATAL) << "Unknown client disconnect type " << disconnect_type;
       }
 
       // If the worker was an actor, it'll be cleaned by GCS.
