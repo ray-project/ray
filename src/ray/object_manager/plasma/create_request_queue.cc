@@ -83,16 +83,8 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
   // Return an OOM error to the client if we have hit the maximum number of
   // retries.
-  // TODO(sang): Delete this logic?
-  bool evict_if_full = evict_if_full_;
-  if (max_retries_ == 0) {
-    // If we cannot retry, then always evict on the first attempt.
-    evict_if_full = true;
-  } else if (num_retries_ > 0) {
-    // Always try to evict after the first attempt.
-    evict_if_full = true;
-  }
-  request->error = request->create_callback(evict_if_full, &request->result);
+  request->error =
+      request->create_callback(/*evict_if_full=*/evict_if_full_, &request->result);
   return request->error != PlasmaError::OutOfMemory;
 }
 
@@ -100,21 +92,23 @@ Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
     auto create_ok = ProcessRequest(*request_it);
+    auto now = timer_func_();
     if (create_ok) {
       FinishRequest(request_it);
+      last_success_ns_ = now;
     } else {
       if (trigger_global_gc_) {
         trigger_global_gc_();
       }
 
       if (spill_objects_callback_()) {
+        last_success_ns_ = timer_func_();
         return Status::TransientObjectStoreFull("Waiting for spilling.");
-      } else if (num_retries_ < max_retries_ || max_retries_ == -1) {
+      } else if (oom_grace_period_ns_ == -1  // meaning "wait unlimitedly".
+                 || now - last_success_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.
-        // If max_retries == -1, we retry infinitely.
-        num_retries_ += 1;
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
         // Raise OOM. In this case, the request will be marked as OOM.
@@ -135,9 +129,6 @@ void CreateRequestQueue::FinishRequest(
   RAY_CHECK(it->second == nullptr);
   it->second = std::move(request);
   queue_.erase(request_it);
-
-  // Reset the number of retries since we are no longer trying this request.
-  num_retries_ = 0;
 }
 
 void CreateRequestQueue::RemoveDisconnectedClientRequests(

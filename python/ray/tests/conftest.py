@@ -22,7 +22,7 @@ def get_default_fixure_system_config():
     system_config = {
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
-        "object_store_full_max_retries": 3,
+        "oom_grace_period_ns": 1e9,
         "object_store_full_delay_ms": 100,
     }
     return system_config
