@@ -18,8 +18,7 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
   }
 
   @Override
-  public void init(int totalParallel, int currentIndex) {
-  }
+  public void init(int totalParallel, int currentIndex) {}
 
   @Override
   public void fetch(SourceContext<T> ctx) throws Exception {
@@ -33,7 +32,5 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
   }
 
   @Override
-  public void close() {
-  }
-
+  public void close() {}
 }

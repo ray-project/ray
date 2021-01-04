@@ -18,7 +18,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client.h"
 
 namespace ray {
 
@@ -177,7 +177,7 @@ class ActorManager {
   /// \param[in] actor_id The actor id of this notification.
   /// \param[in] actor_data The GCS actor data.
   void HandleActorStateNotification(const ActorID &actor_id,
-                                    const gcs::ActorTableData &actor_data);
+                                    const rpc::ActorTableData &actor_data);
 
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
