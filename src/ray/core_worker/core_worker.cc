@@ -760,6 +760,7 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
   }
 
   absl::MutexLock lock(&mutex_);
+
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto &spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
@@ -2216,12 +2217,17 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
-  bool success = main_thread_task_id_ == task_id;
+  bool requested_task_running = main_thread_task_id_ == task_id;
+  bool success = requested_task_running;
 
   // Try non-force kill
-  if (success && !request.force_kill()) {
+  if (requested_task_running && !request.force_kill()) {
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
     success = options_.kill_main();
+  } else if (!requested_task_running) {
+    // If the task is not currently running, check if it is in the worker's queue of
+    // normal tasks, and remove it if found.
+    success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
@@ -2234,7 +2240,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Do force kill after reply callback sent
-  if (success && request.force_kill()) {
+  if (requested_task_running && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     Disconnect();
     if (options_.enable_logging) {
