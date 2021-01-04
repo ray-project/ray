@@ -348,7 +348,7 @@ class Function(Domain):
     def __init__(self, func: Callable):
         sig = signature(func)
 
-        pass_spec = True
+        pass_spec = True  # whether we should pass `spec` when calling `func`
         try:
             sig.bind({})
         except TypeError:
