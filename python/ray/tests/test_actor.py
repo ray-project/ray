@@ -237,38 +237,6 @@ def test_actor_import_counter(ray_start_10_cpus):
     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
-def test_collective_envs(ray_start_10_cpus):
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            print("Actor created")
-
-        def f(self):
-            _group_name = os.getenv("collective_group_name")
-            _rank = os.getenv("collective_rank")
-            _world_size = os.getenv("collective_world_size")
-            _backend = os.getenv("collective_backend")
-            return _group_name, _rank, _world_size, _backend
-
-    actors = []
-    for i in range(2):
-        _options = {
-            "group_name": "177",
-            "world_size": 2,
-            "rank": i,
-            "backend": "nccl"
-        }
-        actor = Actor.options(collective=_options).remote()
-        actors.append(actor)
-
-    _group_name, _rank, _world_size, _backend =\
-        ray.get(actors[0].f.remote())
-    assert _group_name == "177"
-    assert _world_size == "2"
-    assert _rank == "0"
-    assert _backend == "nccl"
-
-
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass

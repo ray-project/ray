@@ -9,7 +9,6 @@ import ray.signature as signature
 import ray.worker
 from ray.util.placement_group import (
     PlacementGroup, check_placement_group_index, get_current_placement_group)
-from ray.util.collective_utils import collective_to_envs
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -425,8 +424,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None,
-                collective=None):
+                override_environment_variables=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -468,8 +466,7 @@ class ActorClass:
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
                     override_environment_variables=(
-                        override_environment_variables),
-                    collective=collective)
+                        override_environment_variables))
 
         return ActorOptionWrapper()
 
@@ -490,8 +487,7 @@ class ActorClass:
                 placement_group=None,
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                override_environment_variables=None,
-                collective=None):
+                override_environment_variables=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -662,11 +658,6 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
-
-        if collective:
-            override_environment_variables = collective_to_envs(
-                collective, override_environment_variables)
-
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,
