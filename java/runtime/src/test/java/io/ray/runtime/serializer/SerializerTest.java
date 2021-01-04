@@ -12,8 +12,8 @@ public class SerializerTest {
   public void testBasicSerialization() {
     // Test serialize / deserialize primitive types with type conversion.
     {
-      Object[] foo = new Object[]{"hello", (byte) 1, 2.0, (short) 3, 4, 5L,
-          new String[]{"hello", "world"}};
+      Object[] foo =
+          new Object[] {"hello", (byte) 1, 2.0, (short) 3, 4, 5L, new String[] {"hello", "world"}};
       Pair<byte[], Boolean> serialized = Serializer.encode(foo);
       Object[] bar = Serializer.decode(serialized.getLeft(), Object[].class);
       Assert.assertTrue(serialized.getRight());
@@ -26,10 +26,12 @@ public class SerializerTest {
     }
     // Test multidimensional array.
     {
-      Object[][] foo = new Object[][]{{1, 2}, {"3", 4}};
-      Assert.expectThrows(RuntimeException.class, () -> {
-        Object[][] bar = Serializer.decode(Serializer.encode(foo).getLeft(), Integer[][].class);
-      });
+      Object[][] foo = new Object[][] {{1, 2}, {"3", 4}};
+      Assert.expectThrows(
+          RuntimeException.class,
+          () -> {
+            Object[][] bar = Serializer.decode(Serializer.encode(foo).getLeft(), Integer[][].class);
+          });
       Pair<byte[], Boolean> serialized = Serializer.encode(foo);
       Object[][] bar = Serializer.decode(serialized.getLeft(), Object[][].class);
       Assert.assertTrue(serialized.getRight());

@@ -414,7 +414,7 @@ def init_error_pubsub():
     return p
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=5):
+def get_error_message(pub_sub, num, error_type=None, timeout=20):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -442,4 +442,8 @@ def format_web_url(url):
 
 
 def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") == "1"
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
+
+
+def client_test_enabled() -> bool:
+    return os.environ.get("RAY_CLIENT_MODE") == "1"
