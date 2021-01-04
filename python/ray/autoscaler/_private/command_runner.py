@@ -765,9 +765,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             "~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"
         ]
 
-        image = self.docker_config.get("image")
         specific_image = self.docker_config.get(
-            f"{'head' if as_head else 'worker'}_image", image)
+            f"{'head' if as_head else 'worker'}_image", self.docker_config.get("image"))
 
         self._check_docker_installed()
         if self.docker_config.get("pull_before_run", True):
@@ -777,8 +776,8 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.run("docker pull {}".format(specific_image), run_env="host")
         else:
 
-            self.run(f"docker image inspect {image} 1> /dev/null  2>&1 || "
-                     f"docker pull {image}")
+            self.run(f"docker image inspect {specific_image} 1> /dev/null  2>&1 || "
+                     f"docker pull {specific_image}")
 
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
