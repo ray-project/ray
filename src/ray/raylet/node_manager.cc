@@ -2039,7 +2039,7 @@ void NodeManager::MarkObjectsAsFailed(
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    std::shared_ptr<arrow::Buffer> data;
+    std::shared_ptr<Buffer> data;
     Status status;
     status = store_client_.TryCreateImmediately(
         object_id, ref.owner_address(), 0,

@@ -489,11 +489,28 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       new CoreWorkerDirectActorTaskSubmitter(core_worker_client_pool_, memory_store_,
                                              task_manager_));
 
+  auto node_addr_factory = [this](const NodeID &node_id) {
+    absl::optional<rpc::Address> addr;
+    if (auto node_info = gcs_client_->Nodes().Get(node_id)) {
+      rpc::Address address;
+      address.set_raylet_id(node_info->node_id());
+      address.set_ip_address(node_info->node_manager_address());
+      address.set_port(node_info->node_manager_port());
+      addr = address;
+    }
+    return addr;
+  };
+  auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
+                          ? std::shared_ptr<LeasePolicyInterface>(
+                                std::make_shared<LocalityAwareLeasePolicy>(
+                                    reference_counter_, node_addr_factory, rpc_address_))
+                          : std::shared_ptr<LeasePolicyInterface>(
+                                std::make_shared<LocalLeasePolicy>(rpc_address_));
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           rpc_address_, local_raylet_client_, core_worker_client_pool_,
-          raylet_client_factory, memory_store_, task_manager_, local_raylet_id,
-          RayConfig::instance().worker_lease_timeout_milliseconds(),
+          raylet_client_factory, std::move(lease_policy), memory_store_, task_manager_,
+          local_raylet_id, RayConfig::instance().worker_lease_timeout_milliseconds(),
           std::move(actor_creator),
           RayConfig::instance().max_tasks_in_flight_per_worker(),
           boost::asio::steady_timer(io_service_)));
@@ -743,6 +760,7 @@ void CoreWorker::InternalHeartbeat(const boost::system::error_code &error) {
   }
 
   absl::MutexLock lock(&mutex_);
+
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     auto &spec = to_resubmit_.front().second;
     if (spec.IsActorTask()) {
@@ -2199,12 +2217,17 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
                                   rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
-  bool success = main_thread_task_id_ == task_id;
+  bool requested_task_running = main_thread_task_id_ == task_id;
+  bool success = requested_task_running;
 
   // Try non-force kill
-  if (success && !request.force_kill()) {
+  if (requested_task_running && !request.force_kill()) {
     RAY_LOG(INFO) << "Interrupting a running task " << main_thread_task_id_;
     success = options_.kill_main();
+  } else if (!requested_task_running) {
+    // If the task is not currently running, check if it is in the worker's queue of
+    // normal tasks, and remove it if found.
+    success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
   }
   if (request.recursive()) {
     auto recursive_cancel = CancelChildren(task_id, request.force_kill());
@@ -2217,7 +2240,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
   // Do force kill after reply callback sent
-  if (success && request.force_kill()) {
+  if (requested_task_running && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
     Disconnect();
     if (options_.enable_logging) {

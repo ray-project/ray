@@ -526,7 +526,7 @@ class Client:
 
 def start(
         detached: bool = False,
-        http_host: str = DEFAULT_HTTP_HOST,
+        http_host: Optional[str] = DEFAULT_HTTP_HOST,
         http_port: int = DEFAULT_HTTP_PORT,
         http_middlewares: List[Any] = [],
         http_options: Optional[Union[dict, HTTPOptions]] = None,
@@ -542,7 +542,7 @@ def start(
     Args:
         detached (bool): Whether not the instance should be detached from this
           script.
-        http_host (str): Deprecated, use http_options instead.
+        http_host (Optional[str]): Deprecated, use http_options instead.
         http_port (int): Deprecated, use http_options instead.
         http_middlewares (list): Deprecated, use http_options instead.
         http_options (Optional[Dict, serve.HTTPOptions]): Configuration options

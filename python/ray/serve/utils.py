@@ -19,6 +19,7 @@ import pydantic
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -295,8 +296,18 @@ def try_schedule_resources_on_nodes(
         for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
+
             for key, count in resource_dict.items():
-                if node_resource.get(key, 0) - count < 0:
+                # Fix legacy behaviour in all memory objects
+                if "memory" in key:
+                    memory_resource = node_resource.get(key, 0)
+                    if memory_resource > 0:
+                        # Convert from chunks to bytes
+                        memory_resource *= MEMORY_RESOURCE_UNIT_BYTES
+                    if memory_resource - count < 0:
+                        feasible = False
+
+                elif node_resource.get(key, 0) - count < 0:
                     feasible = False
 
             # If we can, schedule it on this node
