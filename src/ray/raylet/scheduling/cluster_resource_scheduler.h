@@ -374,8 +374,7 @@ class ClusterResourceScheduler {
   /// this is needed when gcs fo.
   ///
   /// \param gcs_resources: The remote cache from gcs.
-  void UpdateLastReportResourcesFromGcs(
-      std::shared_ptr<SchedulingResources> gcs_resources);
+  void UpdateLastResourceUsage(std::shared_ptr<SchedulingResources> gcs_resources);
 
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;

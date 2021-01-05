@@ -888,7 +888,7 @@ void ClusterResourceScheduler::FreeLocalTaskResources(
   UpdateLocalAvailableResourcesFromResourceInstances();
 }
 
-void ClusterResourceScheduler::UpdateLastReportResourcesFromGcs(
+void ClusterResourceScheduler::UpdateLastResourceUsage(
     std::shared_ptr<SchedulingResources> gcs_resources) {
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, gcs_resources->GetTotalResources().GetResourceMap(),

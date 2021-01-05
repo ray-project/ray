@@ -1055,7 +1055,7 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
 
   {  // Cluster is idle.
     auto data = std::make_shared<rpc::ResourcesData>();
-    cluster_resources.FillResourceUsage(data); // wangtao false
+    cluster_resources.FillResourceUsage(data);
 
     auto available = data->resources_available();
     auto total = data->resources_total();
@@ -1093,7 +1093,8 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     });
     cluster_resources.AllocateLocalTaskResources(allocation_map, allocations);
     auto data = std::make_shared<rpc::ResourcesData>();
-    cluster_resources.FillResourceUsage(data); // wangtao false
+    cluster_resources.UpdateLastResourceUsage(std::make_shared<SchedulingResources>());
+    cluster_resources.FillResourceUsage(data);  // wangtao false
 
     auto available = data->resources_available();
     auto total = data->resources_total();
