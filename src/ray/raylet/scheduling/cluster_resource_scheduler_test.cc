@@ -1055,7 +1055,7 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
 
   {  // Cluster is idle.
     auto data = std::make_shared<rpc::ResourcesData>();
-    cluster_resources.FillResourceUsage(false, data);
+    cluster_resources.FillResourceUsage(data); // wangtao false
 
     auto available = data->resources_available();
     auto total = data->resources_total();
@@ -1093,7 +1093,7 @@ TEST_F(ClusterResourceSchedulerTest, HeartbeatTest) {
     });
     cluster_resources.AllocateLocalTaskResources(allocation_map, allocations);
     auto data = std::make_shared<rpc::ResourcesData>();
-    cluster_resources.FillResourceUsage(false, data);
+    cluster_resources.FillResourceUsage(data); // wangtao false
 
     auto available = data->resources_available();
     auto total = data->resources_total();
@@ -1120,26 +1120,26 @@ TEST_F(ClusterResourceSchedulerTest, TestLightResourceUsageReport) {
 
   // Fill resource usage usage on initialization.
   auto data = std::make_shared<rpc::ResourcesData>();
-  cluster_resources.FillResourceUsage(true, data);
+  cluster_resources.FillResourceUsage(data);
   ASSERT_RESOURCES_EQ(data, 1, 1);
 
   // Don't report resource usage if resource availability hasn't changed.
   for (int i = 0; i < 3; i++) {
     data->Clear();
-    cluster_resources.FillResourceUsage(true, data);
+    cluster_resources.FillResourceUsage(data);
     ASSERT_RESOURCES_EMPTY(data);
   }
 
   // Report resource usage if resource availability has changed.
   cluster_resources.AddOrUpdateNode("local", {{"CPU", 2.}}, {{"CPU", 0.}});
   data->Clear();
-  cluster_resources.FillResourceUsage(true, data);
+  cluster_resources.FillResourceUsage(data);
   ASSERT_RESOURCES_EQ(data, 0, 2);
 
   // Don't report resource usage if resource availability hasn't changed.
   for (int i = 0; i < 3; i++) {
     data->Clear();
-    cluster_resources.FillResourceUsage(true, data);
+    cluster_resources.FillResourceUsage(data);
     ASSERT_RESOURCES_EMPTY(data);
   }
 }
@@ -1159,7 +1159,7 @@ TEST_F(ClusterResourceSchedulerTest, TestDirtyLocalView) {
   ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
   // View of local resources is not affected by resource usage report.
   auto data = std::make_shared<rpc::ResourcesData>();
-  cluster_resources.FillResourceUsage(true, data);
+  cluster_resources.FillResourceUsage(data);
   ASSERT_FALSE(cluster_resources.AllocateLocalTaskResources(task_spec, task_allocation));
 
   for (int num_slots_available = 0; num_slots_available <= 2; num_slots_available++) {
@@ -1171,7 +1171,7 @@ TEST_F(ClusterResourceSchedulerTest, TestDirtyLocalView) {
     bool is_infeasible;
     for (int i = 0; i < 3; i++) {
       // Resource usage report tick should reset the remote node's resources.
-      cluster_resources.FillResourceUsage(true, data);
+      cluster_resources.FillResourceUsage(data);
       for (int j = 0; j < num_slots_available; j++) {
         ASSERT_EQ(cluster_resources.GetBestSchedulableNode(task_spec, false, &t,
                                                            &is_infeasible),
