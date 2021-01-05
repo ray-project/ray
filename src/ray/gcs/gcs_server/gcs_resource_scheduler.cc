@@ -17,8 +17,8 @@
 namespace ray {
 namespace gcs {
 
-double LeastResourceScorer::MakeGrade(const ResourceSet &required_resources,
-                                      const SchedulingResources &node_resources) {
+double LeastResourceScorer::Grade(const ResourceSet &required_resources,
+                                  const SchedulingResources &node_resources) {
   const auto &available_resources = node_resources.GetAvailableResources();
   const auto &available_resource_amount_map = available_resources.GetResourceAmountMap();
 
@@ -36,9 +36,10 @@ double LeastResourceScorer::MakeGrade(const ResourceSet &required_resources,
     }
     node_score += calculate_score;
   }
-  if (!required_resources.GetResourceAmountMap().empty()) {
-    node_score /= required_resources.GetResourceAmountMap().size();
-  }
+
+  // TODO(ffbin): When applying for CPU resources, if there are two nodes, one node has
+  // both GPU and CPU, and the other node only has CPU, we need to try our best to
+  // transfer to the node that only contains CPU. We will solve it in next pr.
   return node_score;
 }
 
@@ -273,7 +274,7 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
   for (const auto &node_id : candidate_nodes) {
     const auto &iter = cluster_resources.find(node_id);
     RAY_CHECK(iter != cluster_resources.end());
-    double node_grade = node_scorer_->MakeGrade(required_resources, iter->second);
+    double node_grade = node_scorer_->Grade(required_resources, iter->second);
     node_scores.emplace_back(node_id, node_grade);
   }
 

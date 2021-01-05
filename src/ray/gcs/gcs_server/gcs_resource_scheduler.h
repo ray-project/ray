@@ -48,22 +48,17 @@ class NodeScorer {
   /// \param required_resources The required resources.
   /// \param node_resources The node resources which contains available and total
   /// resources.
-  virtual double MakeGrade(const ResourceSet &required_resources,
-                           const SchedulingResources &node_resources) = 0;
+  /// \return Score of the node.
+  virtual double Grade(const ResourceSet &required_resources,
+                       const SchedulingResources &node_resources) = 0;
 };
 
 /// LeastResourceScorer is a score plugin that favors nodes with fewer allocation
 /// requested resources based on requested resources.
 class LeastResourceScorer : public NodeScorer {
  public:
-  /// \brief Make a grade based on the node resources.
-  ///
-  /// \param required_resources The required resources.
-  /// \param node_resources The node resources which contains available and total
-  /// resources.
-  /// \return Score of the node.
-  double MakeGrade(const ResourceSet &required_resources,
-                   const SchedulingResources &node_resources) override;
+  double Grade(const ResourceSet &required_resources,
+               const SchedulingResources &node_resources) override;
 
  private:
   /// \brief Calculate one of the resource scores.
