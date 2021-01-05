@@ -30,15 +30,15 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 
-from ray.experimental.client import RayAPIStub
-from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.common import ClientActorHandle
-from ray.experimental.client.common import ClientActorRef
-from ray.experimental.client.common import ClientActorClass
-from ray.experimental.client.common import ClientRemoteFunc
-from ray.experimental.client.common import ClientRemoteMethod
-from ray.experimental.client.common import OptionWrapper
-from ray.experimental.client.common import SelfReferenceSentinel
+from ray.util.client import RayAPIStub
+from ray.util.client.common import ClientObjectRef
+from ray.util.client.common import ClientActorHandle
+from ray.util.client.common import ClientActorRef
+from ray.util.client.common import ClientActorClass
+from ray.util.client.common import ClientRemoteFunc
+from ray.util.client.common import ClientRemoteMethod
+from ray.util.client.common import OptionWrapper
+from ray.util.client.common import SelfReferenceSentinel
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 from ray._private.client_mode_hook import disable_client_hook
 

@@ -14,7 +14,7 @@ class RayAPIStub:
     """
 
     def __init__(self):
-        from ray.experimental.client.api import ClientAPI
+        from ray.util.client.api import ClientAPI
         self.api = ClientAPI()
         self.client_worker = None
         self._server = None
@@ -33,7 +33,7 @@ class RayAPIStub:
             metadata: gRPC metadata to send on connect
         """
         # Delay imports until connect to avoid circular imports.
-        from ray.experimental.client.worker import Worker
+        from ray.util.client.worker import Worker
         import ray._private.client_mode_hook
         if self.client_worker is not None:
             if self._connected_with_init:
@@ -80,7 +80,7 @@ class RayAPIStub:
     def init(self, *args, **kwargs):
         if self._server is not None:
             raise Exception("Trying to start two instances of ray via client")
-        import ray.experimental.client.server.server as ray_client_server
+        import ray.util.client.server.server as ray_client_server
         self._server, address_info = ray_client_server.init_and_serve(
             "localhost:50051", *args, **kwargs)
         self.connect("localhost:50051")
@@ -89,7 +89,7 @@ class RayAPIStub:
 
     def shutdown(self, _exiting_interpreter=False):
         self.disconnect()
-        import ray.experimental.client.server.server as ray_client_server
+        import ray.util.client.server.server as ray_client_server
         if self._server is None:
             return
         ray_client_server.shutdown_with_server(self._server,
