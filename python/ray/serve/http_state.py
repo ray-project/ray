@@ -2,7 +2,7 @@ from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import HTTPConfig, DeploymentMode
+from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.utils import (format_actor_name, logger, get_all_node_ids,
@@ -12,7 +12,7 @@ from ray.serve.common import NodeId
 
 class HTTPState:
     def __init__(self, controller_name: str, detached: bool,
-                 config: HTTPConfig):
+                 config: HTTPOptions):
         self._controller_name = controller_name
         self._detached = detached
         self._config = config
