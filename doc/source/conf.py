@@ -25,7 +25,7 @@ from datetime import datetime
 import mock
 
 
-class ChildClassMock(mock.MagicMock):
+class ChildClassMock(mock.Mock):
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock

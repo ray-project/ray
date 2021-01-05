@@ -37,7 +37,7 @@ def client_mode_hook(func):
     """
     Decorator for ray module methods to delegate to ray client
     """
-    from ray.experimental.client import ray
+    from ray.util.client import ray
 
     @wraps(func)
     def wrapper(*args, **kwargs):

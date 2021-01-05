@@ -3,9 +3,9 @@ and the overall ray module API.
 """
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ray.experimental.client.common import ClientStub
-    from ray.experimental.client.common import ClientActorHandle
-    from ray.experimental.client.common import ClientObjectRef
+    from ray.util.client.common import ClientStub
+    from ray.util.client.common import ClientActorHandle
+    from ray.util.client.common import ClientObjectRef
 
 
 class ClientAPI:
@@ -55,7 +55,7 @@ class ClientAPI:
             kwargs: opaque keyword arguments
         """
         # Delayed import to avoid a cyclic import
-        from ray.experimental.client.common import remote_decorator
+        from ray.util.client.common import remote_decorator
         if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
             # This is the case where the decorator is just @ray.remote.
             return remote_decorator(options=None)(args[0])
