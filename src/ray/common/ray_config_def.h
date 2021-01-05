@@ -361,9 +361,8 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// TODO(sang): Fix it.
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
 
-/// Grace period until we throw the OOM error to the application.
-/// -1 means grace period is infinite.
-RAY_CONFIG(int64_t, oom_grace_period_ns, 10e9)
+/// Grace period until we throw the OOM error to the application in seconds.
+RAY_CONFIG(int64_t, oom_grace_period_s, 10)
 
 /* Configuration parameters for locality-aware scheduling. */
 /// Whether to enable locality-aware leasing. If enabled, then Ray will consider task

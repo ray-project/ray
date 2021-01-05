@@ -34,18 +34,17 @@ class CreateRequestQueue {
   using CreateObjectCallback =
       std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
-  CreateRequestQueue(bool evict_if_full, int64_t oom_grace_period_ns,
+  CreateRequestQueue(bool evict_if_full, int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
-                     std::function<int64_t(int64_t now_ns, int64_t last_success_ns)>
-                         period_from_last_success_callback)
+                     std::function<int64_t()> timer_callback)
       : evict_if_full_(evict_if_full),
-        oom_grace_period_ns_(oom_grace_period_ns),
+        oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
-        period_from_last_success_callback_(period_from_last_success_callback) {
+        timer_callback_(timer_callback) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with OOM grace period "
-                   << oom_grace_period_ns_ << " retries on OOM, evict if full? "
+                   << oom_grace_period_ns_ << ", evict if full? "
                    << (evict_if_full_ ? 1 : 0);
   }
 
@@ -159,7 +158,7 @@ class CreateRequestQueue {
 
   /// Grace period until we throw the OOM error to the application.
   /// -1 means grace period is infinite.
-  const int64_t oom_grace_period_ns_ = 10e9;
+  const int64_t oom_grace_period_ns_;
 
   /// A callback to trigger object spilling. It tries to spill objects upto max
   /// throughput. It returns true if space is made by object spilling, and false if
@@ -170,10 +169,8 @@ class CreateRequestQueue {
   /// full.
   const std::function<void()> trigger_global_gc_;
 
-  /// A callback to return the time it passed from the last successful object creation in
-  /// nanoseconds.
-  const std::function<int64_t(int64_t now_ns, int64_t last_success_ns)>
-      period_from_last_success_callback_;
+  /// A callback to return the current time.
+  const std::function<int64_t()> timer_callback_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time

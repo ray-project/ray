@@ -92,7 +92,7 @@ Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
     auto create_ok = ProcessRequest(*request_it);
-    auto now = absl::GetCurrentTimeNanos();
+    auto now = timer_callback_();
     if (create_ok) {
       FinishRequest(request_it);
       last_success_ns_ = now;
@@ -102,11 +102,9 @@ Status CreateRequestQueue::ProcessRequests() {
       }
 
       if (spill_objects_callback_()) {
-        last_success_ns_ = absl::GetCurrentTimeNanos();
+        last_success_ns_ = now;
         return Status::TransientObjectStoreFull("Waiting for spilling.");
-      } else if (oom_grace_period_ns_ == -1  // meaning "wait unlimitedly".
-                 || period_from_last_success_callback_(now, last_success_ns_) <
-                        oom_grace_period_ns_) {
+      } else if (now - last_success_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.

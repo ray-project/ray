@@ -126,12 +126,10 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
                              1e9),
       create_request_queue_(
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
-          /*oom_grace_period_ns=*/RayConfig::instance().oom_grace_period_ns(),
+          /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback, object_store_full_callback,
-          /*period_from_last_success_callback=*/
-          [](int64_t now_ns, int64_t last_success_ns) {
-            return now_ns - last_success_ns;
-          }) {
+          /*timer_callback=*/
+          []() { return absl::GetCurrentTimeNanos(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
 }

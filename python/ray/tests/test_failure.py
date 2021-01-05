@@ -1024,7 +1024,7 @@ def test_connect_with_disconnected_node(shutdown_only):
         "num_cpus": 5,
         "object_store_memory": 10**8,
         "_system_config": {
-            "oom_grace_period_ns": 0
+            "oom_grace_period_s": 0
         }
     }],
     indirect=True)
@@ -1045,7 +1045,7 @@ def test_fill_object_store_exception(shutdown_only):
     ray.init(
         num_cpus=2,
         object_store_memory=10**8,
-        _system_config={"oom_grace_period_ns": 0})
+        _system_config={"oom_grace_period_s": 0})
 
     @ray.remote
     def expensive_task():
