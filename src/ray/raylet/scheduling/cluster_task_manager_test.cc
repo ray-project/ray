@@ -512,7 +512,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 
   {
     auto data = std::make_shared<rpc::ResourcesData>();
-    task_manager_.FillResourceUsage(data); // wangtao false
+    task_manager_.FillResourceUsage(data);
 
     auto load_by_shape =
         data->mutable_resource_load_by_shape()->mutable_resource_demands();
@@ -586,7 +586,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   ASSERT_EQ(node_info_calls_, 0);
 
   auto data = std::make_shared<rpc::ResourcesData>();
-  task_manager_.FillResourceUsage(data); // wangtao false
+  task_manager_.FillResourceUsage(data);
 
   auto resource_load_by_shape = data->resource_load_by_shape();
   auto shape1 = resource_load_by_shape.resource_demands()[0];
@@ -600,7 +600,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   }
 
   data = std::make_shared<rpc::ResourcesData>();
-  task_manager_.FillResourceUsage(data); // wangtao false
+  task_manager_.FillResourceUsage(data);
 
   resource_load_by_shape = data->resource_load_by_shape();
   shape1 = resource_load_by_shape.resource_demands()[0];
