@@ -37,8 +37,9 @@ void AgentManager::HandleRegisterAgent(const rpc::RegisterAgentRequest &request,
 
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
-    RAY_LOG(INFO) << "Not starting agent because the agent command is empty. This means the "
-                     "dashboard agent is probably not created on the cluster.";
+    RAY_LOG(INFO)
+        << "Not starting agent because the agent command is empty. This means the "
+           "dashboard agent is probably not created on the cluster.";
     return;
   }
 
