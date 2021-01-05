@@ -1,8 +1,7 @@
 import logging
 
-import mimetypes
-
 import aiohttp.web
+import ray.new_dashboard.modules.log.log_utils as log_utils
 import ray.new_dashboard.utils as dashboard_utils
 from ray.new_dashboard.datacenter import DataSource, GlobalSignals
 
@@ -17,8 +16,7 @@ class LogHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         # We disable auto_decompress when forward / proxy log url.
         self._proxy_session = aiohttp.ClientSession(auto_decompress=False)
-        mimetypes.add_type("text/plain", ".err")
-        mimetypes.add_type("text/plain", ".out")
+        log_utils.register_mimetypes()
         routes.static("/logs", self._dashboard_head.log_dir, show_index=True)
         GlobalSignals.node_info_fetched.append(
             self.insert_log_url_to_node_info)
