@@ -43,6 +43,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 
@@ -95,9 +96,8 @@ class ObjectStoreRunner {
 
 class ObjectManagerInterface {
  public:
-  virtual ray::Status Pull(const ObjectID &object_id,
-                           const rpc::Address &owner_address) = 0;
-  virtual void CancelPull(const ObjectID &object_id) = 0;
+  virtual uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) = 0;
+  virtual void CancelPull(uint64_t request_id) = 0;
   virtual ~ObjectManagerInterface(){};
 };
 
@@ -206,6 +206,13 @@ class ObjectManager : public ObjectManagerInterface,
   /// signals from Raylet.
   void Stop();
 
+  /// This methods call the plasma store which runs in a separate thread.
+  /// Check if the given object id is evictable by directly calling plasma store.
+  /// Plasma store will return true if the object is spillable, meaning it is only
+  /// pinned by the raylet, so we can comfotable evict after spilling the object from
+  /// local object manager. False otherwise.
+  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
+
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///
@@ -231,18 +238,19 @@ class ObjectManager : public ObjectManagerInterface,
   /// \return Void.
   void Push(const ObjectID &object_id, const NodeID &node_id);
 
-  /// Pull an object from NodeID.
+  /// Pull a bundle of objects. This will attempt to make all objects in the
+  /// bundle local until the request is canceled with the returned ID.
   ///
-  /// \param object_id The object's object id.
-  /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id, const rpc::Address &owner_address) override;
+  /// \param object_refs The bundle of objects that must be made local.
+  /// \return A request ID that can be used to cancel the request.
+  uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs) override;
 
-  /// Cancels all requests (Push/Pull) associated with the given ObjectID. This
-  /// method is idempotent.
+  /// Cancels the pull request with the given ID. This cancels any fetches for
+  /// objects that were passed to the original pull request, if no other pull
+  /// request requires them.
   ///
-  /// \param object_id The ObjectID.
-  /// \return Void.
-  void CancelPull(const ObjectID &object_id) override;
+  /// \param pull_request_id The request to cancel.
+  void CancelPull(uint64_t pull_request_id) override;
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,

@@ -8,9 +8,7 @@ import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Test putting and getting objects.
- */
+/** Test putting and getting objects. */
 public class ObjectStoreTest extends BaseTest {
 
   @Test
@@ -36,8 +34,7 @@ public class ObjectStoreTest extends BaseTest {
   @Test
   public void testGetMultipleObjects() {
     List<Integer> ints = ImmutableList.of(1, 2, 3, 4, 5);
-    List<ObjectRef<Integer>> refs = ints.stream().map(Ray::put)
-        .collect(Collectors.toList());
+    List<ObjectRef<Integer>> refs = ints.stream().map(Ray::put).collect(Collectors.toList());
     Assert.assertEquals(ints, Ray.get(refs));
   }
 }

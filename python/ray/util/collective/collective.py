@@ -4,7 +4,6 @@ import logging
 import numpy as np
 import ray
 from ray.util.collective import types
-from ray.util.collective.const import get_nccl_store_name
 
 _MPI_AVAILABLE = False
 _NCCL_AVAILABLE = True
@@ -16,7 +15,6 @@ _NCCL_AVAILABLE = True
 #     _MPI_AVAILABLE = False
 try:
     from ray.util.collective.collective_group import NCCLGroup
-    from ray.util.collective.collective_group import nccl_util
 except ImportError:
     _NCCL_AVAILABLE = False
 
@@ -32,8 +30,7 @@ def mpi_available():
 
 
 class GroupManager(object):
-    """
-    Use this class to manage the collective groups we created so far.
+    """Use this class to manage the collective groups we created so far.
 
     Each process will have an instance of `GroupManager`. Each process
     could belong to multiple collective groups. The membership information
@@ -45,8 +42,7 @@ class GroupManager(object):
         self._group_name_map = {}
 
     def create_collective_group(self, backend, world_size, rank, group_name):
-        """
-        The entry to create new collective groups and register in the manager.
+        """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
         metadata as well.
@@ -55,17 +51,6 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise NotImplementedError()
         elif backend == types.Backend.NCCL:
-            # create the ncclUniqueID
-            if rank == 0:
-                # availability has been checked before entering here.
-                group_uid = nccl_util.get_nccl_unique_id()
-                store_name = get_nccl_store_name(group_name)
-                # Avoid a potential circular dependency in ray/actor.py
-                from ray.util.collective.util import NCCLUniqueIDStore
-                store = NCCLUniqueIDStore.options(
-                    name=store_name, lifetime="detached").remote(store_name)
-                ray.wait([store.set_id.remote(group_uid)])
-
             logger.debug("creating NCCL group: '{}'".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
             self._name_group_map[group_name] = g
@@ -91,19 +76,9 @@ class GroupManager(object):
 
         # release the collective group resource
         g = self._name_group_map[group_name]
-        rank = g.rank
-        backend = g.backend()
-
         # clean up the dicts
         del self._group_name_map[g]
         del self._name_group_map[group_name]
-        if backend == types.Backend.NCCL:
-            # release the named actor
-            if rank == 0:
-                store_name = get_nccl_store_name(group_name)
-                store = ray.get_actor(store_name)
-                ray.wait([store.__ray_terminate__.remote()])
-                ray.kill(store)
         # Release the communicator resources
         g.destroy_group()
 
@@ -120,8 +95,7 @@ def init_collective_group(world_size: int,
                           rank: int,
                           backend=types.Backend.NCCL,
                           group_name: str = "default"):
-    """
-    Initialize a collective group inside an actor process.
+    """Initialize a collective group inside an actor process.
 
     Args:
         world_size (int): the total number of processed in the group.
@@ -158,8 +132,7 @@ def destroy_collective_group(group_name: str = "default") -> None:
 
 
 def get_rank(group_name: str = "default") -> int:
-    """
-    Return the rank of this process in the given group.
+    """Return the rank of this process in the given group.
 
     Args:
         group_name (str): the name of the group to query
@@ -176,9 +149,8 @@ def get_rank(group_name: str = "default") -> int:
     return g.rank
 
 
-def get_world_size(group_name="default") -> int:
-    """
-    Return the size of the collective gropu with the given name.
+def get_world_size(group_name: str = "default") -> int:
+    """Return the size of the collective gropu with the given name.
 
     Args:
         group_name: the name of the group to query
@@ -195,9 +167,8 @@ def get_world_size(group_name="default") -> int:
     return g.world_size
 
 
-def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
-    """
-    Collective allreduce the tensor across the group with name group_name.
+def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
+    """Collective allreduce the tensor across the group.
 
     Args:
         tensor: the tensor to be all-reduced on this process.
@@ -214,9 +185,8 @@ def allreduce(tensor, group_name: str, op=types.ReduceOp.SUM):
     g.allreduce(tensor, opts)
 
 
-def barrier(group_name):
-    """
-    Barrier all processes in the collective group.
+def barrier(group_name: str = "default"):
+    """Barrier all processes in the collective group.
 
     Args:
         group_name (str): the name of the group to barrier.
@@ -226,6 +196,147 @@ def barrier(group_name):
     """
     g = _check_and_get_group(group_name)
     g.barrier()
+
+
+def reduce(tensor,
+           dst_rank: int = 0,
+           group_name: str = "default",
+           op=types.ReduceOp.SUM):
+    """Reduce the tensor across the group to the destination rank.
+
+    Args:
+        tensor: the tensor to be reduced on this process.
+        dst_rank: the rank of the destination process.
+        group_name: the collective group name to perform reduce.
+        op: The reduce operation.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+
+    # check dst rank
+    _check_rank_valid(g, dst_rank)
+    opts = types.ReduceOptions()
+    opts.reduceOp = op
+    opts.root_rank = dst_rank
+    g.reduce(tensor, opts)
+
+
+def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
+    """Broadcast the tensor from a source process to all others.
+
+    Args:
+        tensor: the tensor to be broadcasted (src) or received (destination).
+        src_rank: the rank of the source process.
+        group_name: he collective group name to perform broadcast.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+
+    # check src rank
+    _check_rank_valid(g, src_rank)
+    opts = types.BroadcastOptions()
+    opts.root_rank = src_rank
+    g.broadcast(tensor, opts)
+
+
+def allgather(tensor_list: list, tensor, group_name: str = "default"):
+    """Allgather tensors from each process of the group into a list.
+
+    Args:
+        tensor_list (list): the results, stored as a list of tensors.
+        tensor: the tensor (to be gathered) in the current process
+        group_name: the name of the collective group.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+    if len(tensor_list) != g.world_size:
+        # Typically CLL lib requires len(tensor_list) >= world_size;
+        # Here we make it more strict: len(tensor_list) == world_size.
+        raise RuntimeError(
+            "The length of the tensor list operands to allgather "
+            "must not be equal to world_size.")
+    opts = types.AllGatherOptions()
+    g.allgather(tensor_list, tensor, opts)
+
+
+def reducescatter(tensor,
+                  tensor_list: list,
+                  group_name: str = "default",
+                  op=types.ReduceOp.SUM):
+    """Reducescatter a list of tensors across the group.
+
+    Reduce the list of the tensors across each process in the group, then
+    scatter the reduced list of tensors -- one tensor for each process.
+
+    Args:
+        tensor: the resulted tensor on this process.
+        tensor_list (list): The list of tensors to be reduced and scattered.
+        group_name (str): the name of the collective group.
+        op: The reduce operation.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    _check_tensor_list_input(tensor_list)
+    g = _check_and_get_group(group_name)
+    if len(tensor_list) != g.world_size:
+        raise RuntimeError(
+            "The length of the tensor list operands to reducescatter "
+            "must not be equal to world_size.")
+    opts = types.ReduceScatterOptions()
+    opts.reduceOp = op
+    g.reducescatter(tensor, tensor_list, opts)
+
+
+def send(tensor, dst_rank: int, group_name: str = "default"):
+    """Send a tensor to a remote processes synchronously.
+
+    Args:
+        tensor: the tensor to send.
+        dst_rank (int): the rank of the destination process.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, dst_rank)
+    if dst_rank == g.rank:
+        raise RuntimeError(
+            "The destination rank '{}' is self.".format(dst_rank))
+    g.send(tensor, dst_rank)
+
+
+def recv(tensor, src_rank: int, group_name: str = "default"):
+    """Receive a tensor from a remote process synchronously.
+
+    Args:
+        tensor: the received tensor.
+        src_rank (int): the rank of the source process.
+        group_name (str): the name of the collective group.
+
+    Returns:
+        None
+    """
+    _check_single_tensor_input(tensor)
+    g = _check_and_get_group(group_name)
+    _check_rank_valid(g, src_rank)
+    if src_rank == g.rank:
+        raise RuntimeError(
+            "The destination rank '{}' is self.".format(src_rank))
+    g.recv(tensor, src_rank)
 
 
 def _check_and_get_group(group_name):
@@ -244,8 +355,6 @@ def _check_backend_availability(backend: types.Backend):
         if not mpi_available():
             raise RuntimeError("MPI is not available.")
     elif backend == types.Backend.NCCL:
-        # expect some slowdown at the first call
-        # as I defer the import to invocation.
         if not nccl_available():
             raise RuntimeError("NCCL is not available.")
 
@@ -273,3 +382,23 @@ def _check_inside_actor():
     else:
         raise RuntimeError("The collective APIs shall be only used inside "
                            "a Ray actor or task.")
+
+
+def _check_rank_valid(g, rank: int):
+    """Check the rank: 0 <= rank < world_size."""
+    if rank < 0:
+        raise ValueError("rank '{}' is negative.".format(rank))
+    if rank > g.world_size:
+        raise ValueError("rank '{}' is greater than world size "
+                         "'{}'".format(rank, g.world_size))
+
+
+def _check_tensor_list_input(tensor_list):
+    """Check if the input is a list of supported tensor types."""
+    if not isinstance(tensor_list, list):
+        raise RuntimeError("The input must be a list of tensors. "
+                           "Got '{}'.".format(type(tensor_list)))
+    if not tensor_list:
+        raise RuntimeError("Got an empty list of tensors.")
+    for t in tensor_list:
+        _check_single_tensor_input(t)

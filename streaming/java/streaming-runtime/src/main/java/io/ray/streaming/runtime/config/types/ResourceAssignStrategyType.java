@@ -2,9 +2,7 @@ package io.ray.streaming.runtime.config.types;
 
 public enum ResourceAssignStrategyType {
 
-  /**
-   * Resource scheduling strategy based on FF(First Fit) algorithm and pipeline.
-   */
+  /** Resource scheduling strategy based on FF(First Fit) algorithm and pipeline. */
   PIPELINE_FIRST_STRATEGY("pipeline_first_strategy", 0);
 
   private String name;

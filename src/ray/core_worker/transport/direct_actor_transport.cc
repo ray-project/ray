@@ -482,12 +482,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     // TODO(swang): Remove this with legacy raylet code.
     dependencies.pop_back();
     it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                    accept_callback, reject_callback, dependencies);
+                    accept_callback, reject_callback, task_spec.TaskId(), dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
     normal_scheduling_queue_->Add(request.sequence_number(),
                                   request.client_processed_up_to(), accept_callback,
-                                  reject_callback, dependencies);
+                                  reject_callback, task_spec.TaskId(), dependencies);
   }
 }
 
@@ -499,6 +499,12 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
 
   // Execute as many tasks as there are in the queue, in sequential order.
   normal_scheduling_queue_->ScheduleRequests();
+}
+
+bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
+  // Look up the task to be canceled in the queue of normal tasks. If it is found and
+  // removed successfully, return true.
+  return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
 }  // namespace ray
