@@ -20,7 +20,8 @@ INT32_MAX = (2**31) - 1
 
 
 class DataClient:
-    def __init__(self, channel: "grpc._channel.Channel", client_id: str, metadata: list):
+    def __init__(self, channel: "grpc._channel.Channel", client_id: str,
+                 metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:

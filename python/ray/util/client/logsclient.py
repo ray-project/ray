@@ -37,8 +37,7 @@ class LogstreamClient:
     def _log_main(self) -> None:
         stub = ray_client_pb2_grpc.RayletLogStreamerStub(self.channel)
         log_stream = stub.Logstream(
-            iter(self.request_queue.get, None),
-            metadata=self._metadata)
+            iter(self.request_queue.get, None), metadata=self._metadata)
         try:
             for record in log_stream:
                 if record.level < 0:
