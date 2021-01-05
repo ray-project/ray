@@ -2862,8 +2862,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
         objects.push_back(nullptr);
       } else {
         objects.emplace_back(std::unique_ptr<RayObject>(new RayObject(
-            std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-            std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
+            plasma_results[i].data, plasma_results[i].metadata, {})));
       }
     }
     local_object_manager_.PinObjects(object_ids, std::move(objects));
