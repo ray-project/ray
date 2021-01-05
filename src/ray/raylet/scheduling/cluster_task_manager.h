@@ -111,14 +111,12 @@ class ClusterTaskManager {
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(bool light_report_resource_usage_enabled,
-                         std::shared_ptr<rpc::ResourcesData> data) const;
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) const;
 
   /// Return if any tasks are pending resource acquisition.
   ///
