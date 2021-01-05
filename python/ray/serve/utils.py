@@ -414,3 +414,19 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
         {k: new_dict[k]
          for k in updated_keys},
     )
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+
+    It can be used for actor placement.
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")

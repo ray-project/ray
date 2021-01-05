@@ -22,9 +22,11 @@ from ray.serve.constants import (
 from ray.serve.http_proxy import HTTPProxyActor
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.exceptions import RayServeException
-from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+from ray.serve.utils import (format_actor_name, get_current_node_resource_key,
+                             get_random_letters, logger,
                              try_schedule_resources_on_nodes, get_all_node_ids)
-from ray.serve.config import BackendConfig, DeploymentMode, ReplicaConfig, HTTPOptions
+from ray.serve.config import (BackendConfig, DeploymentMode, ReplicaConfig,
+                              HTTPOptions)
 from ray.serve.long_poll import LongPollHost
 from ray.actor import ActorHandle
 
@@ -106,19 +108,25 @@ class HTTPState:
         self._start_proxies_if_needed()
         self._stop_proxies_if_needed()
 
-    def _start_proxies_if_needed(self) -> None:
-        """Start a proxy on every node if it doesn't already exist."""
-        mode = self._config.mode
+    @property
+    def _target_nodes(self) -> List[Tuple[str, str]]:
+        location = self._config.location
         target_nodes = get_all_node_ids()
 
-        if mode == DeploymentMode.NoServer:
-            return
+        if location == DeploymentMode.NoServer:
+            return []
 
-        if mode == DeploymentMode.HeadOnly:
-            head_node_id = self._config._head_node_id
-            target_nodes = {head_node_id: target_nodes[head_node_id]}
+        if location == DeploymentMode.HeadOnly:
+            head_node_resource_key = get_current_node_resource_key()
+            target_nodes = [(node_id, node_resource)
+                            for node_id, node_resource in target_nodes
+                            if node_resource == head_node_resource_key][:1]
 
-        for node_id, node_resource in get_all_node_ids():
+        return target_nodes
+
+    def _start_proxies_if_needed(self) -> None:
+        """Start a proxy on every node if it doesn't already exist."""
+        for node_id, node_resource in self._target_nodes:
             if node_id in self._proxy_actors:
                 continue
 
