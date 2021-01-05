@@ -1322,26 +1322,22 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, ActorHandleSharedPtr actor_handle_shared_ptr):
-        cdef:
-            # NOTE: This raw pointer is only valid in this function, while the
-            # shared_ptr is valid. Do not store it anywhere.
-            const CActorHandle *c_actor_handle = actor_handle_shared_ptr.get()
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
 
-        actor_id = ActorID(c_actor_handle.GetActorID().Binary())
-        job_id = JobID(c_actor_handle.CreationJobID().Binary())
-        language = Language.from_native(c_actor_handle.ActorLanguage())
-        actor_creation_function_descriptor = \
-            CFunctionDescriptorToPython(
-                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        actor_id = ActorID(dereference(c_actor_handle).GetActorID().Binary())
+        job_id = JobID(dereference(c_actor_handle).CreationJobID().Binary())
+        language = Language.from_native(
+            dereference(c_actor_handle).ActorLanguage())
+        actor_creation_function_descriptor = CFunctionDescriptorToPython(
+            dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
             # Load actor_method_cpu from actor handle's extension data.
-            extension_data = <str>c_actor_handle.ExtensionData()
+            extension_data = <str>dereference(c_actor_handle).ExtensionData()
             if extension_data:
                 actor_method_cpu = int(extension_data)
             else:
