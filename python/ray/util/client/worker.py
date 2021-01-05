@@ -18,14 +18,14 @@ import grpc
 import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
-from ray.experimental.client.client_pickler import convert_to_arg
-from ray.experimental.client.client_pickler import dumps_from_client
-from ray.experimental.client.client_pickler import loads_from_server
-from ray.experimental.client.common import ClientActorHandle
-from ray.experimental.client.common import ClientActorRef
-from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.dataclient import DataClient
-from ray.experimental.client.logsclient import LogstreamClient
+from ray.util.client.client_pickler import convert_to_arg
+from ray.util.client.client_pickler import dumps_from_client
+from ray.util.client.client_pickler import loads_from_server
+from ray.util.client.common import ClientActorHandle
+from ray.util.client.common import ClientActorRef
+from ray.util.client.common import ClientObjectRef
+from ray.util.client.dataclient import DataClient
+from ray.util.client.logsclient import LogstreamClient
 
 logger = logging.getLogger(__name__)
 

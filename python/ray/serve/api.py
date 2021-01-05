@@ -523,7 +523,7 @@ class Client:
 
 
 def start(detached: bool = False,
-          http_host: str = DEFAULT_HTTP_HOST,
+          http_host: Optional[str] = DEFAULT_HTTP_HOST,
           http_port: int = DEFAULT_HTTP_PORT,
           http_middlewares: List[Any] = []) -> Client:
     """Initialize a serve instance.
@@ -537,8 +537,8 @@ def start(detached: bool = False,
     Args:
         detached (bool): Whether not the instance should be detached from this
             script.
-        http_host (str): Host for HTTP servers to listen on. Defaults to
-            "127.0.0.1". To expose Serve publicly, you probably want to set
+        http_host (str, optional): Host for HTTP servers to listen on. Defaults
+            to "127.0.0.1". To expose Serve publicly, you probably want to set
             this to "0.0.0.0". One HTTP server will be started on each node in
             the Ray cluster. To not start HTTP servers, set this to None.
         http_port (int): Port for HTTP server. Defaults to 8000.

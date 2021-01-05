@@ -1,4 +1,4 @@
-from ray.experimental.client import ray
+from ray.util.client import ray
 from typing import Tuple
 
 ray.connect("localhost:50051")
