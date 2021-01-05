@@ -34,15 +34,16 @@ class CreateRequestQueue {
   using CreateObjectCallback =
       std::function<PlasmaError(bool evict_if_full, PlasmaObject *result)>;
 
-  CreateRequestQueue(bool evict_if_full, int64_t oom_grace_period_ns,
-                     ray::SpillObjectsCallback spill_objects_callback,
-                     std::function<void()> trigger_global_gc,
-                     std::function<int64_t()> timer_func)
+  CreateRequestQueue(
+      bool evict_if_full, int64_t oom_grace_period_ns,
+      ray::SpillObjectsCallback spill_objects_callback,
+      std::function<void()> trigger_global_gc,
+      std::function<int64_t(int64_t now_ns, int64_t last_success_ns)> timer_callback)
       : evict_if_full_(evict_if_full),
         oom_grace_period_ns_(oom_grace_period_ns),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
-        timer_func_(timer_func) {
+        timer_callback_(timer_callback) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with OOM grace period "
                    << oom_grace_period_ns_ << " retries on OOM, evict if full? "
                    << (evict_if_full_ ? 1 : 0);
@@ -169,8 +170,9 @@ class CreateRequestQueue {
   /// full.
   const std::function<void()> trigger_global_gc_;
 
-  /// A callback to return the current time in nano seconds.
-  const std::function<int64_t()> timer_func_;
+  /// A callback to return the time it passed from the last successful object creation in
+  /// nanoseconds.
+  const std::function<int64_t(int64_t now_ns, int64_t last_success_ns)> timer_callback_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time
