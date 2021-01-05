@@ -44,6 +44,7 @@
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -290,6 +291,11 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Record metrics.
   void RecordMetrics() const;
+
+  /// Populate object store stats.
+  ///
+  /// \param Output parameter.
+  void FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const;
 
   void Tick(const boost::system::error_code &e);
 

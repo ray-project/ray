@@ -2893,6 +2893,10 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
       ready_task->ParseFromString(task.GetTaskSpecification().Serialize());
     }
   }
+  // Report object spilling stats.
+  local_object_manager_.FillObjectSpillingStats(reply);
+  // Report object store stats.
+  object_manager_.FillObjectStoreStats(reply);
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
     RecordMetrics();
@@ -2967,6 +2971,33 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   }
 }
 
+rpc::ObjectStoreStats AccumulateStoreStats(
+    std::vector<rpc::GetNodeStatsReply> node_stats) {
+  rpc::ObjectStoreStats store_stats;
+  for (const auto &reply : node_stats) {
+    auto cur_store = reply.store_stats();
+    store_stats.set_spill_time_total_s(store_stats.spill_time_total_s() +
+                                       cur_store.spill_time_total_s());
+    store_stats.set_spilled_bytes_total(store_stats.spilled_bytes_total() +
+                                        cur_store.spilled_bytes_total());
+    store_stats.set_spilled_objects_total(store_stats.spilled_objects_total() +
+                                          cur_store.spilled_objects_total());
+    store_stats.set_restore_time_total_s(store_stats.restore_time_total_s() +
+                                         cur_store.restore_time_total_s());
+    store_stats.set_restored_bytes_total(store_stats.restored_bytes_total() +
+                                         cur_store.restored_bytes_total());
+    store_stats.set_restored_objects_total(store_stats.restored_objects_total() +
+                                           cur_store.restored_objects_total());
+    store_stats.set_object_store_bytes_used(store_stats.object_store_bytes_used() +
+                                            cur_store.object_store_bytes_used());
+    store_stats.set_object_store_bytes_avail(store_stats.object_store_bytes_avail() +
+                                             cur_store.object_store_bytes_avail());
+    store_stats.set_num_local_objects(store_stats.num_local_objects() +
+                                      cur_store.num_local_objects());
+  }
+  return store_stats;
+}
+
 std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   // First pass to compute object sizes.
   absl::flat_hash_map<ObjectID, int64_t> object_sizes;
@@ -2984,13 +3015,14 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   std::ostringstream builder;
   builder
       << "----------------------------------------------------------------------------"
-         "-------------------------\n";
+         "-----------------------------------------\n";
   builder
-      << " Object ID                                Reference Type       Object Size  "
+      << " Object ID                                                Reference Type    "
+         "   Object Size  "
          " Reference Creation Site\n";
   builder
       << "============================================================================"
-         "=========================\n";
+         "=========================================\n";
 
   // Second pass builds the summary string for each node.
   for (const auto &reply : node_stats) {
@@ -3040,7 +3072,7 @@ std::string FormatMemoryInfo(std::vector<rpc::GetNodeStatsReply> node_stats) {
   }
   builder
       << "----------------------------------------------------------------------------"
-         "-------------------------\n";
+         "-----------------------------------------\n";
 
   return builder.str();
 }
@@ -3062,6 +3094,7 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
     replies->push_back(local_reply);
     if (replies->size() >= num_nodes) {
       reply->set_memory_summary(FormatMemoryInfo(*replies));
+      reply->mutable_store_stats()->CopyFrom(AccumulateStoreStats(*replies));
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };
