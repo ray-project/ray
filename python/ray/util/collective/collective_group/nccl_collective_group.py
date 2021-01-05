@@ -174,9 +174,7 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp),
                 stream.ptr)
 
-        self._collective(tensor, tensor, collective_fn,
-                         lambda *args, **kwargs: None,
-                         lambda *args, **kwargs: None)
+        self._collective(tensor, tensor, collective_fn)
 
     def barrier(self, barrier_options=BarrierOptions()):
         """Blocks until all processes reach this barrier.
@@ -209,13 +207,7 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_nccl_reduce_op(reduce_options.reduceOp),
                 reduce_options.root_rank, stream.ptr)
 
-        self._collective(
-            tensor,
-            tensor,
-            collective_fn,
-            lambda *args, **kwargs: None,
-            lambda *args, **kwargs: None,
-        )
+        self._collective(tensor, tensor, collective_fn)
 
     def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
         """Broadcast tensor to all other processes following options.
@@ -236,9 +228,7 @@ class NCCLGroup(BaseGroup):
                 nccl_util.get_nccl_tensor_dtype(input_tensor),
                 broadcast_options.root_rank, stream.ptr)
 
-        self._collective(tensor, tensor, collective_fn,
-                         lambda *args, **kwargs: None,
-                         lambda *args, **kwargs: None)
+        self._collective(tensor, tensor, collective_fn)
 
     def allgather(self,
                   tensor_list,
@@ -271,7 +261,7 @@ class NCCLGroup(BaseGroup):
                 nccl_util.copy_tensor(tensor, flattened_output_tensor[i])
 
         self._collective(tensor, flattened_output_tensor, collective_fn,
-                         lambda *args, **kwargs: None, postprocess_fn)
+                         postprocess_fn=postprocess_fn)
 
     def reducescatter(self,
                       tensor,
@@ -306,7 +296,7 @@ class NCCLGroup(BaseGroup):
                 nccl_util.copy_tensor(flattened_input_tensor[i], tensor)
 
         self._collective(flattened_input_tensor, tensor, collective_fn,
-                         preprocess_fn, lambda *args, **kwargs: None)
+                         preprocess_fn=preprocess_fn)
 
     def send(self, tensor, dst_rank):
         """Send tensor to a destination process in the group.
@@ -432,7 +422,7 @@ class NCCLGroup(BaseGroup):
         return cupy.cuda.Stream.null
 
     def _collective(self, input_tensor, output_tensor, collective_fn,
-                    preprocess_fn, postprocess_fn):
+                    preprocess_fn=None, postprocess_fn=None):
         """A method to encapsulate all collective calls.
 
         Args:
@@ -449,9 +439,11 @@ class NCCLGroup(BaseGroup):
         stream = self._get_cuda_stream()
 
         # Make the collective call
-        preprocess_fn(stream)
+        if preprocess_fn:
+            preprocess_fn(stream)
         collective_fn(input_tensor, output_tensor, comm, stream)
-        postprocess_fn(stream)
+        if postprocess_fn:
+            postprocess_fn(stream)
 
     def _point2point(self, tensor, p2p_fn, peer_rank: int):
         """A method to encapsulate all p2p calls.

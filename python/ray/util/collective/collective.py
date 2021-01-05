@@ -153,7 +153,8 @@ def declare_collective_group(actors,
         pass
 
     if len(ranks) != len(actors):
-        raise RuntimeError("Each actor should correspond to one rank.")
+        raise RuntimeError("Each actor should correspond to one rank. Got '{}' "
+                           "ranks but '{}' actors".format(len(ranks), len(actors)))
 
     if set(ranks) != set(range(len(ranks))):
         raise RuntimeError(
