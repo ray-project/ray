@@ -20,7 +20,7 @@
 #include <unordered_set>
 
 #include "ray/common/id.h"
-#include "ray/gcs/tables.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 
 namespace ray {

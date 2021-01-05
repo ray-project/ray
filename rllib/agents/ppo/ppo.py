@@ -21,6 +21,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -194,10 +195,10 @@ def warn_about_bad_reward_scales(config, result):
 
     # Warn about excessively high VF loss.
     learner_stats = result["info"]["learner"]
-    if "default_policy" in learner_stats:
+    if DEFAULT_POLICY_ID in learner_stats:
         scaled_vf_loss = (config["vf_loss_coeff"] *
-                          learner_stats["default_policy"]["vf_loss"])
-        policy_loss = learner_stats["default_policy"]["policy_loss"]
+                          learner_stats[DEFAULT_POLICY_ID]["vf_loss"])
+        policy_loss = learner_stats[DEFAULT_POLICY_ID]["policy_loss"]
         if config["vf_share_layers"] and scaled_vf_loss > 100:
             logger.warning(
                 "The magnitude of your value function loss is extremely large "

@@ -50,15 +50,46 @@ class ReduceOp(Enum):
     MAX = 3
 
 
-unset_timeout = timedelta(milliseconds=-1)
+unset_timeout_ms = timedelta(milliseconds=-1)
 
 
 @dataclass
 class AllReduceOptions:
     reduceOp = ReduceOp.SUM
-    timeout = unset_timeout
+    timeout_ms = unset_timeout_ms
 
 
 @dataclass
 class BarrierOptions:
-    timeout = unset_timeout
+    timeout_ms = unset_timeout_ms
+
+
+@dataclass
+class ReduceOptions:
+    reduceOp = ReduceOp.SUM
+    root_rank = 0
+    timeout_ms = unset_timeout_ms
+
+
+@dataclass
+class AllGatherOptions:
+    timeout_ms = unset_timeout_ms
+
+
+#
+# @dataclass
+# class GatherOptions:
+#     root_rank = 0
+#     timeout = unset_timeout
+
+
+@dataclass
+class BroadcastOptions:
+    root_rank = 0
+    timeout_ms = unset_timeout_ms
+
+
+@dataclass
+class ReduceScatterOptions:
+    reduceOp = ReduceOp.SUM
+    timeout_ms = unset_timeout_ms

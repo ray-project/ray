@@ -444,7 +444,11 @@ def format_web_url(url):
 
 
 def new_scheduler_enabled():
-    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER") == "1"
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
+
+
+def client_test_enabled() -> bool:
+    return os.environ.get("RAY_CLIENT_MODE") == "1"
 
 
 def fetch_prometheus(prom_addresses):

@@ -3,7 +3,6 @@ It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
 import base64
-import inspect
 import json
 import logging
 import uuid
@@ -14,20 +13,19 @@ from typing import List
 from typing import Tuple
 from typing import Optional
 
-from ray.util.inspect import is_cython
 import grpc
 
 import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.experimental.client.client_pickler import convert_to_arg
-from ray.experimental.client.client_pickler import loads_from_server
 from ray.experimental.client.client_pickler import dumps_from_client
-from ray.experimental.client.common import ClientObjectRef
-from ray.experimental.client.common import ClientActorClass
+from ray.experimental.client.client_pickler import loads_from_server
 from ray.experimental.client.common import ClientActorHandle
-from ray.experimental.client.common import ClientRemoteFunc
+from ray.experimental.client.common import ClientActorRef
+from ray.experimental.client.common import ClientObjectRef
 from ray.experimental.client.dataclient import DataClient
+from ray.experimental.client.logsclient import LogstreamClient
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +50,13 @@ class Worker:
         else:
             self.channel = grpc.insecure_channel(conn_str)
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
+
         self.data_client = DataClient(self.channel, self._client_id)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
+
+        self.log_client = LogstreamClient(self.channel)
+        self.log_client.set_logstream_level(logging.INFO)
+        self.closed = False
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -80,7 +83,9 @@ class Worker:
         except grpc.RpcError as e:
             raise e.details()
         if not data.valid:
-            raise cloudpickle.loads(data.error)
+            err = cloudpickle.loads(data.error)
+            logger.error(err)
+            raise err
         return loads_from_server(data.data)
 
     def put(self, vals):
@@ -98,6 +103,13 @@ class Worker:
         return out
 
     def _put(self, val):
+        if isinstance(val, ClientObjectRef):
+            raise TypeError(
+                "Calling 'put' on an ObjectRef is not allowed "
+                "(similarly, returning an ObjectRef from a remote "
+                "function is not allowed). If you really want to "
+                "do this, you can wrap the ObjectRef in a list and "
+                "call 'put' on it (or return it).")
         data = dumps_from_client(val, self._client_id)
         req = ray_client_pb2.PutRequest(data=data)
         resp = self.data_client.PutObject(req)
@@ -107,11 +119,16 @@ class Worker:
              object_refs: List[ClientObjectRef],
              *,
              num_returns: int = 1,
-             timeout: float = None
+             timeout: float = None,
+             fetch_local: bool = True
              ) -> Tuple[List[ClientObjectRef], List[ClientObjectRef]]:
-        assert isinstance(object_refs, list)
+        if not isinstance(object_refs, list):
+            raise TypeError("wait() expected a list of ClientObjectRef, "
+                            f"got {type(object_refs)}")
         for ref in object_refs:
-            assert isinstance(ref, ClientObjectRef)
+            if not isinstance(ref, ClientObjectRef):
+                raise TypeError("wait() expected a list of ClientObjectRef, "
+                                f"got list containing {type(ref)}")
         data = {
             "object_ids": [object_ref.id for object_ref in object_refs],
             "num_returns": num_returns,
@@ -132,29 +149,30 @@ class Worker:
 
         return (client_ready_object_ids, client_remaining_object_ids)
 
-    def remote(self, function_or_class, *args, **kwargs):
-        # TODO(barakmich): Arguments to ray.remote
-        # get captured here.
-        if (inspect.isfunction(function_or_class)
-                or is_cython(function_or_class)):
-            return ClientRemoteFunc(function_or_class)
-        elif inspect.isclass(function_or_class):
-            return ClientActorClass(function_or_class)
-        else:
-            raise TypeError("The @ray.remote decorator must be applied to "
-                            "either a function or to a class.")
-
-    def call_remote(self, instance, *args, **kwargs) -> bytes:
+    def call_remote(self, instance, *args, **kwargs) -> List[bytes]:
         task = instance._prepare_client_task()
         for arg in args:
             pb_arg = convert_to_arg(arg, self._client_id)
             task.args.append(pb_arg)
-        task.client_id = self._client_id
+        for k, v in kwargs.items():
+            task.kwargs[k].CopyFrom(convert_to_arg(v, self._client_id))
+        return self._call_schedule_for_task(task)
+
+    def _call_schedule_for_task(
+            self, task: ray_client_pb2.ClientTask) -> List[bytes]:
         logger.debug("Scheduling %s" % task)
-        ticket = self.server.Schedule(task, metadata=self.metadata)
-        return ticket.return_id
+        task.client_id = self._client_id
+        try:
+            ticket = self.server.Schedule(task, metadata=self.metadata)
+        except grpc.RpcError as e:
+            raise decode_exception(e.details)
+        if not ticket.valid:
+            raise cloudpickle.loads(ticket.error)
+        return ticket.return_ids
 
     def call_release(self, id: bytes) -> None:
+        if self.closed:
+            return
         self.reference_count[id] -= 1
         if self.reference_count[id] == 0:
             self._release_server(id)
@@ -167,15 +185,25 @@ class Worker:
                 ray_client_pb2.ReleaseRequest(ids=[id]))
 
     def call_retain(self, id: bytes) -> None:
-        logger.debug(f"Retaining {id}")
+        logger.debug(f"Retaining {id.hex()}")
         self.reference_count[id] += 1
 
     def close(self):
+        self.log_client.close()
         self.data_client.close()
-        self.server = None
         if self.channel:
             self.channel.close()
             self.channel = None
+        self.server = None
+        self.closed = True
+
+    def get_actor(self, name: str) -> ClientActorHandle:
+        task = ray_client_pb2.ClientTask()
+        task.type = ray_client_pb2.ClientTask.NAMED_ACTOR
+        task.name = name
+        ids = self._call_schedule_for_task(task)
+        assert len(ids) == 1
+        return ClientActorHandle(ClientActorRef(ids[0]))
 
     def terminate_actor(self, actor: ClientActorHandle,
                         no_restart: bool) -> None:
@@ -214,7 +242,9 @@ class Worker:
         req.type = type
         resp = self.server.ClusterInfo(req)
         if resp.WhichOneof("response_type") == "resource_table":
-            return resp.resource_table.table
+            # translate from a proto map to a python dict
+            output_dict = {k: v for k, v in resp.resource_table.table.items()}
+            return output_dict
         return json.loads(resp.json)
 
     def is_initialized(self) -> bool:

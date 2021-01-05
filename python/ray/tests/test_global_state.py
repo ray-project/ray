@@ -8,7 +8,6 @@ import time
 import ray
 import ray.ray_constants
 import ray.test_utils
-from ray.test_utils import new_scheduler_enabled
 
 from ray._raylet import GlobalStateAccessor
 
@@ -217,8 +216,6 @@ def test_load_report(shutdown_only, max_shapes):
     global_state_accessor.disconnect()
 
 
-@pytest.mark.skipif(
-    new_scheduler_enabled(), reason="requires placement groups")
 def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
     # Add a head node that doesn't have gpu resource.

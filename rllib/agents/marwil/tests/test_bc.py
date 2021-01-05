@@ -23,7 +23,8 @@ class TestBC(unittest.TestCase):
     def test_bc_compilation_and_learning_from_offline_file(self):
         """Test whether a BCTrainer can be built with all frameworks.
 
-        And learns from a historic-data file.
+        And learns from a historic-data file (while being evaluated on an
+        actual env using evaluation_num_workers > 0).
         """
         rllib_dir = Path(__file__).parent.parent.parent.parent
         print("rllib dir={}".format(rllib_dir))
@@ -34,7 +35,6 @@ class TestBC(unittest.TestCase):
         config = marwil.BC_DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
         config["evaluation_num_workers"] = 1
-        config["evaluation_interval"] = 1
         # Evaluate on actual environment.
         config["evaluation_config"] = {"input": "sampler"}
         # Learn from offline data.

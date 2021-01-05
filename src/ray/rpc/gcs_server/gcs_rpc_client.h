@@ -161,14 +161,6 @@ class GcsRpcClient {
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
 
-  /// Report resource usage of a node to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportResourceUsage,
-                             node_info_grpc_client_, )
-
-  /// Get resource usage of all nodes from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllResourceUsage,
-                             node_info_grpc_client_, )
-
   /// Set internal config of the cluster in the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, SetInternalConfig,
                              node_info_grpc_client_, )
@@ -191,6 +183,14 @@ class GcsRpcClient {
 
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllAvailableResources,
+                             node_resource_info_grpc_client_, )
+
+  /// Report resource usage of a node to GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, ReportResourceUsage,
+                             node_resource_info_grpc_client_, )
+
+  /// Get resource usage of all nodes from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService, GetAllResourceUsage,
                              node_resource_info_grpc_client_, )
 
   /// Report heartbeat of a node to GCS Service.
@@ -218,9 +218,6 @@ class GcsRpcClient {
 
   /// Get task information from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, task_info_grpc_client_, )
-
-  /// Delete tasks from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, task_info_grpc_client_, )
 
   /// Add a task lease to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )

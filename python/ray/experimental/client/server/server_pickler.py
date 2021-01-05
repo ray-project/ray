@@ -1,5 +1,4 @@
-"""
-Implements the client side of the client/server pickling protocol.
+"""Implements the client side of the client/server pickling protocol.
 
 These picklers are aware of the server internals and can find the
 references held for the client within the server.
@@ -20,8 +19,10 @@ import ray
 from typing import Any
 from typing import TYPE_CHECKING
 
+from ray._private.client_mode_hook import disable_client_hook
 from ray.experimental.client.client_pickler import PickleStub
-from ray.experimental.client.server.server_stubs import ServerFunctionSentinel
+from ray.experimental.client.server.server_stubs import (
+    ServerSelfReferenceSentinel)
 
 if TYPE_CHECKING:
     from ray.experimental.client.server.server import RayletServicer
@@ -54,6 +55,8 @@ class ServerPickler(cloudpickle.CloudPickler):
                 type="Object",
                 client_id=self.client_id,
                 ref_id=obj_id,
+                name=None,
+                baseline_options=None,
             )
         elif isinstance(obj, ray.actor.ActorHandle):
             actor_id = obj._actor_id.binary()
@@ -66,6 +69,8 @@ class ServerPickler(cloudpickle.CloudPickler):
                 type="Actor",
                 client_id=self.client_id,
                 ref_id=obj._actor_id.binary(),
+                name=None,
+                baseline_options=None,
             )
         return None
 
@@ -77,15 +82,25 @@ class ClientUnpickler(pickle.Unpickler):
 
     def persistent_load(self, pid):
         assert isinstance(pid, PickleStub)
-        if pid.type == "Object":
+        if pid.type == "Ray":
+            return ray
+        elif pid.type == "Object":
             return self.server.object_refs[pid.client_id][pid.ref_id]
         elif pid.type == "Actor":
             return self.server.actor_refs[pid.ref_id]
         elif pid.type == "RemoteFuncSelfReference":
-            return ServerFunctionSentinel()
+            return ServerSelfReferenceSentinel()
         elif pid.type == "RemoteFunc":
-            return self.server.lookup_or_register_func(pid.ref_id,
-                                                       pid.client_id)
+            return self.server.lookup_or_register_func(
+                pid.ref_id, pid.client_id, pid.baseline_options)
+        elif pid.type == "RemoteActorSelfReference":
+            return ServerSelfReferenceSentinel()
+        elif pid.type == "RemoteActor":
+            return self.server.lookup_or_register_actor(
+                pid.ref_id, pid.client_id, pid.baseline_options)
+        elif pid.type == "RemoteMethod":
+            actor = self.server.actor_refs[pid.ref_id]
+            return getattr(actor, pid.name)
         else:
             raise NotImplementedError("Uncovered client data type")
 
@@ -106,12 +121,13 @@ def loads_from_client(data: bytes,
                       fix_imports=True,
                       encoding="ASCII",
                       errors="strict") -> Any:
-    if isinstance(data, str):
-        raise TypeError("Can't load pickle from unicode string")
-    file = io.BytesIO(data)
-    return ClientUnpickler(
-        server_instance, file, fix_imports=fix_imports,
-        encoding=encoding).load()
+    with disable_client_hook():
+        if isinstance(data, str):
+            raise TypeError("Can't load pickle from unicode string")
+        file = io.BytesIO(data)
+        return ClientUnpickler(
+            server_instance, file, fix_imports=fix_imports,
+            encoding=encoding).load()
 
 
 def convert_from_arg(pb: "ray_client_pb2.Arg",
