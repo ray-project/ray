@@ -21,7 +21,8 @@
 
 namespace ray {
 
-void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer, const std::string &call_site) {
+void BufferTracker::Record(const ObjectID &object_id, TrackedBuffer *buffer,
+                           const std::string &call_site) {
   absl::MutexLock lock(&active_buffers_mutex_);
   active_buffers_[std::make_pair(object_id, buffer)] = call_site;
 }
@@ -203,7 +204,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].data && plasma_results[i].data->Size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
-        data = std::make_shared<TrackedBuffer>(plasma_results[i].data, buffer_tracker_, object_id);
+        data = std::make_shared<TrackedBuffer>(plasma_results[i].data, buffer_tracker_,
+                                               object_id);
         buffer_tracker_->Record(object_id, data.get(), get_current_call_site_());
       }
       if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {

@@ -2861,8 +2861,8 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
       if (plasma_results[i].data == nullptr) {
         objects.push_back(nullptr);
       } else {
-        objects.emplace_back(std::unique_ptr<RayObject>(new RayObject(
-            plasma_results[i].data, plasma_results[i].metadata, {})));
+        objects.emplace_back(std::unique_ptr<RayObject>(
+            new RayObject(plasma_results[i].data, plasma_results[i].metadata, {})));
       }
     }
     local_object_manager_.PinObjects(object_ids, std::move(objects));

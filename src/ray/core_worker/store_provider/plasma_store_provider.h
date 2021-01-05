@@ -34,7 +34,8 @@ class TrackedBuffer;
 class RAY_NO_EXPORT BufferTracker {
  public:
   // Track an object.
-  void Record(const ObjectID &object_id, TrackedBuffer *buffer, const std::string &call_site);
+  void Record(const ObjectID &object_id, TrackedBuffer *buffer,
+              const std::string &call_site);
   // Release an object from tracking.
   void Release(const ObjectID &object_id, TrackedBuffer *buffer);
   // List tracked objects.
@@ -56,8 +57,7 @@ class RAY_NO_EXPORT BufferTracker {
 class TrackedBuffer : public Buffer {
  public:
   TrackedBuffer(std::shared_ptr<Buffer> buffer,
-                const std::shared_ptr<BufferTracker> &tracker,
-                const ObjectID &object_id)
+                const std::shared_ptr<BufferTracker> &tracker, const ObjectID &object_id)
       : buffer_(buffer), tracker_(tracker), object_id_(object_id) {}
 
   uint8_t *Data() const override { return buffer_->Data(); }
@@ -68,9 +68,7 @@ class TrackedBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return true; }
 
-  ~TrackedBuffer() {
-    tracker_->Release(object_id_, this);
-  }
+  ~TrackedBuffer() { tracker_->Release(object_id_, this); }
 
  private:
   /// shared_ptr to a buffer which can potentially hold a reference
