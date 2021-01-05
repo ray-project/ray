@@ -1811,3 +1811,40 @@ def start_monitor(redis_address,
         stderr_file=stderr_file,
         fate_share=fate_share)
     return process_info
+
+
+def start_ray_client_server(redis_address,
+                            ray_client_server_port,
+                            stdout_file=None,
+                            stderr_file=None,
+                            redis_password=None,
+                            fate_share=None):
+    """Run the server process of the Ray client.
+
+    Args:
+        ray_client_server_port (int):
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    ray_client_server_path = os.path.join(RAY_PATH, "ray_client_server.py")
+    command = [
+        sys.executable,
+        "-u",
+        ray_client_server_path,
+        "--address=" + str(redis_address),
+        "--ray-client-server-port=" + str(ray_client_server_port)
+    ]
+    if redis_password:
+        command.append("--redis-password=" + redis_password)
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share)
+    return process_info

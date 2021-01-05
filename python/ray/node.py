@@ -752,6 +752,21 @@ class Node:
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
+    def start_ray_client_server(self):
+        """Start the ray client server process."""
+        stdout_file, stderr_file = self.get_log_file_handles(
+            "ray_client_server", unique=True)
+        process_info = ray._private.services.start_ray_client_server(
+            self._redis_address,
+            self._ray_params.ray_client_server_port,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password,
+            fate_share=self.kernel_fate_share
+        )
+        assert ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in self.all_processes
+        self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [process_info]
+
     def start_head_processes(self):
         """Start head processes on the node."""
         logger.debug(f"Process STDOUT and STDERR is being "
@@ -763,6 +778,9 @@ class Node:
         self.start_gcs_server()
 
         self.start_monitor()
+
+        if self._ray_params.ray_client_server_port:
+            self.start_ray_client_server()
 
         if self._ray_params.include_dashboard:
             self.start_dashboard(require_dashboard=True)
