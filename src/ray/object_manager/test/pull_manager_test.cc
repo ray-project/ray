@@ -324,7 +324,6 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   num_send_pull_request_calls_ = 0;
   fake_time_ += 1024 * 10 + 1;
   pull_manager_.Tick();
-  pull_manager_.OnLocationChange(oids[i], client_ids, "");
 
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 }
