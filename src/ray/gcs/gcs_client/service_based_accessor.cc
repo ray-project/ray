@@ -19,6 +19,8 @@
 namespace ray {
 namespace gcs {
 
+using namespace ray::rpc;
+
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
@@ -90,17 +92,23 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
 
 void ServiceBasedJobInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for job info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all job information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_operation_(
-          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+      RAY_CHECK_OK(subscribe_operation_([this, fetch_all_done](const Status &status) {
+        fetch_all_data_operation_(fetch_all_done);
+      }));
     }
   } else {
     if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(nullptr);
+      fetch_all_data_operation_(fetch_all_done);
     }
   }
 }
@@ -301,14 +309,20 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) 
 
 void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
     if (subscribe_all_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_all_operation_(
-          [this](const Status &status) { fetch_all_data_operation_(nullptr); }));
+      RAY_CHECK_OK(subscribe_all_operation_([this, fetch_all_done](const Status &status) {
+        fetch_all_data_operation_(fetch_all_done);
+      }));
     }
     for (auto &item : subscribe_operations_) {
       auto &actor_id = item.first;
@@ -325,7 +339,7 @@ void ServiceBasedActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_resta
     }
   } else {
     if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(nullptr);
+      fetch_all_data_operation_(fetch_all_done);
     }
     for (auto &item : fetch_data_operations_) {
       item.second(nullptr);
@@ -515,92 +529,6 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
   return Status::OK();
 }
 
-Status ServiceBasedNodeInfoAccessor::AsyncReportResourceUsage(
-    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
-  absl::MutexLock lock(&mutex_);
-  cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
-  client_impl_->GetGcsRpcClient().ReportResourceUsage(
-      cached_resource_usage_,
-      [callback](const Status &status, const rpc::ReportResourceUsageReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
-void ServiceBasedNodeInfoAccessor::AsyncReReportResourceUsage() {
-  absl::MutexLock lock(&mutex_);
-  if (cached_resource_usage_.has_resources()) {
-    RAY_LOG(INFO) << "Rereport resource usage.";
-    FillResourceUsageRequest(cached_resource_usage_);
-    client_impl_->GetGcsRpcClient().ReportResourceUsage(
-        cached_resource_usage_,
-        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
-  }
-}
-
-void ServiceBasedNodeInfoAccessor::FillResourceUsageRequest(
-    rpc::ReportResourceUsageRequest &resources) {
-  if (RayConfig::instance().light_report_resource_usage_enabled()) {
-    SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
-
-    auto resources_data = resources.mutable_resources();
-    resources_data->clear_resources_total();
-    for (const auto &resource_pair :
-         cached_resources.GetTotalResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    resources_data->clear_resources_available();
-    resources_data->set_resources_available_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetAvailableResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
-
-    resources_data->clear_resource_load();
-    resources_data->set_resource_load_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetLoadResources().GetResourceMap()) {
-      (*resources_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
-    }
-  }
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncGetAllResourceUsage(
-    const ItemCallback<rpc::ResourceUsageBatchData> &callback) {
-  rpc::GetAllResourceUsageRequest request;
-  client_impl_->GetGcsRpcClient().GetAllResourceUsage(
-      request,
-      [callback](const Status &status, const rpc::GetAllResourceUsageReply &reply) {
-        callback(reply.resource_usage_data());
-        RAY_LOG(DEBUG) << "Finished getting resource usage of all nodes, status = "
-                       << status;
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchedResourceUsage(
-    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  subscribe_batch_resource_usage_operation_ = [this,
-                                               subscribe](const StatusCallback &done) {
-    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      rpc::ResourceUsageBatchData resources_batch_data;
-      resources_batch_data.ParseFromString(data);
-      subscribe(resources_batch_data);
-    };
-    return client_impl_->GetGcsPubSub().Subscribe(RESOURCES_BATCH_CHANNEL, "",
-                                                  on_subscribe, done);
-  };
-  return subscribe_batch_resource_usage_operation_(done);
-}
-
 void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
@@ -651,20 +579,24 @@ void ServiceBasedNodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_in
 
 void ServiceBasedNodeInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for node info.";
+  auto fetch_all_done = [](const Status &status) {
+    RAY_LOG(INFO) << "Finished fetching all node information from gcs server after gcs "
+                     "server or pub-sub server is restarted.";
+  };
+
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   if (is_pubsub_server_restarted) {
     if (subscribe_node_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_node_operation_(
-          [this](const Status &status) { fetch_node_data_operation_(nullptr); }));
-    }
-    if (subscribe_batch_resource_usage_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_batch_resource_usage_operation_(nullptr));
+      RAY_CHECK_OK(
+          subscribe_node_operation_([this, fetch_all_done](const Status &status) {
+            fetch_node_data_operation_(fetch_all_done);
+          }));
     }
   } else {
     if (fetch_node_data_operation_ != nullptr) {
-      fetch_node_data_operation_(nullptr);
+      fetch_node_data_operation_(fetch_all_done);
     }
   }
 }
@@ -772,6 +704,79 @@ Status ServiceBasedNodeResourceInfoAccessor::AsyncUpdateResources(
   return Status::OK();
 }
 
+Status ServiceBasedNodeResourceInfoAccessor::AsyncReportResourceUsage(
+    const std::shared_ptr<rpc::ResourcesData> &data_ptr, const StatusCallback &callback) {
+  absl::MutexLock lock(&mutex_);
+  cached_resource_usage_.mutable_resources()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportResourceUsage(
+      cached_resource_usage_,
+      [callback](const Status &status, const rpc::ReportResourceUsageReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
+void ServiceBasedNodeResourceInfoAccessor::AsyncReReportResourceUsage() {
+  absl::MutexLock lock(&mutex_);
+  if (cached_resource_usage_.has_resources()) {
+    RAY_LOG(INFO) << "Rereport resource usage.";
+    FillResourceUsageRequest(cached_resource_usage_);
+    client_impl_->GetGcsRpcClient().ReportResourceUsage(
+        cached_resource_usage_,
+        [](const Status &status, const rpc::ReportResourceUsageReply &reply) {});
+  }
+}
+
+void ServiceBasedNodeResourceInfoAccessor::FillResourceUsageRequest(
+    rpc::ReportResourceUsageRequest &resources) {
+  if (RayConfig::instance().light_report_resource_usage_enabled()) {
+    SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+
+    auto resources_data = resources.mutable_resources();
+    resources_data->clear_resources_total();
+    for (const auto &resource_pair :
+         cached_resources.GetTotalResources().GetResourceMap()) {
+      (*resources_data->mutable_resources_total())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    resources_data->clear_resources_available();
+    resources_data->set_resources_available_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetAvailableResources().GetResourceMap()) {
+      (*resources_data->mutable_resources_available())[resource_pair.first] =
+          resource_pair.second;
+    }
+
+    resources_data->clear_resource_load();
+    resources_data->set_resource_load_changed(true);
+    for (const auto &resource_pair :
+         cached_resources.GetLoadResources().GetResourceMap()) {
+      (*resources_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
+    }
+  }
+}
+
+Status ServiceBasedNodeResourceInfoAccessor::AsyncSubscribeBatchedResourceUsage(
+    const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  subscribe_batch_resource_usage_operation_ = [this,
+                                               subscribe](const StatusCallback &done) {
+    auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
+      rpc::ResourceUsageBatchData resources_batch_data;
+      resources_batch_data.ParseFromString(data);
+      subscribe(resources_batch_data);
+    };
+    return client_impl_->GetGcsPubSub().Subscribe(RESOURCES_BATCH_CHANNEL, "",
+                                                  on_subscribe, done);
+  };
+  return subscribe_batch_resource_usage_operation_(done);
+}
+
 Status ServiceBasedNodeResourceInfoAccessor::AsyncDeleteResources(
     const NodeID &node_id, const std::vector<std::string> &resource_names,
     const StatusCallback &callback) {
@@ -820,9 +825,27 @@ void ServiceBasedNodeResourceInfoAccessor::AsyncResubscribe(
   RAY_LOG(DEBUG) << "Reestablishing subscription for node resource info.";
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server.
-  if (is_pubsub_server_restarted && subscribe_resource_operation_ != nullptr) {
-    RAY_CHECK_OK(subscribe_resource_operation_(nullptr));
+  if (is_pubsub_server_restarted) {
+    if (subscribe_resource_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_resource_operation_(nullptr));
+    }
+    if (subscribe_batch_resource_usage_operation_ != nullptr) {
+      RAY_CHECK_OK(subscribe_batch_resource_usage_operation_(nullptr));
+    }
   }
+}
+
+Status ServiceBasedNodeResourceInfoAccessor::AsyncGetAllResourceUsage(
+    const ItemCallback<rpc::ResourceUsageBatchData> &callback) {
+  rpc::GetAllResourceUsageRequest request;
+  client_impl_->GetGcsRpcClient().GetAllResourceUsage(
+      request,
+      [callback](const Status &status, const rpc::GetAllResourceUsageReply &reply) {
+        callback(reply.resource_usage_data());
+        RAY_LOG(DEBUG) << "Finished getting resource usage of all nodes, status = "
+                       << status;
+      });
+  return Status::OK();
 }
 
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
@@ -863,25 +886,6 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
         }
         RAY_LOG(DEBUG) << "Finished getting task, status = " << status
                        << ", task id = " << task_id << ", job id = " << task_id.JobId();
-      });
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                                 const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Deleting tasks, task id list size = " << task_ids.size();
-  rpc::DeleteTasksRequest request;
-  for (auto &task_id : task_ids) {
-    request.add_task_id_list(task_id.Binary());
-  }
-  client_impl_->GetGcsRpcClient().DeleteTasks(
-      request,
-      [task_ids, callback](const Status &status, const rpc::DeleteTasksReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-        RAY_LOG(DEBUG) << "Finished deleting tasks, status = " << status
-                       << ", task id list size = " << task_ids.size();
       });
   return Status::OK();
 }

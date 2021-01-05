@@ -1,15 +1,25 @@
+from collections import namedtuple
+from functools import reduce
 import logging
 import time
 from typing import Dict, List
 
 import numpy as np
 import ray._private.services as services
-from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES
+from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.util import add_resources, freq_of_dicts
 from ray.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.resource_demand_scheduler import \
     NodeIP, ResourceDict
+from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
+
+LoadMetricsSummary = namedtuple("LoadMetricsSummary", [
+    "head_ip", "usage", "resource_demand", "pg_demand", "request_demand",
+    "node_types"
+])
 
 
 class LoadMetrics:
@@ -31,6 +41,7 @@ class LoadMetrics:
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
+        self.resource_requests = []
 
     def update(self,
                ip: str,
@@ -72,34 +83,37 @@ class LoadMetrics:
 
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
-        logger.info("Node {} is newly setup, treating as active".format(ip))
+        logger.debug("Node {} is newly setup, treating as active".format(ip))
         self.last_heartbeat_time_by_ip[ip] = time.time()
+
+    def is_active(self, ip):
+        return ip in self.last_heartbeat_time_by_ip
 
     def prune_active_ips(self, active_ips):
         active_ips = set(active_ips)
         active_ips.add(self.local_ip)
 
-        def prune(mapping):
+        def prune(mapping, should_log):
             unwanted = set(mapping) - active_ips
             for unwanted_key in unwanted:
-                # TODO (Alex): Change this back to info after #12138.
-                logger.debug("LoadMetrics: "
-                             "Removed mapping: {} - {}".format(
-                                 unwanted_key, mapping[unwanted_key]))
+                if should_log:
+                    logger.info("LoadMetrics: "
+                                "Removed mapping: {} - {}".format(
+                                    unwanted_key, mapping[unwanted_key]))
                 del mapping[unwanted_key]
-            if unwanted:
+            if unwanted and should_log:
                 # TODO (Alex): Change this back to info after #12138.
-                logger.debug(
+                logger.info(
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
                         len(unwanted), unwanted, active_ips))
             assert not (unwanted & set(mapping))
 
-        prune(self.last_used_time_by_ip)
-        prune(self.static_resources_by_ip)
-        prune(self.dynamic_resources_by_ip)
-        prune(self.resource_load_by_ip)
-        prune(self.last_heartbeat_time_by_ip)
+        prune(self.last_used_time_by_ip, should_log=True)
+        prune(self.static_resources_by_ip, should_log=False)
+        prune(self.dynamic_resources_by_ip, should_log=False)
+        prune(self.resource_load_by_ip, should_log=False)
+        prune(self.last_heartbeat_time_by_ip, should_log=False)
 
     def get_node_resources(self):
         """Return a list of node resources (static resource sizes).
@@ -155,11 +169,81 @@ class LoadMetrics:
 
         return resources_used, resources_total
 
-    def get_resource_demand_vector(self):
-        return self.waiting_bundles + self.infeasible_bundles
+    def get_resource_demand_vector(self, clip=True):
+        if clip:
+            # Bound the total number of bundles to
+            # 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE. This guarantees the resource
+            # demand scheduler bin packing algorithm takes a reasonable amount
+            # of time to run.
+            return (
+                self.
+                waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE] +
+                self.
+                infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+            )
+        else:
+            return self.waiting_bundles + self.infeasible_bundles
+
+    def get_resource_requests(self):
+        return self.resource_requests
 
     def get_pending_placement_groups(self):
         return self.pending_placement_groups
+
+    def summary(self):
+        available_resources = reduce(add_resources,
+                                     self.dynamic_resources_by_ip.values()
+                                     ) if self.dynamic_resources_by_ip else {}
+        total_resources = reduce(add_resources,
+                                 self.static_resources_by_ip.values()
+                                 ) if self.static_resources_by_ip else {}
+        usage_dict = {}
+        for key in total_resources:
+            total = total_resources[key]
+            usage_dict[key] = (total - available_resources[key], total)
+
+        summarized_demand_vector = freq_of_dicts(
+            self.get_resource_demand_vector(clip=False))
+        summarized_resource_requests = freq_of_dicts(
+            self.get_resource_requests())
+
+        def placement_group_serializer(pg):
+            bundles = tuple(
+                frozenset(bundle.unit_resources.items())
+                for bundle in pg.bundles)
+            return (bundles, pg.strategy)
+
+        def placement_group_deserializer(pg_tuple):
+            # We marshal this as a dictionary so that we can easily json.dumps
+            # it later.
+            # TODO (Alex): Would there be a benefit to properly
+            # marshalling this (into a protobuf)?
+            bundles = list(map(dict, pg_tuple[0]))
+            return {
+                "bundles": freq_of_dicts(bundles),
+                "strategy": PlacementStrategy.Name(pg_tuple[1])
+            }
+
+        summarized_placement_groups = freq_of_dicts(
+            self.get_pending_placement_groups(),
+            serializer=placement_group_serializer,
+            deserializer=placement_group_deserializer)
+        nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
+
+        return LoadMetricsSummary(
+            head_ip=self.local_ip,
+            usage=usage_dict,
+            resource_demand=summarized_demand_vector,
+            pg_demand=summarized_placement_groups,
+            request_demand=summarized_resource_requests,
+            node_types=nodes_summary)
+
+    def set_resource_requests(self, requested_resources):
+        if requested_resources is not None:
+            assert isinstance(requested_resources, list), requested_resources
+        self.resource_requests = [
+            request for request in requested_resources if len(request) > 0
+        ]
 
     def info_string(self):
         return " - " + "\n - ".join(

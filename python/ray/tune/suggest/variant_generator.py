@@ -1,6 +1,7 @@
 import copy
 import logging
-from typing import Any, Dict, Generator, List, Tuple
+from collections.abc import Mapping
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 import numpy
 import random
@@ -138,13 +139,38 @@ def parse_spec_vars(spec: Dict) -> Tuple[List[Tuple[Tuple, Any]], List[Tuple[
     return resolved_vars, domain_vars, grid_vars
 
 
-def count_variants(spec: Dict) -> int:
-    spec = copy.deepcopy(spec)
-    _, domain_vars, grid_vars = parse_spec_vars(spec)
-    grid_count = 1
-    for path, domain in grid_vars:
-        grid_count *= len(domain.categories)
-    return spec.get("num_samples", 1) * grid_count
+def count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
+    # Helper function: Deep update dictionary
+    def deep_update(d, u):
+        for k, v in u.items():
+            if isinstance(v, Mapping):
+                d[k] = deep_update(d.get(k, {}), v)
+            else:
+                d[k] = v
+        return d
+
+    # Count samples for a specific spec
+    def spec_samples(spec, num_samples=1):
+        _, domain_vars, grid_vars = parse_spec_vars(spec)
+        grid_count = 1
+        for path, domain in grid_vars:
+            grid_count *= len(domain.categories)
+        return num_samples * grid_count
+
+    total_samples = 0
+    total_num_samples = spec.get("num_samples", 1)
+    # For each preset, overwrite the spec and count the samples generated
+    # for this preset
+    for preset in presets:
+        preset_spec = copy.deepcopy(spec)
+        deep_update(preset_spec["config"], preset)
+        total_samples += spec_samples(preset_spec, 1)
+        total_num_samples -= 1
+
+    # Add the remaining samples
+    if total_num_samples > 0:
+        total_samples += spec_samples(spec, total_num_samples)
+    return total_samples
 
 
 def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
@@ -170,6 +196,45 @@ def _generate_variants(spec: Dict) -> Tuple[Dict, Dict]:
                         "your configuration.".format(k))
                 resolved_vars[k] = v
             yield resolved_vars, spec
+
+
+def get_preset_variants(spec: Dict, config: Dict):
+    """Get variants according to a spec, initialized with a config.
+
+    Variables from the spec are overwritten by the variables in the config.
+    Thus, we may end up with less sampled parameters.
+
+    This function also checks if values used to overwrite search space
+    parameters are valid, and logs a warning if not.
+    """
+    spec = copy.deepcopy(spec)
+
+    resolved, _, _ = parse_spec_vars(config)
+
+    for path, val in resolved:
+        try:
+            domain = _get_value(spec["config"], path)
+            if isinstance(domain, dict):
+                if "grid_search" in domain:
+                    domain = Categorical(domain["grid_search"])
+                else:
+                    # If users want to overwrite an entire subdict,
+                    # let them do it.
+                    domain = None
+        except IndexError as exc:
+            raise ValueError(
+                f"Pre-set config key `{'/'.join(path)}` does not correspond "
+                f"to a valid key in the search space definition. Please add "
+                f"this path to the `config` variable passed to `tune.run()`."
+            ) from exc
+
+        if domain and not domain.is_valid(val):
+            logger.warning(
+                f"Pre-set value `{val}` is not within valid values of "
+                f"parameter `{'/'.join(path)}`: {domain.domain_str}")
+        assign_value(spec["config"], path, val)
+
+    return _generate_variants(spec)
 
 
 def assign_value(spec: Dict, path: Tuple, value: Any):

@@ -19,10 +19,14 @@ The rest of this document explains step-by-step how to use the Ray Kubernetes Op
 .. role:: bash(code)
    :language: bash
 
+.. warning::
+   The Ray Kubernetes Operator requires Kubernetes version at least ``v1.17.0``. Check Kubernetes version info with the command
+   :bash:`kubectl version`.
+
 .. note::
    The example commands in this document launch six Kubernetes pods, using a total of 6 CPU and 3.5Gi memory.   
    If you are experimenting using a test Kubernetes environment such as `minikube`_, make sure to provision sufficient resources, e.g.
-   :bash:`minikube start --cpu=6 --memory="4G"`.
+   :bash:`minikube start --cpus=6 --memory=\"4G\"`. 
    Alternatively, reduce resource usage by editing the ``yaml`` files referenced in this document; for example, reduce ``minWorkers``
    in ``example_cluster.yaml`` and ``example_cluster2.yaml``.
 

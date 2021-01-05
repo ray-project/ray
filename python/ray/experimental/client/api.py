@@ -1,74 +1,51 @@
-# This file defines an interface and client-side API stub
-# for referring either to the core Ray API or the same interface
-# from the Ray client.
-#
-# In tandem with __init__.py, we want to expose an API that's
-# close to `python/ray/__init__.py` but with more than one implementation.
-# The stubs in __init__ should call into a well-defined interface.
-# Only the core Ray API implementation should actually `import ray`
-# (and thus import all the raylet worker C bindings and such).
-# But to make sure that we're matching these calls, we define this API.
-
-from abc import ABC
-from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Union, Optional
-import ray.core.generated.ray_client_pb2 as ray_client_pb2
+"""This file defines the interface between the ray client worker
+and the overall ray module API.
+"""
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ray.experimental.client.common import ClientActorHandle
     from ray.experimental.client.common import ClientStub
+    from ray.experimental.client.common import ClientActorHandle
     from ray.experimental.client.common import ClientObjectRef
-    from ray._raylet import ObjectRef
-
-    # Use the imports for type checking.  This is a python 3.6 limitation.
-    # See https://www.python.org/dev/peps/pep-0563/
-    PutType = Union[ClientObjectRef, ObjectRef]
 
 
-class APIImpl(ABC):
-    """
-    APIImpl is the interface to implement for whichever version of the core
-    Ray API that needs abstracting when run in client mode.
+class ClientAPI:
+    """The Client-side methods corresponding to the ray API. Delegates
+    to the Client Worker that contains the connection to the ClientServer.
     """
 
-    @abstractmethod
-    def get(self, vals, *, timeout: Optional[float] = None) -> Any:
-        """
-        get is the hook stub passed on to replace `ray.get`
+    def __init__(self, worker=None):
+        self.worker = worker
+
+    def get(self, vals, *, timeout=None):
+        """get is the hook stub passed on to replace `ray.get`
 
         Args:
             vals: [Client]ObjectRef or list of these refs to retrieve.
             timeout: Optional timeout in milliseconds
         """
-        pass
+        return self.worker.get(vals, timeout=timeout)
 
-    @abstractmethod
-    def put(self, vals: Any, *args,
-            **kwargs) -> Union["ClientObjectRef", "ObjectRef"]:
-        """
-        put is the hook stub passed on to replace `ray.put`
+    def put(self, *args, **kwargs):
+        """put is the hook stub passed on to replace `ray.put`
 
         Args:
             vals: The value or list of values to `put`.
             args: opaque arguments
             kwargs: opaque keyword arguments
         """
-        pass
+        return self.worker.put(*args, **kwargs)
 
-    @abstractmethod
     def wait(self, *args, **kwargs):
-        """
-        wait is the hook stub passed on to replace `ray.wait`
+        """wait is the hook stub passed on to replace `ray.wait`
 
         Args:
             args: opaque arguments
             kwargs: opaque keyword arguments
         """
-        pass
+        return self.worker.wait(*args, **kwargs)
 
-    @abstractmethod
     def remote(self, *args, **kwargs):
-        """
-        remote is the hook stub passed on to replace `ray.remote`.
+        """remote is the hook stub passed on to replace `ray.remote`.
 
         This sets up remote functions or actors, as the decorator,
         but does not execute them.
@@ -77,12 +54,24 @@ class APIImpl(ABC):
             args: opaque arguments
             kwargs: opaque keyword arguments
         """
-        pass
+        # Delayed import to avoid a cyclic import
+        from ray.experimental.client.common import remote_decorator
+        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+            # This is the case where the decorator is just @ray.remote.
+            return remote_decorator(options=None)(args[0])
+        error_string = ("The @ray.remote decorator must be applied either "
+                        "with no arguments and no parentheses, for example "
+                        "'@ray.remote', or it must be applied using some of "
+                        "the arguments 'num_returns', 'num_cpus', 'num_gpus', "
+                        "'memory', 'object_store_memory', 'resources', "
+                        "'max_calls', or 'max_restarts', like "
+                        "'@ray.remote(num_returns=2, "
+                        "resources={\"CustomResource\": 1})'.")
+        assert len(args) == 0 and len(kwargs) > 0, error_string
+        return remote_decorator(options=kwargs)
 
-    @abstractmethod
     def call_remote(self, instance: "ClientStub", *args, **kwargs):
-        """
-        call_remote is called by stub objects to execute them remotely.
+        """call_remote is called by stub objects to execute them remotely.
 
         This is used by stub objects in situations where they're called
         with .remote, eg, `f.remote()` or `actor_cls.remote()`.
@@ -95,31 +84,57 @@ class APIImpl(ABC):
             args: opaque arguments
             kwargs: opaque keyword arguments
         """
-        pass
+        return self.worker.call_remote(instance, *args, **kwargs)
 
-    @abstractmethod
-    def close(self) -> None:
+    def call_release(self, id: bytes) -> None:
+        """Attempts to release an object reference.
+
+        When client references are destructed, they release their reference,
+        which can opportunistically send a notification through the datachannel
+        to release the reference being held for that object on the server.
+
+        Args:
+            id: The id of the reference to release on the server side.
         """
-        close cleans up an API connection by closing any channels or
+        return self.worker.call_release(id)
+
+    def call_retain(self, id: bytes) -> None:
+        """Attempts to retain a client object reference.
+
+        Increments the reference count on the client side, to prevent
+        the client worker from attempting to release the server reference.
+
+        Args:
+            id: The id of the reference to retain on the client side.
+        """
+        return self.worker.call_retain(id)
+
+    def close(self) -> None:
+        """close cleans up an API connection by closing any channels or
         shutting down any servers gracefully.
         """
-        pass
+        return self.worker.close()
 
-    @abstractmethod
-    def kill(self, actor, *, no_restart=True):
+    def get_actor(self, name: str) -> "ClientActorHandle":
+        """Returns a handle to an actor by name.
+
+        Args:
+            name: The name passed to this actor by
+              Actor.options(name="name").remote()
         """
-        kill forcibly stops an actor running in the cluster
+        return self.worker.get_actor(name)
+
+    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
+        """kill forcibly stops an actor running in the cluster
 
         Args:
             no_restart: Whether this actor should be restarted if it's a
               restartable actor.
         """
-        pass
+        return self.worker.terminate_actor(actor, no_restart)
 
-    @abstractmethod
-    def cancel(self, obj, *, force=False, recursive=True):
-        """
-        Cancels a task on the cluster.
+    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
+        """Cancels a task on the cluster.
 
         If the specified task is pending execution, it will not be executed. If
         the task is currently executing, the behavior depends on the ``force``
@@ -136,46 +151,11 @@ class APIImpl(ABC):
             recursive (boolean): Whether to try to cancel tasks submitted by
                 the task specified.
         """
-        pass
-
-
-class ClientAPI(APIImpl):
-    """
-    The Client-side methods corresponding to the ray API. Delegates
-    to the Client Worker that contains the connection to the ClientServer.
-    """
-
-    def __init__(self, worker):
-        self.worker = worker
-
-    def get(self, vals, *, timeout=None):
-        return self.worker.get(vals, timeout=timeout)
-
-    def put(self, *args, **kwargs):
-        return self.worker.put(*args, **kwargs)
-
-    def wait(self, *args, **kwargs):
-        return self.worker.wait(*args, **kwargs)
-
-    def remote(self, *args, **kwargs):
-        return self.worker.remote(*args, **kwargs)
-
-    def call_remote(self, instance: "ClientStub", *args, **kwargs):
-        return self.worker.call_remote(instance, *args, **kwargs)
-
-    def close(self) -> None:
-        return self.worker.close()
-
-    def kill(self, actor: "ClientActorHandle", *, no_restart=True):
-        return self.worker.terminate_actor(actor, no_restart)
-
-    def cancel(self, obj: "ClientObjectRef", *, force=False, recursive=True):
         return self.worker.terminate_task(obj, force, recursive)
 
     # Various metadata methods for the client that are defined in the protocol.
     def is_initialized(self) -> bool:
-        """ True if our client is connected, and if the server is initialized.
-
+        """True if our client is connected, and if the server is initialized.
         Returns:
             A boolean determining if the client is connected and
             server initialized.
@@ -188,6 +168,8 @@ class ClientAPI(APIImpl):
         Returns:
             Information about the Ray clients in the cluster.
         """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.NODES)
 
@@ -201,6 +183,8 @@ class ClientAPI(APIImpl):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.CLUSTER_RESOURCES)
 
@@ -216,6 +200,8 @@ class ClientAPI(APIImpl):
             A dictionary mapping resource name to the total quantity of that
                 resource in the cluster.
         """
+        # This should be imported here, otherwise, it will error doc build.
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 

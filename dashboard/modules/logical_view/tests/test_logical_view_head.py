@@ -35,7 +35,7 @@ def test_actor_groups(ray_start_with_dashboard):
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    timeout_seconds = 5
+    timeout_seconds = 10
     start_time = time.time()
     last_ex = None
     while True:
@@ -67,6 +67,63 @@ def test_actor_groups(ray_start_with_dashboard):
             entries = actor_groups["InfeasibleActor"]["entries"]
             assert "requiredResources" in entries[0]
             assert "GPU" in entries[0]["requiredResources"]
+            break
+        except Exception as ex:
+            last_ex = ex
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                ex_stack = traceback.format_exception(
+                    type(last_ex), last_ex,
+                    last_ex.__traceback__) if last_ex else []
+                ex_stack = "".join(ex_stack)
+                raise Exception(f"Timed out while testing, {ex_stack}")
+
+
+def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
+    @ray.remote
+    class Foo:
+        def __init__(self, num):
+            self.num = num
+
+        def do_task(self):
+            return self.num
+
+    @ray.remote(num_gpus=1)
+    class InfeasibleActor:
+        pass
+
+    foo_actors = [Foo.remote(4), Foo.remote(5)]
+    infeasible_actor = InfeasibleActor.remote()  # noqa
+    results = [actor.do_task.remote() for actor in foo_actors]  # noqa
+    webui_url = ray_start_with_dashboard["webui_url"]
+    assert wait_until_server_available(webui_url)
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 5
+    start_time = time.time()
+    last_ex = None
+    while True:
+        time.sleep(1)
+        try:
+            resp = requests.get(f"{webui_url}/logical/actors")
+            resp_json = resp.json()
+            resp_data = resp_json["data"]
+            actors = resp_data["actors"]
+            assert len(actors) == 3
+            one_entry = list(actors.values())[0]
+            assert "jobId" in one_entry
+            assert "taskSpec" in one_entry
+            assert "functionDescriptor" in one_entry["taskSpec"]
+            assert type(one_entry["taskSpec"]["functionDescriptor"]) is dict
+            assert "address" in one_entry
+            assert type(one_entry["address"]) is dict
+            assert "state" in one_entry
+            assert "name" in one_entry
+            assert "numRestarts" in one_entry
+            assert "pid" in one_entry
+            all_pids = [entry["pid"] for entry in actors.values()]
+            assert 0 in all_pids  # The infeasible actor
+            assert len(all_pids) > 1
             break
         except Exception as ex:
             last_ex = ex

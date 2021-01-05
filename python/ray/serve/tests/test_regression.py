@@ -15,7 +15,7 @@ def test_np_in_composed_model(serve_instance):
     # in cloudpickle _from_numpy_buffer
 
     def sum_model(request):
-        return np.sum(request.args["data"])
+        return np.sum(request.query_params["data"])
 
     class ComposedModel:
         def __init__(self):
@@ -42,7 +42,7 @@ def test_backend_worker_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     client = serve_instance
 
-    def gc_unreachable_objects(flask_request):
+    def gc_unreachable_objects(starlette_request):
         gc.set_debug(gc.DEBUG_SAVEALL)
         gc.collect()
         return len(gc.garbage)
