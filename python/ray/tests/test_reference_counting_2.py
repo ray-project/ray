@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def one_worker_100MiB(request):
     config = {
-        "oom_grace_period_s": 1,
         "task_retry_delay_ms": 0,
         "object_timeout_milliseconds": 1000,
     }

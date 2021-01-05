@@ -92,7 +92,7 @@ Status CreateRequestQueue::ProcessRequests() {
   while (!queue_.empty()) {
     auto request_it = queue_.begin();
     auto create_ok = ProcessRequest(*request_it);
-    auto now = timer_callback_();
+    auto now = get_time_();
     if (create_ok) {
       FinishRequest(request_it);
       last_success_ns_ = now;

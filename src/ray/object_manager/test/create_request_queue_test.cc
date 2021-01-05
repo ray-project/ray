@@ -53,7 +53,7 @@ class CreateRequestQueueTest : public ::testing::Test {
             /*oom_grace_period_s=*/oom_grace_period_s_,
             /*spill_object_callback=*/[&]() { return false; },
             /*on_global_gc=*/[&]() { num_global_gc_++; },
-            /*timer_callback=*/[&]() { return current_time_ns_; }) {}
+            /*get_time=*/[&]() { return current_time_ns_; }) {}
 
   void AssertNoLeaks() {
     ASSERT_TRUE(queue_.queue_.empty());
@@ -141,7 +141,7 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
       // Spilling is failing.
       /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*timer_callback=*/[&]() { return 0; });
+      /*get_time=*/[&]() { return 0; });
 
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
     return PlasmaError::OutOfMemory;
@@ -171,7 +171,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
       /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/[&]() { return true; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*timer_callback=*/[&]() { return current_time_ns_; });
+      /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
@@ -214,7 +214,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
       /*oom_grace_period_s=*/oom_grace_period_s_,
       /*spill_object_callback=*/[&]() { return is_spilling_possible; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*timer_callback=*/[&]() { return current_time_ns_; });
+      /*get_time=*/[&]() { return current_time_ns_; });
 
   auto return_status = PlasmaError::OutOfMemory;
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
@@ -277,7 +277,7 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
       /*oom_grace_period_s=*/1,
       /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() {},
-      /*timer_callback=*/[&]() { return 0; });
+      /*get_time=*/[&]() { return 0; });
 
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
     return PlasmaError::OutOfMemory;

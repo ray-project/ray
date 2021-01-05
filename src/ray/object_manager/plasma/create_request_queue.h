@@ -37,12 +37,12 @@ class CreateRequestQueue {
   CreateRequestQueue(bool evict_if_full, int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      std::function<void()> trigger_global_gc,
-                     std::function<int64_t()> timer_callback)
+                     std::function<int64_t()> get_time)
       : evict_if_full_(evict_if_full),
         oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         trigger_global_gc_(trigger_global_gc),
-        timer_callback_(timer_callback) {
+        get_time_(get_time) {
     RAY_LOG(DEBUG) << "Starting plasma::CreateRequestQueue with OOM grace period "
                    << oom_grace_period_ns_ << ", evict if full? "
                    << (evict_if_full_ ? 1 : 0);
@@ -170,7 +170,7 @@ class CreateRequestQueue {
   const std::function<void()> trigger_global_gc_;
 
   /// A callback to return the current time.
-  const std::function<int64_t()> timer_callback_;
+  const std::function<int64_t()> get_time_;
 
   /// Queue of object creation requests to respond to. Requests will be placed
   /// on this queue if the object store does not have enough room at the time

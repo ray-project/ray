@@ -83,7 +83,6 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
@@ -116,7 +115,6 @@ def test_spilling_not_done_for_pinned_object(tmp_path, shutdown_only):
         "object_store_memory": 75 * 1024 * 1024,
         "_system_config": {
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "max_io_workers": 4,
             "object_spilling_config": json.dumps({
@@ -169,7 +167,6 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0
@@ -238,7 +235,6 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
         _system_config={
             "max_io_workers": 1,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": object_spilling_config,
             "min_spilling_size": 0,
@@ -272,7 +268,6 @@ def test_delete_objects(tmp_path, shutdown_only):
             "max_io_workers": 1,
             "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
@@ -315,7 +310,6 @@ def test_delete_objects_delete_while_creating(tmp_path, shutdown_only):
             "max_io_workers": 4,
             "min_spilling_size": 0,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
@@ -365,7 +359,6 @@ def test_delete_objects_on_worker_failure(tmp_path, shutdown_only):
         _system_config={
             "max_io_workers": 4,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
@@ -441,7 +434,6 @@ def test_delete_objects_multi_node(tmp_path, ray_start_cluster):
             "max_io_workers": 2,
             "min_spilling_size": 20 * 1024 * 1024,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",
@@ -515,7 +507,6 @@ def test_fusion_objects(tmp_path, shutdown_only):
         _system_config={
             "max_io_workers": 3,
             "automatic_object_spilling_enabled": True,
-            "oom_grace_period_s": 1,
             "object_store_full_delay_ms": 100,
             "object_spilling_config": json.dumps({
                 "type": "filesystem",

@@ -128,7 +128,7 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback, object_store_full_callback,
-          /*timer_callback=*/
+          /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); }) {
   store_info_.directory = directory;
   store_info_.hugepages_enabled = hugepages_enabled;
