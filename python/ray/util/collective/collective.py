@@ -1,5 +1,7 @@
 """APIs exposed under the namespace ray.util.collective."""
 import logging
+import os
+from typing import List
 
 import numpy as np
 import ray
@@ -122,6 +124,49 @@ def init_collective_group(world_size: int,
     assert (rank >= 0)
     assert (rank < world_size)
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
+
+
+def declare_collective_group(actors,
+                             world_size: int,
+                             ranks: List[int],
+                             backend=types.Backend.NCCL,
+                             group_name: str = "default"):
+    """Declare a list of actors as a collective group.
+
+    Note: This function should be called in a driver process.
+
+    Args:
+        actors (list): a list of actors to be set in a collective group.
+        group_options (dict): a dictionary that contains group_name(str),
+                              world_size(int), rank(list of int, e.g. [0,1]
+                              means the first actor is rank 0, and the second
+                              actor is rank 1), backend(str).
+    """
+    backend = types.Backend(backend)
+    _check_backend_availability(backend)
+
+    name = "info_" + group_name
+    try:
+        ray.get_actor(name)
+        raise RuntimeError("Trying to initialize a group twice.")
+    except ValueError:
+        pass
+
+    if len(ranks) != len(actors):
+        raise RuntimeError("Each actor should correspond to one rank.")
+
+    if set(ranks) != set(range(len(ranks))):
+        raise RuntimeError("Rank must be a permutation from 0 to len-1.")
+
+    assert world_size > 0
+    assert all(ranks) >= 0 and all(ranks) < world_size
+
+    from ray.util.collective.util import Info
+    # store the information into a NamedActor that can be accessed later/
+    name = "info_" + group_name
+    actors_id = [a._ray_actor_id for a in actors]
+    info = Info.options(name=name, lifetime="detached").remote()
+    ray.wait([info.set_info.remote(actors_id, world_size, ranks, backend)])
 
 
 def destroy_collective_group(group_name: str = "default") -> None:
@@ -342,9 +387,33 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
 def _check_and_get_group(group_name):
     """Check the existence and return the group handle."""
     _check_inside_actor()
+    global _group_mgr
     if not is_group_initialized(group_name):
-        raise RuntimeError("The collective group '{}' is not "
-                           "initialized in the process.".format(group_name))
+        # try loading from remote info store
+        try:
+            # if the information is stored in an Info object,
+            # get and create the group.
+            name = "info_" + group_name
+            mgr = ray.get_actor(name=name)
+            ids, world_size, rank, backend = ray.get(mgr.get_info.remote())
+            worker = ray.worker.global_worker
+            id_ = worker.core_worker.get_actor_id()
+            r = rank[ids.index(id_)]
+            _group_mgr.create_collective_group(backend, world_size, r,
+                                               group_name)
+        except ValueError as exc:
+            # check if this group is initialized using options()
+            if "collective_group_name" in os.environ and \
+                    os.environ["collective_group_name"] == group_name:
+                rank = int(os.environ["collective_rank"])
+                world_size = int(os.environ["collective_world_size"])
+                backend = os.environ["collective_backend"]
+                _group_mgr.create_collective_group(backend, world_size, rank,
+                                                   group_name)
+            else:
+                raise RuntimeError(
+                    "The collective group '{}' is not "
+                    "initialized in the process.".format(group_name)) from exc
     g = _group_mgr.get_group_by_name(group_name)
     return g
 
