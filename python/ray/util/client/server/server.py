@@ -17,12 +17,12 @@ import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 import time
 import inspect
 import json
-from ray.experimental.client.server.server_pickler import convert_from_arg
-from ray.experimental.client.server.server_pickler import dumps_from_server
-from ray.experimental.client.server.server_pickler import loads_from_client
-from ray.experimental.client.server.dataservicer import DataServicer
-from ray.experimental.client.server.logservicer import LogstreamServicer
-from ray.experimental.client.server.server_stubs import current_remote
+from ray.util.client.server.server_pickler import convert_from_arg
+from ray.util.client.server.server_pickler import dumps_from_server
+from ray.util.client.server.server_pickler import loads_from_client
+from ray.util.client.server.dataservicer import DataServicer
+from ray.util.client.server.logservicer import LogstreamServicer
+from ray.util.client.server.server_stubs import current_remote
 from ray._private.client_mode_hook import disable_client_hook
 
 logger = logging.getLogger(__name__)
