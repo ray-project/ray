@@ -27,8 +27,8 @@ public class NetworkUtil {
         if (!current.isUp() || current.isLoopback() || current.isVirtual()) {
           continue;
         }
-        if (!Strings.isNullOrEmpty(interfaceName) && !interfaceName
-            .equals(current.getDisplayName())) {
+        if (!Strings.isNullOrEmpty(interfaceName)
+            && !interfaceName.equals(current.getDisplayName())) {
           continue;
         }
         Enumeration<InetAddress> addresses = current.getInetAddresses();
@@ -65,7 +65,8 @@ public class NetworkUtil {
       throw new IllegalArgumentException("Invalid start port: " + port);
     }
 
-    try (ServerSocket ss = new ServerSocket(port); DatagramSocket ds = new DatagramSocket(port)) {
+    try (ServerSocket ss = new ServerSocket(port);
+        DatagramSocket ds = new DatagramSocket(port)) {
       ss.setReuseAddress(true);
       ds.setReuseAddress(true);
       return true;
