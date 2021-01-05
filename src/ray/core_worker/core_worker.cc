@@ -867,7 +867,11 @@ Status CoreWorker::Put(const RayObject &object,
   reference_counter_->AddOwnedObject(
       *object_id, contained_object_ids, rpc_address_, CurrentCallSite(), object.GetSize(),
       /*is_reconstructable=*/false, NodeID::FromBinary(rpc_address_.raylet_id()));
-  return Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
+  auto status = Put(object, contained_object_ids, *object_id, /*pin_object=*/true);
+  if (!status.ok()) {
+    reference_counter_->RemoveOwnedObject(*object_id);
+  }
+  return status;
 }
 
 Status CoreWorker::Put(const RayObject &object,
@@ -911,21 +915,23 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
+  reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
+                                     CurrentCallSite(), data_size + metadata->Size(),
+                                     /*is_reconstructable=*/false,
+                                     NodeID::FromBinary(rpc_address_.raylet_id()));
   if (options_.is_local_mode ||
       (RayConfig::instance().put_small_object_in_memory_store() &&
        static_cast<int64_t>(data_size) <
            RayConfig::instance().max_direct_call_object_size())) {
     *data = std::make_shared<LocalMemoryBuffer>(data_size);
   } else {
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Create(
-        metadata, data_size, *object_id, /* owner_address = */ rpc_address_, data));
-  }
-  // Only add the object to the reference counter if it didn't already exist.
-  if (data) {
-    reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
-                                       CurrentCallSite(), data_size + metadata->Size(),
-                                       /*is_reconstructable=*/false,
-                                       NodeID::FromBinary(rpc_address_.raylet_id()));
+    auto status =
+        plasma_store_provider_->Create(metadata, data_size, *object_id,
+                                       /* owner_address = */ rpc_address_, data);
+    if (!status.ok() || !data) {
+      reference_counter_->RemoveOwnedObject(*object_id);
+      return status;
+    }
   }
   return Status::OK();
 }

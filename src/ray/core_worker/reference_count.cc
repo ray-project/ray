@@ -166,6 +166,20 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   }
 }
 
+void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end())
+      << "Tried to remove reference for nonexistent owned object " << object_id
+      << ", object must be added with ReferenceCounter::AddOwnedObject() before it "
+      << "can be removed";
+  RAY_CHECK(it->second.RefCount() == 0)
+      << "Tried to remove reference for owned object " << object_id << " that has "
+      << it->second.RefCount() << " references, must have 0 references to be removed";
+  RAY_LOG(DEBUG) << "Removing owned object " << object_id;
+  DeleteReferenceInternal(it, nullptr);
+}
+
 void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
