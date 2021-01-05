@@ -141,8 +141,8 @@ class ClusterTaskManager {
   ///
   /// \param worker The worker to be marked as blocked.
   /// \return true if the worker is non-block and release_resources is true, else false.
-  bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(
-      std::shared_ptr<WorkerInterface> worker, bool release_resources);
+  bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(std::shared_ptr<WorkerInterface> worker,
+                                                 bool release_resources);
 
   /// When direct call task is unblocked, the cpu resources that the worker gave up should
   /// be returned to it.

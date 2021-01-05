@@ -202,10 +202,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
 
   if (new_scheduler_enabled_) {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
-    auto new_resource_scheduler =
-        std::make_shared<ClusterResourceScheduler>(
-            self_node_id_.Binary(),
-            local_resources.GetTotalResources().GetResourceMap());
+    auto new_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+        self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap());
     cluster_resource_scheduler_ = new_resource_scheduler;
 
     auto get_node_info_func = [this](const NodeID &node_id) {
@@ -454,7 +452,7 @@ void NodeManager::ReportResourceUsage() {
   cluster_resource_scheduler_->UpdateLastReportResourcesFromGcs(
       gcs_client_->NodeResources().GetLastResourceUsage());
   cluster_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
-                                              resources_data);
+                                                 resources_data);
 
   if (new_scheduler_enabled_) {
     cluster_task_manager_->FillResourceUsage(light_report_resource_usage_enabled_,
