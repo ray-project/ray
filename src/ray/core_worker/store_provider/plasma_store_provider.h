@@ -31,7 +31,7 @@ class TrackedBuffer;
 
 // Active buffers tracker. This must be allocated as a separate structure since its
 // lifetime can exceed that of the store provider due to TrackedBuffer.
-class RAY_NO_EXPORT BufferTracker {
+class BufferTracker {
  public:
   // Track an object.
   void Record(const ObjectID &object_id, TrackedBuffer *buffer,
