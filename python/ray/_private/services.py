@@ -1822,11 +1822,12 @@ def start_ray_client_server(redis_address,
     """Run the server process of the Ray client.
 
     Args:
-        ray_client_server_port (int):
+        ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
 
     Returns:
         ProcessInfo for the process that was started.
