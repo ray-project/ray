@@ -594,7 +594,8 @@ class TorchTrainer:
 
             TorchTrainable = TorchTrainer.as_trainable(
                 training_operator_cls=MyTrainingOperator,
-                num_gpus=2,
+                num_workers=2,
+                use_gpu=True,
                 override_tune_step=step
             )
             analysis = tune.run(
@@ -695,7 +696,8 @@ class BaseTorchTrainable(Trainable):
         # TorchTrainable is subclass of BaseTorchTrainable.
         TorchTrainable = TorchTrainer.as_trainable(
             training_operator_cls=MyTrainingOperator,
-            num_gpus=2,
+            num_workers=2,
+            use_gpu=True,
             override_tune_step=custom_step
         )
 

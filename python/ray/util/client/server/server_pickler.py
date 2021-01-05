@@ -5,7 +5,7 @@ references held for the client within the server.
 
 More discussion about the client/server pickling protocol can be found in:
 
-  ray/experimental/client/client_pickler.py
+  ray/util/client/client_pickler.py
 
 ServerPickler dumps ray objects from the server into the appropriate stubs.
 ClientUnpickler loads stubs from the client and finds their associated handle
@@ -20,12 +20,11 @@ from typing import Any
 from typing import TYPE_CHECKING
 
 from ray._private.client_mode_hook import disable_client_hook
-from ray.experimental.client.client_pickler import PickleStub
-from ray.experimental.client.server.server_stubs import (
-    ServerSelfReferenceSentinel)
+from ray.util.client.client_pickler import PickleStub
+from ray.util.client.server.server_stubs import ServerSelfReferenceSentinel
 
 if TYPE_CHECKING:
-    from ray.experimental.client.server.server import RayletServicer
+    from ray.util.client.server.server import RayletServicer
     import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 if sys.version_info < (3, 8):
