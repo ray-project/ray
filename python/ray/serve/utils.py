@@ -7,20 +7,19 @@ import logging
 import random
 import string
 import time
-from typing import List, Dict
+from typing import Iterable, List, Dict, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
 
+import starlette.requests
 import requests
 import numpy as np
 import pydantic
-import starlette.requests
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.context import TaskContext
-from ray.serve.http_util import build_starlette_request
+from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -85,23 +84,19 @@ class ServeRequest:
 
 
 def parse_request_item(request_item):
-    if request_item.metadata.request_context == TaskContext.Web:
-        asgi_scope, body_bytes = request_item.args
-        return build_starlette_request(asgi_scope, body_bytes)
-    else:
-        arg = request_item.args[0] if len(request_item.args) == 1 else None
+    arg = request_item.args[0] if len(request_item.args) == 1 else None
 
-        # If the input data from handle is web request, we don't need to wrap
-        # it in ServeRequest.
-        if isinstance(arg, starlette.requests.Request):
-            return arg
+    # If the input data from handle is web request, we don't need to wrap
+    # it in ServeRequest.
+    if isinstance(arg, starlette.requests.Request):
+        return arg
 
-        return ServeRequest(
-            arg,
-            request_item.kwargs,
-            headers=request_item.metadata.http_headers,
-            method=request_item.metadata.http_method,
-        )
+    return ServeRequest(
+        arg,
+        request_item.kwargs,
+        headers=request_item.metadata.http_headers,
+        method=request_item.metadata.http_method,
+    )
 
 
 def _get_logger():
@@ -301,8 +296,18 @@ def try_schedule_resources_on_nodes(
         for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
+
             for key, count in resource_dict.items():
-                if node_resource.get(key, 0) - count < 0:
+                # Fix legacy behaviour in all memory objects
+                if "memory" in key:
+                    memory_resource = node_resource.get(key, 0)
+                    if memory_resource > 0:
+                        # Convert from chunks to bytes
+                        memory_resource *= MEMORY_RESOURCE_UNIT_BYTES
+                    if memory_resource - count < 0:
+                        feasible = False
+
+                elif node_resource.get(key, 0) - count < 0:
                     feasible = False
 
             # If we can, schedule it on this node
@@ -380,5 +385,43 @@ class MockImportedBackend:
     def __call__(self, *args):
         return {"arg": self.arg, "config": self.config}
 
-    def other_method(self, request):
-        return request.data
+    async def other_method(self, request):
+        return await request.body()
+
+
+def compute_iterable_delta(old: Iterable,
+                           new: Iterable) -> Tuple[set, set, set]:
+    """Given two iterables, return the entries that's (added, removed, updated).
+
+    Usage:
+        >>> old = {"a", "b"}
+        >>> new = {"a", "d"}
+        >>> compute_dict_delta(old, new)
+        ({"d"}, {"b"}, {"a"})
+    """
+    old_keys, new_keys = set(old), set(new)
+    added_keys = new_keys - old_keys
+    removed_keys = old_keys - new_keys
+    updated_keys = old_keys.intersection(new_keys)
+    return added_keys, removed_keys, updated_keys
+
+
+def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
+    """Given two dicts, return the entries that's (added, removed, updated).
+
+    Usage:
+        >>> old = {"a": 1, "b": 2}
+        >>> new = {"a": 3, "d": 4}
+        >>> compute_dict_delta(old, new)
+        ({"d": 4}, {"b": 2}, {"a": 3})
+    """
+    added_keys, removed_keys, updated_keys = compute_iterable_delta(
+        old_dict.keys(), new_dict.keys())
+    return (
+        {k: new_dict[k]
+         for k in added_keys},
+        {k: old_dict[k]
+         for k in removed_keys},
+        {k: new_dict[k]
+         for k in updated_keys},
+    )

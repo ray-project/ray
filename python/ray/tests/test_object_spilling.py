@@ -11,6 +11,7 @@ import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
+from ray.internal.internal_api import memory_summary
 
 bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
@@ -196,6 +197,50 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spill_stats(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    ray.init(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "max_io_workers": 100,
+            "min_spilling_size": 1,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": str(temp_folder)
+                    }
+                },
+                separators=(",", ":"))
+        },
+    )
+
+    @ray.remote
+    def f():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+    ids = []
+    for _ in range(4):
+        x = f.remote()
+        ids.append(x)
+
+    while ids:
+        print(ray.get(ids.pop()))
+
+    x_id = f.remote()  # noqa
+    ray.get(x_id)
+    s = memory_summary()
+    assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
+    assert "Spilled 200 MiB, 4 objects" in s, s
+    assert "Restored 150 MiB, 3 objects" in s, s
 
 
 @pytest.mark.skipif(

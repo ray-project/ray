@@ -182,7 +182,7 @@ void ServiceBasedGcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType
     // following flag is always false.
     resubscribe_func_(false);
     // Resend resource usage after reconnected, needed by resource view in GCS.
-    node_accessor_->AsyncReReportResourceUsage();
+    node_resource_accessor_->AsyncReReportResourceUsage();
     break;
   default:
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;

@@ -18,6 +18,7 @@
 #include <thread>
 
 #include "gtest/gtest.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/status.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/gcs_client/service_based_gcs_client.h"
@@ -168,7 +169,7 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     uint64_t retry_with_request_id = 0;
-    std::shared_ptr<arrow::Buffer> data;
+    std::shared_ptr<Buffer> data;
     RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata,
                                metadata_size, &retry_with_request_id, &data));
     RAY_CHECK(retry_with_request_id == 0);
@@ -299,11 +300,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
     plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
-    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
-    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
-    ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data->size());
-    ASSERT_EQ(object_buffer_1.metadata->size(), object_buffer_2.metadata->size());
-    int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata->size();
+    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->Data());
+    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->Data());
+    ASSERT_EQ(object_buffer_1.data->Size(), object_buffer_2.data->Size());
+    ASSERT_EQ(object_buffer_1.metadata->Size(), object_buffer_2.metadata->Size());
+    int64_t total_size = object_buffer_1.data->Size() + object_buffer_1.metadata->Size();
     RAY_LOG(DEBUG) << "total_size " << total_size;
     for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);
@@ -337,8 +338,6 @@ class StressTestObjectManager : public TestObjectManagerBase {
                            TransferPattern transfer_pattern) {
     NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
     NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
-
-    ray::Status status = ray::Status::OK();
 
     if (transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PUSH ||
@@ -374,21 +373,25 @@ class StressTestObjectManager : public TestObjectManagerBase {
     case TransferPattern::PULL_A_B: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1, rpc::Address());
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
       }
     } break;
     case TransferPattern::PULL_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2, rpc::Address());
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1, rpc::Address());
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2, rpc::Address());
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
@@ -397,9 +400,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
       std::uniform_int_distribution<> dis(1, 50);
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size + dis(gen));
-        status = server2->object_manager_.Pull(oid1, rpc::Address());
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
         ObjectID oid2 = WriteDataToClient(client2, data_size + dis(gen));
-        status = server1->object_manager_.Pull(oid2, rpc::Address());
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     default: {
