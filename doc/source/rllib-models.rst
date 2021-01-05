@@ -454,7 +454,7 @@ Take a look at this model example that does exactly that:
 
 **Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
 
-It is sometimes helpful for learning when not only looking at the current observation
+It is sometimes helpful for learning not only to look at the current observation
 in order to calculate the next action, but also at the past n observations.
 In other cases, you may want to provide the most recent rewards or actions to the model as well.
 All this may even be useful when not working with partially observable environments (PO-MDPs)
@@ -464,8 +464,8 @@ The `trajectory view API <rllib-sample-collection.html#trajectory-view-api>`__ a
 to specify these more complex "view requirements".
 
 Here is a simple (non-RNN/Attention) example of a Model that takes as input
-the last 3 observations (very similar to the recommended "framestacking" in
-Atari environments):
+the last 3 observations (very similar to the recommended "framestacking" for
+learning in Atari environments):
 
 
 
