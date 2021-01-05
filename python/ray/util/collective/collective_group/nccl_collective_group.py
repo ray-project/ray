@@ -260,8 +260,11 @@ class NCCLGroup(BaseGroup):
             for i, tensor in enumerate(tensor_list):
                 nccl_util.copy_tensor(tensor, flattened_output_tensor[i])
 
-        self._collective(tensor, flattened_output_tensor, collective_fn,
-                         postprocess_fn=postprocess_fn)
+        self._collective(
+            tensor,
+            flattened_output_tensor,
+            collective_fn,
+            postprocess_fn=postprocess_fn)
 
     def reducescatter(self,
                       tensor,
@@ -295,8 +298,11 @@ class NCCLGroup(BaseGroup):
             for i, tensor in enumerate(tensor_list):
                 nccl_util.copy_tensor(flattened_input_tensor[i], tensor)
 
-        self._collective(flattened_input_tensor, tensor, collective_fn,
-                         preprocess_fn=preprocess_fn)
+        self._collective(
+            flattened_input_tensor,
+            tensor,
+            collective_fn,
+            preprocess_fn=preprocess_fn)
 
     def send(self, tensor, dst_rank):
         """Send tensor to a destination process in the group.
@@ -421,8 +427,12 @@ class NCCLGroup(BaseGroup):
         # TODO: implement a simple stream manager.
         return cupy.cuda.Stream.null
 
-    def _collective(self, input_tensor, output_tensor, collective_fn,
-                    preprocess_fn=None, postprocess_fn=None):
+    def _collective(self,
+                    input_tensor,
+                    output_tensor,
+                    collective_fn,
+                    preprocess_fn=None,
+                    postprocess_fn=None):
         """A method to encapsulate all collective calls.
 
         Args:
