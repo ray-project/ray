@@ -106,7 +106,7 @@ cdef class CoreWorker:
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
-    cdef make_actor_handle(self, ActorHandleSharedPtr actor_handle_shared_ptr)
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)
 
 cdef class FunctionDescriptor:
     cdef:
