@@ -53,7 +53,7 @@ class CreateRequestQueueTest : public ::testing::Test {
             /*oom_grace_period_ns=*/oom_grace_period_ns_,
             /*spill_object_callback=*/[&]() { return false; },
             /*on_global_gc=*/[&]() { num_global_gc_++; },
-            /*timer_callback=*/
+            /*period_from_last_success_callback=*/
             [&](int64_t now_ns, int64_t last_success_ns) {
               return period_since_last_success_;
             }) {}
@@ -144,7 +144,8 @@ TEST(CreateRequestQueueParameterTest, TestOomInfiniteRetry) {
       // Spilling is failing.
       /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*timer_callback=*/[&](int64_t now_ns, int64_t last_success_ns) { return 100; });
+      /*period_from_last_success_callback=*/
+      [&](int64_t now_ns, int64_t last_success_ns) { return 100; });
 
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
     return PlasmaError::OutOfMemory;
@@ -174,7 +175,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOom) {
       /*oom_grace_period_ns=*/oom_grace_period_ns_,
       /*spill_object_callback=*/[&]() { return true; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*timer_callback=*/
+      /*period_from_last_success_callback=*/
       [&](int64_t now_ns, int64_t last_success_ns) {
         return period_since_last_success_;
       });
@@ -220,7 +221,7 @@ TEST_F(CreateRequestQueueTest, TestTransientOomThenOom) {
       /*oom_grace_period_ns=*/oom_grace_period_ns_,
       /*spill_object_callback=*/[&]() { return is_spilling_possible; },
       /*on_global_gc=*/[&]() { num_global_gc_++; },
-      /*timer_callback=*/
+      /*period_from_last_success_callback=*/
       [&](int64_t now_ns, int64_t last_success_ns) {
         return period_since_last_success_;
       });
@@ -286,7 +287,8 @@ TEST(CreateRequestQueueParameterTest, TestNoEvictIfFull) {
       /*oom_grace_period_ns=*/100,
       /*spill_object_callback=*/[&]() { return false; },
       /*on_global_gc=*/[&]() {},
-      /*timer_callback=*/[&](int64_t now_ns, int64_t last_success_ns) { return 50; });
+      /*period_from_last_success_callback=*/
+      [&](int64_t now_ns, int64_t last_success_ns) { return 50; });
 
   auto oom_request = [&](bool evict_if_full, PlasmaObject *result) {
     return PlasmaError::OutOfMemory;

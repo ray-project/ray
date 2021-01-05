@@ -128,7 +128,8 @@ PlasmaStore::PlasmaStore(boost::asio::io_service &main_service, std::string dire
           /*evict_if_full=*/RayConfig::instance().object_pinning_enabled(),
           /*oom_grace_period_ns=*/RayConfig::instance().oom_grace_period_ns(),
           spill_objects_callback, object_store_full_callback,
-          /*timer_callback=*/[](int64_t now_ns, int64_t last_success_ns) {
+          /*period_from_last_success_callback=*/
+          [](int64_t now_ns, int64_t last_success_ns) {
             return now_ns - last_success_ns;
           }) {
   store_info_.directory = directory;
