@@ -156,8 +156,9 @@ def declare_collective_group(actors,
         raise RuntimeError("Each actor should correspond to one rank.")
 
     if set(ranks) != set(range(len(ranks))):
-        raise RuntimeError("Ranks must be a permutation from 0 to '{}'. Got '{}'."
-                           .format(len(ranks), "".join([str(r) for r in ranks])))
+        raise RuntimeError(
+            "Ranks must be a permutation from 0 to '{}'. Got '{}'.".format(
+                len(ranks), "".join([str(r) for r in ranks])))
 
     assert world_size > 0
     assert all(ranks) >= 0 and all(ranks) < world_size
