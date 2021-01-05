@@ -133,6 +133,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         for metric_name in ["test_counter", "test_histogram"]:
             assert any(metric_name in full_name for full_name in metric_names)
 
+        # Make sure GCS server metrics are recorded.
+        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
+
         # Make sure the numeric value is correct
         test_counter_sample = [
             m for m in metric_samples if "test_counter" in m.name

@@ -74,16 +74,16 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                     f"{self._dashboard_agent.node_id}"
         # A list of gauges to record and export metrics.
         self._gauges = {
-            "node_cpu": Gauge("node_cpu", "CPU usage per ray node",
+            "node_cpu": Gauge("node_cpu", "Total CPU usage on a ray node",
                               "percentage", ["ip"]),
-            "node_mem": Gauge("node_mem", "memory usage per ray node", "mb",
-                              ["ip"]),
+            "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
+                              "mb", ["ip"]),
             "raylet_cpu": Gauge("raylet_cpu",
-                                "CPU usage of the raylet in a node.",
-                                "percentage", ["ip"]),
+                                "CPU usage of the raylet on a node.",
+                                "percentage", ["ip", "pid"]),
             "raylet_mem": Gauge("raylet_mem",
-                                "Memory usage of the raylet in a node", "mb",
-                                ["ip"])
+                                "Memory usage of the raylet on a node", "mb",
+                                ["ip", "pid"])
         }
 
     async def GetProfilingStats(self, request, context):
@@ -269,19 +269,26 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
 
         raylet_stats = self._get_raylet_stats()
+        raylet_pid = str(raylet_stats["pid"])
         # -- raylet CPU --
         raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
         raylet_cpu_record = Record(
             gauge=self._gauges["raylet_cpu"],
             value=raylet_cpu_usage,
-            tags={"ip": ip})
+            tags={
+                "ip": ip,
+                "pid": raylet_pid
+            })
 
         # -- raylet mem --
         raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
         raylet_mem_record = Record(
             gauge=self._gauges["raylet_mem"],
             value=raylet_mem_usage,
-            tags={"ip": ip})
+            tags={
+                "ip": ip,
+                "pid": raylet_pid
+            })
 
         self._metrics_agent.record_reporter_stats(
             [cpu_record, mem_record, raylet_cpu_record, raylet_mem_record])
@@ -291,7 +298,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         while True:
             try:
                 stats = self._get_all_stats()
-                # logger.info(self._get_raylet_stats())
                 self._record_stats(stats)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
             except Exception:
