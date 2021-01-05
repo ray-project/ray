@@ -175,13 +175,25 @@ class HTTPProxyActor:
                                               **middleware.options)
 
         # Start running the HTTP server on the event loop.
+        # This task should be running forever. We track it in case of failure.
         self.running_task = asyncio.get_event_loop().create_task(self.run())
 
     async def ready(self):
-        done, pending = await asyncio.wait(
-            [self.setup_complete.wait(), self.running_task],
+        """Returns when HTTP proxy is ready to serve traffic.
+        Or throw exception when it is not able to serve traffic.
+        """
+        done_set, _ = await asyncio.wait(
+            [
+                # Either the HTTP setup has completed.
+                # The event is set inside self.run.
+                self.setup_complete.wait(),
+                # Or self.run errored.
+                self.running_task,
+            ],
             return_when=asyncio.FIRST_COMPLETED)
-        return await done.pop()
+
+        # Return None, or re-throw the exception from self.running_task.
+        return await done_set.pop()
 
     async def run(self):
         sock = socket.socket()

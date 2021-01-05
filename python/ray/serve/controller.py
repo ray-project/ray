@@ -108,8 +108,8 @@ class HTTPState:
         self._start_proxies_if_needed()
         self._stop_proxies_if_needed()
 
-    @property
-    def _target_nodes(self) -> List[Tuple[str, str]]:
+    def _get_target_nodes(self) -> List[Tuple[str, str]]:
+        """Return the list of (id, resource_key) to deploy HTTP servers on."""
         location = self._config.location
         target_nodes = get_all_node_ids()
 
@@ -126,7 +126,7 @@ class HTTPState:
 
     def _start_proxies_if_needed(self) -> None:
         """Start a proxy on every node if it doesn't already exist."""
-        for node_id, node_resource in self._target_nodes:
+        for node_id, node_resource in self._get_target_nodes():
             if node_id in self._proxy_actors:
                 continue
 
