@@ -25,6 +25,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/scheduling/old_cluster_resource_scheduler.h"
 #include "ray/stats/stats.h"
 #include "ray/util/asio_util.h"
 #include "ray/util/sample.h"
@@ -201,10 +202,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
 
   if (new_scheduler_enabled_) {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
-    new_resource_scheduler_ =
-        std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
+    auto new_resource_scheduler =
+        std::make_shared<ClusterResourceScheduler>(
             self_node_id_.Binary(),
-            local_resources.GetTotalResources().GetResourceMap()));
+            local_resources.GetTotalResources().GetResourceMap());
+    cluster_resource_scheduler_ = new_resource_scheduler;
 
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
@@ -218,11 +220,14 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, new_resource_scheduler_, dependency_manager_, is_owner_alive,
+        self_node_id_, new_resource_scheduler, dependency_manager_, is_owner_alive,
         get_node_info_func, announce_infeasible_task));
     placement_group_resource_manager_ =
-        std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler_);
+        std::make_shared<NewPlacementGroupResourceManager>(new_resource_scheduler);
   } else {
+    cluster_resource_scheduler_ = std::make_shared<OldClusterResourceScheduler>(
+        self_node_id_, local_available_resources_, cluster_resource_map_,
+        gcs_client_->NodeResources().GetLastResourceUsage());
     placement_group_resource_manager_ =
         std::make_shared<OldPlacementGroupResourceManager>(
             local_available_resources_, cluster_resource_map_, self_node_id_);
@@ -444,13 +449,14 @@ void NodeManager::ReportResourceUsage() {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   resources_data->set_node_id(self_node_id_.Binary());
 
+  // Update local chche from gcs remote cache, this is needed when gcs restart.
+  // We should always keep the cache view consistent.
+  cluster_resource_scheduler_->UpdateLastReportResourcesFromGcs(
+      gcs_client_->NodeResources().GetLastResourceUsage());
+  cluster_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
+                                              resources_data);
+
   if (new_scheduler_enabled_) {
-    // Update local chche from gcs remote cache, this is needed when gcs restart.
-    // We should always keep the cache view consistent.
-    new_resource_scheduler_->UpdateLastReportResourcesFromGcs(
-        gcs_client_->NodeResources().GetLastResourceUsage());
-    new_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
-                                               resources_data);
     cluster_task_manager_->FillResourceUsage(light_report_resource_usage_enabled_,
                                              resources_data);
   } else {
@@ -461,29 +467,6 @@ void NodeManager::ReportResourceUsage() {
     // changed.
     if (light_report_resource_usage_enabled_) {
       auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-      if (!last_heartbeat_resources->GetTotalResources().IsEqual(
-              local_resources.GetTotalResources())) {
-        for (const auto &resource_pair :
-             local_resources.GetTotalResources().GetResourceMap()) {
-          (*resources_data->mutable_resources_total())[resource_pair.first] =
-              resource_pair.second;
-        }
-        last_heartbeat_resources->SetTotalResources(
-            ResourceSet(local_resources.GetTotalResources()));
-      }
-
-      if (!last_heartbeat_resources->GetAvailableResources().IsEqual(
-              local_resources.GetAvailableResources())) {
-        resources_data->set_resources_available_changed(true);
-        for (const auto &resource_pair :
-             local_resources.GetAvailableResources().GetResourceMap()) {
-          (*resources_data->mutable_resources_available())[resource_pair.first] =
-              resource_pair.second;
-        }
-        last_heartbeat_resources->SetAvailableResources(
-            ResourceSet(local_resources.GetAvailableResources()));
-      }
-
       local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
       if (!last_heartbeat_resources->GetLoadResources().IsEqual(
               local_resources.GetLoadResources())) {
@@ -497,20 +480,6 @@ void NodeManager::ReportResourceUsage() {
             ResourceSet(local_resources.GetLoadResources()));
       }
     } else {
-      // If light resource usage report disabled, we send whole resources information
-      // every time.
-      for (const auto &resource_pair :
-           local_resources.GetTotalResources().GetResourceMap()) {
-        (*resources_data->mutable_resources_total())[resource_pair.first] =
-            resource_pair.second;
-      }
-
-      for (const auto &resource_pair :
-           local_resources.GetAvailableResources().GetResourceMap()) {
-        (*resources_data->mutable_resources_available())[resource_pair.first] =
-            resource_pair.second;
-      }
-
       local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
       for (const auto &resource_pair :
            local_resources.GetLoadResources().GetResourceMap()) {
@@ -663,7 +632,6 @@ void NodeManager::WarnResourceDeadlock() {
       resource_deadlock_warned_ = 0;
       return;
     }
-    available_resources = new_resource_scheduler_->GetLocalResourceViewString();
   } else {
     // See if any tasks are blocked trying to acquire resources.
     for (const auto &task : local_queues_.GetTasks(TaskState::READY)) {
@@ -678,9 +646,8 @@ void NodeManager::WarnResourceDeadlock() {
         any_pending = true;
       }
     }
-    SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
-    available_resources = local_resources.GetAvailableResources().ToString();
   }
+  available_resources = cluster_resource_scheduler_->GetLocalResourceViewString();
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
   // To avoid spurious triggers, only take action starting with the second time.
@@ -795,19 +762,10 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // not be necessary.
 
   // Remove the node from the resource map.
-  if (0 == cluster_resource_map_.erase(node_id)) {
+  if (!cluster_resource_scheduler_->RemoveNode(node_id.Binary())) {
     RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
                    << ".";
     return;
-  }
-
-  // Remove the node from the resource map.
-  if (new_scheduler_enabled_) {
-    if (!new_resource_scheduler_->RemoveNode(node_id.Binary())) {
-      RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
-                     << ".";
-      return;
-    }
   }
 
   // Remove the node manager address.
@@ -877,22 +835,12 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map.";
 
-  SchedulingResources &cluster_schedres = cluster_resource_map_[node_id];
-
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
-
-    cluster_schedres.UpdateResourceCapacity(resource_label, new_resource_capacity);
-    if (node_id == self_node_id_) {
-      local_available_resources_.AddOrUpdateResource(resource_label,
-                                                     new_resource_capacity);
-    }
-    if (new_scheduler_enabled_) {
-      new_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
-                                                      new_resource_capacity);
-    }
+    cluster_resource_scheduler_->UpdateResourceCapacity(node_id.Binary(), resource_label,
+                                                        new_resource_capacity);
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
 
@@ -915,17 +863,9 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
                    << ". Updating resource map.";
   }
 
-  SchedulingResources &cluster_schedres = cluster_resource_map_[node_id];
-
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_label : resource_names) {
-    cluster_schedres.DeleteResource(resource_label);
-    if (node_id == self_node_id_) {
-      local_available_resources_.DeleteResource(resource_label);
-    }
-    if (new_scheduler_enabled_) {
-      new_resource_scheduler_->DeleteResource(node_id.Binary(), resource_label);
-    }
+    cluster_resource_scheduler_->DeleteResource(node_id.Binary(), resource_label);
   }
   return;
 }
@@ -953,53 +893,18 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
 
 void NodeManager::ResourceUsageAdded(const NodeID &node_id,
                                      const rpc::ResourcesData &resource_data) {
-  // Locate the node id in remote node table and update available resources based on
-  // the received resource usage information.
-  auto it = cluster_resource_map_.find(node_id);
-  if (it == cluster_resource_map_.end()) {
-    // Haven't received the node registration for this node yet, skip this message.
+  if (!cluster_resource_scheduler_->UpdateNode(node_id.Binary(), resource_data)) {
     RAY_LOG(INFO) << "[ResourceUsageAdded]: received resource usage from unknown node id "
                   << node_id;
     return;
   }
+
   // Trigger local GC at the next heartbeat interval.
   if (resource_data.should_global_gc()) {
     should_local_gc_ = true;
   }
 
-  SchedulingResources &remote_resources = it->second;
-
-  // If light resource usage report enabled, we update remote resources only when related
-  // resources map in heartbeat is not empty.
-  if (light_report_resource_usage_enabled_) {
-    if (resource_data.resources_total_size() > 0) {
-      ResourceSet remote_total(MapFromProtobuf(resource_data.resources_total()));
-      remote_resources.SetTotalResources(std::move(remote_total));
-    }
-    if (resource_data.resources_available_changed()) {
-      ResourceSet remote_available(MapFromProtobuf(resource_data.resources_available()));
-      remote_resources.SetAvailableResources(std::move(remote_available));
-    }
-    if (resource_data.resource_load_changed()) {
-      ResourceSet remote_load(MapFromProtobuf(resource_data.resource_load()));
-      // Extract the load information and save it locally.
-      remote_resources.SetLoadResources(std::move(remote_load));
-    }
-  } else {
-    // If light resource usage report disabled, we update remote resources every time.
-    ResourceSet remote_total(MapFromProtobuf(resource_data.resources_total()));
-    remote_resources.SetTotalResources(std::move(remote_total));
-    ResourceSet remote_available(MapFromProtobuf(resource_data.resources_available()));
-    remote_resources.SetAvailableResources(std::move(remote_available));
-    ResourceSet remote_load(MapFromProtobuf(resource_data.resource_load()));
-    // Extract the load information and save it locally.
-    remote_resources.SetLoadResources(std::move(remote_load));
-  }
-
-  if (new_scheduler_enabled_ && node_id != self_node_id_) {
-    new_resource_scheduler_->AddOrUpdateNode(
-        node_id.Binary(), remote_resources.GetTotalResources().GetResourceMap(),
-        remote_resources.GetAvailableResources().GetResourceMap());
+  if (new_scheduler_enabled_) {
     // TODO(swang): We could probably call this once per batch instead of once
     // per node in the batch.
     ScheduleAndDispatch();
@@ -1007,7 +912,7 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
   }
 
   // Extract decision for this raylet.
-  auto decision = scheduling_policy_.SpillOver(remote_resources,
+  auto decision = scheduling_policy_.SpillOver(cluster_resource_map_[node_id],
                                                cluster_resource_map_[self_node_id_]);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
@@ -1435,11 +1340,7 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Return the resources that were being used by this worker.
     if (new_scheduler_enabled_) {
-      new_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
-      worker->ClearAllocatedInstances();
-      new_resource_scheduler_->FreeLocalTaskResources(
-          worker->GetLifetimeAllocatedInstances());
-      worker->ClearLifetimeAllocatedInstances();
+      cluster_task_manager_->FreeLocalTaskResources(worker);
     } else {
       auto const &task_resources = worker->GetTaskResourceIds();
       local_available_resources_.ReleaseConstrained(
@@ -2100,22 +2001,10 @@ void NodeManager::SubmitTask(const Task &task) {
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
   if (new_scheduler_enabled_) {
-    if (!worker || worker->IsBlocked() || !release_resources) {
-      return;
+    if (cluster_task_manager_->ReleaseCpuResourcesAndMarkWorkerAsBlocked(
+            worker, release_resources)) {
+      ScheduleAndDispatch();
     }
-    std::vector<double> cpu_instances;
-    if (worker->GetAllocatedInstances() != nullptr) {
-      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
-    }
-    if (cpu_instances.size() > 0) {
-      std::vector<double> overflow_cpu_instances =
-          new_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
-      for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
-        RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
-      }
-      worker->MarkBlocked();
-    }
-    ScheduleAndDispatch();
     return;
   }
 
@@ -2143,23 +2032,9 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
   if (new_scheduler_enabled_) {
-    // Important: avoid double unblocking if the unblock RPC finishes after task end.
-    if (!worker || !worker->IsBlocked()) {
-      return;
+    if (cluster_task_manager_->ReturnCpuResourcesAndMarkWorkerAsUnblocked(worker)) {
+      ScheduleAndDispatch();
     }
-    std::vector<double> cpu_instances;
-    if (worker->GetAllocatedInstances() != nullptr) {
-      cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
-    }
-    if (cpu_instances.size() > 0) {
-      // Important: we allow going negative here, since otherwise you can use infinite
-      // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
-      // negative, at most one task can "borrow" this worker's resources.
-      new_resource_scheduler_->SubtractCPUResourceInstances(
-          cpu_instances, /*allow_going_negative=*/true);
-      worker->MarkUnblocked();
-    }
-    ScheduleAndDispatch();
     return;
   }
 

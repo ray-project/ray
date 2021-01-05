@@ -132,6 +132,25 @@ class ClusterTaskManager {
 
   std::string DebugString() const;
 
+  /// Return the resources that were being used by this worker.
+  void FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker);
+
+  /// When direct call task is blocked, the worker who is executing the task should give
+  /// up the cpu resources allocated for the running task for the time being and the
+  /// worker itself should also be marked as blocked.
+  ///
+  /// \param worker The worker to be marked as blocked.
+  /// \return true if the worker is non-block and release_resources is true, else false.
+  bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(
+      std::shared_ptr<WorkerInterface> worker, bool release_resources);
+
+  /// When direct call task is unblocked, the cpu resources that the worker gave up should
+  /// be returned to it.
+  /// \param worker The blocked worker.
+  /// \return true if the worker is blocking, else false.
+  bool ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+      std::shared_ptr<WorkerInterface> worker);
+
  private:
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the

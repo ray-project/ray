@@ -14,6 +14,9 @@
 
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 
+#include "ray/common/grpc_util.h"
+#include "ray/common/ray_config.h"
+
 namespace ray {
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -53,6 +56,50 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
     // This node exists, so update its resources.
     it->second = Node(node_resources);
   }
+}
+
+bool ClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
+                                          const rpc::ResourcesData &resource_data) {
+  auto node_id = string_to_int_map_.Insert(node_id_string);
+  if (!nodes_.contains(node_id)) {
+    return false;
+  }
+
+  auto resources_total = MapFromProtobuf(resource_data.resources_total());
+  auto resources_available = MapFromProtobuf(resource_data.resources_available());
+  NodeResources node_resources = ResourceMapToNodeResources(
+      string_to_int_map_, resources_total, resources_available);
+  // If light resource usage report enabled, we update remote resources only when related
+  // resources map in heartbeat is not empty.
+  if (RayConfig::instance().light_report_resource_usage_enabled()) {
+    NodeResources local_view;
+    RAY_CHECK(GetNodeResources(node_id, &local_view));
+
+    if (resource_data.resources_total_size() > 0) {
+      for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+        local_view.predefined_resources[i].total =
+            node_resources.predefined_resources[i].total;
+      }
+      for (auto &entry : node_resources.custom_resources) {
+        local_view.custom_resources[entry.first].total = entry.second.total;
+      }
+    }
+
+    if (resource_data.resources_available_changed()) {
+      for (size_t i = 0; i < node_resources.predefined_resources.size(); ++i) {
+        local_view.predefined_resources[i].available =
+            node_resources.predefined_resources[i].available;
+      }
+      for (auto &entry : node_resources.custom_resources) {
+        local_view.custom_resources[entry.first].available = entry.second.available;
+      }
+    }
+
+    AddOrUpdateNode(node_id, local_view);
+  } else {
+    AddOrUpdateNode(node_id, node_resources);
+  }
+  return true;
 }
 
 bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {

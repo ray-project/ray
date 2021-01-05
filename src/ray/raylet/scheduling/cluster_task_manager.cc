@@ -747,5 +747,55 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
   }
 }
 
+void ClusterTaskManager::FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) {
+  cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+  worker->ClearAllocatedInstances();
+  cluster_resource_scheduler_->FreeLocalTaskResources(
+      worker->GetLifetimeAllocatedInstances());
+  worker->ClearLifetimeAllocatedInstances();
+}
+
+bool ClusterTaskManager::ReleaseCpuResourcesAndMarkWorkerAsBlocked(
+    std::shared_ptr<WorkerInterface> worker, bool release_resources) {
+  if (!worker || worker->IsBlocked() || !release_resources) {
+    return false;
+  }
+  std::vector<double> cpu_instances;
+  if (worker->GetAllocatedInstances() != nullptr) {
+    cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+  }
+  if (cpu_instances.size() > 0) {
+    std::vector<double> overflow_cpu_instances =
+        cluster_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
+    for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
+      RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
+    }
+    worker->MarkBlocked();
+  }
+
+  return true;
+}
+
+bool ClusterTaskManager::ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+    std::shared_ptr<WorkerInterface> worker) {
+  // Important: avoid double unblocking if the unblock RPC finishes after task end.
+  if (!worker || !worker->IsBlocked()) {
+    return false;
+  }
+  std::vector<double> cpu_instances;
+  if (worker->GetAllocatedInstances() != nullptr) {
+    cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+  }
+  if (cpu_instances.size() > 0) {
+    // Important: we allow going negative here, since otherwise you can use infinite
+    // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
+    // negative, at most one task can "borrow" this worker's resources.
+    cluster_resource_scheduler_->SubtractCPUResourceInstances(
+        cpu_instances, /*allow_going_negative=*/true);
+    worker->MarkUnblocked();
+  }
+  return true;
+}
+
 }  // namespace raylet
 }  // namespace ray
