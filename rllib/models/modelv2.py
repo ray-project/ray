@@ -9,6 +9,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
@@ -61,7 +62,7 @@ class ModelV2:
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
-        self.inference_view_requirements = {
+        self.view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
@@ -280,7 +281,7 @@ class ModelV2:
 
         Args:
             as_dict(bool): Whether variables should be returned as dict-values
-                (using descriptive keys).
+                (using descriptive str keys).
 
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
@@ -340,7 +341,7 @@ class ModelV2:
         }
 
         input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
+        for view_col, view_req in self.view_requirements.items():
             # Create batches of size 1 (single-agent input-dict).
             data_col = view_req.data_col or view_col
             if index == "last":
@@ -373,19 +374,6 @@ class ModelV2:
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)
 
         return input_dict
-
-
-class NullContextManager:
-    """No-op context manager"""
-
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
 
 
 @DeveloperAPI
@@ -450,9 +438,7 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
-    if (isinstance(space, gym.spaces.Dict)
-            or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, Repeated)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:

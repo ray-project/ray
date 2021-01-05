@@ -11,6 +11,7 @@ import ray
 from ray.external_storage import (create_url_with_offset,
                                   parse_url_with_offset)
 from ray.test_utils import wait_for_condition
+from ray.internal.internal_api import memory_summary
 
 bucket_name = "object-spilling-test"
 spill_local_path = "/tmp/spill"
@@ -196,6 +197,50 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
         solution = solution_buffer[index]
         sample = ray.get(ref, timeout=0)
         assert np.array_equal(sample, solution)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_spill_stats(tmp_path, shutdown_only):
+    # Limit our object store to 75 MiB of memory.
+    temp_folder = tmp_path / "spill"
+    temp_folder.mkdir()
+    ray.init(
+        num_cpus=1,
+        object_store_memory=100 * 1024 * 1024,
+        _system_config={
+            "automatic_object_spilling_enabled": True,
+            "max_io_workers": 100,
+            "min_spilling_size": 1,
+            "object_spilling_config": json.dumps(
+                {
+                    "type": "filesystem",
+                    "params": {
+                        "directory_path": str(temp_folder)
+                    }
+                },
+                separators=(",", ":"))
+        },
+    )
+
+    @ray.remote
+    def f():
+        return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+    ids = []
+    for _ in range(4):
+        x = f.remote()
+        ids.append(x)
+
+    while ids:
+        print(ray.get(ids.pop()))
+
+    x_id = f.remote()  # noqa
+    ray.get(x_id)
+    s = memory_summary()
+    assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
+    assert "Spilled 200 MiB, 4 objects" in s, s
+    assert "Restored 150 MiB, 3 objects" in s, s
 
 
 @pytest.mark.skipif(
@@ -561,6 +606,60 @@ def test_fusion_objects(tmp_path, shutdown_only):
         if file_size >= min_spilling_size:
             is_test_passing = True
     assert is_test_passing
+
+
+# https://github.com/ray-project/ray/issues/12912
+def do_test_release_resource(tmp_path, expect_released):
+    temp_folder = tmp_path / "spill"
+    ray.init(
+        num_cpus=1,
+        object_store_memory=75 * 1024 * 1024,
+        _system_config={
+            "max_io_workers": 1,
+            "release_resources_during_plasma_fetch": expect_released,
+            "automatic_object_spilling_enabled": True,
+            "object_spilling_config": json.dumps({
+                "type": "filesystem",
+                "params": {
+                    "directory_path": str(temp_folder)
+                }
+            }),
+        })
+    plasma_obj = ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))
+    for _ in range(5):
+        ray.put(np.ones(50 * 1024 * 1024, dtype=np.uint8))  # Force spilling
+
+    @ray.remote
+    def sneaky_task_tries_to_steal_released_resources():
+        print("resources were released!")
+
+    @ray.remote
+    def f(dep):
+        while True:
+            try:
+                ray.get(dep[0], timeout=0.001)
+            except ray.exceptions.GetTimeoutError:
+                pass
+
+    done = f.remote([plasma_obj])  # noqa
+    canary = sneaky_task_tries_to_steal_released_resources.remote()
+    ready, _ = ray.wait([canary], timeout=2)
+    if expect_released:
+        assert ready
+    else:
+        assert not ready
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_no_release_during_plasma_fetch(tmp_path, shutdown_only):
+    do_test_release_resource(tmp_path, expect_released=False)
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_release_during_plasma_fetch(tmp_path, shutdown_only):
+    do_test_release_resource(tmp_path, expect_released=True)
 
 
 if __name__ == "__main__":

@@ -120,7 +120,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:redis_gcs_client_test
         -//:core_worker_test
         -//:event_test
         -//:gcs_pub_sub_test
@@ -262,6 +261,11 @@ _bazel_build_before_install() {
   bazel build "${target}"
 }
 
+
+_bazel_build_protobuf() {
+  bazel build "//:install_py_proto"
+}
+
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
@@ -296,7 +300,8 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      # Remove suppress_output for now to avoid timeout
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -457,6 +462,8 @@ init() {
 build() {
   if [ "${LINT-}" != 1 ]; then
     _bazel_build_before_install
+  else
+    _bazel_build_protobuf
   fi
 
   if ! need_wheels; then

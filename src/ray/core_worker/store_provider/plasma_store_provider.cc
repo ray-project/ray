@@ -85,13 +85,13 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const rpc::Address &owner_address,
                                              std::shared_ptr<Buffer> *data) {
   Status status;
-  std::shared_ptr<arrow::Buffer> arrow_buffer;
+  std::shared_ptr<Buffer> plasma_buffer;
   uint64_t retry_with_request_id = 0;
   {
     std::lock_guard<std::mutex> guard(store_client_mutex_);
     status = store_client_.Create(
         object_id, owner_address, data_size, metadata ? metadata->Data() : nullptr,
-        metadata ? metadata->Size() : 0, &retry_with_request_id, &arrow_buffer,
+        metadata ? metadata->Size() : 0, &retry_with_request_id, &plasma_buffer,
         /*device_num=*/0);
   }
 
@@ -104,7 +104,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                      << retry_with_request_id;
       status = store_client_.RetryCreate(object_id, retry_with_request_id,
                                          metadata ? metadata->Data() : nullptr,
-                                         &retry_with_request_id, &arrow_buffer);
+                                         &retry_with_request_id, &plasma_buffer);
     }
   }
 
@@ -129,7 +129,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     status = Status::OK();
   } else {
     RAY_RETURN_NOT_OK(status);
-    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(arrow_buffer));
+    *data = std::make_shared<PlasmaBuffer>(PlasmaBuffer(plasma_buffer));
   }
   return status;
 }
@@ -173,7 +173,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       const auto &object_id = batch_ids[i];
       std::shared_ptr<PlasmaBuffer> data = nullptr;
       std::shared_ptr<PlasmaBuffer> metadata = nullptr;
-      if (plasma_results[i].data && plasma_results[i].data->size()) {
+      if (plasma_results[i].data && plasma_results[i].data->Size()) {
         // We track the set of active data buffers in active_buffers_. On destruction,
         // the buffer entry will be removed from the set via callback.
         std::shared_ptr<BufferTracker> tracker = buffer_tracker_;
@@ -190,7 +190,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
           tracker->active_buffers_[std::make_pair(object_id, data.get())] = call_site;
         }
       }
-      if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
+      if (plasma_results[i].metadata && plasma_results[i].metadata->Size()) {
         metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
       }
       const auto result_object =
@@ -226,7 +226,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-    bool *got_exception, bool release_resources) {
+    bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
   absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
@@ -277,7 +277,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     // This is a separate IPC from the FetchAndGet in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(release_resources));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
+          RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
@@ -334,9 +335,8 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 
     // This is a separate IPC from the Wait in direct call mode.
     if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
-      // SANG-TODO Implement wait
-      RAY_RETURN_NOT_OK(
-          raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked(
+          RayConfig::instance().release_resources_during_plasma_fetch()));
     }
     const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(
@@ -361,10 +361,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(
-    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
-    bool delete_creating_tasks) {
+    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only) {
   std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
-  return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
+  return raylet_client_->FreeObjects(object_id_vector, local_only);
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
@@ -424,7 +423,7 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
   RAY_RETURN_NOT_OK(Create(nullptr, 8, object_id, rpc::Address(), &data));
   RAY_RETURN_NOT_OK(Seal(object_id));
   RAY_RETURN_NOT_OK(Release(object_id));
-  RAY_RETURN_NOT_OK(Delete({object_id}, false, false));
+  RAY_RETURN_NOT_OK(Delete({object_id}, false));
   return Status::OK();
 }
 

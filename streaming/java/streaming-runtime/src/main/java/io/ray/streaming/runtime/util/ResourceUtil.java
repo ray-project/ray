@@ -16,35 +16,35 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
-/**
- * Resource Utility collects current OS and JVM resource usage information
- */
+/** Resource Utility collects current OS and JVM resource usage information */
 public class ResourceUtil {
 
   public static final Logger LOG = LoggerFactory.getLogger(ResourceUtil.class);
 
   /**
-   * Refer to: https://docs.oracle.com/javase/8/docs/jre/api/management/extension/com/sun/management/OperatingSystemMXBean.html
+   * Refer to:
+   * https://docs.oracle.com/javase/8/docs/jre/api/management/extension/com/sun/management/OperatingSystemMXBean.html
    */
   private static OperatingSystemMXBean osmxb =
       (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
 
-  /**
-   * Log current jvm process's memory detail
-   */
+  /** Log current jvm process's memory detail */
   public static void logProcessMemoryDetail() {
     int mb = 1024 * 1024;
 
-    //Getting the runtime reference from system
+    // Getting the runtime reference from system
     Runtime runtime = Runtime.getRuntime();
 
     StringBuilder sb = new StringBuilder(32);
 
-    sb.append("used memory: ").append((runtime.totalMemory() - runtime.freeMemory()) / mb)
-        .append(", free memory: ").append(runtime.freeMemory() / mb)
-        .append(", total memory: ").append(runtime.totalMemory() / mb)
-        .append(", max memory: ").append(runtime.maxMemory() / mb);
+    sb.append("used memory: ")
+        .append((runtime.totalMemory() - runtime.freeMemory()) / mb)
+        .append(", free memory: ")
+        .append(runtime.freeMemory() / mb)
+        .append(", total memory: ")
+        .append(runtime.totalMemory() / mb)
+        .append(", max memory: ")
+        .append(runtime.maxMemory() / mb);
 
     if (LOG.isInfoEnabled()) {
       LOG.info(sb.toString());
@@ -52,8 +52,8 @@ public class ResourceUtil {
   }
 
   /**
-   * @return jvm heap usage ratio. note that one of the survivor space is not include in total
-   *     memory while calculating this ratio.
+   * Returns jvm heap usage ratio. note that one of the survivor space is not include in total
+   * memory while calculating this ratio.
    */
   public static double getJvmHeapUsageRatio() {
     Runtime runtime = Runtime.getRuntime();
@@ -61,33 +61,27 @@ public class ResourceUtil {
   }
 
   /**
-   * @return jvm heap usage(in bytes).
-   *     note that this value doesn't include one of the survivor space.
+   * Returns jvm heap usage(in bytes). note that this value doesn't include one of the survivor
+   * space.
    */
   public static long getJvmHeapUsageInBytes() {
     Runtime runtime = Runtime.getRuntime();
     return runtime.totalMemory() - runtime.freeMemory();
   }
 
-  /**
-   * @return the total amount of physical memory in bytes.
-   */
+  /** Returns the total amount of physical memory in bytes. */
   public static long getSystemTotalMemory() {
     return osmxb.getTotalPhysicalMemorySize();
   }
 
-  /**
-   * @return the used system physical memory in bytes
-   */
+  /** Returns the used system physical memory in bytes */
   public static long getSystemMemoryUsage() {
     long totalMemory = osmxb.getTotalPhysicalMemorySize();
     long freeMemory = osmxb.getFreePhysicalMemorySize();
     return totalMemory - freeMemory;
   }
 
-  /**
-   * @return the ratio of used system physical memory. This value is a double in the [0.0,1.0]
-   */
+  /** Returns the ratio of used system physical memory. This value is a double in the [0.0,1.0] */
   public static double getSystemMemoryUsageRatio() {
     double totalMemory = osmxb.getTotalPhysicalMemorySize();
     double freeMemory = osmxb.getFreePhysicalMemorySize();
@@ -95,18 +89,14 @@ public class ResourceUtil {
     return 1 - ratio;
   }
 
-  /**
-   * @return the cpu load for current jvm process. This value is a double in the [0.0,1.0]
-   */
+  /** Returns the cpu load for current jvm process. This value is a double in the [0.0,1.0] */
   public static double getProcessCpuUsage() {
     return osmxb.getProcessCpuLoad();
   }
 
   /**
-   * @return the system cpu usage.
-   *     This value is a double in the [0.0,1.0]
-   *     We will try to use `vsar` to get cpu usage by default,
-   *     and use MXBean if any exception raised.
+   * Returns the system cpu usage. This value is a double in the [0.0,1.0] We will try to use `vsar`
+   * to get cpu usage by default, and use MXBean if any exception raised.
    */
   public static double getSystemCpuUsage() {
     double cpuUsage = 0.0;
@@ -128,9 +118,7 @@ public class ResourceUtil {
     return osmxb.getSystemCpuLoad();
   }
 
-  /**
-   * Get system cpu util by vsar
-   */
+  /** Get system cpu util by vsar */
   public static double getSystemCpuUtilByVsar() throws Exception {
     double cpuUsageFromVsar = 0.0;
     String[] vsarCpuCommand = {"/bin/sh", "-c", "vsar --check --cpu -s util"};
@@ -156,16 +144,12 @@ public class ResourceUtil {
     return cpuUsageFromVsar;
   }
 
-  /**
-   * @returns the system load average for the last minute
-   */
+  /** Returnss the system load average for the last minute */
   public static double getSystemLoadAverage() {
     return osmxb.getSystemLoadAverage();
   }
 
-  /**
-   * @return system cpu cores num
-   */
+  /** Returns system cpu cores num */
   public static int getCpuCores() {
     return osmxb.getAvailableProcessors();
   }
@@ -174,44 +158,40 @@ public class ResourceUtil {
    * Get containers by hostname of address
    *
    * @param containers container list
-   * @param containerHosts container hostname or address set
-   * @return matched containers
+   * @param containerHosts container hostname or address set Returns matched containers
    */
   public static List<Container> getContainersByHostname(
-      List<Container> containers,
-      Collection<String> containerHosts) {
+      List<Container> containers, Collection<String> containerHosts) {
 
     return containers.stream()
-        .filter(container ->
-            containerHosts.contains(container.getHostname()) ||
-                containerHosts.contains(container.getAddress()))
+        .filter(
+            container ->
+                containerHosts.contains(container.getHostname())
+                    || containerHosts.contains(container.getAddress()))
         .collect(Collectors.toList());
   }
 
   /**
    * Get container by hostname
    *
-   * @param hostName container hostname
-   * @return container
+   * @param hostName container hostname Returns container
    */
   public static Optional<Container> getContainerByHostname(
-      List<Container> containers,
-      String hostName) {
+      List<Container> containers, String hostName) {
     return containers.stream()
-        .filter(container -> container.getHostname().equals(hostName) ||
-            container.getAddress().equals(hostName))
+        .filter(
+            container ->
+                container.getHostname().equals(hostName) || container.getAddress().equals(hostName))
         .findFirst();
   }
 
   /**
    * Get container by id
    *
-   * @param containerID container id
-   * @return container
+   * @param containerID container id Returns container
    */
   public static Optional<Container> getContainerById(
-      List<Container> containers,
-      ContainerId containerID) {
+      List<Container> containers, ContainerId containerID) {
     return containers.stream()
         .filter(container -> container.getId().equals(containerID))
         .findFirst();

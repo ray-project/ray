@@ -22,7 +22,7 @@ class ViewRequirement:
 
     Examples:
         >>> # The default ViewRequirement for a Model is:
-        >>> req = [ModelV2].inference_view_requirements
+        >>> req = [ModelV2].view_requirements
         >>> print(req)
         {"obs": ViewRequirement(shift=0)}
     """
