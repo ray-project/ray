@@ -32,7 +32,6 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 

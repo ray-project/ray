@@ -430,15 +430,15 @@ setuptools.setup(
     version=find_version("ray", "__init__.py"),
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    description=("A system for parallel and distributed Python that "
-                 "unifies the ML ecosystem."),
+    description=("Ray provides a simple, universal API for building "
+                 "distributed applications."),
     long_description=io.open(
         os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
         "r",
         encoding="utf-8").read(),
     url="https://github.com/ray-project/ray",
-    keywords=("ray distributed parallel machine-learning "
-              "reinforcement-learning deep-learning python"),
+    keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
+              "reinforcement-learning deep-learning serving python"),
     packages=setuptools.find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.

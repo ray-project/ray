@@ -2,13 +2,14 @@ import asyncio
 from collections import defaultdict
 import time
 import os
-import pytest
+
 import requests
+import pytest
 import starlette.responses
 
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray.test_utils import SignalActor, wait_for_condition
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
@@ -19,8 +20,8 @@ from ray.serve.utils import (block_until_http_ready, format_actor_name,
 def test_e2e(serve_instance):
     client = serve_instance
 
-    def function(flask_request):
-        return {"method": flask_request.method}
+    def function(starlette_request):
+        return {"method": starlette_request.method}
 
     client.create_backend("echo:v1", function)
     client.create_endpoint(
@@ -97,7 +98,7 @@ def test_backend_user_config(serve_instance):
         def __init__(self):
             self.count = 10
 
-        def __call__(self, flask_request):
+        def __call__(self, starlette_request):
             return self.count, os.getpid()
 
         def reconfigure(self, config):
@@ -146,7 +147,7 @@ def test_call_method(serve_instance):
 
     # Test serve handle path.
     handle = client.get_handle("endpoint")
-    assert ray.get(handle.options("method").remote()) == "hello"
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
@@ -820,8 +821,8 @@ def test_serve_metrics(serve_instance):
     client = serve_instance
 
     @serve.accept_batch
-    def batcher(flask_requests):
-        return ["hello"] * len(flask_requests)
+    def batcher(starlette_requests):
+        return ["hello"] * len(starlette_requests)
 
     client.create_backend("metrics", batcher)
     client.create_endpoint("metrics", backend="metrics", route="/metrics")
@@ -869,6 +870,99 @@ def test_serve_metrics(serve_instance):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics()
+
+
+def test_serve_graceful_shutdown(serve_instance):
+    client = serve_instance
+
+    signal = SignalActor.remote()
+
+    class WaitBackend:
+        @serve.accept_batch
+        async def __call__(self, requests):
+            signal_actor = await requests[0].body()
+            await signal_actor.wait.remote()
+            return ["" for _ in range(len(requests))]
+
+    client.create_backend(
+        "wait",
+        WaitBackend,
+        config=BackendConfig(
+            # Make sure we can queue up queries in the replica side.
+            max_concurrent_queries=10,
+            max_batch_size=1,
+            experimental_graceful_shutdown_wait_loop_s=0.5,
+            experimental_graceful_shutdown_timeout_s=1000,
+        ))
+    client.create_endpoint("wait", backend="wait")
+    handle = client.get_handle("wait")
+    refs = [handle.remote(signal) for _ in range(10)]
+
+    # Wait for all the queries to be enqueued
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    @ray.remote(num_cpus=0)
+    def do_blocking_delete():
+        client = serve.connect()
+        client.delete_endpoint("wait")
+        client.delete_backend("wait")
+
+    # Now delete the backend. This should trigger the shutdown sequence.
+    delete_ref = do_blocking_delete.remote()
+
+    # The queries should be enqueued but not executed becuase they are blocked
+    # by signal actor.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    signal.send.remote()
+
+    # All the queries should be drained and executed without error.
+    ray.get(refs)
+    # Blocking delete should complete.
+    ray.get(delete_ref)
+
+
+def test_serve_forceful_shutdown(serve_instance):
+    client = serve_instance
+
+    def sleeper(_):
+        while True:
+            time.sleep(1000)
+
+    client.create_backend(
+        "sleeper",
+        sleeper,
+        config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
+    client.create_endpoint("sleeper", backend="sleeper")
+    handle = client.get_handle("sleeper")
+    ref = handle.remote()
+    client.delete_endpoint("sleeper")
+    client.delete_backend("sleeper")
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
+
+
+def test_starlette_request(serve_instance):
+    client = serve_instance
+
+    async def echo_body(starlette_request):
+        data = await starlette_request.body()
+        return data
+
+    UVICORN_HIGH_WATER_MARK = 65536  # max bytes in one message
+
+    # Long string to test serialization of multiple messages.
+    long_string = "x" * 10 * UVICORN_HIGH_WATER_MARK
+
+    client.create_backend("echo:v1", echo_body)
+    client.create_endpoint(
+        "endpoint", backend="echo:v1", route="/api", methods=["GET", "POST"])
+
+    resp = requests.post("http://127.0.0.1:8000/api", data=long_string).text
+    assert resp == long_string
 
 
 if __name__ == "__main__":

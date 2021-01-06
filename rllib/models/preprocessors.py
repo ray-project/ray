@@ -11,7 +11,10 @@ from ray.rllib.utils.typing import TensorType
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
-VALIDATION_INTERVAL = 100
+
+# Only validate env observations vs the observation space every n times in a
+# Preprocessor.
+OBS_VALIDATION_INTERVAL = 100
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class Preprocessor:
 
     def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
-        if self._i % VALIDATION_INTERVAL == 0:
+        if self._i % OBS_VALIDATION_INTERVAL == 0:
             if type(observation) is list and isinstance(
                     self._obs_space, gym.spaces.Box):
                 observation = np.array(observation)
@@ -79,7 +82,7 @@ class Preprocessor:
     def observation_space(self) -> gym.Space:
         obs_space = gym.spaces.Box(-1., 1., self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
-        # automatically in model.py
+        # automatically in modelv2.py
         classes = (DictFlatteningPreprocessor, OneHotPreprocessor,
                    RepeatedValuesPreprocessor, TupleFlatteningPreprocessor)
         if isinstance(self, classes):
@@ -141,15 +144,31 @@ class AtariRamPreprocessor(Preprocessor):
 
 
 class OneHotPreprocessor(Preprocessor):
+    """One-hot preprocessor for Discrete and MultiDiscrete spaces.
+
+    Examples:
+        >>> self.transform(Discrete(3).sample())
+        ... np.array([0.0, 1.0, 0.0])
+        >>> self.transform(MultiDiscrete([2, 3]).sample())
+        ... np.array([0.0, 1.0, 0.0, 0.0, 1.0])
+    """
+
     @override(Preprocessor)
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
-        return (self._obs_space.n, )
+        if isinstance(obs_space, gym.spaces.Discrete):
+            return (self._obs_space.n, )
+        else:
+            return (np.sum(self._obs_space.nvec), )
 
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        arr = np.zeros(self._obs_space.n, dtype=np.float32)
-        arr[observation] = 1
+        arr = np.zeros(self._init_shape(self._obs_space, {}), dtype=np.float32)
+        if isinstance(self._obs_space, gym.spaces.Discrete):
+            arr[observation] = 1
+        else:
+            for i, o in enumerate(observation):
+                arr[np.sum(self._obs_space.nvec[:i]) + o] = 1
         return arr
 
     @override(Preprocessor)
@@ -202,7 +221,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        array = np.zeros(self.shape)
+        array = np.zeros(self.shape, dtype=np.float32)
         self.write(observation, array, 0)
         return array
 
@@ -236,7 +255,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation: TensorType) -> np.ndarray:
         self.check_shape(observation)
-        array = np.zeros(self.shape)
+        array = np.zeros(self.shape, dtype=np.float32)
         self.write(observation, array, 0)
         return array
 
@@ -299,7 +318,7 @@ def get_preprocessor(space: gym.Space) -> type:
     legacy_patch_shapes(space)
     obs_shape = space.shape
 
-    if isinstance(space, gym.spaces.Discrete):
+    if isinstance(space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)):
         preprocessor = OneHotPreprocessor
     elif obs_shape == ATARI_OBS_SHAPE:
         preprocessor = GenericPixelPreprocessor

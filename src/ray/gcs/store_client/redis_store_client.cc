@@ -38,29 +38,24 @@ Status RedisStoreClient::AsyncPutWithIndex(const std::string &table_name,
                                            const std::string &index_key,
                                            const std::string &data,
                                            const StatusCallback &callback) {
-  auto write_callback = [this, table_name, key, data, callback](Status status) {
-    if (!status.ok()) {
-      // Run callback if failed.
-      if (callback != nullptr) {
-        callback(status);
-      }
-      return;
-    }
-
-    // Write data to Redis.
-    status = DoPut(GenRedisKey(table_name, key), data, callback);
-
-    if (!status.ok()) {
-      // Run callback if failed.
-      if (callback != nullptr) {
-        callback(status);
-      }
-    }
-  };
-
+  // NOTE: To ensure the atomicity of `AsyncPutWithIndex`, we can't write data to Redis in
+  // the callback function of index writing.
   // Write index to Redis.
-  std::string index_table_key = GenRedisKey(table_name, key, index_key);
-  return DoPut(index_table_key, key, write_callback);
+  const auto &index_table_key = GenRedisKey(table_name, key, index_key);
+  RAY_CHECK_OK(DoPut(index_table_key, key, nullptr));
+
+  // Write data to Redis.
+  // The operation of redis client is executed in order, and it can ensure that index is
+  // written first and then data is written. The index and data are decoupled, so we don't
+  // need to write data in the callback function of index writing.
+  const auto &status = DoPut(GenRedisKey(table_name, key), data, callback);
+  if (!status.ok()) {
+    // Run callback if failed.
+    if (callback != nullptr) {
+      callback(status);
+    }
+  }
+  return status;
 }
 
 Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::string &key,

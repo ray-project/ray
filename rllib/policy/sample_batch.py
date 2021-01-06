@@ -2,18 +2,15 @@ import collections
 import numpy as np
 import sys
 import itertools
-from typing import Any, Dict, Iterable, List, Optional, Set, Union
+from typing import Dict, Iterable, List, Optional, Set, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.memory import concat_aligned
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import PolicyID, TensorType
 
 # Default policy id for single agent environments
 DEFAULT_POLICY_ID = "default_policy"
-
-# TODO(ekl) reuse the other id def once we fix imports
-PolicyID = Any
 
 
 @PublicAPI
@@ -61,6 +58,7 @@ class SampleBatch:
         # Possible seq_lens (TxB or BxT) setup.
         self.time_major = kwargs.pop("_time_major", None)
         self.seq_lens = kwargs.pop("_seq_lens", None)
+        self.dont_check_lens = kwargs.pop("_dont_check_lens", False)
         self.max_seq_len = None
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.max_seq_len = max(self.seq_lens)
@@ -76,8 +74,10 @@ class SampleBatch:
                 self.data[k] = np.array(v)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, \
-            "Data columns must be same length, but lens are {}".format(lengths)
+        if not self.dont_check_lens:
+            assert len(set(lengths)) == 1, \
+                "Data columns must be same length, but lens are " \
+                "{}".format(lengths)
         if self.seq_lens is not None and len(self.seq_lens) > 0:
             self.count = sum(self.seq_lens)
         else:
@@ -117,7 +117,8 @@ class SampleBatch:
         return SampleBatch(
             out,
             _seq_lens=np.array(seq_lens, dtype=np.int32),
-            _time_major=concat_samples[0].time_major)
+            _time_major=concat_samples[0].time_major,
+            _dont_check_lens=True)
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -248,12 +249,35 @@ class SampleBatch:
             SampleBatch: A new SampleBatch, which has a slice of this batch's
                 data.
         """
-        if self.time_major is not None:
+        if self.seq_lens is not None and len(self.seq_lens) > 0:
+            data = {k: v[start:end] for k, v in self.data.items()}
+            # Fix state_in_x data.
+            count = 0
+            state_start = None
+            seq_lens = None
+            for i, seq_len in enumerate(self.seq_lens):
+                count += seq_len
+                if count >= end:
+                    state_idx = 0
+                    state_key = "state_in_{}".format(state_idx)
+                    while state_key in self.data:
+                        data[state_key] = self.data[state_key][state_start:i +
+                                                               1]
+                        state_idx += 1
+                        state_key = "state_in_{}".format(state_idx)
+                    seq_lens = list(self.seq_lens[state_start:i]) + [
+                        seq_len - (count - end)
+                    ]
+                    assert sum(seq_lens) == (end - start)
+                    break
+                elif state_start is None and count > start:
+                    state_start = i
+
             return SampleBatch(
-                {k: v[:, start:end]
-                 for k, v in self.data.items()},
-                _seq_lens=self.seq_lens[start:end],
-                _time_major=self.time_major)
+                data,
+                _seq_lens=np.array(seq_lens, dtype=np.int32),
+                _time_major=self.time_major,
+                _dont_check_lens=True)
         else:
             return SampleBatch(
                 {k: v[start:end]
