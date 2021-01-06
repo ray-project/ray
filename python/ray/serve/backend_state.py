@@ -162,7 +162,10 @@ class BackendState:
         assert num_replicas >= 0, ("Number of replicas must be"
                                    " greater than or equal to 0.")
 
-        current_num_replicas = len(self.backend_replicas[backend_tag])
+        current_num_replicas = len(self.backend_replicas[backend_tag]) + len(
+            self.backend_replicas_to_start.get(backend_tag, [])) - len(
+                self.backend_replicas_to_stop.get(backend_tag, []))
+
         delta_num_replicas = num_replicas - current_num_replicas
 
         backend_info: BackendInfo = self.backends[backend_tag]
