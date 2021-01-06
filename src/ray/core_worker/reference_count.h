@@ -369,25 +369,25 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
-  /// Add location to the location table of the given object.
+  /// Add a new location for the given object.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] node_id The node to be added to the location table.
+  /// \param[in] node_id The new object location to be added.
   void AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove location from the location table of the given object.
+  /// Remove a location for the given object.
   ///
   /// \param[in] object_id The object to update.
-  /// \param[in] node_id The node to be removed from the location table.
+  /// \param[in] node_id The object location to be removed.
   void RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get the locations from the location table of the given object.
+  /// Get the locations of the given object.
   ///
   /// \param[in] object_id The object to get locations for.
   /// \return The nodes that have the object.
-  std::unordered_set<NodeID> GetObjectLocations(const ObjectID &object_id)
+  absl::flat_hash_set<NodeID> GetObjectLocations(const ObjectID &object_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Handle an object has been spilled to external storage.
@@ -483,6 +483,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     // counting is enabled, then some raylet must be pinning the object value.
     // This is the address of that raylet.
     absl::optional<NodeID> pinned_at_raylet_id;
+    // If this object is owned by us and stored in plasma, this contains all
+    // object locations.
+    absl::flat_hash_set<NodeID> locations;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
@@ -702,14 +705,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
-
-  using LocationTable = absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>>;
-
-  /// Holds the client information for the owned objects. This table is seperate from
-  /// the reference table because we add object reference after putting object into the
-  /// plasma store and add the location to the object directory. Therefore we will receive
-  /// object location information before the reference is created.
-  LocationTable object_id_locations_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

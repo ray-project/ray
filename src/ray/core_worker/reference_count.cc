@@ -913,31 +913,31 @@ void ReferenceCounter::SetReleaseLineageCallback(
 void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
                                          const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_locations_.find(object_id);
-  if (it == object_id_locations_.end()) {
-    it = object_id_locations_.emplace(object_id, absl::flat_hash_set<NodeID>()).first;
-  }
-  it->second.insert(node_id);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end())
+      << "Tried to add an object location for an object " << object_id
+      << " that doesn't exist in the reference table";
+  it->second.locations.insert(node_id);
 }
 
 void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                                             const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_locations_.find(object_id);
-  RAY_CHECK(it != object_id_locations_.end());
-  it->second.erase(node_id);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end())
+      << "Tried to remove an object location for an object " << object_id
+      << " that doesn't exist in the reference table";
+  it->second.locations.erase(node_id);
 }
 
-std::unordered_set<NodeID> ReferenceCounter::GetObjectLocations(
+absl::flat_hash_set<NodeID> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_locations_.find(object_id);
-  RAY_CHECK(it != object_id_locations_.end());
-  std::unordered_set<NodeID> locations;
-  for (const auto &location : it->second) {
-    locations.insert(location);
-  }
-  return locations;
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end())
+      << "Tried to get the object locations for an object " << object_id
+      << " that doesn't exist in the reference table";
+  return it->second.locations;
 }
 
 void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
