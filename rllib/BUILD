@@ -2048,6 +2048,24 @@ py_test(
 )
 
 py_test(
+    name = "examples/trajectory_view_api_tf",
+    main = "examples/trajectory_view_api.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=80.0"]
+)
+
+py_test(
+    name = "examples/trajectory_view_api_torch",
+    main = "examples/trajectory_view_api.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=80.0"]
+)
+
+py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["examples", "examples_T"],
