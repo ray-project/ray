@@ -200,10 +200,8 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
 
     runner.step()  # Process result, invoke _train
     assert trial.last_result.get("training_iteration") == 1
-    runner.step()  # Process result, invoke _save
+    runner.step()  # Process result, invoke _save, process save, invoke _train
     assert trial.last_result.get("training_iteration") == 2
-    # process save, invoke _train
-    runner.step()
     # process result
     runner.step()
     assert trial.status == Trial.TERMINATED
@@ -297,7 +295,6 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     cluster.wait_for_nodes()
     # TODO(ujvl): Node failure does not propagate until a step after it
     #  actually should. This is possibly a problem with `Cluster`.
-    runner.step()
     runner.step()  # Recovery step
 
     # TODO(rliaw): This assertion is not critical but will not pass
@@ -306,7 +303,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     # assert t.last_result is None, "Trial result not restored correctly."
 
     # Process result (x2), process save, process result (x2), process save
-    for _ in range(6):
+    for _ in range(4):
         runner.step()
 
     assert t.status == Trial.TERMINATED, runner.debug_string()
@@ -326,8 +323,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     runner.step()  # Process restore
     runner.step()  # Process result 5
     if t2.status != Trial.TERMINATED:
-        runner.step()  # Process result 6, dispatch save
-        runner.step()  # Process save
+        runner.step()  # Process result 6, dispatch and process save
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
@@ -377,16 +373,14 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
         runner.add_trial(t)
 
     runner.step()  # Start trial
-    runner.step()  # Process result, dispatch save
-    runner.step()  # Process save
+    runner.step()  # Process result, dispatch save, process save
 
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
     cluster.remove_node(node)
     cluster.wait_for_nodes()
-    runner.step()  # Process result, dispatch save
-    runner.step()  # Process save (detect error), requeue trial
+    runner.step()  # Process result, dispatch save, process save
     assert all(
         t.status == Trial.PENDING for t in trials), runner.debug_string()
 
