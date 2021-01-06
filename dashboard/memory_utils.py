@@ -156,6 +156,7 @@ class MemoryTableEntry:
                                            TASKID_RANDOM_BITS_SIZE +
                                            ACTORID_RANDOM_BITS_SIZE]
         if (random_bits == "f" * 16 and not actor_random_bits == "f" * 8):
+            print("this is an actor handle")
             return True
         else:
             return False
