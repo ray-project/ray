@@ -35,8 +35,9 @@ def memory_summary():
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
-    if hasattr(reply, 'store_summary'):
-        store_summary = "--- Aggregate object store stats across all nodes ---\n"
+    if hasattr(reply, "store_summary"):
+        store_summary = "--- Aggregate object store stats across all nodes ---"
+        store_summary += "\n"
         store_summary += (
             "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
                 int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
@@ -56,10 +57,11 @@ def memory_summary():
             store_summary += (
                 "Restored {} MiB, {} objects, avg read throughput {} MiB/s\n".
                 format(
-                    int(reply.store_stats.restored_bytes_total / (1024 * 1024)),
+                    int(reply.store_stats.restored_bytes_total /
+                        (1024 * 1024)),
                     reply.store_stats.restored_objects_total,
-                    int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
-                        reply.store_stats.restore_time_total_s)))
+                    int(reply.store_stats.restored_bytes_total / (1024 * 1024)
+                        / reply.store_stats.restore_time_total_s)))
         return reply.memory_summary + "\n" + store_summary
     else:
         return reply.memory_summary
