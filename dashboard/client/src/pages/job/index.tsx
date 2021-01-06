@@ -14,7 +14,6 @@ import React from "react";
 import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
-import StateCounter from "../../components/StatesCounter";
 import TitleCard from "../../components/TitleCard";
 import { useJobList } from "./hook/useJobList";
 
@@ -58,9 +57,6 @@ const JobList = () => {
         />
         <br />
         Request Status: {msg}
-      </TitleCard>
-      <TitleCard title="Statistics">
-        <StateCounter list={jobList} type="job" />
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>
