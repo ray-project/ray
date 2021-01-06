@@ -418,13 +418,38 @@ def shutdown_with_server(server, _exiting_interpreter=False):
         ray.shutdown(_exiting_interpreter)
 
 
-if __name__ == "__main__":
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="Host IP to bind to")
+    parser.add_argument(
+        "-p", "--port", type=int, default=50051, help="Port to bind to")
+    parser.add_argument(
+        "--redis-address",
+        required=True,
+        type=str,
+        help="Address to use to connect to Ray")
+    parser.add_argument(
+        "--redis-password",
+        required=False,
+        type=str,
+        help="Password for connecting to Redis")
+    args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    # TODO(barakmich): Perhaps wrap ray init
-    ray.init()
-    server = serve("0.0.0.0:50051")
+    if args.redis_password:
+        ray.init(address=args.redis_address, _redis_password=args.redis_password)
+    else:
+        ray.init(address=args.redis_address)
+    hostport = "%s:%d" % (args.host, args.port)
+    logger.info(f"Starting Ray Client server on {hostport}")
+    server = serve(hostport)
     try:
         while True:
             time.sleep(1000)
     except KeyboardInterrupt:
         server.stop(0)
+
+
+if __name__ == "__main__":
+    main()
