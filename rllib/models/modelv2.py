@@ -351,7 +351,8 @@ class ModelV2:
                     data = sample_batch[view_col][-1]
                     traj_len = len(sample_batch[data_col])
                     missing_at_end = traj_len % view_req.batch_repeat_value
-                    obs_shift = -1 if view_col == SampleBatch.OBS else 0
+                    obs_shift = -1 if data_col in [SampleBatch.OBS,
+                                                   SampleBatch.NEXT_OBS] else 0
                     from_ = view_req.shift_from + obs_shift
                     to_ = view_req.shift_to + obs_shift + 1
                     if to_ == 0:
