@@ -131,7 +131,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeActor(
+  bool SubscribeActorStates(
       const ActorID &actor_id,
       const gcs::SubscribeCallback<ActorID, rpc::ActorStates> &subscribe) {
     std::promise<bool> promise;
@@ -600,7 +600,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
                                             const rpc::ActorStates &data) {
     ++actor_update_count;
   };
-  ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
+  ASSERT_TRUE(SubscribeActorStates(actor_id, on_subscribe));
 
   // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
@@ -1037,7 +1037,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
     ++num_subscribe_one_notifications;
   };
   // Subscribe to updates for this actor.
-  ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
+  ASSERT_TRUE(SubscribeActorStates(actor_id, actor_subscribe));
 
   ASSERT_FALSE(RegisterActor(actor_table_data, false));
 
@@ -1286,7 +1286,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
     threads[index].reset(new std::thread([this, sub_and_unsub_loop_count, job_id] {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
-        ASSERT_TRUE(SubscribeActor(
+        ASSERT_TRUE(SubscribeActorStates(
             actor_id, [](const ActorID &id, const rpc::ActorStates &result) {}));
         gcs_client_->Actors().AsyncResubscribe(false);
         UnsubscribeActor(actor_id);

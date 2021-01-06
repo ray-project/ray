@@ -277,9 +277,10 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeStates(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
-  RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
+  RAY_LOG(DEBUG) << "Subscribing states update operations of actor, actor id = "
+                 << actor_id << ", job id = " << actor_id.JobId();
+  RAY_CHECK(subscribe != nullptr)
+      << "Failed to subscribe actor states, actor id = " << actor_id;
 
   auto fetch_data_operation = [this, actor_id,
                                subscribe](const StatusCallback &fetch_done) {
@@ -301,7 +302,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeStates(
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       ActorStates actor_states;
       actor_states.ParseFromString(data);
-      subscribe(ActorID::FromBinary(id), actor_states);
+      subscribe(ActorID::FromHex(id), actor_states);
     };
     return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
                                                   on_subscribe, subscribe_done);

@@ -34,9 +34,9 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
 
   ~MockActorInfoAccessor() {}
 
-  ray::Status AsyncSubscribe(
+  ray::Status AsyncSubscribeStates(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const gcs::SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
       const gcs::StatusCallback &done) {
     auto callback_entry = std::make_pair(actor_id, subscribe);
     callback_map_.emplace(actor_id, subscribe);
@@ -44,11 +44,11 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
   }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const rpc::ActorTableData &actor_data) {
+                                       const rpc::ActorStates &actor_states) {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
+    actor_state_notification_callback(actor_id, actor_states);
     return true;
   }
 
@@ -56,7 +56,7 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
     return callback_map_.find(actor_id) != callback_map_.end();
   }
 
-  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorTableData>>
+  absl::flat_hash_map<ActorID, gcs::SubscribeCallback<ActorID, rpc::ActorStates>>
       callback_map_;
 };
 
@@ -189,16 +189,14 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
 
   // Check after the actor is created, if it is connected to an actor.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.mutable_states()->set_state(rpc::ActorStates::ALIVE);
-  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
+  rpc::ActorStates actor_states_data;
+  actor_states_data.set_state(rpc::ActorStates::ALIVE);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_states_data);
 
   // Now actor state is updated to DEAD. Make sure it is diconnected.
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.mutable_states()->set_state(rpc::ActorStates::DEAD);
-  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
+  actor_states_data.set_state(rpc::ActorStates::DEAD);
+  actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_states_data);
 }
 
 TEST_F(ActorManagerTest, TestCheckActorHandleDoesntExists) {
@@ -241,11 +239,10 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   // Nothing happens if state is pending.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.mutable_states()->set_state(rpc::ActorStates::PENDING_CREATION);
+  rpc::ActorStates actor_states_data;
+  actor_states_data.set_state(rpc::ActorStates::PENDING_CREATION);
   ASSERT_TRUE(
-      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_states_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
@@ -253,11 +250,10 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   // Should disconnect to an actor when actor is restarting.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.mutable_states()->set_state(rpc::ActorStates::RESTARTING);
+  rpc::ActorStates actor_states_data;
+  actor_states_data.set_state(rpc::ActorStates::RESTARTING);
   ASSERT_TRUE(
-      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_states_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
@@ -265,11 +261,10 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   // Should disconnect to an actor when actor is dead.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(1);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.mutable_states()->set_state(rpc::ActorStates::DEAD);
+  rpc::ActorStates actor_states_data;
+  actor_states_data.set_state(rpc::ActorStates::DEAD);
   ASSERT_TRUE(
-      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_states_data));
 }
 
 TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
@@ -277,11 +272,10 @@ TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   // Should connect to an actor when actor is alive.
   EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _)).Times(0);
-  rpc::ActorTableData actor_table_data;
-  actor_table_data.set_actor_id(actor_id.Binary());
-  actor_table_data.mutable_states()->set_state(rpc::ActorStates::ALIVE);
+  rpc::ActorStates actor_states_data;
+  actor_states_data.set_state(rpc::ActorStates::ALIVE);
   ASSERT_TRUE(
-      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data));
+      actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_states_data));
 }
 
 }  // namespace ray
