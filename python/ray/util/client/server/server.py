@@ -438,7 +438,8 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
     if args.redis_password:
-        ray.init(address=args.redis_address, _redis_password=args.redis_password)
+        ray.init(
+            address=args.redis_address, _redis_password=args.redis_password)
     else:
         ray.init(address=args.redis_address)
     hostport = "%s:%d" % (args.host, args.port)
