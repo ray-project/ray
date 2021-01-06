@@ -950,7 +950,11 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 
 Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
                         const absl::optional<rpc::Address> &owner_address) {
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
+  auto status = plasma_store_provider_->Seal(object_id);
+  if (!status.ok()) {
+    reference_counter_->RemoveOwnedObject(object_id);
+    return status;
+  }
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
