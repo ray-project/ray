@@ -42,7 +42,6 @@ class Backend(object):
         return backend
 
 
-# TODO(Hao): extend this to support more MPI types
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1

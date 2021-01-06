@@ -153,20 +153,25 @@ def declare_collective_group(actors,
         pass
 
     if len(ranks) != len(actors):
-        raise RuntimeError("Each actor should correspond to one rank.")
+        raise RuntimeError(
+            "Each actor should correspond to one rank. Got '{}' "
+            "ranks but '{}' actors".format(len(ranks), len(actors)))
 
     if set(ranks) != set(range(len(ranks))):
-        raise RuntimeError("Rank must be a permutation from 0 to len-1.")
+        raise RuntimeError(
+            "Ranks must be a permutation from 0 to '{}'. Got '{}'.".format(
+                len(ranks), "".join([str(r) for r in ranks])))
 
     assert world_size > 0
     assert all(ranks) >= 0 and all(ranks) < world_size
 
+    # avoid a circular dependency
     from ray.util.collective.util import Info
     # store the information into a NamedActor that can be accessed later/
     name = "info_" + group_name
     actors_id = [a._ray_actor_id for a in actors]
     info = Info.options(name=name, lifetime="detached").remote()
-    ray.wait([info.set_info.remote(actors_id, world_size, ranks, backend)])
+    ray.get([info.set_info.remote(actors_id, world_size, ranks, backend)])
 
 
 def destroy_collective_group(group_name: str = "default") -> None:
