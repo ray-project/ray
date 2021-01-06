@@ -114,6 +114,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Print debug info periodically.
   PrintDebugInfo();
 
+  CollectStats();
+
   is_started_ = true;
 }
 
