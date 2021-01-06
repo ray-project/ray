@@ -2182,7 +2182,7 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  auto node_ids =
+  absl::flat_hash_set<NodeID> node_ids =
       reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
   for (const auto &node_id : node_ids) {
     reply->add_node_ids(node_id.Binary());
