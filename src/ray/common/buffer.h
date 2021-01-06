@@ -152,7 +152,7 @@ class SharedMemoryBuffer : public Buffer {
 
   size_t Size() const override { return size_; }
 
-  bool OwnsData() const override { return false; }
+  bool OwnsData() const override { return true; }
 
   bool IsPlasmaBuffer() const override { return true; }
 
