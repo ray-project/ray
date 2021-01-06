@@ -193,8 +193,6 @@ def test_wait_for_nodes(ray_start_cluster_head):
     ],
     indirect=True)
 def test_ray_client(call_ray_start):
-    address = call_ray_start
-
     from ray.util.client import ray
     ray.connect("localhost:20000")
 
