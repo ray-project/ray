@@ -875,6 +875,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [

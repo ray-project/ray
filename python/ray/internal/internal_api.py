@@ -20,7 +20,8 @@ def memory_summary():
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 
-    # We can ask any Raylet for the global memory info.
+    # We can ask any Raylet for the global memory info, that Raylet internally
+    # asks all nodes in the cluster for memory stats.
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     ray.nodes()[0]["NodeManagerPort"])
@@ -34,7 +35,31 @@ def memory_summary():
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
-    return reply.memory_summary
+    store_summary = "--- Aggregate object store stats across all nodes ---\n"
+    store_summary += (
+        "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
+            int(reply.store_stats.object_store_bytes_used / (1024 * 1024)),
+            reply.store_stats.num_local_objects,
+            round(
+                100 * reply.store_stats.object_store_bytes_used /
+                reply.store_stats.object_store_bytes_avail, 2)))
+    if reply.store_stats.spill_time_total_s > 0:
+        store_summary += (
+            "Spilled {} MiB, {} objects, avg write throughput {} MiB/s\n".
+            format(
+                int(reply.store_stats.spilled_bytes_total / (1024 * 1024)),
+                reply.store_stats.spilled_objects_total,
+                int(reply.store_stats.spilled_bytes_total / (1024 * 1024) /
+                    reply.store_stats.spill_time_total_s)))
+    if reply.store_stats.restore_time_total_s > 0:
+        store_summary += (
+            "Restored {} MiB, {} objects, avg read throughput {} MiB/s\n".
+            format(
+                int(reply.store_stats.restored_bytes_total / (1024 * 1024)),
+                reply.store_stats.restored_objects_total,
+                int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
+                    reply.store_stats.restore_time_total_s)))
+    return reply.memory_summary + "\n" + store_summary
 
 
 def node_stats():
