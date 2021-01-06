@@ -2,7 +2,7 @@ import ray
 from ray import serve
 import requests
 
-ray.init()
+ray.init(num_cpus=4)
 client = serve.start()
 
 

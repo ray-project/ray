@@ -164,6 +164,8 @@ class HTTPProxyActor:
         self.host = host
         self.port = port
 
+        self.setup_complete = asyncio.Event()
+
         self.app = HTTPProxy(controller_name)
         await self.app.setup()
 
@@ -173,10 +175,25 @@ class HTTPProxyActor:
                                               **middleware.options)
 
         # Start running the HTTP server on the event loop.
-        asyncio.get_event_loop().create_task(self.run())
+        # This task should be running forever. We track it in case of failure.
+        self.running_task = asyncio.get_event_loop().create_task(self.run())
 
-    def ready(self):
-        return True
+    async def ready(self):
+        """Returns when HTTP proxy is ready to serve traffic.
+        Or throw exception when it is not able to serve traffic.
+        """
+        done_set, _ = await asyncio.wait(
+            [
+                # Either the HTTP setup has completed.
+                # The event is set inside self.run.
+                self.setup_complete.wait(),
+                # Or self.run errored.
+                self.running_task,
+            ],
+            return_when=asyncio.FIRST_COMPLETED)
+
+        # Return None, or re-throw the exception from self.running_task.
+        return await done_set.pop()
 
     async def run(self):
         sock = socket.socket()
@@ -202,4 +219,6 @@ class HTTPProxyActor:
         # because the existing implementation fails if it isn't running in
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
+
+        self.setup_complete.set()
         await server.serve(sockets=[sock])

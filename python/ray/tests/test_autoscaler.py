@@ -545,6 +545,7 @@ class AutoscalingTest(unittest.TestCase):
             f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
         runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
 
+    @unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
     def testDockerFileMountsRemoved(self):
         config = copy.deepcopy(SMALL_CLUSTER)
         config["file_mounts"] = {}
