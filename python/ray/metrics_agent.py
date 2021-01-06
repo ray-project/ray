@@ -4,9 +4,10 @@ import os
 import threading
 import time
 import traceback
-
+from collections import namedtuple
 from typing import List
 
+from opencensus.stats import aggregation
 from opencensus.stats import measure as measure_module
 from opencensus.stats import stats as stats_module
 from opencensus.stats.view import View
@@ -15,6 +16,9 @@ from opencensus.stats.aggregation_data import (CountAggregationData,
                                                DistributionAggregationData,
                                                LastValueAggregationData)
 from opencensus.metrics.export.value import ValueDouble
+from opencensus.tags import tag_key as tag_key_module
+from opencensus.tags import tag_map as tag_map_module
+from opencensus.tags import tag_value as tag_value_module
 
 import ray
 
@@ -24,11 +28,41 @@ from ray.core.generated.metrics_pb2 import Metric
 logger = logging.getLogger(__name__)
 
 
+class Gauge(View):
+    """Gauge representation of opencensus view.
+
+    This class is used to collect process metrics from the reporter agent.
+    Cpp metrics should be collected in a different way.
+    """
+
+    def __init__(self, name, description, unit, tags: List[str]):
+        self._measure = measure_module.MeasureInt(name, description, unit)
+        tags = [tag_key_module.TagKey(tag) for tag in tags]
+        self._view = View(name, description, tags, self.measure,
+                          aggregation.LastValueAggregation())
+
+    @property
+    def measure(self):
+        return self._measure
+
+    @property
+    def view(self):
+        return self._view
+
+    @property
+    def name(self):
+        return self.measure.name
+
+
+Record = namedtuple("Record", ["gauge", "value", "tags"])
+
+
 class MetricsAgent:
     def __init__(self, metrics_export_port):
         assert metrics_export_port is not None
         # OpenCensus classes.
         self.view_manager = stats_module.stats.view_manager
+        self.stats_recorder = stats_module.stats.stats_recorder
         # Port where we will expose metrics.
         self.metrics_export_port = metrics_export_port
         # Lock required because gRPC server uses
@@ -40,6 +74,31 @@ class MetricsAgent:
             prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
                     namespace="ray", port=metrics_export_port)))
+
+    def record_reporter_stats(self, records: List[Record]):
+        with self._lock:
+            for record in records:
+                gauge = record.gauge
+                value = record.value
+                tags = record.tags
+                self._record_gauge(gauge, value, tags)
+
+    def _record_gauge(self, gauge: Gauge, value: float, tags: dict):
+        view_data = self.view_manager.get_view(gauge.name)
+        if not view_data:
+            self.view_manager.register_view(gauge.view)
+            # Reobtain the view.
+        view = self.view_manager.get_view(gauge.name).view
+
+        measurement_map = self.stats_recorder.new_measurement_map()
+        tag_map = tag_map_module.TagMap()
+        for key, tag_val in tags.items():
+            tag_key = tag_key_module.TagKey(key)
+            tag_value = tag_value_module.TagValue(tag_val)
+            tag_map.insert(tag_key, tag_value)
+        measurement_map.measure_float_put(view.measure, value)
+        # NOTE: When we record this metric, timestamp will be renewed.
+        measurement_map.record(tag_map)
 
     def record_metric_points_from_protobuf(self, metrics: List[Metric]):
         """Record metrics from Opencensus Protobuf"""

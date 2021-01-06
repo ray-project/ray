@@ -142,6 +142,32 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any(-4 < s < 4 for s in samples))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
+    def testFunctionSignature(self):
+        from functools import partial
+
+        def sample_a():
+            return 0
+
+        def sample_b(spec):
+            return 1
+
+        def sample_c(spec, b="ok"):
+            return 2
+
+        def sample_d_invalid(spec, b):
+            return 3
+
+        sample_d_valid = partial(sample_d_invalid, b="ok")
+
+        for sample_fn in [sample_a, sample_b, sample_c, sample_d_valid]:
+            fn = tune.sample_from(sample_fn)
+            sample = fn.sample(None)
+            self.assertIsNotNone(sample)
+
+        with self.assertRaises(ValueError):
+            fn = tune.sample_from(sample_d_invalid)
+            print(fn.sample(None))
+
     def testQuantized(self):
         bounded_positive = tune.sample.Float(1e-4, 1e-1)
 

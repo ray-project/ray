@@ -16,7 +16,7 @@ from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
 
 if client_test_enabled():
-    from ray.experimental.client import ray
+    from ray.util.client import ray
 else:
     import ray
 
