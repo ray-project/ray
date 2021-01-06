@@ -356,9 +356,6 @@ matrix:
       env:
         - TUNE_TESTING=1
         - PYTHON=3.6
-#        - TF_VERSION=2.2.0
-#        - TFP_VERSION=0.8
-#        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
