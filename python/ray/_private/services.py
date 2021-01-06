@@ -1834,9 +1834,7 @@ def start_ray_client_server(redis_address,
     """
     ray_client_server_path = os.path.join(RAY_PATH, "ray_client_server.py")
     command = [
-        sys.executable,
-        "-u",
-        ray_client_server_path,
+        sys.executable, "-u", ray_client_server_path,
         "--address=" + str(redis_address),
         "--ray-client-server-port=" + str(ray_client_server_port)
     ]

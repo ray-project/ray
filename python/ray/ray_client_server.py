@@ -10,7 +10,6 @@ import time
 import ray
 from ray.util.client.server.server import serve
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=("Arguments for Ray client server process"))
