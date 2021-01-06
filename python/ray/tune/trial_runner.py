@@ -468,6 +468,12 @@ class TrialRunner:
             # TODO(ujvl): Consider combining get_next_available_trial and
             #  fetch_result functionality so that we don't timeout on fetch.
             trial = self.trial_executor.get_next_available_trial()  # blocking
+
+            # Only process trial (fetch results etc) if we don't have
+            # a cached action
+            if not trial.is_restoring and not trial.is_saving:
+                self._process_trial(trial)
+
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
@@ -500,9 +506,12 @@ class TrialRunner:
                         if log_once("tune_head_worker_checkpoint"):
                             logger.warning(msg)
 
-            else:
-                with warn_if_slow("process_trial"):
-                    self._process_trial(trial)
+            # `self._queued_trial_decisions` now contains a final decision
+            # based on all results
+            final_decision = self._queued_trial_decisions.pop(
+                trial.trial_id, None)
+            if final_decision:
+                self._execute_action(trial, final_decision)
 
     def _process_trial(self, trial):
         """Processes a trial result.
@@ -523,7 +532,8 @@ class TrialRunner:
         try:
             results = self.trial_executor.fetch_result(trial)
             for result in results:
-                self._process_trial_result(trial, result)
+                with warn_if_slow("process_trial_result"):
+                    self._process_trial_result(trial, result)
         except Exception:
             error_msg = "Trial %s: Error processing event." % trial
             if self._fail_fast == TrialRunner.RAISE:
@@ -532,14 +542,6 @@ class TrialRunner:
             else:
                 logger.exception(error_msg)
             self._process_trial_failure(trial, traceback.format_exc())
-
-        # `self._queued_trial_decisions` now contains a final decision
-        # based on all results
-        assert self._queued_trial_decisions[trial.trial_id], \
-            "No decision received"
-
-        final_decision = self._queued_trial_decisions.pop(trial.trial_id)
-        self._execute_action(trial, final_decision)
 
     def _process_trial_result(self, trial, result):
         result.update(trial_id=trial.trial_id)

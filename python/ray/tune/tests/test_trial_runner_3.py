@@ -5,11 +5,13 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
 
 from ray.tune import TuneError
+from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
@@ -19,6 +21,9 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
+
+# Note: Since we do single steps in most of these tests,
+# they only work with TUNE_RESULT_BUFFER_LENGTH = 1 or 0
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -444,8 +449,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ]
         runner.add_trial(trials[0])
         runner.step()  # Start trial
-        runner.step()  # Process result, dispatch save
-        runner.step()  # Process save
+        runner.step()  # Process result, dispatch and process save
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         trials += [
@@ -458,8 +462,7 @@ class TrialRunnerTest3(unittest.TestCase):
         ]
         runner.add_trial(trials[1])
         runner.step()  # Start trial
-        runner.step()  # Process result, dispatch save
-        runner.step()  # Process save
+        runner.step()  # Process result, dispatch and process save
         runner.step()  # Error
         self.assertEqual(trials[1].status, Trial.ERROR)
 
@@ -485,10 +488,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(Trial.PENDING, restored_trial.status)
 
         runner2.step()  # Start trial
-        runner2.step()  # Process result, dispatch save
-        runner2.step()  # Process save
-        runner2.step()  # Process result, dispatch save
-        runner2.step()  # Process save
+        runner2.step()  # Process result, dispatch and process save
+        runner2.step()  # Process result, dispatch and process save
         self.assertRaises(TuneError, runner2.step)
 
     def testTrialNoSave(self):
@@ -608,6 +609,52 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
+        shutil.rmtree(tmpdir)
+
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
+    def testUserCheckpointBuffered(self):
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial, schedule 1-8
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        self.assertEqual(num_checkpoints(trials[0]), 0)
+
+        runner.step()  # Process results 0-8, schedule 9-11 (CP)
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 8)
+        self.assertFalse(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 0)
+
+        runner.step()  # Process results 9-11, handle CP, schedule 12-19
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 11)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 1)
+
+        runner.step()  # Process results 12-19, schedule 20-21
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 19)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 1)
+
+        runner.step()  # Process results 20-21, handle CP, schedule 21-29
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 21)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 2)
+
+        runner.step()  # Process results 21-29, schedule 30-31
+        self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 29)
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertTrue(trials[0].has_checkpoint())
+        self.assertEqual(num_checkpoints(trials[0]), 2)
+
         shutil.rmtree(tmpdir)
 
 
