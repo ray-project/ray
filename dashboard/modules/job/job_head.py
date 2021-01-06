@@ -12,7 +12,6 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.new_dashboard.datacenter import (
     DataSource,
-    DataOrganizer,
     GlobalSignals,
 )
 
@@ -53,7 +52,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         if view is None:
             job_detail = {
                 "jobInfo": DataSource.jobs.get(job_id, {}),
-                "jobActors": await DataOrganizer.get_job_actors(job_id),
+                "jobActors": DataSource.job_actors.get(job_id, {}),
                 "jobWorkers": DataSource.job_workers.get(job_id, []),
             }
             await GlobalSignals.job_info_fetched.send(job_detail)
