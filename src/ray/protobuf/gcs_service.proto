@@ -58,6 +58,18 @@ service JobInfoGcsService {
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
 }
 
+message GetActorStatesRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+}
+
+message GetActorStatesReply {
+  GcsStatus status = 1;
+  // States of actor.
+  ActorStates actor_states_data = 2;
+}
+
+
 message GetActorInfoRequest {
   // ID of this actor. If actor_id is set, name will not be set.
   bytes actor_id = 1;
@@ -118,7 +130,9 @@ service ActorInfoGcsService {
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
   // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
-  // Get actor data from GCS Service by actor id.
+  // Get actor states from GCS Service by actor id.
+  rpc GetActorStates(GetActorStatesRequest) returns (GetActorStatesReply);
+  // Get actor data from GCS Service by actor id or actor name.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
   // Get actor data from GCS Service by name.
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);

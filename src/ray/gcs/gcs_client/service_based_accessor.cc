@@ -136,6 +136,27 @@ Status ServiceBasedActorInfoAccessor::GetAll(
   return Status::Invalid("Not implemented");
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncGetStates(
+    const ActorID &actor_id, const OptionalItemCallback<rpc::ActorStates> &callback) {
+  RAY_LOG(DEBUG) << "Getting actor states, actor id = " << actor_id
+                 << ", job id = " << actor_id.JobId();
+  rpc::GetActorStatesRequest request;
+  request.set_actor_id(actor_id.Binary());
+  client_impl_->GetGcsRpcClient().GetActorStates(
+      request,
+      [actor_id, callback](const Status &status, const rpc::GetActorStatesReply &reply) {
+        if (reply.has_actor_states_data()) {
+          callback(status, reply.actor_states_data());
+        } else {
+          callback(status, boost::none);
+        }
+        RAY_LOG(DEBUG) << "Finished getting actor states, status = " << status
+                       << ", actor id = " << actor_id
+                       << ", job id = " << actor_id.JobId();
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting actor info, actor id = " << actor_id
@@ -252,9 +273,9 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
       [this, done](const Status &status) { fetch_all_data_operation_(done); });
 }
 
-Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
+Status ServiceBasedActorInfoAccessor::AsyncSubscribeStates(
     const ActorID &actor_id,
-    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id
                  << ", job id = " << actor_id.JobId();
@@ -264,7 +285,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
                                subscribe](const StatusCallback &fetch_done) {
     auto callback = [actor_id, subscribe, fetch_done](
                         const Status &status,
-                        const boost::optional<rpc::ActorTableData> &result) {
+                        const boost::optional<rpc::ActorStates> &result) {
       if (result) {
         subscribe(actor_id, *result);
       }
@@ -272,15 +293,15 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
         fetch_done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGet(actor_id, callback));
+    RAY_CHECK_OK(AsyncGetStates(actor_id, callback));
   };
 
   auto subscribe_operation = [this, actor_id,
                               subscribe](const StatusCallback &subscribe_done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
-      ActorTableData actor_data;
-      actor_data.ParseFromString(data);
-      subscribe(ActorID::FromBinary(actor_data.actor_id()), actor_data);
+      ActorStates actor_states;
+      actor_states.ParseFromString(data);
+      subscribe(ActorID::FromBinary(id), actor_states);
     };
     return client_impl_->GetGcsPubSub().Subscribe(ACTOR_CHANNEL, actor_id.Hex(),
                                                   on_subscribe, subscribe_done);

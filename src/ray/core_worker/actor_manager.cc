@@ -86,9 +86,9 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback =
-        std::bind(&ActorManager::HandleActorStateNotification, this,
+        std::bind(&ActorManager::HandleActorStatesNotification, this,
                   std::placeholders::_1, std::placeholders::_2);
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeStates(
         actor_id, actor_notification_callback, nullptr));
   } else {
     RAY_LOG(ERROR) << "Actor handle already exists " << actor_id.Hex();
@@ -122,30 +122,28 @@ void ActorManager::WaitForActorOutOfScope(
   }
 }
 
-void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
-                                                const rpc::ActorTableData &actor_data) {
-  const auto &actor_state =
-      rpc::ActorStates::ActorState_Name(actor_data.states().state());
+void ActorManager::HandleActorStatesNotification(const ActorID &actor_id,
+                                                 const rpc::ActorStates &actor_states) {
+  const auto &actor_state = rpc::ActorStates::ActorState_Name(actor_states.state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
-                << ", ip address: " << actor_data.states().address().ip_address()
-                << ", port: " << actor_data.states().address().port() << ", worker_id: "
-                << WorkerID::FromBinary(actor_data.states().address().worker_id())
+                << ", ip address: " << actor_states.address().ip_address()
+                << ", port: " << actor_states.address().port() << ", worker_id: "
+                << WorkerID::FromBinary(actor_states.address().worker_id())
                 << ", raylet_id: "
-                << NodeID::FromBinary(actor_data.states().address().raylet_id())
-                << ", num_restarts: " << actor_data.states().num_restarts();
-  if (actor_data.states().state() == rpc::ActorStates::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.states().num_restarts(),
+                << NodeID::FromBinary(actor_states.address().raylet_id())
+                << ", num_restarts: " << actor_states.num_restarts();
+  if (actor_states.state() == rpc::ActorStates::RESTARTING) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_states.num_restarts(),
                                              false);
-  } else if (actor_data.states().state() == rpc::ActorStates::DEAD) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.states().num_restarts(),
-                                             true);
+  } else if (actor_states.state() == rpc::ActorStates::DEAD) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_states.num_restarts(), true);
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
-  } else if (actor_data.states().state() == rpc::ActorStates::ALIVE) {
-    direct_actor_submitter_->ConnectActor(actor_id, actor_data.states().address(),
-                                          actor_data.states().num_restarts());
+  } else if (actor_states.state() == rpc::ActorStates::ALIVE) {
+    direct_actor_submitter_->ConnectActor(actor_id, actor_states.address(),
+                                          actor_states.num_restarts());
   } else {
     // The actor is being created and not yet ready, just ignore!
   }

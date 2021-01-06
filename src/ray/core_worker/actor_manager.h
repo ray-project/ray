@@ -175,9 +175,9 @@ class ActorManager {
   /// Handle actor state notification published from GCS.
   ///
   /// \param[in] actor_id The actor id of this notification.
-  /// \param[in] actor_data The GCS actor data.
-  void HandleActorStateNotification(const ActorID &actor_id,
-                                    const rpc::ActorTableData &actor_data);
+  /// \param[in] actor_states The GCS actor states.
+  void HandleActorStatesNotification(const ActorID &actor_id,
+                                     const rpc::ActorStates &actor_states);
 
   /// GCS client.
   std::shared_ptr<gcs::GcsClient> gcs_client_;

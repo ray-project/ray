@@ -39,6 +39,15 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
 
+  /// Get actor states from GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to look up in the GCS.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetStates(
+      const ActorID &actor_id,
+      const OptionalItemCallback<rpc::ActorStates> &callback) = 0;
+
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
@@ -94,15 +103,15 @@ class ActorInfoAccessor {
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) = 0;
 
-  /// Subscribe to any update operations of an actor.
+  /// Subscribe to any states update operations of an actor.
   ///
   /// \param actor_id The ID of actor to be subscribed to.
   /// \param subscribe Callback that will be called each time when the actor is updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  virtual Status AsyncSubscribe(
+  virtual Status AsyncSubscribeStates(
       const ActorID &actor_id,
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to an actor.

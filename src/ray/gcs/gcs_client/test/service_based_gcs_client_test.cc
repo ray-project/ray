@@ -133,9 +133,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool SubscribeActor(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+      const gcs::SubscribeCallback<ActorID, rpc::ActorStates> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeStates(
         actor_id, subscribe,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
@@ -539,9 +539,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void CheckActorData(const gcs::ActorTableData &actor,
-                      rpc::ActorStates::ActorState expected_state) {
-    ASSERT_TRUE(actor.states().state() == expected_state);
+  void CheckActorStates(const rpc::ActorStates &actor_states,
+                        rpc::ActorStates::ActorState expected_state) {
+    ASSERT_TRUE(actor_states.state() == expected_state);
   }
 
   absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
@@ -597,7 +597,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Subscribe to any update operations of an actor.
   std::atomic<int> actor_update_count(0);
   auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
+                                            const rpc::ActorStates &data) {
     ++actor_update_count;
   };
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
@@ -1030,9 +1030,9 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Number of notifications for the following `SubscribeActor` operation.
   std::atomic<int> num_subscribe_one_notifications(0);
   // All the notifications for the following `SubscribeActor` operation.
-  std::vector<gcs::ActorTableData> subscribe_one_notifications;
+  std::vector<rpc::ActorStates> subscribe_one_notifications;
   auto actor_subscribe = [&num_subscribe_one_notifications, &subscribe_one_notifications](
-                             const ActorID &actor_id, const gcs::ActorTableData &data) {
+                             const ActorID &actor_id, const rpc::ActorStates &data) {
     subscribe_one_notifications.emplace_back(data);
     ++num_subscribe_one_notifications;
   };
@@ -1044,8 +1044,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorStates::DEAD);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorStates::DEAD);
+  CheckActorStates(subscribe_all_notifications[0].states(), rpc::ActorStates::DEAD);
+  CheckActorStates(subscribe_one_notifications[0], rpc::ActorStates::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();
@@ -1287,7 +1287,7 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
         auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
         ASSERT_TRUE(SubscribeActor(
-            actor_id, [](const ActorID &id, const rpc::ActorTableData &result) {}));
+            actor_id, [](const ActorID &id, const rpc::ActorStates &result) {}));
         gcs_client_->Actors().AsyncResubscribe(false);
         UnsubscribeActor(actor_id);
       }

@@ -72,6 +72,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override;
 
+  Status AsyncGetStates(const ActorID &actor_id,
+                        const OptionalItemCallback<rpc::ActorStates> &callback) override;
+
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
@@ -91,9 +94,10 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncSubscribe(const ActorID &actor_id,
-                        const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-                        const StatusCallback &done) override;
+  Status AsyncSubscribeStates(
+      const ActorID &actor_id,
+      const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
+      const StatusCallback &done) override;
 
   Status AsyncUnsubscribe(const ActorID &actor_id) override;
 

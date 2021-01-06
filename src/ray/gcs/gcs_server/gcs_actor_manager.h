@@ -180,6 +180,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                          rpc::CreateActorReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetActorStates(const rpc::GetActorStatesRequest &request,
+                            rpc::GetActorStatesReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
                           rpc::GetActorInfoReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;

@@ -148,6 +148,31 @@ void GcsActorManager::HandleCreateActor(const rpc::CreateActorRequest &request,
   ++counts_[CountType::CREATE_ACTOR_REQUEST];
 }
 
+void GcsActorManager::HandleGetActorStates(const rpc::GetActorStatesRequest &request,
+                                           rpc::GetActorStatesReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  ActorID actor_id = ActorID::FromBinary(request.actor_id());
+  RAY_LOG(DEBUG) << "Getting actor states"
+                 << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+
+  const auto &registered_actor_iter = registered_actors_.find(actor_id);
+  if (registered_actor_iter != registered_actors_.end()) {
+    reply->mutable_actor_states_data()->CopyFrom(
+        registered_actor_iter->second->GetActorTableData().states());
+  } else {
+    const auto &destroyed_actor_iter = destroyed_actors_.find(actor_id);
+    if (destroyed_actor_iter != destroyed_actors_.end()) {
+      reply->mutable_actor_states_data()->CopyFrom(
+          destroyed_actor_iter->second->GetActorTableData().states());
+    }
+  }
+
+  RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
+                 << ", actor id = " << actor_id;
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ACTOR_INFO_REQUEST];
+}
+
 void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
                                          rpc::GetActorInfoReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -229,7 +254,8 @@ void GcsActorManager::HandleRegisterActorInfo(
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data.SerializeAsString(), nullptr));
+                                         actor_table_data.states().SerializeAsString(),
+                                         nullptr));
       RAY_LOG(DEBUG) << "Finished registering actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
     }
@@ -258,7 +284,8 @@ void GcsActorManager::HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &r
                      << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     } else {
       RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                         actor_table_data.SerializeAsString(), nullptr));
+                                         actor_table_data.states().SerializeAsString(),
+                                         nullptr));
       RAY_LOG(DEBUG) << "Finished updating actor info, job id = " << actor_id.JobId()
                      << ", actor id = " << actor_id;
     }
@@ -343,9 +370,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
           // the actor state to DEAD to avoid race condition.
           return;
         }
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                                           actor->GetActorTableData().SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor->GetActorID().Hex(),
+            actor->GetActorTableData().states().SerializeAsString(), nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.
@@ -565,7 +592,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
       actor->GetActorID(), *actor_table_data,
       [this, actor_id, actor_table_data](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                           actor_table_data->SerializeAsString(),
+                                           actor_table_data->states().SerializeAsString(),
                                            nullptr));
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
@@ -746,9 +773,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
         [this, actor_id, actor_table_data](Status status) {
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                             actor_table_data.SerializeAsString(),
-                                             nullptr));
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(
+              ACTOR_CHANNEL, actor_id.Hex(),
+              actor_table_data.states().SerializeAsString(), nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
@@ -773,7 +800,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
-              mutable_actor_table_data->SerializeAsString(), nullptr));
+              mutable_actor_table_data->states().SerializeAsString(), nullptr));
         }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
@@ -815,7 +842,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
       actor_id, actor_table_data,
       [this, actor_id, actor_table_data, actor](Status status) {
         RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                           actor_table_data.SerializeAsString(),
+                                           actor_table_data.states().SerializeAsString(),
                                            nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from

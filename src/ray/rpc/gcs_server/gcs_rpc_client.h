@@ -133,6 +133,10 @@ class GcsRpcClient {
   /// Create actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, CreateActor, actor_info_grpc_client_, )
 
+  /// Get actor states from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorStates,
+                             actor_info_grpc_client_, )
+
   /// Get actor data from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, actor_info_grpc_client_, )
 
