@@ -249,7 +249,7 @@ install_dependencies() {
   pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
-    if [ "${DOC_TESTING-}" = 0 ] && [ "${SGD_TESTING-}" = 0 ] && [ "${TUNE_TESTING-}" = 0 ]; then
+    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
       # PyTorch is installed first since we are using a "-f" directive to find the wheels.
       # We want to install the CPU version only.
       local torch_url="https://download.pytorch.org/whl/torch_stable.html"
@@ -311,7 +311,7 @@ install_dependencies() {
   fi
 
 
-  if [ "${DOC_TESTING-}" = 0 ] && [ "${SGD_TESTING-}" = 0 ] && [ "${TUNE_TESTING-}" = 0 ]; then
+  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Tensorflow or Torch
     # should be installed, then upgrade/downgrade to that specific version.
     if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
