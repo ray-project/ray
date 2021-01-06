@@ -207,7 +207,7 @@ void ServiceBasedGcsClient::ReconnectGcsServer() {
         RAY_LOG(INFO)
             << "Repeated reconnection in "
             << RayConfig::instance().minimum_gcs_reconnect_interval_milliseconds()
-            << "milliseconds, return directly.";
+            << " milliseconds, return directly.";
         return;
       }
 
