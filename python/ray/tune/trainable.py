@@ -18,14 +18,16 @@ import uuid
 import ray
 from ray.util.debug import log_once
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S, TIMESTEPS_THIS_ITER, DONE,
-    TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL, TRAINING_ITERATION,
-    RESULT_DUPLICATE, TRIAL_INFO, STDOUT_FILE, STDERR_FILE)
+    DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,
+    TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER,
+    EPISODES_TOTAL, TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO,
+    STDOUT_FILE, STDERR_FILE)
 from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+BUFFER_TIME_S = 5
 
 
 class Trainable:
@@ -138,6 +140,28 @@ class Trainable:
     def get_current_ip(self):
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
+
+    def train_buffered(self):
+        """Runs multiple iterations of training.
+
+        Calls ``train()`` internally. Collects and combines multiple results.
+        This function
+
+        """
+        results = []
+
+        now = time.time()
+        send_buffer_at = now + BUFFER_TIME_S
+        while now < send_buffer_at:
+            result = self.train()
+            results.append(result)
+            if result.get(DONE, False) or result.get(
+                    SHOULD_CHECKPOINT, False) or result.get(
+                        RESULT_DUPLICATE, False):
+                break
+            now = time.time()
+
+        return results
 
     def train(self):
         """Runs one logical iteration of training.

@@ -30,6 +30,7 @@ BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
+USE_RESULT_BUFFER = True
 
 
 class _ActorClassCache:
@@ -258,7 +259,10 @@ class RayTrialExecutor(TrialExecutor):
 
         assert trial.status == Trial.RUNNING, trial.status
         with self._change_working_directory(trial):
-            remote = trial.runner.train.remote()
+            if USE_RESULT_BUFFER:
+                remote = trial.runner.train_buffered.remote()
+            else:
+                remote = trial.runner.train.remote()
 
         # Local Mode
         if isinstance(remote, dict):
@@ -484,7 +488,7 @@ class RayTrialExecutor(TrialExecutor):
         return self._running[result_id]
 
     def fetch_result(self, trial):
-        """Fetches one result of the running trials.
+        """Fetches result list of the running trials.
 
         Returns:
             Result of the most recent trial training run.
@@ -499,6 +503,9 @@ class RayTrialExecutor(TrialExecutor):
         # For local mode
         if isinstance(result, _LocalWrapper):
             result = result.unwrap()
+
+        if not isinstance(result, list):
+            return [result]
         return result
 
     def _commit_resources(self, resources):

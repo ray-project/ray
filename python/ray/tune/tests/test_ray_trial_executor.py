@@ -35,7 +35,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.value, None)
@@ -48,7 +48,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.process_trial_save(trial)
         self.trial_executor.restore(trial)
@@ -71,7 +71,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         """Tests that pause checkpoint does not replace restore checkpoint."""
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         # Save
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(Trial.RUNNING, trial.status)
@@ -80,7 +80,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.process_trial_save(trial)
         # Train
         self.trial_executor.continue_training(trial)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
@@ -106,7 +106,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.fetch_result(trial)
+        self.trial_executor.fetch_result(trial)[-1]
         checkpoint = self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
         self.trial_executor.start_trial(trial, checkpoint)
@@ -119,7 +119,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[0]
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 1)
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
@@ -127,7 +127,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(Trial.PENDING, trial.status)
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)
+        trial.last_result = self.trial_executor.fetch_result(trial)[1]
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 2)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -182,7 +182,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def process_trial_save(self, trial):
         """Simulates trial runner save."""
         checkpoint = trial.saving_to
-        checkpoint_value = self.trial_executor.fetch_result(trial)
+        checkpoint_value = self.trial_executor.fetch_result(trial)[-1]
         checkpoint.value = checkpoint_value
         trial.on_checkpoint(checkpoint)
 
