@@ -2,13 +2,14 @@ import asyncio
 from collections import defaultdict
 import time
 import os
-import pytest
+
 import requests
+import pytest
 import starlette.responses
 
 import ray
 from ray import serve
-from ray.test_utils import wait_for_condition
+from ray.test_utils import SignalActor, wait_for_condition
 from ray.serve.constants import SERVE_PROXY_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import BackendConfig
@@ -146,7 +147,7 @@ def test_call_method(serve_instance):
 
     # Test serve handle path.
     handle = client.get_handle("endpoint")
-    assert ray.get(handle.options("method").remote()) == "hello"
+    assert ray.get(handle.options(method_name="method").remote()) == "hello"
 
 
 def test_no_route(serve_instance):
@@ -869,6 +870,79 @@ def test_serve_metrics(serve_instance):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics()
+
+
+def test_serve_graceful_shutdown(serve_instance):
+    client = serve_instance
+
+    signal = SignalActor.remote()
+
+    class WaitBackend:
+        @serve.accept_batch
+        async def __call__(self, requests):
+            signal_actor = await requests[0].body()
+            await signal_actor.wait.remote()
+            return ["" for _ in range(len(requests))]
+
+    client.create_backend(
+        "wait",
+        WaitBackend,
+        config=BackendConfig(
+            # Make sure we can queue up queries in the replica side.
+            max_concurrent_queries=10,
+            max_batch_size=1,
+            experimental_graceful_shutdown_wait_loop_s=0.5,
+            experimental_graceful_shutdown_timeout_s=1000,
+        ))
+    client.create_endpoint("wait", backend="wait")
+    handle = client.get_handle("wait")
+    refs = [handle.remote(signal) for _ in range(10)]
+
+    # Wait for all the queries to be enqueued
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    @ray.remote(num_cpus=0)
+    def do_blocking_delete():
+        client = serve.connect()
+        client.delete_endpoint("wait")
+        client.delete_backend("wait")
+
+    # Now delete the backend. This should trigger the shutdown sequence.
+    delete_ref = do_blocking_delete.remote()
+
+    # The queries should be enqueued but not executed becuase they are blocked
+    # by signal actor.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(refs, timeout=1)
+
+    signal.send.remote()
+
+    # All the queries should be drained and executed without error.
+    ray.get(refs)
+    # Blocking delete should complete.
+    ray.get(delete_ref)
+
+
+def test_serve_forceful_shutdown(serve_instance):
+    client = serve_instance
+
+    def sleeper(_):
+        while True:
+            time.sleep(1000)
+
+    client.create_backend(
+        "sleeper",
+        sleeper,
+        config=BackendConfig(experimental_graceful_shutdown_timeout_s=1))
+    client.create_endpoint("sleeper", backend="sleeper")
+    handle = client.get_handle("sleeper")
+    ref = handle.remote()
+    client.delete_endpoint("sleeper")
+    client.delete_backend("sleeper")
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ref)
 
 
 def test_starlette_request(serve_instance):

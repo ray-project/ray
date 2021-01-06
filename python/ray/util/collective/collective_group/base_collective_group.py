@@ -72,3 +72,11 @@ class BaseGroup(metaclass=ABCMeta):
                       tensor_list,
                       reducescatter_options=ReduceScatterOptions()):
         raise NotImplementedError()
+
+    @abstractmethod
+    def send(self, tensor, dst_rank):
+        raise NotImplementedError()
+
+    @abstractmethod
+    def recv(self, tensor, src_rank):
+        raise NotImplementedError()

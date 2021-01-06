@@ -9,5 +9,4 @@ package io.ray.streaming.api.collector;
 public interface Collector<T> {
 
   void collect(T value);
-
 }

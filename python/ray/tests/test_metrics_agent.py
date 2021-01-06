@@ -5,15 +5,13 @@ from pprint import pformat
 import time
 from unittest.mock import MagicMock
 
-import requests
 import pytest
-from prometheus_client.parser import text_string_to_metric_families
 
 import ray
 from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray.util.metrics import Count, Histogram, Gauge
-from ray.test_utils import wait_for_condition, SignalActor
+from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
@@ -115,29 +113,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
     prom_addresses = _setup_cluster_for_test
 
-    # Make sure we can ping Prometheus endpoints.
-    def fetch_prometheus(prom_addresses):
-        components_dict = {}
-        metric_names = set()
-        metric_samples = []
-        for address in prom_addresses:
-            if address not in components_dict:
-                components_dict[address] = set()
-            try:
-                response = requests.get(f"http://{address}/metrics")
-            except requests.exceptions.ConnectionError:
-                continue
-
-            for line in response.text.split("\n"):
-                for family in text_string_to_metric_families(line):
-                    for sample in family.samples:
-                        metric_names.add(sample.name)
-                        metric_samples.append(sample)
-                        if "Component" in sample.labels:
-                            components_dict[address].add(
-                                sample.labels["Component"])
-        return components_dict, metric_names, metric_samples
-
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(
             prom_addresses)
@@ -157,6 +132,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure our user defined metrics exist
         for metric_name in ["test_counter", "test_histogram"]:
             assert any(metric_name in full_name for full_name in metric_names)
+
+        # Make sure GCS server metrics are recorded.
+        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
 
         # Make sure the numeric value is correct
         test_counter_sample = [

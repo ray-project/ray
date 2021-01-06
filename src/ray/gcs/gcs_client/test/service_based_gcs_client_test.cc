@@ -332,7 +332,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   bool SubscribeBatchResourceUsage(
       const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchedResourceUsage(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -346,7 +346,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportResourceUsage(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
         resources, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -588,6 +588,29 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   WaitForExpectedCount(job_updates, 2);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
+  // NOTE: `TestActorSubscribeAll` will subscribe to all actor messages, so we need to
+  // execute it before `TestActorInfo`, otherwise `TestActorSubscribeAll` will receive
+  // messages from `TestActorInfo`.
+  // Create actor table data.
+  JobID job_id = JobID::FromInt(1);
+  auto actor_table_data1 = Mocker::GenActorTableData(job_id);
+  auto actor_table_data2 = Mocker::GenActorTableData(job_id);
+
+  // Subscribe to any register or update operations of actors.
+  std::atomic<int> actor_update_count(0);
+  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
+                                            const gcs::ActorTableData &data) {
+    ++actor_update_count;
+  };
+  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
+
+  // Register an actor to GCS.
+  RegisterActor(actor_table_data1, false);
+  RegisterActor(actor_table_data2, false);
+  WaitForExpectedCount(actor_update_count, 2);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
@@ -609,26 +632,6 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
   WaitForActorUnsubscribed(actor_id);
-}
-
-TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
-  // Create actor table data.
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data1 = Mocker::GenActorTableData(job_id);
-  auto actor_table_data2 = Mocker::GenActorTableData(job_id);
-
-  // Subscribe to any register or update operations of actors.
-  std::atomic<int> actor_update_count(0);
-  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
-    ++actor_update_count;
-  };
-  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
-
-  // Register an actor to GCS.
-  RegisterActor(actor_table_data1, false);
-  RegisterActor(actor_table_data2, false);
-  WaitForExpectedCount(actor_update_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
