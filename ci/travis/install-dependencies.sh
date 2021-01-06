@@ -249,6 +249,7 @@ install_dependencies() {
   pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
+    # Remove this entire section once RLlib and Serve dependencies are fixed.
     if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
       # PyTorch is installed first since we are using a "-f" directive to find the wheels.
       # We want to install the CPU version only.
@@ -310,7 +311,7 @@ install_dependencies() {
     pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
   fi
 
-
+  # Remove this entire section once RLlib and Serve dependencies are fixed.
   if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Tensorflow or Torch
     # should be installed, then upgrade/downgrade to that specific version.
