@@ -51,7 +51,7 @@ class GcsActor {
     actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
     actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
-    actor_table_data_.set_num_restarts(0);
+    actor_table_data_.mutable_states()->set_num_restarts(0);
 
     auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
     actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
@@ -60,11 +60,13 @@ class GcsActor {
     actor_table_data_.set_name(actor_creation_task_spec.name());
     actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
-    actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+    actor_table_data_.mutable_states()->set_state(rpc::ActorStates::DEPENDENCIES_UNREADY);
     actor_table_data_.mutable_task_spec()->CopyFrom(task_spec);
 
-    actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
-    actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
+    actor_table_data_.mutable_states()->mutable_address()->set_raylet_id(
+        NodeID::Nil().Binary());
+    actor_table_data_.mutable_states()->mutable_address()->set_worker_id(
+        WorkerID::Nil().Binary());
   }
 
   /// Get the node id on which this actor is created.
@@ -84,9 +86,9 @@ class GcsActor {
   const rpc::Address &GetAddress() const;
 
   /// Update the state of this actor.
-  void UpdateState(rpc::ActorTableData::ActorState state);
+  void UpdateState(rpc::ActorStates::ActorState state);
   /// Get the state of this gcs actor.
-  rpc::ActorTableData::ActorState GetState() const;
+  rpc::ActorStates::ActorState GetState() const;
 
   /// Get the id of this actor.
   ActorID GetActorID() const;

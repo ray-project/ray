@@ -148,9 +148,9 @@ struct Mocker {
     ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data->set_actor_id(actor_id.Binary());
     actor_table_data->set_job_id(job_id.Binary());
-    actor_table_data->set_state(rpc::ActorTableData::ALIVE);
+    actor_table_data->mutable_states()->set_state(rpc::ActorStates::ALIVE);
     actor_table_data->set_max_restarts(1);
-    actor_table_data->set_num_restarts(0);
+    actor_table_data->mutable_states()->set_num_restarts(0);
     return actor_table_data;
   }
 

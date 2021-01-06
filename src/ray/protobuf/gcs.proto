@@ -94,7 +94,7 @@ message TaskTableData {
   Task task = 1;
 }
 
-message ActorTableData {
+message ActorStates {
   // State of an actor.
   enum ActorState {
     // Actor info is registered in GCS. But its dependencies are not ready.
@@ -109,6 +109,19 @@ message ActorTableData {
     // Actor is already dead and won't be restarted.
     DEAD = 4;
   }
+  // Current state of this actor.
+  ActorState state = 1;
+  // Number of restarts that has been tried on this actor.
+  // This will be greater by 1 than what's published before in ALIVE.
+  // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
+  uint64 num_restarts = 2;
+  // The address of the the actor.
+  Address address = 3;
+  // Last timestamp that the actor state was updated.
+  double timestamp = 4;
+}
+
+message ActorTableData {
   // The ID of the actor that was created.
   bytes actor_id = 1;
   // The ID of the caller of the actor creation task.
@@ -120,31 +133,23 @@ message ActorTableData {
   // The ID of the job that created the actor.
   bytes job_id = 4;
   // Current state of this actor.
-  ActorState state = 6;
+  ActorStates states = 5;
   // Max number of times this actor should be restarted,
   // a value of -1 indicates an infinite number of reconstruction attempts.
-  int64 max_restarts = 7;
-  // Number of restarts that has been tried on this actor.
-  // This will be greater by 1 than what's published before in ALIVE.
-  // ALIVE:0 RESTARTING:1 ALIVE:1 RESTARTING:2, etc
-  uint64 num_restarts = 8;
-  // The address of the the actor.
-  Address address = 9;
+  int64 max_restarts = 6;
   // The address of the the actor's owner (parent).
-  Address owner_address = 10;
+  Address owner_address = 7;
   // Whether the actor is persistent.
-  bool is_detached = 11;
+  bool is_detached = 8;
   // Name of the actor. Only populated if is_detached is true.
-  string name = 12;
-  // Last timestamp that the actor state was updated.
-  double timestamp = 13;
+  string name = 9;
   // The task specification of this actor's creation task.
-  TaskSpec task_spec = 14;
+  TaskSpec task_spec = 10;
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
-  repeated ResourceMapEntry resource_mapping = 15;
+  repeated ResourceMapEntry resource_mapping = 11;
   // The process id of this actor.
-  uint32 pid = 16;
+  uint32 pid = 12;
 }
 
 message ErrorTableData {

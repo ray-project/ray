@@ -225,7 +225,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
           if (!result.empty()) {
             if (filter_non_dead_actor) {
               for (auto &iter : result) {
-                if (iter.state() == gcs::ActorTableData::DEAD) {
+                if (iter.states().state() == rpc::ActorStates::DEAD) {
                   actors.emplace_back(iter);
                 }
               }
@@ -540,8 +540,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void CheckActorData(const gcs::ActorTableData &actor,
-                      rpc::ActorTableData_ActorState expected_state) {
-    ASSERT_TRUE(actor.state() == expected_state);
+                      rpc::ActorStates::ActorState expected_state) {
+    ASSERT_TRUE(actor.states().state() == expected_state);
   }
 
   absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
@@ -604,7 +604,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 
   // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEPENDENCIES_UNREADY);
+  ASSERT_TRUE(GetActor(actor_id).states().state() ==
+              rpc::ActorStates::DEPENDENCIES_UNREADY);
 
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
@@ -1043,8 +1044,8 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_all_notifications[0], rpc::ActorStates::DEAD);
+  CheckActorData(subscribe_one_notifications[0], rpc::ActorStates::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();

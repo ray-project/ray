@@ -305,10 +305,10 @@ class StoreClientTestBase : public ::testing::Test {
     for (size_t i = 0; i < key_count_; i++) {
       rpc::ActorTableData actor;
       actor.set_max_restarts(1);
-      actor.set_num_restarts(0);
+      actor.mutable_states()->set_num_restarts(0);
       JobID job_id = JobID::FromInt(i % index_count_);
       actor.set_job_id(job_id.Binary());
-      actor.set_state(rpc::ActorTableData::ALIVE);
+      actor.mutable_states()->set_state(rpc::ActorStates::ALIVE);
       ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), /*parent_task_counter=*/i);
       actor.set_actor_id(actor_id.Binary());
 

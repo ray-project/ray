@@ -124,24 +124,28 @@ void ActorManager::WaitForActorOutOfScope(
 
 void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                                                 const rpc::ActorTableData &actor_data) {
-  const auto &actor_state = rpc::ActorTableData::ActorState_Name(actor_data.state());
+  const auto &actor_state =
+      rpc::ActorStates::ActorState_Name(actor_data.states().state());
   RAY_LOG(INFO) << "received notification on actor, state: " << actor_state
                 << ", actor_id: " << actor_id
-                << ", ip address: " << actor_data.address().ip_address()
-                << ", port: " << actor_data.address().port() << ", worker_id: "
-                << WorkerID::FromBinary(actor_data.address().worker_id())
-                << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
-                << ", num_restarts: " << actor_data.num_restarts();
-  if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
-  } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true);
+                << ", ip address: " << actor_data.states().address().ip_address()
+                << ", port: " << actor_data.states().address().port() << ", worker_id: "
+                << WorkerID::FromBinary(actor_data.states().address().worker_id())
+                << ", raylet_id: "
+                << NodeID::FromBinary(actor_data.states().address().raylet_id())
+                << ", num_restarts: " << actor_data.states().num_restarts();
+  if (actor_data.states().state() == rpc::ActorStates::RESTARTING) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.states().num_restarts(),
+                                             false);
+  } else if (actor_data.states().state() == rpc::ActorStates::DEAD) {
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.states().num_restarts(),
+                                             true);
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
-  } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-    direct_actor_submitter_->ConnectActor(actor_id, actor_data.address(),
-                                          actor_data.num_restarts());
+  } else if (actor_data.states().state() == rpc::ActorStates::ALIVE) {
+    direct_actor_submitter_->ConnectActor(actor_id, actor_data.states().address(),
+                                          actor_data.states().num_restarts());
   } else {
     // The actor is being created and not yet ready, just ignore!
   }

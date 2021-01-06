@@ -23,7 +23,7 @@ namespace ray {
 namespace gcs {
 
 NodeID GcsActor::GetNodeID() const {
-  const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
+  const auto &raylet_id_binary = actor_table_data_.states().address().raylet_id();
   if (raylet_id_binary.empty()) {
     return NodeID::Nil();
   }
@@ -31,13 +31,15 @@ NodeID GcsActor::GetNodeID() const {
 }
 
 void GcsActor::UpdateAddress(const rpc::Address &address) {
-  actor_table_data_.mutable_address()->CopyFrom(address);
+  actor_table_data_.mutable_states()->mutable_address()->CopyFrom(address);
 }
 
-const rpc::Address &GcsActor::GetAddress() const { return actor_table_data_.address(); }
+const rpc::Address &GcsActor::GetAddress() const {
+  return actor_table_data_.states().address();
+}
 
 WorkerID GcsActor::GetWorkerID() const {
-  const auto &address = actor_table_data_.address();
+  const auto &address = actor_table_data_.states().address();
   if (address.worker_id().empty()) {
     return WorkerID::Nil();
   }
@@ -56,12 +58,12 @@ const rpc::Address &GcsActor::GetOwnerAddress() const {
   return actor_table_data_.owner_address();
 }
 
-void GcsActor::UpdateState(rpc::ActorTableData::ActorState state) {
-  actor_table_data_.set_state(state);
+void GcsActor::UpdateState(rpc::ActorStates::ActorState state) {
+  actor_table_data_.mutable_states()->set_state(state);
 }
 
-rpc::ActorTableData::ActorState GcsActor::GetState() const {
-  return actor_table_data_.state();
+rpc::ActorStates::ActorState GcsActor::GetState() const {
+  return actor_table_data_.states().state();
 }
 
 ActorID GcsActor::GetActorID() const {
@@ -375,7 +377,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     return Status::Invalid("Actor may be already destroyed.");
   }
 
-  if (iter->second->GetState() == rpc::ActorTableData::ALIVE) {
+  if (iter->second->GetState() == rpc::ActorStates::ALIVE) {
     // In case of temporary network failures, workers will re-send multiple duplicate
     // requests to GCS server.
     // In this case, we can just reply.
@@ -397,7 +399,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   // If GCS restarts while processing `CreateActor` request, GCS client will resend the
   // `CreateActor` request.
   // After GCS restarts, the state of the actor may not be `DEPENDENCIES_UNREADY`.
-  if (iter->second->GetState() != rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+  if (iter->second->GetState() != rpc::ActorStates::DEPENDENCIES_UNREADY) {
     RAY_LOG(INFO) << "Actor " << actor_id
                   << " is already in the process of creation. Skip it directly, job id = "
                   << actor_id.JobId();
@@ -406,7 +408,8 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Remove the actor from the unresolved actor map.
   auto actor = std::make_shared<GcsActor>(request.task_spec());
-  actor->GetMutableActorTableData()->set_state(rpc::ActorTableData::PENDING_CREATION);
+  actor->GetMutableActorTableData()->mutable_states()->set_state(
+      rpc::ActorStates::PENDING_CREATION);
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due
@@ -477,7 +480,8 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
   it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
-  it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
+  it->second->GetMutableActorTableData()->mutable_states()->set_timestamp(
+      current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
   const auto actor = std::move(it->second);
   registered_actors_.erase(it);
@@ -496,11 +500,11 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   }
 
   // The actor is already dead, most likely due to process or node failure.
-  if (actor->GetState() == rpc::ActorTableData::DEAD) {
+  if (actor->GetState() == rpc::ActorStates::DEAD) {
     return;
   }
 
-  if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+  if (actor->GetState() == rpc::ActorStates::DEPENDENCIES_UNREADY) {
     // The actor creation task still has unresolved dependencies. Remove from the
     // unresolved actors map.
     RemoveUnresolvedActor(actor);
@@ -553,7 +557,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+  mutable_actor_table_data->mutable_states()->set_state(rpc::ActorStates::DEAD);
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
   // The backend storage is reliable in the future, so the status must be ok.
@@ -712,7 +716,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   // If the need_reschedule is set to false, then set the `remaining_restarts` to 0
   // so that the actor will never be rescheduled.
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
-  uint64_t num_restarts = mutable_actor_table_data->num_restarts();
+  uint64_t num_restarts = mutable_actor_table_data->states().num_restarts();
   int64_t remaining_restarts;
   // Destroy placement group owned by this actor.
   destroy_owned_placement_group_if_needed_(actor_id);
@@ -731,8 +735,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
-    mutable_actor_table_data->set_num_restarts(num_restarts + 1);
-    mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
+    mutable_actor_table_data->mutable_states()->set_num_restarts(num_restarts + 1);
+    mutable_actor_table_data->mutable_states()->set_state(rpc::ActorStates::RESTARTING);
     const auto actor_table_data = actor->GetActorTableData();
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
@@ -756,7 +760,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
       }
     }
 
-    mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    mutable_actor_table_data->mutable_states()->set_state(rpc::ActorStates::DEAD);
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
@@ -795,9 +799,9 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   if (registered_actors_.count(actor_id) == 0) {
     return;
   }
-  actor->UpdateState(rpc::ActorTableData::ALIVE);
+  actor->UpdateState(rpc::ActorStates::ALIVE);
   auto actor_table_data = actor->GetActorTableData();
-  actor_table_data.set_timestamp(current_sys_time_ms());
+  actor_table_data.mutable_states()->set_timestamp(current_sys_time_ms());
 
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
@@ -845,21 +849,21 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     auto job_iter = jobs.find(entry.first.JobId());
     auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
     auto actor = std::make_shared<GcsActor>(entry.second);
-    if (entry.second.state() != ray::rpc::ActorTableData::DEAD && !is_job_dead) {
+    if (entry.second.states().state() != ray::rpc::ActorStates::DEAD && !is_job_dead) {
       registered_actors_.emplace(entry.first, actor);
 
       if (!actor->GetName().empty()) {
         named_actors_.emplace(actor->GetName(), actor->GetActorID());
       }
 
-      if (entry.second.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+      if (entry.second.states().state() == ray::rpc::ActorStates::DEPENDENCIES_UNREADY) {
         const auto &owner = actor->GetOwnerAddress();
         const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
         const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
         RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
                       .emplace(actor->GetActorID())
                       .second);
-      } else if (entry.second.state() == ray::rpc::ActorTableData::ALIVE) {
+      } else if (entry.second.states().state() == ray::rpc::ActorStates::ALIVE) {
         created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
                                                     actor->GetActorID());
       }
@@ -876,8 +880,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
     } else {
       destroyed_actors_.emplace(entry.first, actor);
-      sorted_destroyed_actor_list_.emplace_back(entry.first,
-                                                (int64_t)entry.second.timestamp());
+      sorted_destroyed_actor_list_.emplace_back(
+          entry.first, (int64_t)entry.second.states().timestamp());
     }
   }
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
@@ -892,8 +896,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
                  << ", and the number of created actors is " << created_actors_.size();
   for (auto &item : registered_actors_) {
     auto &actor = item.second;
-    if (actor->GetState() == ray::rpc::ActorTableData::PENDING_CREATION ||
-        actor->GetState() == ray::rpc::ActorTableData::RESTARTING) {
+    if (actor->GetState() == ray::rpc::ActorStates::PENDING_CREATION ||
+        actor->GetState() == ray::rpc::ActorStates::RESTARTING) {
       // We should not reschedule actors in state of `ALIVE`.
       // We could not reschedule actors in state of `DEPENDENCIES_UNREADY` because the
       // dependencies of them may not have been resolved yet.
@@ -1007,7 +1011,7 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
   }
   destroyed_actors_.emplace(actor->GetActorID(), actor);
   sorted_destroyed_actor_list_.emplace_back(
-      actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+      actor->GetActorID(), (int64_t)actor->GetActorTableData().states().timestamp());
 }
 
 std::string GcsActorManager::DebugString() const {

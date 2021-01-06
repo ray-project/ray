@@ -68,7 +68,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(task_spec.ActorId());
     RAY_CHECK(queue != client_queues_.end());
-    if (queue->second.state != rpc::ActorTableData::DEAD) {
+    if (queue->second.state != rpc::ActorStates::DEAD) {
       // We must fix the send order prior to resolving dependencies, which may
       // complete out of order. This ensures that we will not deadlock due to
       // backpressure. The receiving actor will execute the tasks according to
@@ -142,7 +142,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     return;
   }
 
-  if (queue->second.state == rpc::ActorTableData::DEAD) {
+  if (queue->second.state == rpc::ActorStates::DEAD) {
     // This message is about an old version of the actor and the actor has
     // already died since then. Skip the connection.
     return;
@@ -154,7 +154,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     DisconnectRpcClient(queue->second);
   }
 
-  queue->second.state = rpc::ActorTableData::ALIVE;
+  queue->second.state = rpc::ActorStates::ALIVE;
   // Update the mapping so new RPCs go out with the right intended worker id.
   queue->second.worker_id = address.worker_id();
   // Create a new connection to the actor.
@@ -191,7 +191,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   DisconnectRpcClient(queue->second);
 
   if (dead) {
-    queue->second.state = rpc::ActorTableData::DEAD;
+    queue->second.state = rpc::ActorStates::DEAD;
     // If there are pending requests, treat the pending tasks as failed.
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     auto &requests = queue->second.requests;
@@ -211,10 +211,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
     // We retain the sequencing information so that we can properly fail
     // any tasks submitted after the actor death.
-  } else if (queue->second.state != rpc::ActorTableData::DEAD) {
+  } else if (queue->second.state != rpc::ActorStates::DEAD) {
     // Only update the actor's state if it is not permanently dead. The actor
     // will eventually get restarted or marked as permanently dead.
-    queue->second.state = rpc::ActorTableData::RESTARTING;
+    queue->second.state = rpc::ActorStates::RESTARTING;
     queue->second.num_restarts = num_restarts;
   }
 }
