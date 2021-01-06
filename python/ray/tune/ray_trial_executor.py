@@ -30,7 +30,7 @@ BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
-USE_RESULT_BUFFER = True
+TUNE_RESULT_BUFFER_LENGTH = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 10))
 
 
 class _ActorClassCache:
@@ -259,8 +259,9 @@ class RayTrialExecutor(TrialExecutor):
 
         assert trial.status == Trial.RUNNING, trial.status
         with self._change_working_directory(trial):
-            if USE_RESULT_BUFFER:
-                remote = trial.runner.train_buffered.remote()
+            if TUNE_RESULT_BUFFER_LENGTH > 1:
+                remote = trial.runner.train_buffered.remote(
+                    TUNE_RESULT_BUFFER_LENGTH)
             else:
                 remote = trial.runner.train.remote()
 

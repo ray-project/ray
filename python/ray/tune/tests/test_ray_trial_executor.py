@@ -1,5 +1,6 @@
 # coding: utf-8
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -106,7 +107,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.fetch_result(trial)[-1]
+        self.trial_executor.fetch_result(trial)
         checkpoint = self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
         self.trial_executor.start_trial(trial, checkpoint)
@@ -114,23 +115,37 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testPauseUnpause(self):
+    def _testPauseUnpause(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
-        trial = Trial("__fake")
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)[0]
-        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 1)
-        self.trial_executor.pause_trial(trial)
-        self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.unpause_trial(trial)
-        self.assertEqual(Trial.PENDING, trial.status)
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        trial.last_result = self.trial_executor.fetch_result(trial)[1]
-        self.assertEqual(trial.last_result.get(TRAINING_ITERATION), 2)
-        self.trial_executor.stop_trial(trial)
-        self.assertEqual(Trial.TERMINATED, trial.status)
+        with patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH",
+                   result_buffer_length):
+            base = max(result_buffer_length, 1)
+
+            trial = Trial("__fake")
+            self.trial_executor.start_trial(trial)
+            self.assertEqual(Trial.RUNNING, trial.status)
+            trial.last_result = self.trial_executor.fetch_result(trial)[-1]
+            self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
+            self.trial_executor.pause_trial(trial)
+            self.assertEqual(Trial.PAUSED, trial.status)
+            self.trial_executor.unpause_trial(trial)
+            self.assertEqual(Trial.PENDING, trial.status)
+            self.trial_executor.start_trial(trial)
+            self.assertEqual(Trial.RUNNING, trial.status)
+            trial.last_result = self.trial_executor.fetch_result(trial)[-1]
+            self.assertEqual(
+                trial.last_result.get(TRAINING_ITERATION), base * 2)
+            self.trial_executor.stop_trial(trial)
+            self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testPauseUnpauseNoBuffer(self):
+        self._testPauseUnpause(0)
+
+    def testPauseUnpauseTrivialBuffer(self):
+        self._testPauseUnpause(1)
+
+    def testPauseUnpauseActualBuffer(self):
+        self._testPauseUnpause(8)
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""

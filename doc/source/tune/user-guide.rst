@@ -690,6 +690,9 @@ These are the environment variables Ray Tune currently considers:
   with the parameter values in them)
 * **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
+* **TUNE_RESULT_BUFFER_LENGTH**: Tune can buffer results from trainables before they are passed
+  to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
+  continued. Setting this to ``0`` disables result buffering.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).

@@ -141,7 +141,7 @@ class Trainable:
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
-    def train_buffered(self):
+    def train_buffered(self, max_buffer_length: int = 100):
         """Runs multiple iterations of training.
 
         Calls ``train()`` internally. Collects and combines multiple results.
@@ -157,7 +157,8 @@ class Trainable:
             results.append(result)
             if result.get(DONE, False) or result.get(
                     SHOULD_CHECKPOINT, False) or result.get(
-                        RESULT_DUPLICATE, False):
+                        RESULT_DUPLICATE,
+                        False) or len(results) >= max_buffer_length:
                 break
             now = time.time()
 
