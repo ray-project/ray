@@ -168,7 +168,6 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
-  RAY_LOG(ERROR) << "Sending pull request!";
   send_pull_request_(object_id, node_id);
   return true;
 }

@@ -209,13 +209,11 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   for (; fake_time_ <= 7 * 10; fake_time_ += 1.) {
-    RAY_LOG(ERROR) << "Tick";
     pull_manager_.Tick();
   }
 
   // Location changes can trigger reset timer.
   for (; fake_time_ <= 120 * 10; fake_time_ += 1.) {
-    RAY_LOG(ERROR) << "Tick";
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
