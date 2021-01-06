@@ -1,35 +1,28 @@
 import asyncio
-from collections import defaultdict
 import os
 import random
 import time
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
-from uuid import uuid4, UUID
+from typing import Any, Dict, Optional
+from uuid import UUID, uuid4
+
+import ray.cloudpickle as pickle
+from ray.actor import ActorHandle
+from ray.serve.backend_state import BackendState
+from ray.serve.backend_worker import create_backend_replica
+from ray.serve.common import (BackendInfo, BackendTag, EndpointTag, GoalId,
+                              NodeId, ReplicaTag, TrafficPolicy)
+from ray.serve.config import (BackendConfig, HTTPOptions, ReplicaConfig)
+from ray.serve.constants import LongPollKey
+from ray.serve.endpoint_state import EndpointState
+from ray.serve.exceptions import RayServeException
+from ray.serve.http_state import HTTPState
+from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.long_poll import LongPollHost
+from ray.serve.utils import logger
 
 import ray
-import ray.cloudpickle as pickle
-from ray.serve.backend_worker import create_backend_replica
-from ray.serve.constants import (
-    LongPollKey, )
-from ray.serve.kv_store import RayInternalKVStore
-from ray.serve.exceptions import RayServeException
-from ray.serve.utils import logger
-from ray.serve.config import BackendConfig, ReplicaConfig, HTTPConfig
-from ray.serve.long_poll import LongPollHost
-from ray.serve.backend_state import BackendState
-from ray.serve.endpoint_state import EndpointState
-from ray.serve.http_state import HTTPState
-from ray.serve.common import (
-    BackendInfo,
-    BackendTag,
-    EndpointTag,
-    GoalId,
-    ReplicaTag,
-    NodeId,
-    TrafficPolicy,
-)
-from ray.actor import ActorHandle
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -84,7 +77,7 @@ class ServeController:
 
     async def __init__(self,
                        controller_name: str,
-                       http_config: HTTPConfig,
+                       http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)
