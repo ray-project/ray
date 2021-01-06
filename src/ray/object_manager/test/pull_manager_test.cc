@@ -24,8 +24,9 @@ class PullManagerTest : public ::testing::Test {
                         num_send_pull_request_calls_++;
                       },
                       [this](const ObjectID &, const std::string &,
-                             std::function<void(const ray::Status &)>) {
+                             std::function<void(const ray::Status &)> callback) {
                         num_restore_spilled_object_calls_++;
+                        restore_object_callback_ = callback;
                       },
                       [this]() { return fake_time_; }, 10000) {}
 
@@ -33,6 +34,7 @@ class PullManagerTest : public ::testing::Test {
   bool object_is_local_;
   int num_send_pull_request_calls_;
   int num_restore_spilled_object_calls_;
+  std::function<void(const ray::Status &)> restore_object_callback_;
   double fake_time_;
   PullManager pull_manager_;
 };
@@ -98,6 +100,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   client_ids.insert(NodeID::FromRandom());
+  fake_time_ += 10.;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
 
   // The behavior is supposed to be to always restore the spilled object if possible (even
@@ -114,6 +117,50 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
   ASSERT_EQ(objects_to_cancel, ObjectRefsToIds(refs));
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+}
+
+TEST_F(PullManagerTest, TestRestoreObjectFailed) {
+  auto refs = CreateObjectRefs(1);
+  auto obj1 = ObjectRefsToIds(refs)[0];
+  rpc::Address addr1;
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  pull_manager_.Pull(refs, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
+  ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+
+  std::unordered_set<NodeID> client_ids;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  restore_object_callback_(ray::Status::IOError(":("));
+
+  // client_ids is empty here, so there's nowhere to pull from.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+
+  // The first pull failed so we're allowed to retry again immediately.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  restore_object_callback_(ray::Status::IOError(":("));
+
+  // Since restore failed, we can fallback to pulling from another node immediately.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
+
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+
+  // Now that we've successfully sent a pull request, we need to wait for the retry period
+  // before sending another one.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 }
 
 TEST_F(PullManagerTest, TestManyUpdates) {
@@ -133,7 +180,8 @@ TEST_F(PullManagerTest, TestManyUpdates) {
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
-  ASSERT_EQ(num_send_pull_request_calls_, 100);
+  // Since no time has passed, only send a single pull request.
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
@@ -160,22 +208,20 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
-  for (; fake_time_ <= 127 * 10; fake_time_ += 1.) {
+  for (; fake_time_ <= 7 * 10; fake_time_ += 1.) {
+    RAY_LOG(ERROR) << "Tick";
     pull_manager_.Tick();
   }
 
-  // Rapid set of location changes.
-  for (int i = 0; i < 127; i++) {
-    fake_time_ += 0.1;
+  // Location changes can trigger reset timer.
+  for (; fake_time_ <= 120 * 10; fake_time_ += 1.) {
+    RAY_LOG(ERROR) << "Tick";
     pull_manager_.OnLocationChange(obj1, client_ids, "");
   }
 
   // We should make a pull request every tick (even if it's a duplicate to a node we're
   // already pulling from).
-  // OnLocationChange also doesn't count towards the retry timer.
-  // To the casual observer, this may seem off-by-one, but this is due to floating point
-  // error (0.1 + 0.1 ... 10k times > 10 == True)
-  ASSERT_EQ(num_send_pull_request_calls_, 1 + 7 + 127);
+  ASSERT_EQ(num_send_pull_request_calls_, 7);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   // Don't retry an object if it's local.
@@ -255,6 +301,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   ASSERT_TRUE(objects_to_cancel.empty());
   // Objects should still be pulled because the other request is still open.
   ASSERT_EQ(pull_manager_.NumActiveRequests(), oids.size());
+  fake_time_ += 10;
   num_send_pull_request_calls_ = 0;
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "");

@@ -30,9 +30,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       // We don't have an active pull for this object yet. Ask the caller to
       // send us notifications about the object's location.
       objects_to_locate->push_back(ref);
-      it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(get_time_() + pull_timeout_ms_ / 1000))
-               .first;
+      it = object_pull_requests_.emplace(obj_id, ObjectPullRequest(get_time_())).first;
     }
     it->second.bundle_request_ids.insert(bundle_it->first);
   }
@@ -89,43 +87,51 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (it == object_pull_requests_.end()) {
     return;
   }
-
   auto &request = it->second;
+  if (request.next_pull_time > get_time_()) {
+    return;
+  }
+
+  bool did_pull = false;
   if (!request.spilled_url.empty()) {
     // Try to restore the spilled object.
     restore_spilled_object_(object_id, request.spilled_url,
                             [this, object_id](const ray::Status &status) {
+                              bool did_pull = true;
                               // Fall back to fetching from another object manager.
                               if (!status.ok()) {
-                                PullFromRandomLocation(object_id);
+                                did_pull = PullFromRandomLocation(object_id);
+                              }
+                              if (did_pull) {
+                                auto it = object_pull_requests_.find(object_id);
+                                RAY_CHECK(it != object_pull_requests_.end());
+                                auto &request = it->second;
+                                UpdateRetryTimer(request);
                               }
                             });
   } else {
     // New object locations were found, so begin trying to pull from a
     // client. This will be called every time a new client location
     // appears.
-    PullFromRandomLocation(object_id);
+    did_pull = PullFromRandomLocation(object_id);
   }
 
-  const auto time = get_time_();
-  auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
-  request.next_pull_time = time + retry_timeout_len;
-
-  // Bound the retry time at 10 * 1024 seconds.
-  request.num_retries = std::min(request.num_retries + 1, 10);
+  if (did_pull) {
+    UpdateRetryTimer(request);
+  }
 }
 
-void PullManager::PullFromRandomLocation(const ObjectID &object_id) {
+bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
-    return;
+    return false;
   }
 
   auto &node_vector = it->second.client_locations;
 
   // The timer should never fire if there are no expected client locations.
   if (node_vector.empty()) {
-    return;
+    return false;
   }
 
   RAY_CHECK(!object_is_local_(object_id));
@@ -138,7 +144,7 @@ void PullManager::PullFromRandomLocation(const ObjectID &object_id) {
                      << "already has the object. The object may have been evicted. It is "
                      << "most likely due to memory pressure, object pull has been "
                      << "requested before object location is updated.";
-    return;
+    return false;
   }
 
   // Choose a random client to pull the object from.
@@ -162,17 +168,24 @@ void PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
+  RAY_LOG(ERROR) << "Sending pull request!";
   send_pull_request_(object_id, node_id);
+  return true;
+}
+
+void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
+  const auto time = get_time_();
+  auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
+  request.next_pull_time = time + retry_timeout_len;
+
+  // Bound the retry time at 10 * 1024 seconds.
+  request.num_retries = std::min(request.num_retries + 1, 10);
 }
 
 void PullManager::Tick() {
   for (auto &pair : object_pull_requests_) {
     const auto &object_id = pair.first;
-    auto &request = pair.second;
-    const auto time = get_time_();
-    if (time >= request.next_pull_time) {
-      TryToMakeObjectLocal(object_id);
-    }
+    TryToMakeObjectLocal(object_id);
   }
 }
 

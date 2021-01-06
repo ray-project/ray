@@ -84,11 +84,13 @@ class PullManager {
           spilled_url(),
           next_pull_time(first_retry_time),
           num_retries(0),
+          num_pulls(0),
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     double next_pull_time;
     uint8_t num_retries;
+    int num_pulls;
     absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
 
@@ -102,7 +104,9 @@ class PullManager {
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
   /// will try each of the other clients in succession.
-  void PullFromRandomLocation(const ObjectID &object_id);
+  bool PullFromRandomLocation(const ObjectID &object_id);
+
+  void UpdateRetryTimer(ObjectPullRequest &request);
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
