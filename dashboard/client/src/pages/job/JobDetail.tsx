@@ -18,7 +18,7 @@ import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import RayletWorkerTable from "../../components/WorkerTable";
-import { jsonFormat, longTextCut } from "../../util/func";
+import { longTextCut } from "../../util/func";
 import { useJobDetail } from "./hook/useJobDetail";
 
 const useStyle = makeStyles((theme) => ({
@@ -64,7 +64,7 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
     ipLogMap,
   } = useJobDetail(props);
 
-  if (!job || !jobInfo || !job.jobInfo.name) {
+  if (!job || !jobInfo) {
     return (
       <div className={classes.root}>
         <Loading loading={msg.startsWith("Loading")} />
@@ -88,7 +88,7 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
   return (
     <div className={classes.root}>
       <TitleCard title={`JOB - ${params.id}`}>
-        <StatusChip type="job" status={jobInfo.state} />
+        <StatusChip type="job" status={jobInfo.isDead ? 'DEAD' : 'ALIVE'} />
         <br />
         Auto Refresh:
         <Switch
@@ -120,24 +120,6 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
         {selectedTab === "info" && (
           <Grid container spacing={2}>
             <Grid item xs={4}>
-              <span className={classes.label}>Name</span>: {jobInfo.name}
-            </Grid>
-            <Grid item xs={4}>
-              <span className={classes.label}>Owner</span>: {jobInfo.owner}
-            </Grid>
-            <Grid item xs={4}>
-              <span className={classes.label}>Language</span>:{" "}
-              {jobInfo.language}
-            </Grid>
-            <Grid item xs={4}>
-              <span className={classes.label}>Namespace</span>:{" "}
-              {jobInfo.namespaceId}
-            </Grid>
-            <Grid item xs={4}>
-              <span className={classes.label}>Driver Entry</span>:{" "}
-              {jobInfo.driverEntry}
-            </Grid>
-            <Grid item xs={4}>
               <span className={classes.label}>Driver IP</span>:{" "}
               {jobInfo.driverIpAddress}
             </Grid>
@@ -154,10 +136,6 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                 </Link>
               </Grid>
             )}
-            <Grid item xs={4}>
-              <span className={classes.label}>Driver HostName</span>:{" "}
-              {jobInfo.driverHostname}
-            </Grid>
             <Grid item xs={4}>
               <span className={classes.label}>Driver Pid</span>:{" "}
               {jobInfo.driverPid}
@@ -182,26 +160,6 @@ const JobDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                 </span>
               </Grid>
             )}
-            <Grid item xs={12}>
-              <span className={classes.label}>JVM Options</span>:{" "}
-              <pre style={{ whiteSpace: "pre-line" }}>{jobInfo.jvmOptions}</pre>
-            </Grid>
-            <Grid item xs={12}>
-              <span className={classes.label}>Url</span>:{" "}
-              <a href={jobInfo.url} target="_blank" rel="noopener noreferrer">
-                {jobInfo.url}
-              </a>
-            </Grid>
-            <Grid item xs={12}>
-              <span className={classes.label}>Driver Args</span>:{" "}
-              {jsonFormat(jobInfo.driverArgs)}
-            </Grid>
-            <Grid item xs={12}>
-              <span className={classes.label}>Driver Cmd</span>:{" "}
-              <pre style={{ whiteSpace: "pre-line", wordBreak: "break-all" }}>
-                {jobInfo.driverCmdline}
-              </pre>
-            </Grid>
           </Grid>
         )}
         {jobInfo?.dependencies && selectedTab === "dep" && (

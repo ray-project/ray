@@ -10,6 +10,9 @@ export type Job = {
   state: string;
   timestamp: number;
   namespaceId: string;
+  driverPid: number,
+  driverIpAddress: string,
+  isDead: boolean
 };
 
 export type PythonDependenciey = string;
@@ -42,6 +45,7 @@ export type JobInfo = {
   eventUrl: string;
   failErrorMessage: string;
   driverCmdline: string;
+
 } & Job;
 
 export type JobDetail = {

@@ -15,7 +15,6 @@ import { Link } from "react-router-dom";
 import Loading from "../../components/Loading";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
 import StateCounter from "../../components/StatesCounter";
-import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
 import { useJobList } from "./hook/useJobList";
 
@@ -27,14 +26,11 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const columns = [
-  "State",
   "ID",
-  "Name",
-  "Owner",
-  "Languages",
-  "Driver Entry",
+  "DriverIpAddress",
+  "DriverPid",
+  "IsDead",
   "Timestamp",
-  "Namespace",
 ];
 
 const JobList = () => {
@@ -47,7 +43,6 @@ const JobList = () => {
     changeFilter,
     page,
     setPage,
-    originalJobs,
   } = useJobList();
 
   return (
@@ -73,26 +68,10 @@ const JobList = () => {
             label="ID"
             onChange={(value) => changeFilter("jobId", value)}
           />
-          <SearchInput
-            label="Name"
-            onChange={(value) => changeFilter("name", value)}
-          />
           <SearchSelect
             label="Language"
             onChange={(value) => changeFilter("language", value)}
             options={["JAVA", "PYTHON"]}
-          />
-          <SearchSelect
-            label="State"
-            onChange={(value) => changeFilter("state", value)}
-            options={Array.from(new Set(originalJobs.map((e) => e.state)))}
-          />
-          <SearchSelect
-            label="Namespace"
-            onChange={(value) => changeFilter("namespaceId", value)}
-            options={Array.from(
-              new Set(originalJobs.map((e) => e.namespaceId)),
-            )}
           />
           <SearchInput
             label="Page Size"
@@ -126,25 +105,20 @@ const JobList = () => {
                 .map(
                   ({
                     jobId = "",
-                    name = "",
-                    owner = "",
-                    language = "",
-                    driverEntry = "",
+                    driverIpAddress,
+                    isDead,
+                    driverPid,
                     state,
                     timestamp,
                     namespaceId,
                   }) => (
                     <TableRow key={jobId}>
                       <TableCell align="center">
-                        {state && <StatusChip type="job" status={state} />}
-                      </TableCell>
-                      <TableCell align="center">
                         <Link to={`/job/${jobId}`}>{jobId}</Link>
                       </TableCell>
-                      <TableCell align="center">{name}</TableCell>
-                      <TableCell align="center">{owner}</TableCell>
-                      <TableCell align="center">{language}</TableCell>
-                      <TableCell align="center">{driverEntry}</TableCell>
+                      <TableCell align="center">{driverIpAddress}</TableCell>
+                      <TableCell align="center">{driverPid}</TableCell>
+                      <TableCell align="center">{isDead ? 'true' : 'false'}</TableCell>
                       <TableCell align="center">
                         {dayjs(timestamp * 1000).format("YYYY/MM/DD HH:mm:ss")}
                       </TableCell>

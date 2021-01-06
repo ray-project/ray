@@ -1,5 +1,4 @@
 import {
-  Grid,
   makeStyles,
   TableBody,
   TableCell,
@@ -8,12 +7,10 @@ import {
   TableRow,
 } from "@material-ui/core";
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { version } from "../../../package.json";
 import TitleCard from "../../components/TitleCard";
 import { getRayConfig } from "../../service/cluster";
 import { getNodeList } from "../../service/node";
-import { getNamespaces } from "../../service/util";
 import { RayConfig } from "../../type/config";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
@@ -36,21 +33,11 @@ const getVal = (key: string, value: any) => {
 
 const useIndex = () => {
   const [rayConfig, setConfig] = useState<RayConfig>();
-  const [namespaces, setNamespaces] = useState<
-    { namespaceId: string; hostNameList: string[] }[]
-  >();
   const [nodes, setNodes] = useState<NodeDetail[]>([]);
   useEffect(() => {
     getRayConfig().then((res) => {
       if (res?.data?.data?.config) {
         setConfig(res.data.data.config);
-      }
-    });
-  }, []);
-  useEffect(() => {
-    getNamespaces().then((res) => {
-      if (res?.data?.data?.namespaces) {
-        setNamespaces(res.data.data.namespaces);
       }
     });
   }, []);
@@ -62,11 +49,11 @@ const useIndex = () => {
     });
   }, []);
 
-  return { rayConfig, namespaces, nodes };
+  return { rayConfig, nodes };
 };
 
 const Index = () => {
-  const { rayConfig, namespaces, nodes } = useIndex();
+  const { rayConfig } = useIndex();
   const classes = useStyle();
 
   return (
@@ -98,28 +85,6 @@ const Index = () => {
           </p>
         )}
       </TitleCard>
-      {namespaces && (
-        <TitleCard title="Namespaces">
-          {namespaces.map((namespace) => (
-            <Grid>
-              <p className={classes.label}>{namespace.namespaceId}</p>
-              {namespace.hostNameList.map((host) => (
-                <Link
-                  key="host"
-                  style={{ margin: 4 }}
-                  to={`node/${
-                    nodes.find(
-                      (e) => e.hostname === host && e.raylet.state === "ALIVE",
-                    )?.raylet.nodeId || ""
-                  }`}
-                >
-                  {host}
-                </Link>
-              ))}
-            </Grid>
-          ))}
-        </TitleCard>
-      )}
       {rayConfig && (
         <TitleCard title="Config">
           <TableContainer>

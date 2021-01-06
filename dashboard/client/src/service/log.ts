@@ -12,7 +12,7 @@ export const getLogDetail = async (url: string) => {
       }
     }
   }
-  const rsp = await axios.get(url);
+  const rsp = await axios.get(url === 'log_index' ? url : `log_proxy?url=${encodeURIComponent(url)}`);
   if (rsp.headers["content-type"]?.includes("html")) {
     const el = document.createElement("div");
     el.innerHTML = rsp.data;
