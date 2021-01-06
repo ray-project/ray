@@ -186,6 +186,25 @@ def test_wait_for_nodes(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 1
 
 
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 20000 " +
+        "--min-worker-port=0 --max-worker-port=0 --port 0"
+    ],
+    indirect=True)
+def test_ray_client(call_ray_start):
+    address = call_ray_start
+
+    from ray.util.client import ray
+    ray.connect("localhost:20000")
+
+    @ray.remote
+    def f():
+        return "hello client"
+
+    assert ray.get(f.remote()) == "hello client"
+
+
 if __name__ == "__main__":
     import pytest
     import sys
