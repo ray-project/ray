@@ -11,7 +11,7 @@ from ray.cluster_utils import Cluster
 num_redis_shards = 1
 redis_max_memory = 10**8
 object_store_memory = 10**8
-num_nodes = 1
+num_nodes = 4
 cluster = Cluster()
 for i in range(num_nodes):
     cluster.add_node(
