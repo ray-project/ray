@@ -206,10 +206,6 @@ const NodeDetailPage = (props: RouteComponentProps<{ id: string }>) => {
                   log
                 </Link>
               </Grid>
-              <Grid item xs>
-                <div className={classes.label}>Namespaces</div>{" "}
-                {namespaceMap[nodeDetail.hostname]?.join(",")}
-              </Grid>
             </Grid>
           </div>
         )}

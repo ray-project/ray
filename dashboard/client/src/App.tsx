@@ -6,7 +6,6 @@ import { HashRouter, Route, Switch } from "react-router-dom";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Loading from "./pages/exception/Loading";
 import { getNodeList } from "./service/node";
-import { getNamespaces } from "./service/util";
 import { store } from "./store";
 import { darkTheme, lightTheme } from "./theme";
 import { getLocalStorage, setLocalStorage } from "./util/localData";
@@ -66,25 +65,7 @@ const App = () => {
           nodeMap[hostname] = raylet.nodeId;
           ipLogMap[ip] = logUrl;
         });
-        getNamespaces()
-          .then((res) => {
-            const namespaceMap = {} as { [key: string]: string[] };
-            if (res?.data?.data?.namespaces) {
-              res.data.data.namespaces.forEach((namespace) => {
-                const { namespaceId, hostNameList } = namespace;
-                hostNameList.forEach((hostname) => {
-                  if (!namespaceMap[hostname]) {
-                    namespaceMap[hostname] = [];
-                  }
-                  namespaceMap[hostname].push(namespaceId);
-                });
-              });
-            }
-            setContext({ nodeMap, ipLogMap, namespaceMap });
-          })
-          .catch(() => {
-            setContext({ nodeMap, ipLogMap, namespaceMap: {} });
-          });
+        setContext({ nodeMap, ipLogMap, namespaceMap: {} });
       }
     });
   }, []);
