@@ -5,7 +5,7 @@ FROM rayproject/ray:nightly"$GPU"
 COPY requirements.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
-COPY requirements_tune.txt ./
+COPY requirements_tune.txt ./requirements/requirements_tune.txt
 
 RUN sudo apt-get update \
     && sudo apt-get install -y gcc \
