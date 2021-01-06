@@ -440,7 +440,7 @@ class MNISTBackend:
 
 #######################################################################
 # We would like to have a fixed location where we store the currently
-# active model. We call this directory ``model_dir``. Everytime we
+# active model. We call this directory ``model_dir``. Every time we
 # would like to update our model, we copy the checkpoint of the new
 # model to this directory. We then create a new backend pointing to
 # that directory, route all the traffic on our model endpoint to this
@@ -615,7 +615,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=3)
 
     model_dir = os.path.expanduser(args.model_dir)
 

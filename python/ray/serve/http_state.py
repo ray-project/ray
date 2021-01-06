@@ -1,17 +1,18 @@
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.serve.config import HTTPConfig
+from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve.constants import ASYNC_CONCURRENCY, SERVE_PROXY_NAME
 from ray.serve.http_proxy import HTTPProxyActor
-from ray.serve.utils import format_actor_name, logger, get_all_node_ids
+from ray.serve.utils import (format_actor_name, logger, get_all_node_ids,
+                             get_current_node_resource_key)
 from ray.serve.common import NodeId
 
 
 class HTTPState:
     def __init__(self, controller_name: str, detached: bool,
-                 config: HTTPConfig):
+                 config: HTTPOptions):
         self._controller_name = controller_name
         self._detached = detached
         self._config = config
@@ -30,12 +31,25 @@ class HTTPState:
         self._start_proxies_if_needed()
         self._stop_proxies_if_needed()
 
+    def _get_target_nodes(self) -> List[Tuple[str, str]]:
+        """Return the list of (id, resource_key) to deploy HTTP servers on."""
+        location = self._config.location
+        target_nodes = get_all_node_ids()
+
+        if location == DeploymentMode.NoServer:
+            return []
+
+        if location == DeploymentMode.HeadOnly:
+            head_node_resource_key = get_current_node_resource_key()
+            target_nodes = [(node_id, node_resource)
+                            for node_id, node_resource in target_nodes
+                            if node_resource == head_node_resource_key][:1]
+
+        return target_nodes
+
     def _start_proxies_if_needed(self) -> None:
         """Start a proxy on every node if it doesn't already exist."""
-        if self._config.host is None:
-            return
-
-        for node_id, node_resource in get_all_node_ids():
+        for node_id, node_resource in self._get_target_nodes():
             if node_id in self._proxy_actors:
                 continue
 
