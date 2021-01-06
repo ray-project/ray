@@ -6,7 +6,7 @@ RUN mkdir ./requirements
 COPY requirements.txt ./
 COPY requirements_ml_docker.txt ./
 COPY requirements_rllib.txt ./
-COPY requirements/requirements_tune.txt ./requirements/
+COPY requirements_tune.txt ./requirements/requirements_tune.txt
 
 RUN sudo apt-get update \
     && sudo apt-get install -y gcc \
