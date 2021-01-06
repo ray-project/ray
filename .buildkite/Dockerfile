@@ -21,4 +21,3 @@ WORKDIR /ray
 COPY . .
 RUN ./ci/travis/ci.sh init
 RUN ./ci/travis/ci.sh build
-
