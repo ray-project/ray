@@ -82,7 +82,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      subscribe(JobID::FromBinary(id), job_data);
+      subscribe(JobID::FromHex(id), job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
@@ -1377,14 +1377,13 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::WorkerTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       rpc::WorkerTableData worker_failure_data;
       worker_failure_data.ParseFromString(data);
-      subscribe(WorkerID::FromBinary(id), worker_failure_data);
+      subscribe(worker_failure_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
   };
