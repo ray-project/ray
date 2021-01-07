@@ -214,6 +214,17 @@ void GcsActorManager::HandleGetNamedActorInfo(
   ++counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST];
 }
 
+void GcsActorManager::HandleDestroyActor(const rpc::DestroyActorRequest &request,
+                                         rpc::DestroyActorReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  const auto &actor_id = ActorID::FromBinary(request.actor_id());
+  DestroyActor(actor_id);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  RAY_LOG(DEBUG) << "Finished destroying actor, job id = " << actor_id.JobId()
+                 << ", actor id = " << actor_id;
+  ++counts_[CountType::DESTROY_ACTOR_REQUEST];
+}
+
 Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &request,
                                       RegisterActorCallback success_callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
@@ -707,7 +718,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
         [this, actor, actor_id, mutable_actor_table_data](Status status) {
-          // if actor was an detached actor, make sure to destroy it.
+          // If actor was an detached actor, make sure to destroy it.
           // We need to do this because detached actors are not destroyed
           // when its owners are dead because it doesn't have owners.
           if (actor->IsDetached()) {
@@ -965,6 +976,7 @@ std::string GcsActorManager::DebugString() const {
          << ", GetActorInfo request count: " << counts_[CountType::GET_ACTOR_INFO_REQUEST]
          << ", GetNamedActorInfo request count: "
          << counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST]
+         << ", DestroyActor request count: " << counts_[CountType::DESTROY_ACTOR_REQUEST]
          << ", Registered actors count: " << registered_actors_.size()
          << ", Destroyed actors count: " << destroyed_actors_.size()
          << ", Named actors count: " << named_actors_.size()

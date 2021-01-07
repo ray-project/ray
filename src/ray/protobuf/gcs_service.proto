@@ -87,6 +87,15 @@ message GetAllActorInfoReply {
   repeated ActorTableData actor_table_data = 2;
 }
 
+message DestroyActorRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+}
+
+message DestroyActorReply {
+  GcsStatus status = 1;
+}
+
 // Service for actor info access.
 service ActorInfoGcsService {
   // Register actor to gcs service.
@@ -99,6 +108,8 @@ service ActorInfoGcsService {
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
   // Get information of all actor from GCS Service.
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
+  // Destroy actor.
+  rpc DestroyActor(DestroyActorRequest) returns (DestroyActorReply);
 }
 
 message RegisterNodeRequest {

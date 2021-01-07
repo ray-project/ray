@@ -200,6 +200,23 @@ Status ServiceBasedActorInfoAccessor::AsyncRegisterActor(
   return Status::OK();
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncDestroyActor(
+    const ActorID &actor_id, const ray::gcs::StatusCallback &callback) {
+  rpc::DestroyActorRequest request;
+  request.set_actor_id(actor_id.Binary());
+  client_impl_->GetGcsRpcClient().DestroyActor(
+      request, [callback](const Status &, const rpc::DestroyActorReply &reply) {
+        if (callback) {
+          auto status =
+              reply.status().code() == (int)StatusCode::OK
+                  ? Status()
+                  : Status(StatusCode(reply.status().code()), reply.status().message());
+          callback(status);
+        }
+      });
+  return Status::OK();
+}
+
 Status ServiceBasedActorInfoAccessor::AsyncCreateActor(
     const ray::TaskSpecification &task_spec, const ray::gcs::StatusCallback &callback) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
