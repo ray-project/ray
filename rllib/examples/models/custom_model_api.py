@@ -16,15 +16,16 @@ torch, nn = try_import_torch()
 class DuelingQModel(TFModelV2):  # or: TorchModelV2
     """A simple, hard-coded dueling head model."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+    def __init__(self, obs_space, action_space, num_outputs, model_config,
+                 name):
         # Pass num_outputs=None into super constructor (so that no action/
         # logits output layer is built).
         # Alternatively, you can pass in num_outputs=[last layer size of
         # config[model][fcnet_hiddens]] AND set no_last_linear=True, but
         # this seems more tedious as you will have to explain users of this
         # class that num_outputs is NOT the size of your Q-output layer.
-        super(DuelingQModel, self).__init__(
-            obs_space, action_space, None, model_config, name)
+        super(DuelingQModel, self).__init__(obs_space, action_space, None,
+                                            model_config, name)
         # Now: self.num_outputs contains the last layer's size, which
         # we can use to construct the dueling head (see torch: SlimFC
         # below).
@@ -61,8 +62,8 @@ class TorchDuelingQModel(TorchModelV2):
         # this seems more tedious as you will have to explain users of this
         # class that num_outputs is NOT the size of your Q-output layer.
         nn.Module.__init__(self)
-        super(TorchDuelingQModel, self).__init__(
-            obs_space, action_space, None, model_config, name)
+        super(TorchDuelingQModel, self).__init__(obs_space, action_space, None,
+                                                 model_config, name)
         # Now: self.num_outputs contains the last layer's size, which
         # we can use to construct the dueling head (see torch: SlimFC
         # below).
@@ -81,6 +82,7 @@ class TorchDuelingQModel(TorchModelV2):
         advantages_centered = a - torch.unsqueeze(advantages_mean, 1)
         return v + advantages_centered  # q-values
 
+
 # __sphinx_doc_model_api_tf_end__
 
 
@@ -95,8 +97,8 @@ class ContActionQModel(TFModelV2):
         # config[model][fcnet_hiddens]] AND set no_last_linear=True, but
         # this seems more tedious as you will have to explain users of this
         # class that num_outputs is NOT the size of your Q-output layer.
-        super(ContActionQModel, self).__init__(
-            obs_space, action_space, None, model_config, name)
+        super(ContActionQModel, self).__init__(obs_space, action_space, None,
+                                               model_config, name)
 
         # Now: self.num_outputs contains the last layer's size, which
         # we can use to construct the single q-value computing head.
@@ -105,10 +107,10 @@ class ContActionQModel(TFModelV2):
         # to be used for Q-value calculation.
         # Use the current value of self.num_outputs, which is the wrapped
         # model's output layer size.
-        combined_space = Box(
-            -1.0, 1.0, (self.num_outputs + action_space.shape[0], ))
-        self.q_head = FullyConnectedNetwork(
-            combined_space, action_space, 1, model_config, "q_head")
+        combined_space = Box(-1.0, 1.0,
+                             (self.num_outputs + action_space.shape[0], ))
+        self.q_head = FullyConnectedNetwork(combined_space, action_space, 1,
+                                            model_config, "q_head")
 
         # Missing here: Probably still have to provide action output layer
         # and value layer and make sure self.num_outputs is correctly set.
@@ -138,8 +140,8 @@ class TorchContActionQModel(TorchModelV2):
         # config[model][fcnet_hiddens]] AND set no_last_linear=True, but
         # this seems more tedious as you will have to explain users of this
         # class that num_outputs is NOT the size of your Q-output layer.
-        super(TorchContActionQModel, self).__init__(
-            obs_space, action_space, None, model_config, name)
+        super(TorchContActionQModel, self).__init__(obs_space, action_space,
+                                                    None, model_config, name)
 
         # Now: self.num_outputs contains the last layer's size, which
         # we can use to construct the single q-value computing head.
@@ -148,10 +150,10 @@ class TorchContActionQModel(TorchModelV2):
         # to be used for Q-value calculation.
         # Use the current value of self.num_outputs, which is the wrapped
         # model's output layer size.
-        combined_space = Box(
-            -1.0, 1.0, (self.num_outputs + action_space.shape[0], ))
-        self.q_head = TorchFullyConnectedNetwork(
-            combined_space, action_space, 1, model_config, "q_head")
+        combined_space = Box(-1.0, 1.0,
+                             (self.num_outputs + action_space.shape[0], ))
+        self.q_head = TorchFullyConnectedNetwork(combined_space, action_space,
+                                                 1, model_config, "q_head")
 
         # Missing here: Probably still have to provide action output layer
         # and value layer and make sure self.num_outputs is correctly set.
@@ -166,4 +168,6 @@ class TorchContActionQModel(TorchModelV2):
         # Ignore state outputs.
         q_values, _ = self.q_head(input_dict)
         return q_values
+
+
 # __sphinx_doc_model_api_torch_end__

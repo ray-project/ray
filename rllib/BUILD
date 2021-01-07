@@ -1809,6 +1809,23 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_model_api_tf",
+    main = "examples/custom_model_api.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_model_api.py"],
+)
+
+py_test(
+    name = "examples/custom_model_api_torch",
+    main = "examples/custom_model_api.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_model_api.py"],
+    args = ["--framework=torch"],
+)
+
+py_test(
     name = "examples/custom_observation_filters",
     main = "examples/custom_observation_filters.py",
     tags = ["examples", "examples_C"],

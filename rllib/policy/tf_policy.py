@@ -361,10 +361,7 @@ class TFPolicy(Policy):
         builder = TFRunBuilder(self._sess, "compute_actions_from_input_dict")
         obs_batch = input_dict[SampleBatch.OBS]
         to_fetch = self._build_compute_actions(
-            builder,
-            input_dict=input_dict,
-            explore=explore,
-            timestep=timestep)
+            builder, input_dict=input_dict, explore=explore, timestep=timestep)
 
         # Execute session run to get action (and other fetches).
         fetched = builder.get(to_fetch)
@@ -739,18 +736,6 @@ class TFPolicy(Policy):
                                episodes=None,
                                explore=None,
                                timestep=None):
-        ## Best way of calling this method: Provide only `input_dict.
-        ## Assure backward-compatibility:
-        #if input_dict is not None:
-        #    obs_batch = input_dict[SampleBatch.OBS]
-        #    prev_action_batch = input_dict.get(SampleBatch.PREV_ACTIONS)
-        #    prev_reward_batch = input_dict.get(SampleBatch.PREV_REWARDS)
-        #    state_batches = []
-        #    i = 0
-        #    while "state_in_{}".format(i) in input_dict:
-        #        state_batches.append(input_dict["state_in_{}".format(i)])
-        #        i += 1
-
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
 
@@ -760,25 +745,33 @@ class TFPolicy(Policy):
 
         builder.add_feed_dict(self.extra_compute_action_feed_dict())
 
+        # `input_dict` given: Simply build what's in that dict.
         if input_dict is not None:
             for key, value in input_dict.items():
                 builder.add_feed_dict({self._input_dict[key]: value})
+        # Hardcoded old way: Build fixed fields, if provided.
         else:
             state_batches = state_batches or []
             if len(self._state_inputs) != len(state_batches):
                 raise ValueError(
-                    "Must pass in RNN state batches for placeholders {}, got {}".
-                        format(self._state_inputs, state_batches))
-    
+                    "Must pass in RNN state batches for placeholders {}, "
+                    "got {}".format(self._state_inputs, state_batches))
+
             builder.add_feed_dict({self._obs_input: obs_batch})
             if state_batches:
-                builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
+                builder.add_feed_dict({
+                    self._seq_lens: np.ones(len(obs_batch))
+                })
             if self._prev_action_input is not None and \
                prev_action_batch is not None:
-                builder.add_feed_dict({self._prev_action_input: prev_action_batch})
+                builder.add_feed_dict({
+                    self._prev_action_input: prev_action_batch
+                })
             if self._prev_reward_input is not None and \
                prev_reward_batch is not None:
-                builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
+                builder.add_feed_dict({
+                    self._prev_reward_input: prev_reward_batch
+                })
             builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
         builder.add_feed_dict({self._is_training: False})

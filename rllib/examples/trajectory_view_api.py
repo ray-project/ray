@@ -8,7 +8,6 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-
 tf1, tf, tfv = try_import_tf()
 
 parser = argparse.ArgumentParser()
@@ -20,15 +19,13 @@ parser.add_argument("--stop-iters", type=int, default=50)
 parser.add_argument("--stop-timesteps", type=int, default=100000)
 parser.add_argument("--stop-reward", type=float, default=150.0)
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init()
 
     ModelCatalog.register_custom_model(
-        "frame_stack_model",
-        FrameStackingCartPoleModel if args.framework != "torch" else
-        TorchFrameStackingCartPoleModel)
+        "frame_stack_model", FrameStackingCartPoleModel
+        if args.framework != "torch" else TorchFrameStackingCartPoleModel)
 
     config = {
         "env": "CartPole-v0",

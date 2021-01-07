@@ -14,7 +14,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework", choices=["tf2", "tf", "tfe", "torch"], default="tf")
 
-
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -37,8 +36,8 @@ if __name__ == "__main__":
         # wrap the chosen default model with our new model API class
         # (DuelingQModel). This way, both `forward` and `get_q_values`
         # are available in the returned class.
-        model_interface=DuelingQModel if args.framework != "torch"
-            else TorchDuelingQModel,
+        model_interface=DuelingQModel
+        if args.framework != "torch" else TorchDuelingQModel,
         name="dueling_q_model",
     )
     # __sphinx_doc_model_construct_end__
@@ -75,8 +74,8 @@ if __name__ == "__main__":
         # wrap the chosen default model with our new model API class
         # (DuelingQModel). This way, both `forward` and `get_q_values`
         # are available in the returned class.
-        model_interface=ContActionQModel if args.framework != "torch"
-            else TorchContActionQModel,
+        model_interface=ContActionQModel
+        if args.framework != "torch" else TorchContActionQModel,
         name="cont_action_q_model",
     )
     # __sphinx_doc_model_construct_end__
