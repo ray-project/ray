@@ -748,7 +748,13 @@ class TFPolicy(Policy):
         # `input_dict` given: Simply build what's in that dict.
         if input_dict is not None:
             for key, value in input_dict.items():
-                builder.add_feed_dict({self._input_dict[key]: value})
+                if key in self._input_dict:
+                    builder.add_feed_dict({self._input_dict[key]: value})
+            if "state_in_0" in input_dict:
+                builder.add_feed_dict({
+                    self._seq_lens: np.ones(len(input_dict["state_in_0"]))
+                })
+
         # Hardcoded old way: Build fixed fields, if provided.
         else:
             state_batches = state_batches or []
