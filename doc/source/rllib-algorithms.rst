@@ -11,7 +11,7 @@ Available Algorithms - Overview
 =================== ========== ======================= ================== =========== =============================================================
 Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 =================== ========== ======================= ================== =========== =============================================================
-`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `ARS`_              tf + torch **Yes**                 **Yes**            No
 `BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `ES`_               tf + torch **Yes**                 **Yes**            No
@@ -20,12 +20,12 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `Dreamer`_          torch      No                      **Yes**            No          `+RNN`_
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
 `APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
-`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `MAML`_             tf + torch No                      **Yes**            No
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `MBMPO`_            torch      No                      **Yes**            No
-`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
-`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
+`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
@@ -60,9 +60,9 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 .. _`+LSTM auto-wrapping`: rllib-models.html#built-in-models
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`Rainbow`: rllib-algorithms.html#dqn
-.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+RNN`: rllib-models.html#rnns
 .. _`TD3`: rllib-algorithms.html#ddpg
-.. _`+Transformer`: rllib-models.html#attention-networks
+.. _`+Attention`: rllib-models.html#attention
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

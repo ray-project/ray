@@ -59,8 +59,8 @@ models (if you don't setup a custom one), then dive into how you can customize y
 settings or writing your own model classes.
 
 By default, RLlib will use the following config settings for your models.
-These include options for the ``FullyConnectedNetwork``s (``fcnet_hiddens`` and ``fcnet_activation``),
-``VisionNetwork``s (``conv_filters`` and ``conv_activation``), auto-RNN wrapping, auto-Attention (`GTrXL <https://arxiv.org/abs/1910.06764>`__) wrapping,
+These include options for the ``FullyConnectedNetworks`` (``fcnet_hiddens`` and ``fcnet_activation``),
+``VisionNetworks`` (``conv_filters`` and ``conv_activation``), auto-RNN wrapping, auto-Attention (`GTrXL <https://arxiv.org/abs/1910.06764>`__) wrapping,
 and some special options for Atari environments:
 
 .. literalinclude:: ../../rllib/models/catalog.py
@@ -68,7 +68,8 @@ and some special options for Atari environments:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-The dict above (or an overriding sub-set) is handed to the Trainer via the ``model`` key within the main config dict:
+The dict above (or an overriding sub-set) is handed to the Trainer via the ``model`` key within
+the main config dict like so:
 
 .. code-block:: python
 
@@ -90,23 +91,25 @@ The dict above (or an overriding sub-set) is handed to the Trainer via the ``mod
 Built-in Models
 ~~~~~~~~~~~~~~~
 
-After preprocessing (if applicable) raw environment outputs, the processed observations are fed through the policy's model.
+After preprocessing (if applicable) the raw environment outputs, the processed observations are fed through the policy's model.
 In case, no custom model is specified (see further below on how to customize models), RLlib will pick a default model
 based on simple heuristics:
 
 - A vision network (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/visionnet.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__)
-  for observations that have a shape of length larger than 2 (for example, ``(84 x 84 x 3)``).
+  for observations that have a shape of length larger than 2, for example, ``(84 x 84 x 3)``.
 - A fully connected network (`TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/fcnet.py>`__ or `Torch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__)
   for everything else.
 
 These default model types can further be configured via the ``model`` config key inside your Trainer config (as discussed above).
-Available settings are `listed above <#default-model-config-settings>`__ and documented in the `model catalog <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__.
+Available settings are `listed above <#default-model-config-settings>`__ and also documented in the `model catalog file <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__.
 
 Note that for the vision network case, you'll probably have to configure ``conv_filters``, if your environment observations
 have custom sizes. For example, ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
 Thereby, always make sure that the last Conv2D output has an output shape of ``[B, 1, 1, X]`` (``[B, X, 1, 1]`` for PyTorch), where B=batch and
 X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
 
+
+.. _auto_lstm_and_attention:
 
 Built-in auto-LSTM, and auto-Attention Wrappers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -124,8 +127,8 @@ is built into its policy evaluation utilities.
 See above for which additional config keys to use to configure in more detail these two auto-wrappers
 (e.g. you can specify the size of the LSTM layer by ``lstm_cell_size`` or the attention dim by ``attention_dim``).
 
-For fully customized RNN/LSTM/Attention-Net setups see the `Recurrent Models <Custom Recurrent Models (TF and PyTorch)>`_ and
-`Attention Networks/Transformers <Attention Networks/Transformers (TF and PyTorch)>`_ sections below.
+For fully customized RNN/LSTM/Attention-Net setups see the `Recurrent Models <#rnns>`_ and
+`Attention Networks/Transformers <#attention>`_ sections below.
 
 .. note::
     It is not possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
@@ -311,11 +314,13 @@ For example, if you would like to wrap some non-default model logic with an LSTM
    :end-before: __sphinx_doc_end__
 
 
+.. _rnns:
+
 Implementing custom Recurrent Networks
 ``````````````````````````````````````
 
 Instead of using the ``use_lstm: True`` option, it may be preferable to use a custom recurrent model.
-This provides more control over postprocessing of the LSTM output and can also allow the use of multiple LSTM cells to process different portions of the input.
+This provides more control over postprocessing the LSTM's output and can also allow the use of multiple LSTM cells to process different portions of the input.
 For an RNN model it is recommended to subclass ``RecurrentNetwork`` (either the `TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/recurrent_net.py>`__
 or `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ versions) and then implement ``__init__()``,
 ``get_initial_state()``, and ``forward_rnn()``.
@@ -334,6 +339,9 @@ and add the time rank to the incoming data (usually you just have to reshape).
 You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/models/rnn_model.py>`__ models as examples to implement
 your own (either TF or Torch).
 
+
+.. _attention:
+
 Implementing custom Attention Networks
 ``````````````````````````````````````
 
@@ -342,9 +350,10 @@ Similar to the RNN case described above, you could also implement your own atten
 
 Check out RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ implementations
 (for `TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/attention_net.py>`__ and `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/attention_net.py>`__)
-to get a better idea on how to write your own models of this type.
+to get a better idea on how to write your own models of this type. These are the models we use
+as wrappers when ``use_attention=True``.
 
-You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these implementations within some of our algorithms.
+You can run `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py>`__ to run these nets within some of our algorithms.
 `There is also a test case <https://github.com/ray-project/ray/blob/master/rllib/tests/test_attention_net_learning.py>`__, which confirms their learning capabilities in PPO and IMPALA.
 
 Batch Normalization
@@ -368,7 +377,7 @@ which you can define any arbitrary forward passes.
 
 Another typical situation in which you would have to customize a model would be to
 add a new API that your algorithm needs in order to learn, for example a Q-value
-calculating head on top of your policy (action computing) model. In this case, you simply
+calculating head on top of your policy model. In order to expand a Model's API, simply
 define and implement a new method (e.g. ``get_q_values()``) in your TF- or TorchModelV2 sub-class.
 
 You can now wrap this new API either around RLlib's default models or around
@@ -380,19 +389,19 @@ The following code adds a ``get_q_values()`` method to the automatically chosen
 default Model (e.g. a ``FullyConnectedNetwork`` if the observation space is a 1D Box
 or Discrete):
 
-.. literalinclude:: ../../rllib/examples/custom_model_api_tf.py
+.. literalinclude:: ../../rllib/examples/models/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_api_begin__
-   :end-before: __sphinx_doc_model_api_end__
+   :start-after: __sphinx_doc_model_api_tf_start__
+   :end-before: __sphinx_doc_model_api_tf_end__
 
 Now, for your algorithm that needs to have this model API to work properly (e.g. DQN),
 you use this following code to construct the complete final Model using the
 ``ModelCatalog.get_model_v2`` factory function (`code here <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__):
 
-.. literalinclude:: ../../rllib/examples/custom_model_api_tf.py
+.. literalinclude:: ../../rllib/examples/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_construct_begin__
-   :end-before: __sphinx_doc_model_construct_end__
+   :start-after: __sphinx_doc_model_construct_tf_begin__
+   :end-before: __sphinx_doc_model_construct_tf_end__
 
 With the model object constructed above, you can get the underlying intermediate output (before the dueling head)
 by calling ``my_dueling_model`` directly (``out = my_dueling_model([input_dict])``), and then passing ``out`` into
@@ -407,19 +416,19 @@ for a single (**continuous**) action, given an observation and that particular a
 
 Let's take a look at how we would construct this API and wrap it around a custom model:
 
-.. literalinclude:: ../../rllib/examples/custom_model_api_torch.py
+.. literalinclude:: ../../rllib/examples/models/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_api_begin__
-   :end-before: __sphinx_doc_model_api_end__
+   :start-after: __sphinx_doc_model_api_torch_start__
+   :end-before: __sphinx_doc_model_api_torch_end__
 
 Now, for your algorithm that needs to have this model API to work properly (e.g. SAC),
 you use this following code to construct the complete final Model using the
 ``ModelCatalog.get_model_v2`` factory function (`code here <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__):
 
-.. literalinclude:: ../../rllib/examples/custom_model_api_torch.py
+.. literalinclude:: ../../rllib/examples/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_construct_begin__
-   :end-before: __sphinx_doc_model_construct_end__
+   :start-after: __sphinx_doc_model_construct_torch_begin__
+   :end-before: __sphinx_doc_model_construct_torch_end__
 
 With the model object constructed above, you can get the underlying intermediate output (before the q-head)
 by calling ``my_cont_action_q_model`` directly (``out = my_cont_action_q_model([input_dict])``), and then passing ``out``
@@ -449,16 +458,16 @@ Take a look at this model example that does exactly that:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-**Using a Conv2D input stack (for SAC)**
 
-
-**Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
+**Using the Trajectory View API: Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
 
 It is sometimes helpful for learning not only to look at the current observation
 in order to calculate the next action, but also at the past n observations.
-In other cases, you may want to provide the most recent rewards or actions to the model as well.
+In other cases, you may want to provide the most recent rewards or actions to the model as well
+(like our LSTM wrapper does if you specify: ``use_lstm=True`` and ``lstm_use_prev_action/reward=True``).
 All this may even be useful when not working with partially observable environments (PO-MDPs)
-and/or RNN/Attention models.
+and/or RNN/Attention models, as for example in classic Atari runs, where we usually use framestacking of
+the last four observed images.
 
 The `trajectory view API <rllib-sample-collection.html#trajectory-view-api>`__ allows your models
 to specify these more complex "view requirements".
@@ -467,7 +476,12 @@ Here is a simple (non-RNN/Attention) example of a Model that takes as input
 the last 3 observations (very similar to the recommended "framestacking" for
 learning in Atari environments):
 
+.. literalinclude:: ../../rllib/examples/models/trajectory_view_utilizing_models.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
+A PyTorch version of the above model is also `given in the same file <https://github.com/ray-project/ray/blob/master/rllib/examples/models/trajectory_view_utilizing_models.py>`__.
 
 
 Custom Action Distributions
