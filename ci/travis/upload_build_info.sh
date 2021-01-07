@@ -13,11 +13,17 @@ mkdir -p /tmp/bazel_event_logs
 
 pip install -q awscli
 
+# Strip the leading "refs/heads/" in the posssible branch tag
+TRAVIS_BRANCH=${TRAVIS_BRANCH/refs\/heads\//}
+
 export AWS_ACCESS_KEY_ID=AKIAQQPDA73RF7PSLH5N
 export AWS_SECRET_ACCESS_KEY=${BAZEL_LOG_BUCKET_ACCESS_KEY}
 export AWS_DEFAULT_REGION=us-west-2
 
 DST="s3://ray-travis-logs/bazel_events/$TRAVIS_BRANCH/$TRAVIS_COMMIT/$TRAVIS_JOB_ID"
 echo "Uploading log to ${DST}"
+
+ls /tmp/bazel_event_logs
+tail /tmp/bazel_event_logs/*
 
 aws s3 cp --recursive /tmp/bazel_event_logs "${DST}"

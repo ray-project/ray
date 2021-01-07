@@ -128,7 +128,7 @@ test_core() {
       )
       ;;
   esac
-  bazel test --config=ci --build_tests_only -- "${args[@]}"
+  bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
 }
 
 test_python() {
@@ -167,7 +167,7 @@ test_python() {
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    bazel test --config=ci --build_tests_only \
+    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
       "${args[@]}";
   fi
@@ -175,7 +175,7 @@ test_python() {
 
 test_cpp() {
   bazel build --config=ci //cpp:all
-  bazel test --config=ci //cpp:all --build_tests_only
+  bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
 }
 
 test_wheels() {
