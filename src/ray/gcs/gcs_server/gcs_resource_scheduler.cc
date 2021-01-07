@@ -46,7 +46,7 @@ double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requeste
                                       const FractionalResourceQuantity &available) {
   RAY_CHECK(available >= 0) << "Available resource " << available.ToDouble()
                             << " should be nonnegative.";
-  if (available == 0 || requested > available) {
+  if (requested > available) {
     return -1;
   }
   return (available - requested).ToDouble() / available.ToDouble();
