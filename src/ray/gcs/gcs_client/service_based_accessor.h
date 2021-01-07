@@ -78,6 +78,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
+  Status AsyncGetAllStates(
+      const MapCallback<std::string, rpc::ActorStates> &callback) override;
+
   Status AsyncGetAll(const MultiItemCallback<rpc::ActorTableData> &callback) override;
 
   Status AsyncGetByName(
@@ -90,8 +93,8 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncCreateActor(const TaskSpecification &task_spec,
                           const StatusCallback &callback) override;
 
-  Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+  Status AsyncSubscribeAllStates(
+      const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncSubscribeStates(
@@ -99,7 +102,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
       const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const ActorID &actor_id) override;
+  Status AsyncUnsubscribeStates(const ActorID &actor_id) override;
 
   void AsyncResubscribe(bool is_pubsub_server_restarted) override;
 

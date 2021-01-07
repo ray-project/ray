@@ -56,6 +56,13 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
+  /// Get all actor states from GCS asynchronously.
+  ///
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetAllStates(
+      const MapCallback<std::string, rpc::ActorStates> &callback) = 0;
+
   /// Get all actor specification from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
@@ -92,15 +99,15 @@ class ActorInfoAccessor {
   virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
                                   const StatusCallback &callback) = 0;
 
-  /// Subscribe to any register or update operations of actors.
+  /// Subscribe to any states change of actors.
   ///
-  /// \param subscribe Callback that will be called each time when an actor is registered
-  /// or updated.
+  /// \param subscribe Callback that will be called each time when an actor's state
+  /// is changed.
   /// \param done Callback that will be called when subscription is complete and we
   /// are ready to receive notification.
   /// \return Status
-  virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+  virtual Status AsyncSubscribeAllStates(
+      const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Subscribe to any states update operations of an actor.
@@ -114,11 +121,11 @@ class ActorInfoAccessor {
       const SubscribeCallback<ActorID, rpc::ActorStates> &subscribe,
       const StatusCallback &done) = 0;
 
-  /// Cancel subscription to an actor.
+  /// Cancel states subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
   /// \return Status
-  virtual Status AsyncUnsubscribe(const ActorID &actor_id) = 0;
+  virtual Status AsyncUnsubscribeStates(const ActorID &actor_id) = 0;
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

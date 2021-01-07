@@ -142,7 +142,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeActor(const ActorID &actor_id) {
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribeStates(actor_id));
   }
 
   void WaitForActorUnsubscribed(const ActorID &actor_id) {
@@ -152,10 +152,10 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
-  bool SubscribeAllActors(
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+  bool SubscribeAllActorStates(
+      const gcs::SubscribeCallback<ActorID, rpc::ActorStates> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAll(
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAllStates(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -621,10 +621,10 @@ TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
   // Subscribe to any register or update operations of actors.
   std::atomic<int> actor_update_count(0);
   auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
+                                            const rpc::ActorStates &data) {
     ++actor_update_count;
   };
-  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
+  ASSERT_TRUE(SubscribeAllActorStates(on_subscribe));
 
   // Register an actor to GCS.
   RegisterActor(actor_table_data1, false);
@@ -1015,17 +1015,17 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
-  // Number of notifications for the following `SubscribeAllActors` operation.
+  // Number of notifications for the following `SubscribeAllActorStates` operation.
   std::atomic<int> num_subscribe_all_notifications(0);
-  // All the notifications for the following `SubscribeAllActors` operation.
-  std::vector<gcs::ActorTableData> subscribe_all_notifications;
+  // All the notifications for the following `SubscribeAllActorStates` operation.
+  std::vector<rpc::ActorStates> subscribe_all_notifications;
   auto subscribe_all = [&num_subscribe_all_notifications, &subscribe_all_notifications](
-                           const ActorID &id, const rpc::ActorTableData &data) {
+                           const ActorID &id, const rpc::ActorStates &data) {
     subscribe_all_notifications.emplace_back(data);
     ++num_subscribe_all_notifications;
   };
   // Subscribe to updates of all actors.
-  ASSERT_TRUE(SubscribeAllActors(subscribe_all));
+  ASSERT_TRUE(SubscribeAllActorStates(subscribe_all));
 
   // Number of notifications for the following `SubscribeActor` operation.
   std::atomic<int> num_subscribe_one_notifications(0);
@@ -1044,7 +1044,7 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorStates(subscribe_all_notifications[0].states(), rpc::ActorStates::DEAD);
+  CheckActorStates(subscribe_all_notifications[0], rpc::ActorStates::DEAD);
   CheckActorStates(subscribe_one_notifications[0], rpc::ActorStates::DEAD);
 
   // Restart GCS server.

@@ -170,7 +170,7 @@ void GcsActorManager::HandleGetActorStates(const rpc::GetActorStatesRequest &req
   RAY_LOG(DEBUG) << "Finished getting actor info, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_ACTOR_INFO_REQUEST];
+  ++counts_[CountType::GET_ACTOR_STATES_REQUEST];
 }
 
 void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request,
@@ -196,6 +196,24 @@ void GcsActorManager::HandleGetActorInfo(const rpc::GetActorInfoRequest &request
                  << ", actor id = " << actor_id;
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ACTOR_INFO_REQUEST];
+}
+
+void GcsActorManager::HandleGetAllActorStates(
+    const rpc::GetAllActorStatesRequest &request, rpc::GetAllActorStatesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Getting all actor states.";
+
+  for (const auto &iter : registered_actors_) {
+    (*reply->mutable_actor_states_map())[iter.first.Binary()] =
+        iter.second->GetActorTableData().states();
+  }
+  for (const auto &iter : destroyed_actors_) {
+    (*reply->mutable_actor_states_map())[iter.first.Binary()] =
+        iter.second->GetActorTableData().states();
+  }
+  RAY_LOG(DEBUG) << "Finished getting all actor states.";
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_ACTOR_STATES_REQUEST];
 }
 
 void GcsActorManager::HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,

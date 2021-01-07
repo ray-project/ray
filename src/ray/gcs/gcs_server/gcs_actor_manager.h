@@ -192,6 +192,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                                rpc::GetNamedActorInfoReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetAllActorStates(const rpc::GetAllActorStatesRequest &request,
+                               rpc::GetAllActorStatesReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetAllActorInfo(const rpc::GetAllActorInfoRequest &request,
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
@@ -414,11 +418,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   enum CountType {
     REGISTER_ACTOR_REQUEST = 0,
     CREATE_ACTOR_REQUEST = 1,
-    GET_ACTOR_INFO_REQUEST = 2,
-    GET_NAMED_ACTOR_INFO_REQUEST = 3,
-    GET_ALL_ACTOR_INFO_REQUEST = 4,
-    REGISTER_ACTOR_INFO_REQUEST = 5,
-    UPDATE_ACTOR_INFO_REQUEST = 6,
+    GET_ACTOR_STATES_REQUEST = 2,
+    GET_ACTOR_INFO_REQUEST = 3,
+    GET_NAMED_ACTOR_INFO_REQUEST = 4,
+    GET_ALL_ACTOR_STATES_REQUEST = 5,
+    GET_ALL_ACTOR_INFO_REQUEST = 6,
+    REGISTER_ACTOR_INFO_REQUEST = 7,
+    UPDATE_ACTOR_INFO_REQUEST = 8,
     CountType_MAX = 10,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
