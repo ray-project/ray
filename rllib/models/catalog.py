@@ -33,14 +33,27 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # === Built-in options ===
-    # Number of hidden layers for fully connected net
+    # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
+    # These are used if no custom model is specified and the input space is 1D.
+    # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
-    # Nonlinearity for fully connected net (tanh, relu)
+    # Activation function descriptor.
+    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # "linear" (or None).
     "fcnet_activation": "tanh",
-    # Filter config. List of [out_channels, kernel, stride] for each filter
+
+    # VisionNetwork (tf and torch): rllib.models.tf|torch.visionnet.py
+    # These are used if no custom model is specified and the input space is 2D.
+    # Filter config: List of [out_channels, kernel, stride] for each filter.
+    # Example:
+    # Use None for making RLlib try to find a default filter setup given the
+    # observation space.
     "conv_filters": None,
-    # Nonlinearity for built-in convnet
+    # Activation function descriptor.
+    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # "linear" (or None).
     "conv_activation": "relu",
+
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
     # has an effect is using the default fully connected net.
