@@ -1,6 +1,8 @@
 from contextlib import contextmanager
+import inspect
 import os
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +18,15 @@ def is_session_enabled() -> bool:
 def get_session():
     global _session
     if not _session:
+        function_name = inspect.stack()[1].function
         logger.warning(
-            "Session not detected. You should not be calling this function "
-            "outside `tune.run` or while using the class API. ")
+            "Session not detected. You should not be calling `{}` "
+            "outside `tune.run` or while using the class API. ".format(
+                function_name))
+        # Log traceback so the user knows where the offending func is called.
+        # E.g. ... -> tune.report() -> get_session() -> logger.warning(...)
+        # So we shouldn't print the last 2 functions in the trace.
+        logger.warning("".join(traceback.extract_stack().format()[:-2]))
     return _session
 
 
