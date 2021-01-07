@@ -44,6 +44,8 @@ double LeastResourceScorer::Score(const ResourceSet &required_resources,
 
 double LeastResourceScorer::Calculate(const FractionalResourceQuantity &requested,
                                       const FractionalResourceQuantity &available) {
+  RAY_CHECK(available >= 0) << "Available resource " << available.ToDouble()
+                            << " should be nonnegative.";
   if (available == 0 || requested > available) {
     return -1;
   }
@@ -105,7 +107,7 @@ absl::flat_hash_set<NodeID> GcsResourceScheduler::FilterCandidateNodes(
   return result;
 }
 
-std::vector<ResourceSet> GcsResourceScheduler::SortRequiredResources(
+const std::vector<ResourceSet> &GcsResourceScheduler::SortRequiredResources(
     const std::vector<ResourceSet> &required_resources) {
   // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
   // schedule bundles with special resource requirements first, which will be implemented

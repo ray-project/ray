@@ -112,7 +112,7 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources The resources to be scheduled.
   /// \return The Sorted resources.
-  std::vector<ResourceSet> SortRequiredResources(
+  const std::vector<ResourceSet> &SortRequiredResources(
       const std::vector<ResourceSet> &required_resources);
 
   /// Schedule resources according to `STRICT_SPREAD` strategy.
