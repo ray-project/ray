@@ -86,9 +86,15 @@ class StandardStreamInterceptor:
         self.logger = logger
         assert len(self.logger.handlers) == 1, (
             "Only one handler is allowed for the interceptor logger.")
-        assert hasattr(self.logger.handlers[0], "stream")
+        assert hasattr(self.logger.handlers[0], "file_stream")
+        self._check_closed()
 
     def _check_closed(self):
+        if self.logger.handlers[0].file_stream is None:
+            # Sometimes, file stream is closed for unkonwn reasons. In this case, we write an empty log to re-create the stream.
+            self.logger.info("")
+            raise ValueError(
+                "Stream is removed. This is a critical issue. Please report.")
         if self.closed:
             raise ValueError("I/O operation on closed file.")
 
@@ -116,7 +122,7 @@ class StandardStreamInterceptor:
         This should support all attributes that an _io.TextIOWrapper supports.
         """
         self._check_closed()
-        return getattr(self.logger.handlers[0].stream, attr)
+        return getattr(self.logger.handlers[0].file_stream, attr)
 
 
 class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
@@ -145,6 +151,10 @@ class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
             delay=delay)
         self.is_for_stdout = is_for_stdout
         self.switch_os_fd()
+
+    @property
+    def file_stream(self):
+        return self.stream
 
     def doRollover(self):
         super().doRollover()
@@ -257,8 +267,6 @@ def setup_and_get_worker_interceptor_logger(args,
         backupCount=backup_count,
         is_for_stdout=is_for_stdout)
     logger.addHandler(handler)
-    # TODO(sang): Add 0 or 1 to decide whether
-    # or not logs are streamed to drivers.
     handler.setFormatter(logging.Formatter("%(message)s"))
     # Avoid messages are propagated to parent loggers.
     logger.propagate = False

@@ -187,7 +187,6 @@ class HTTPProxyActor:
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.bind((self.host, self.port))
-
         # Note(simon): we have to use lower level uvicorn Config and Server
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
