@@ -3,7 +3,7 @@
 ####################################################################
 
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: autoscaler-stress-test-1.1.0-alex
+cluster_name: autoscaler-stress-test
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -53,6 +53,15 @@ head_node:
               VolumeSize: 100
 
     # Additional options in the boto docs.
+
+docker:
+    image: "rayproject/ray:latest-gpu" # You can change this to latest-cpu if you don't need GPU support and want a faster startup
+    container_name: "ray_container"
+    # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
+    # if no cached version is present.
+    pull_before_run: True
+    run_options: ["--ulimit nofile=1045876"]  # Extra options to pass into "docker run"
+
 
 # Provider-specific config for worker nodes, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
