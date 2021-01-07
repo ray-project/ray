@@ -190,6 +190,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleDestroyActor(const rpc::DestroyActorRequest &request,
+                          rpc::DestroyActorReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -413,7 +417,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     GET_ACTOR_INFO_REQUEST = 2,
     GET_NAMED_ACTOR_INFO_REQUEST = 3,
     GET_ALL_ACTOR_INFO_REQUEST = 4,
-    CountType_MAX = 10,
+    DESTROY_ACTOR_REQUEST = 5,
+    CountType_MAX = 6,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

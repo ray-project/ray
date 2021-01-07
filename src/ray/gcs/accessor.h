@@ -64,6 +64,14 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback) = 0;
 
+  /// Destroy actor via GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to destroy.
+  /// \param callback Callback that will be called after the actor is destroyed.
+  /// \return Status
+  virtual Status AsyncDestroyActor(const ActorID &actor_id,
+                                   const StatusCallback &callback) = 0;
+
   /// Asynchronously request GCS to create the actor.
   ///
   /// This should be called after the worker has resolved the actor dependencies.
