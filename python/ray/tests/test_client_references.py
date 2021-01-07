@@ -1,8 +1,8 @@
-from ray.experimental.client.ray_client_helpers import ray_start_client_server
+from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.test_utils import wait_for_condition
 import ray as real_ray
 from ray.core.generated.gcs_pb2 import ActorTableData
-from ray.experimental.client.server.server import _get_current_servicer
+from ray.util.client.server.server import _get_current_servicer
 
 
 def server_object_ref_count(n):
