@@ -52,7 +52,8 @@ class DataClient:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
-            metadata=(("client_id", self._client_id), ))
+            metadata=(("client_id", self._client_id), ),
+            wait_for_ready=True)
         try:
             for response in resp_stream:
                 if response.req_id == 0:
