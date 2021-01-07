@@ -17,7 +17,7 @@
 namespace ray {
 namespace gcs {
 
-double LeastResourceScorer::Grade(const ResourceSet &required_resources,
+double LeastResourceScorer::Score(const ResourceSet &required_resources,
                                   const SchedulingResources &node_resources) {
   const auto &available_resources = node_resources.GetAvailableResources();
   const auto &available_resource_amount_map = available_resources.GetResourceAmountMap();
@@ -29,12 +29,12 @@ double LeastResourceScorer::Grade(const ResourceSet &required_resources,
       return -1;
     }
 
-    auto calculate_score =
+    auto calculated_score =
         Calculate(entry.second, available_resource_amount_iter->second);
-    if (calculate_score < 0) {
+    if (calculated_score < 0) {
       return -1;
     }
-    node_score += calculate_score;
+    node_score += calculated_score;
   }
 
   // TODO(ffbin): When applying for CPU resources, if there are two nodes, one node has
@@ -63,7 +63,7 @@ std::vector<NodeID> GcsResourceScheduler::Schedule(
   absl::flat_hash_set<NodeID> candidate_nodes =
       FilterCandidateNodes(cluster_resources, node_filter_func);
   if (candidate_nodes.empty()) {
-    RAY_LOG(INFO) << "The candidate nodes is empty, return directly.";
+    RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return {};
   }
 
@@ -119,9 +119,10 @@ std::vector<NodeID> GcsResourceScheduler::StrictSpreadSchedule(
     const absl::flat_hash_set<NodeID> &candidate_nodes) {
   std::vector<NodeID> result;
   if (required_resources_list.size() > candidate_nodes.size()) {
-    RAY_LOG(INFO) << "The number of required resources " << required_resources_list.size()
-                  << " is greater than the number of candidate nodes "
-                  << candidate_nodes.size() << ", scheduling fails.";
+    RAY_LOG(DEBUG) << "The number of required resources "
+                   << required_resources_list.size()
+                   << " is greater than the number of candidate nodes "
+                   << candidate_nodes.size() << ", scheduling fails.";
     return result;
   }
 
@@ -274,8 +275,8 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
   for (const auto &node_id : candidate_nodes) {
     const auto &iter = cluster_resources.find(node_id);
     RAY_CHECK(iter != cluster_resources.end());
-    double node_grade = node_scorer_->Grade(required_resources, iter->second);
-    node_scores.emplace_back(node_id, node_grade);
+    double node_score = node_scorer_->Score(required_resources, iter->second);
+    node_scores.emplace_back(node_id, node_score);
   }
 
   // Sort node scores, the large score is in the front.
@@ -288,7 +289,7 @@ std::list<NodeScore> GcsResourceScheduler::ScoreNodes(
 void GcsResourceScheduler::ReleaseTemporarilyDeductedResources(
     const std::vector<ResourceSet> &required_resources_list,
     const std::vector<NodeID> &nodes) {
-  for (int index = 0; index < (int)nodes.size(); ++index) {
+  for (int index = 0; index < (int)nodes.size(); index++) {
     // If `PackSchedule` fails, the id of some nodes may be nil.
     if (!nodes[index].IsNil()) {
       RAY_CHECK(gcs_resource_manager_.ReleaseResources(nodes[index],

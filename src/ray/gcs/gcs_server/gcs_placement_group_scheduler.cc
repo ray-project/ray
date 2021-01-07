@@ -110,7 +110,9 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
       required_resources, SchedulingType::STRICT_SPREAD,
-      [nodes_in_use](const NodeID &node_id) { return nodes_in_use.count(node_id) == 0; });
+      /*node_filter_func=*/[&nodes_in_use](const NodeID &node_id) {
+        return nodes_in_use.count(node_id) == 0;
+      });
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 

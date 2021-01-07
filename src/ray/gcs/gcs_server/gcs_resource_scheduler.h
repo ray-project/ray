@@ -43,13 +43,13 @@ class NodeScorer {
  public:
   virtual ~NodeScorer() = default;
 
-  /// \brief Make a grade based on the node resources.
+  /// \brief Score according to node resources.
   ///
   /// \param required_resources The required resources.
   /// \param node_resources The node resources which contains available and total
   /// resources.
   /// \return Score of the node.
-  virtual double Grade(const ResourceSet &required_resources,
+  virtual double Score(const ResourceSet &required_resources,
                        const SchedulingResources &node_resources) = 0;
 };
 
@@ -57,7 +57,7 @@ class NodeScorer {
 /// requested resources based on requested resources.
 class LeastResourceScorer : public NodeScorer {
  public:
-  double Grade(const ResourceSet &required_resources,
+  double Score(const ResourceSet &required_resources,
                const SchedulingResources &node_resources) override;
 
  private:
