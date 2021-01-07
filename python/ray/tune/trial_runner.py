@@ -349,14 +349,21 @@ class TrialRunner:
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
         next_trial = self._get_next_trial()  # blocking
+        may_handle_events = True
         if next_trial is not None:
             with warn_if_slow("start_trial"):
-                self.trial_executor.start_trial(next_trial)
-                self._callbacks.on_trial_start(
-                    iteration=self._iteration,
-                    trials=self._trials,
-                    trial=next_trial)
-        elif self.trial_executor.get_running_trials():
+                if self.trial_executor.start_trial(next_trial):
+                    self._callbacks.on_trial_start(
+                        iteration=self._iteration,
+                        trials=self._trials,
+                        trial=next_trial)
+                    # If we successfully started a new trial, only process
+                    # events in the next iteration of step(). This is to
+                    # make sure we first start all required trials before
+                    # we wait for their results
+                    may_handle_events = False
+
+        if may_handle_events and self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
             self.trial_executor.on_no_available_trials(self)
@@ -545,6 +552,7 @@ class TrialRunner:
                 # be informed about the result.
                 if not is_duplicate:
                     with warn_if_slow("callbacks.on_trial_result"):
+                        print(f"00 RESULT FOR TRIAL {trial}")
                         self._callbacks.on_trial_result(
                             iteration=self._iteration,
                             trials=self._trials,

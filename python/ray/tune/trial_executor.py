@@ -78,7 +78,7 @@ class TrialExecutor:
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "has_resources() method")
 
-    def start_trial(self, trial, checkpoint=None, train=True):
+    def start_trial(self, trial, checkpoint=None, train=True) -> bool:
         """Starts the trial restoring from checkpoint if checkpoint is provided.
 
         Args:

@@ -1,8 +1,12 @@
-from collections import namedtuple
+from collections import Callable, namedtuple
 import logging
 import json
 from numbers import Number
 # For compatibility under py2 to consider unicode as str
+from typing import Union
+
+from ray.tune.utils.serialization import TuneFunctionDecoder, \
+    TuneFunctionEncoder
 from six import string_types
 
 import ray
@@ -171,11 +175,26 @@ class Resources(
         return resources_to_json(self)
 
 
-def json_to_resources(data):
+class PlacementGroupFactory:
+    def __init__(self, factory):
+        self._factory = factory
+
+    def __call__(self, *args, **kwargs):
+        return self._factory(*args, **kwargs)
+
+
+def json_to_resources(data: Union[None, str, Callable, PlacementGroupFactory]):
     if data is None or data == "null":
         return None
     if isinstance(data, string_types):
-        data = json.loads(data)
+        data = json.loads(data, cls=TuneFunctionDecoder)
+
+    if isinstance(data, PlacementGroupFactory):
+        return data
+    elif callable(data):
+        # Callables should be converted into PlacementGroupFactories
+        return PlacementGroupFactory(data)
+
     for k in data:
         if k in ["driver_cpu_limit", "driver_gpu_limit"]:
             raise TuneError(
@@ -193,9 +212,12 @@ def json_to_resources(data):
         data.get("extra_custom_resources"))
 
 
-def resources_to_json(resources):
+def resources_to_json(
+        resources: Union[None, Resources, PlacementGroupFactory]):
     if resources is None:
         return None
+    if isinstance(resources, PlacementGroupFactory):
+        return json.dumps(resources, cls=TuneFunctionEncoder)
     return {
         "cpu": resources.cpu,
         "gpu": resources.gpu,

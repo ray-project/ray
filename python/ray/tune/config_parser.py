@@ -3,6 +3,7 @@ import json
 import os
 
 # For compatibility under py2 to consider unicode as str
+from ray.tune.utils.serialization import TuneFunctionEncoder
 from six import string_types
 
 from ray.tune import TuneError
@@ -142,6 +143,8 @@ def to_argv(config):
             argv.append(v)
         elif isinstance(v, bool):
             pass
+        elif callable(v):
+            argv.append(json.dumps(v, cls=TuneFunctionEncoder))
         else:
             argv.append(json.dumps(v, cls=SafeFallbackEncoder))
     return argv

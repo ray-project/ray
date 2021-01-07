@@ -370,6 +370,7 @@ class Trial:
         Raises:
             ValueError if trial status is running.
         """
+        # Todo: Add placement group support
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
         self.resources = Resources(cpu, gpu, **kwargs)
