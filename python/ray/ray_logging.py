@@ -91,7 +91,8 @@ class StandardStreamInterceptor:
 
     def _check_closed(self):
         if self.logger.handlers[0].file_stream is None:
-            # Sometimes, file stream is closed for unkonwn reasons. In this case, we write an empty log to re-create the stream.
+            # Sometimes, file stream is closed for unkonwn reasons.
+            # In this case, we write an empty log to re-create the stream.
             self.logger.info("")
             raise ValueError(
                 "Stream is removed. This is a critical issue. Please report.")

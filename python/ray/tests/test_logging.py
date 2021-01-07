@@ -1,17 +1,12 @@
 import os
 
 import ray
-from ray.test_utils import (
-    run_string_as_driver_nonblocking,
-    wait_for_condition,
-    wait_for_num_actors,
-)
 
 
 def test_log_rotation(tmp_path, shutdown_only):
     temp_folder = tmp_path / "spill"
-    ray.init(num_cpus=1})
-
+    print(temp_folder)
+    ray.init(num_cpus=1)
 
 
 if __name__ == "__main__":
