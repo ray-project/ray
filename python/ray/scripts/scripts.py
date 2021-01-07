@@ -707,6 +707,7 @@ def stop(force, verbose, log_style, log_color):
         ["plasma_store", True],
         ["gcs_server", True],
         ["monitor.py", False],
+        ["ray.util.client.server", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
