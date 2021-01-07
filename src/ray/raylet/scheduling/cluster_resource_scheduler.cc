@@ -935,8 +935,7 @@ void ClusterResourceScheduler::FillResourceUsage(
       (*resources_data->mutable_resources_total())[label] = capacity.total.Double();
     }
   }
-  for (auto it = resources.custom_resources.begin();
-       it != resources.custom_resources.end(); it++) {
+  for (const auto &it : resources.custom_resources) {
     uint64_t custom_id = it->first;
     const auto &capacity = it->second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];

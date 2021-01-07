@@ -453,7 +453,7 @@ void NodeManager::ReportResourceUsage() {
     // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
     // directly.
     // TODO(atumanov): implement a ResourceSet const_iterator.
-    // We only set filed that represent resources changed.
+    // We only set fileds that changed.
     auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
     if (!last_heartbeat_resources->GetTotalResources().IsEqual(
             local_resources.GetTotalResources())) {
