@@ -73,12 +73,14 @@ from ray.profiling import profile  # noqa: E402
 from ray.state import (  # noqa: E402
     jobs, nodes, actors, objects, timeline, object_transfer_timeline,
     cluster_resources, available_resources)  # noqa: E402
-from ray.api import put, get, wait  # noqa: E402
+from ray.api import (  # noqa: E402
+    put, get, wait, cancel, get_actor, get_gpu_ids, get_resource_ids,
+    get_dashboard_url, is_initialized, kill, shutdown, show_in_dashboard,
+    remote,
+)
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    SPILL_WORKER_MODE, cancel, connect, disconnect, get_actor, get_gpu_ids,
-    get_resource_ids, get_dashboard_url, init, is_initialized, kill, remote,
-    shutdown, show_in_dashboard,
+    SPILL_WORKER_MODE, connect, disconnect, init,
 )  # noqa: E402
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
