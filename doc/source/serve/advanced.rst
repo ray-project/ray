@@ -386,11 +386,6 @@ as shown below.
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/conda_env.py
 
-.. warning::
-  The script must be run in an activated conda environment (not required to be
-  ``ray-tf1`` or ``ray-tf2``).  We hope to remove this restriction in the
-  future.
-
 .. note::
   If the argument ``env`` is omitted, backends will be started in the same
   conda environment as the caller of
