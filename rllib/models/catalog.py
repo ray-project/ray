@@ -1,5 +1,6 @@
 from functools import partial
 import gym
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
 import tree
@@ -188,7 +189,7 @@ class ModelCatalog:
                 MultiActionDistribution, TorchMultiActionDistribution):
             dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
-        elif isinstance(action_space, gym.spaces.Box):
+        elif isinstance(action_space, Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
                     "Action space has multiple dimensions "
@@ -204,13 +205,13 @@ class ModelCatalog:
                 dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
         # Discrete Space -> Categorical.
-        elif isinstance(action_space, gym.spaces.Discrete):
+        elif isinstance(action_space, Discrete):
             dist_cls = TorchCategorical if framework == "torch" else \
                 JAXCategorical if framework == "jax" else Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
-                isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+                isinstance(action_space, (Tuple, Dict)):
             return ModelCatalog._get_multi_action_distribution(
                 (MultiActionDistribution
                  if framework == "tf" else TorchMultiActionDistribution),
@@ -223,7 +224,7 @@ class ModelCatalog:
                     "Simplex action spaces not supported for torch.")
             dist_cls = Dirichlet
         # MultiDiscrete -> MultiCategorical.
-        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+        elif isinstance(action_space, MultiDiscrete):
             dist_cls = TorchMultiCategorical if framework == "torch" else \
                 MultiCategorical
             return partial(dist_cls, input_lens=action_space.nvec), \
@@ -247,19 +248,19 @@ class ModelCatalog:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
 
-        if isinstance(action_space, gym.spaces.Discrete):
+        if isinstance(action_space, Discrete):
             return (action_space.dtype, (None, ))
-        elif isinstance(action_space, (gym.spaces.Box, Simplex)):
+        elif isinstance(action_space, (Box, Simplex)):
             return (tf.float32, (None, ) + action_space.shape)
-        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+        elif isinstance(action_space, MultiDiscrete):
             return (tf.as_dtype(action_space.dtype),
                     (None, ) + action_space.shape)
-        elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+        elif isinstance(action_space, (Tuple, Dict)):
             flat_action_space = flatten_space(action_space)
             size = 0
             all_discrete = True
             for i in range(len(flat_action_space)):
-                if isinstance(flat_action_space[i], gym.spaces.Discrete):
+                if isinstance(flat_action_space[i], Discrete):
                     size += 1
                 else:
                     all_discrete = False
@@ -453,7 +454,7 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, framework=framework)
+                    obs_space, model_config, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
@@ -486,7 +487,7 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, framework=framework)
+                    obs_space, model_config, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
@@ -518,7 +519,7 @@ class ModelCatalog:
         elif framework == "jax":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, framework=framework)
+                    obs_space, model_config, framework=framework)
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -643,7 +644,8 @@ class ModelCatalog:
 
     @staticmethod
     def _get_v2_model_class(input_space: gym.Space,
-                            framework: str = "tf") -> ModelV2:
+                            model_config: ModelConfigDict,
+                            framework: str = "tf") -> Type[ModelV2]:
 
         VisionNet = None
 
@@ -666,8 +668,9 @@ class ModelCatalog:
                 "class`!".format(framework))
 
         # Discrete/1D obs-spaces.
-        if isinstance(input_space, gym.spaces.Discrete) or \
-                len(input_space.shape) <= 2:
+        if isinstance(input_space, (Discrete, MultiDiscrete)) or \
+            len(input_space.shape) == 1 or (
+            len(input_space.shape) == 2 and not model_config["framestack"]):
             return FCNet
         # Default Conv2D net.
         else:

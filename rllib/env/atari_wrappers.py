@@ -255,6 +255,22 @@ class FrameStack(gym.Wrapper):
         return np.concatenate(self.frames, axis=2)
 
 
+class FrameStackTrajectoryView(gym.ObservationWrapper):
+    def __init__(self, env):
+        """No stacking. Trajectory View API takes care of this."""
+        gym.Wrapper.__init__(self, env)
+        shp = env.observation_space.shape
+        assert shp[2] == 1
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(shp[0], shp[1]),
+            dtype=env.observation_space.dtype)
+
+    def observation(self, observation):
+        return np.squeeze(observation, axis=-1)
+
+
 class ScaledFloatFrame(gym.ObservationWrapper):
     def __init__(self, env):
         gym.ObservationWrapper.__init__(self, env)
@@ -286,6 +302,8 @@ def wrap_deepmind(env, dim=84, framestack=True):
     env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
-    if framestack:
+    if framestack == "traj_view":
+        env = FrameStackTrajectoryView(env)
+    elif framestack is True:
         env = FrameStack(env, 4)
     return env

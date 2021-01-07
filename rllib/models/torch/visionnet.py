@@ -20,6 +20,14 @@ class VisionNetwork(TorchModelV2, nn.Module):
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
+
+        if model_config.get("framestack"):
+            obs_space = type(obs_space)(
+                low=np.stack([obs_space.low] * 4),
+                high=np.stack([obs_space.high] * 4),
+                shape=(4, ) + obs_space.shape,
+                dtype=obs_space.dtype)
+
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
@@ -39,7 +47,11 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._logits = None
 
         layers = []
-        (w, h, in_channels) = obs_space.shape
+        if model_config.get("framestack"):
+            (in_channels, w, h) = obs_space.shape
+        else:
+            (w, h, in_channels) = obs_space.shape
+
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
             padding, out_size = same_padding(in_size, kernel, [stride, stride])
@@ -112,7 +124,10 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 activation_fn=None)
         else:
             vf_layers = []
-            (w, h, in_channels) = obs_space.shape
+            if model_config.get("framestack"):
+                (in_channels, w, h) = obs_space.shape
+            else:
+                (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
             for out_channels, kernel, stride in filters[:-1]:
                 padding, out_size = same_padding(in_size, kernel,
@@ -154,7 +169,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # Optional: framestacking obs/new_obs for Atari.
         if self.model_config["framestack"]:
             self.view_requirements[SampleBatch.OBS].shift = "-3:0"
-            self.view_requirements[SampleBatch.OBS].shift_from = -3#hackish
+            self.view_requirements[SampleBatch.OBS].shift_from = -3  #hackish
             self.view_requirements[SampleBatch.OBS].shift_to = 0
 
     @override(TorchModelV2)

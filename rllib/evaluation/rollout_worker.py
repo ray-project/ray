@@ -396,12 +396,16 @@ class RolloutWorker(ParallelIteratorWorker):
                     clip_rewards = True
 
                 def wrap(env):
+                    traj_view_framestack = \
+                        model_config.get("framestack") and \
+                        policy_config["_use_trajectory_view_api"]
                     framestack = model_config.get("framestack") and \
                                  not policy_config["_use_trajectory_view_api"]
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=framestack)
+                        framestack="traj_view"
+                        if traj_view_framestack else framestack)
                     if monitor_path:
                         from gym import wrappers
                         env = wrappers.Monitor(env, monitor_path, resume=True)
@@ -1073,13 +1077,13 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_space = preprocessor.observation_space
             else:
                 preprocessors[name] = NoPreprocessor(obs_space)
-                if merged_conf["_use_trajectory_view_api"] and \
-                        merged_conf["model"]["framestack"]:
-                    obs_space = type(obs_space)(
-                        low=np.tile(obs_space.low, 4),
-                        high=np.tile(obs_space.high, 4),
-                        shape=obs_space.shape[:-1] + (obs_space.shape[-1] * 4, ),
-                        dtype=obs_space.dtype)
+                #if merged_conf["_use_trajectory_view_api"] and \
+                #        merged_conf["model"]["framestack"]:
+                #    obs_space = type(obs_space)(
+                #        low=np.stack([obs_space.low] * 4),
+                #        high=np.stack([obs_space.high] * 4),
+                #        shape=(4, ) + obs_space.shape,
+                #        dtype=obs_space.dtype)
 
             if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
