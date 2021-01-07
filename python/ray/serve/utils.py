@@ -11,6 +11,7 @@ from typing import Iterable, List, Dict, Tuple
 import os
 from ray.serve.exceptions import RayServeException
 from collections import UserDict
+from pathlib import Path
 
 import starlette.requests
 import requests
@@ -194,8 +195,7 @@ def get_conda_env_dir(env_name):
                 "Please verify conda is installed.")
         # Example: CONDA_EXE=$HOME/anaconda3/bin/python
         # Strip out the /bin/python by going up two parent directories.
-        conda_prefix = os.path.abspath(
-            os.path.join(conda_exe, f"{os.pardir}/{os.pardir}"))
+        conda_prefix = str(Path(conda_exe).parent.parent)
 
     # There are two cases:
     # 1. We are in conda base env: CONDA_DEFAULT_ENV=base and
