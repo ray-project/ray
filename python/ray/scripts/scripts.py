@@ -279,6 +279,13 @@ def debug(address):
     help="a comma-separated list of open ports for workers to bind on. "
     "Overrides '--min-worker-port' and '--max-worker-port'.")
 @click.option(
+    "--ray-client-server-port",
+    required=False,
+    type=int,
+    default=None,
+    help="the port number the ray client server will bind on. If not set, "
+    "the ray client server will not be started.")
+@click.option(
     "--memory",
     required=False,
     hidden=True,
@@ -415,9 +422,10 @@ def debug(address):
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, worker_port_list, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_dashboard, dashboard_host, dashboard_port, block,
+          min_worker_port, max_worker_port, worker_port_list,
+          ray_client_server_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head,
+          include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
           temp_dir, java_worker_options, system_config, lru_evict,
@@ -459,6 +467,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
+        ray_client_server_port=ray_client_server_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         gcs_server_port=gcs_server_port,
@@ -698,6 +707,7 @@ def stop(force, verbose, log_style, log_color):
         ["plasma_store", True],
         ["gcs_server", True],
         ["monitor.py", False],
+        ["ray.util.client.server", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
