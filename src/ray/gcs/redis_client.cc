@@ -86,6 +86,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     int port;
     ss >> port;
     ports->emplace_back(port);
+    RAY_LOG(DEBUG) << "Received Redis shard address " << addr << ":" << port
+                   << " from head GCS.";
   }
   freeReplyObject(reply);
 }
@@ -143,7 +145,7 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
   Attach();
 
   is_connected_ = true;
-  RAY_LOG(INFO) << "RedisClient connected.";
+  RAY_LOG(DEBUG) << "RedisClient connected.";
 
   return Status::OK();
 }

@@ -1,11 +1,14 @@
 package io.ray.streaming.runtime.demo;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import io.ray.api.Ray;
 import io.ray.streaming.api.context.StreamingContext;
 import io.ray.streaming.api.function.impl.FilterFunction;
 import io.ray.streaming.api.function.impl.MapFunction;
 import io.ray.streaming.api.function.impl.SinkFunction;
 import io.ray.streaming.api.stream.DataStreamSource;
+import io.ray.streaming.runtime.util.EnvUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -18,6 +21,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class HybridStreamTest {
+
   private static final Logger LOG = LoggerFactory.getLogger(HybridStreamTest.class);
 
   public static class Mapper1 implements MapFunction<Object, Object> {
@@ -41,6 +45,7 @@ public class HybridStreamTest {
   @Test(timeOut = 60000)
   public void testHybridDataStream() throws Exception {
     Ray.shutdown();
+    Preconditions.checkArgument(EnvUtil.executeCommand(ImmutableList.of("ray", "stop"), 5));
     String sinkFileName = "/tmp/testHybridDataStream.txt";
     Files.deleteIfExists(Paths.get(sinkFileName));
 
@@ -53,18 +58,22 @@ public class HybridStreamTest {
         .map("ray.streaming.tests.test_hybrid_stream", "map_func1")
         .filter("ray.streaming.tests.test_hybrid_stream", "filter_func1")
         .asJavaStream()
-        .sink((SinkFunction<Object>) value -> {
-          LOG.info("HybridStreamTest: {}", value);
-          try {
-            if (!Files.exists(Paths.get(sinkFileName))) {
-              Files.createFile(Paths.get(sinkFileName));
-            }
-            Files.write(Paths.get(sinkFileName), value.toString().getBytes(),
-                StandardOpenOption.APPEND);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-        });
+        .sink(
+            (SinkFunction<Object>)
+                value -> {
+                  LOG.info("HybridStreamTest: {}", value);
+                  try {
+                    if (!Files.exists(Paths.get(sinkFileName))) {
+                      Files.createFile(Paths.get(sinkFileName));
+                    }
+                    Files.write(
+                        Paths.get(sinkFileName),
+                        value.toString().getBytes(),
+                        StandardOpenOption.APPEND);
+                  } catch (IOException e) {
+                    throw new RuntimeException(e);
+                  }
+                });
     context.execute("HybridStreamTestJob");
     int sleptTime = 0;
     TimeUnit.SECONDS.sleep(3);
@@ -88,5 +97,4 @@ public class HybridStreamTest {
     context.stop();
     LOG.info("HybridStreamTest succeed");
   }
-
 }

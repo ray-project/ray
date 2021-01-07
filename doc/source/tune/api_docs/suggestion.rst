@@ -22,6 +22,10 @@ Summary
      - Summary
      - Website
      - Code Example
+   * - :ref:`Random search/grid search <tune-basicvariant>`
+     - Random search/grid search
+     -
+     - :doc:`/tune/examples/tune_basic_example`
    * - :ref:`AxSearch <tune-ax>`
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
@@ -63,9 +67,6 @@ Summary
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/sigopt_example`
 
-
-.. note::Search algorithms will require a different search space declaration than the default Tune format - meaning that you will not be able to combine ``tune.grid_search`` with the below integrations.
-
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.
 
 **Want to use your own algorithm?** The interface is easy to implement. :ref:`Read instructions here <byo-algo>`.
@@ -75,6 +76,7 @@ Tune also provides helpful utilities to use with Search Algorithms:
 
  * :ref:`repeater`: Support for running each *sampled hyperparameter* with multiple random seeds.
  * :ref:`limiter`: Limits the amount of concurrent trials when running optimization.
+ * :ref:`shim`: Allows creation of the search algorithm object given a string.
 
 Saving and Restoring
 --------------------
@@ -124,6 +126,21 @@ identifier.
       os.path.join("~/my_results", "my-experiment-1"))
 
 .. note:: This is currently not implemented for: AxSearch, TuneBOHB, SigOptSearch, and DragonflySearch.
+
+.. _tune-basicvariant:
+
+Random search and grid search (tune.suggest.basic_variant.BasicVariantGenerator)
+--------------------------------------------------------------------------------
+
+The default and most basic way to do hyperparameter search is via random and grid search.
+Ray Tune does this through the :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>`
+class that generates trial variants given a search space definition.
+
+The :class:`BasicVariantGenerator <ray.tune.suggest.basic_variant.BasicVariantGenerator>` is used per
+default if no search algorithm is passed to
+:func:`tune.run() <ray.tune.run>`.
+
+.. autoclass:: ray.tune.suggest.basic_variant.BasicVariantGenerator
 
 .. _tune-ax:
 
@@ -191,7 +208,7 @@ Nevergrad (tune.suggest.nevergrad.NevergradSearch)
 .. _tune-optuna:
 
 Optuna (tune.suggest.optuna.OptunaSearch)
---------------------------------------------------
+-----------------------------------------
 
 .. autoclass:: ray.tune.suggest.optuna.OptunaSearch
 
@@ -264,3 +281,11 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
     :members:
     :private-members:
     :show-inheritance:
+
+.. _shim:
+
+Shim Instantiation (tune.create_searcher)
+-----------------------------------------
+There is also a shim function that constructs the search algorithm based on the provided string. This can be useful if the search algorithm you want to use changes often (e.g., specifying the search algorithm via a CLI option or config file).
+
+.. automethod:: ray.tune.create_searcher

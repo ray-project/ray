@@ -87,7 +87,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
         observation_dict is expected to contain the observation
         of all agents acting in this episode step.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation_dict (dict): Current environment observation.
 
@@ -104,7 +104,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
                    action_dict: MultiAgentDict) -> None:
         """Record an observation and (off-policy) action taken.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation_dict (dict): Current environment observation.
             action_dict (dict): Action for the observation.
@@ -126,7 +126,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
         episode. Rewards accumulate until the next action. If no reward is
         logged before the next action, a reward of 0.0 is assumed.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             reward_dict (dict): Reward from the environment agents.
             info_dict (dict): Optional info dict.
@@ -156,7 +156,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
                     observation_dict: MultiAgentDict) -> None:
         """Record the end of an episode.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation_dict (dict): Current environment observation.
         """

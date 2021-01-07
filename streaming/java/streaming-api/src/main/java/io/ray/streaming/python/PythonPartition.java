@@ -7,26 +7,26 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * Represents a python partition function.
- * <p>
- * Python worker can create a partition object using information in this
- * PythonPartition.
- * <p>
- * If this object is constructed from serialized python partition,
- * python worker can deserialize it to create python partition directly.
- * If this object is constructed from moduleName and className/functionName,
- * python worker will use `importlib` to load python partition function.
+ *
+ * <p>Python worker can create a partition object using information in this PythonPartition.
+ *
+ * <p>If this object is constructed from serialized python partition, python worker can deserialize
+ * it to create python partition directly. If this object is constructed from moduleName and
+ * className/functionName, python worker will use `importlib` to load python partition function.
+ *
  * <p>
  */
 public class PythonPartition implements Partition<Object> {
-  public static final PythonPartition BroadcastPartition = new PythonPartition(
-      "ray.streaming.partition", "BroadcastPartition");
-  public static final PythonPartition KeyPartition = new PythonPartition(
-      "ray.streaming.partition", "KeyPartition");
-  public static final PythonPartition RoundRobinPartition = new PythonPartition(
-      "ray.streaming.partition", "RoundRobinPartition");
+
+  public static final PythonPartition BroadcastPartition =
+      new PythonPartition("ray.streaming.partition", "BroadcastPartition");
+  public static final PythonPartition KeyPartition =
+      new PythonPartition("ray.streaming.partition", "KeyPartition");
+  public static final PythonPartition RoundRobinPartition =
+      new PythonPartition("ray.streaming.partition", "RoundRobinPartition");
   public static final String FORWARD_PARTITION_CLASS = "ForwardPartition";
-  public static final PythonPartition ForwardPartition = new PythonPartition(
-      "ray.streaming.partition", FORWARD_PARTITION_CLASS);
+  public static final PythonPartition ForwardPartition =
+      new PythonPartition("ray.streaming.partition", FORWARD_PARTITION_CLASS);
 
   private byte[] partition;
   private String moduleName;
@@ -52,8 +52,8 @@ public class PythonPartition implements Partition<Object> {
 
   @Override
   public int[] partition(Object record, int numPartition) {
-    String msg = String.format("partition method of %s shouldn't be called.",
-        getClass().getSimpleName());
+    String msg =
+        String.format("partition method of %s shouldn't be called.", getClass().getSimpleName());
     throw new UnsupportedOperationException(msg);
   }
 
@@ -75,15 +75,15 @@ public class PythonPartition implements Partition<Object> {
 
   @Override
   public String toString() {
-    StringJoiner stringJoiner = new StringJoiner(", ",
-        PythonPartition.class.getSimpleName() + "[", "]");
+    StringJoiner stringJoiner =
+        new StringJoiner(", ", PythonPartition.class.getSimpleName() + "[", "]");
     if (partition != null) {
       stringJoiner.add("partition=binary partition");
     } else {
-      stringJoiner.add("moduleName='" + moduleName + "'")
+      stringJoiner
+          .add("moduleName='" + moduleName + "'")
           .add("functionName='" + functionName + "'");
     }
     return stringJoiner.toString();
   }
-
 }

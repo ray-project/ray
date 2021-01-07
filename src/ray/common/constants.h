@@ -18,7 +18,7 @@
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
-constexpr size_t kUniqueIDSize = 20;
+constexpr size_t kUniqueIDSize = 28;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
@@ -42,3 +42,5 @@ constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLAC
 /// Public DNS address which is is used to connect and get local IP.
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
+
+constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";

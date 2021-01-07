@@ -1,9 +1,10 @@
 .. _tune-guides:
 
-Tutorials
-=========
+===============
+Tutorials & FAQ
+===============
 
-.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+.. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
 In this section, you can find material on how to use Tune and its various features. If any of the materials is out of date or broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
@@ -22,6 +23,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :tooltip: A simple Tune walkthrough.
    :figure: /images/tune.png
    :description: :doc:`A walkthrough to setup your first Tune experiment <tune-tutorial>`
+
+.. customgalleryitem::
+   :tooltip: A deep dive into Tune's workings.
+   :figure: /images/tune.png
+   :description: :doc:`How does Tune work? <tune-lifecycle>`
 
 .. customgalleryitem::
    :tooltip: A simple guide to Population-based Training
@@ -64,6 +70,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/wandb_logo.png
    :description: :doc:`Track your experiment process with the Weights & Biases tools <tune-wandb>`
 
+.. customgalleryitem::
+    :tooltip: Use MLFlow with Ray Tune.
+    :figure: /images/mlflow.png
+    :description: :doc:`Log and track your hyperparameter sweep with MLFlow Tracking & AutoLogging <tune-mlflow>`
+
 
 .. raw:: html
 
@@ -76,10 +87,12 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-tutorial.rst
    tune-advanced-tutorial.rst
    tune-distributed.rst
-   tune-sklearn.rst
+   tune-lifecycle.rst
+   tune-mlflow.rst
    tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
    tune-serve-integration-mnist.rst
+   tune-sklearn.rst
    tune-xgboost.rst
    tune-wandb.rst
 
@@ -125,6 +138,16 @@ Learn how to use Tune in your browser with the following Colab-based exercises.
           </a>
         </td>
       </tr>
+
+      <tr>
+        <td class="tune-colab">Fine-tuning Huggingface Transformers with PBT.</td>
+        <td class="tune-colab">Huggingface Transformers/Pytorch</td>
+        <td class="tune-colab">
+          <a href="https://colab.research.google.com/drive/1tQgAKgcKQzheoh503OzhS4N9NtfFgmjF?usp=sharing" target="_parent">
+          <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Tune Tutorial"/>
+          </a>
+        </td>
+      </tr>
     </table>
 
 Tutorial source files `can be found here <https://github.com/ray-project/tutorial>`_.
@@ -136,3 +159,7 @@ Check out:
 
  * :doc:`/tune/user-guide`: A comprehensive overview of Tune's features.
  * :doc:`/tune/examples/index`: End-to-end examples and templates for using Tune with your preferred machine learning library.
+
+.. _tune-faq:
+
+.. include:: _faq.rst

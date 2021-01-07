@@ -15,11 +15,10 @@ import io.ray.streaming.operator.TwoInputOperator;
  * @param <K> Type of the data in the join key.
  * @param <O> Type of the data in the joined stream.
  */
-public class JoinOperator<L, R, K, O> extends StreamOperator<JoinFunction<L, R, O>> implements
-    TwoInputOperator<L, R> {
-  public JoinOperator() {
+public class JoinOperator<L, R, K, O> extends StreamOperator<JoinFunction<L, R, O>>
+    implements TwoInputOperator<L, R> {
 
-  }
+  public JoinOperator() {}
 
   public JoinOperator(JoinFunction<L, R, O> function) {
     super(function);
@@ -27,13 +26,10 @@ public class JoinOperator<L, R, K, O> extends StreamOperator<JoinFunction<L, R, 
   }
 
   @Override
-  public void processElement(Record<L> record1, Record<R> record2) {
-
-  }
+  public void processElement(Record<L> record1, Record<R> record2) {}
 
   @Override
   public OperatorType getOpType() {
     return OperatorType.TWO_INPUT;
   }
-
 }

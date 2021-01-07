@@ -1,14 +1,17 @@
 import json
+import pathlib
+import platform
 from pprint import pformat
+import time
+from unittest.mock import MagicMock
 
-import requests
 import pytest
-from prometheus_client.parser import text_string_to_metric_families
 
 import ray
+from ray.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray.metrics_agent import PrometheusServiceDiscoveryWriter
-from ray.experimental.metrics import Count, Histogram
-from ray.test_utils import wait_for_condition, SignalActor
+from ray.util.metrics import Count, Histogram, Gauge
+from ray.test_utils import wait_for_condition, SignalActor, fetch_prometheus
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
@@ -43,15 +46,28 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
         loaded_json_data["targets"]))
 
 
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Failing on Windows.")
+def test_prome_file_discovery_run_by_dashboard(shutdown_only):
+    ray.init(num_cpus=0)
+    global_node = ray.worker._global_node
+    temp_dir = global_node.get_temp_dir_path()
+
+    def is_service_discovery_exist():
+        for path in pathlib.Path(temp_dir).iterdir():
+            if PROMETHEUS_SERVICE_DISCOVERY_FILE in str(path):
+                return True
+        return False
+
+    wait_for_condition(is_service_discovery_exist)
+
+
 @pytest.fixture
 def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(
-        _internal_config=json.dumps({
-            "metrics_report_interval_ms": 1000
-        }))
+    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -62,16 +78,16 @@ def _setup_cluster_for_test(ray_start_cluster):
     # Generate some metrics from actor & tasks.
     @ray.remote
     def f():
-        counter = Count(f"test_counter", "desc", "unit", [])
-        counter.record(1, {})
+        counter = Count("test_counter", description="desc")
+        counter.record(1)
         ray.get(worker_should_exit.wait.remote())
 
     @ray.remote
     class A:
         async def ping(self):
-            histogram = Histogram("test_histogram", "desc", "unit", [0.1, 1.6],
-                                  [])
-            histogram.record(1.5, {})
+            histogram = Histogram(
+                "test_histogram", description="desc", boundaries=[0.1, 1.6])
+            histogram.record(1.5)
             ray.get(worker_should_exit.wait.remote())
 
     a = A.remote()
@@ -97,29 +113,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
 
     prom_addresses = _setup_cluster_for_test
 
-    # Make sure we can ping Prometheus endpoints.
-    def fetch_prometheus(prom_addresses):
-        components_dict = {}
-        metric_names = set()
-        metric_samples = []
-        for address in prom_addresses:
-            if address not in components_dict:
-                components_dict[address] = set()
-            try:
-                response = requests.get(f"http://{address}/metrics")
-            except requests.exceptions.ConnectionError:
-                continue
-
-            for line in response.text.split("\n"):
-                for family in text_string_to_metric_families(line):
-                    for sample in family.samples:
-                        metric_names.add(sample.name)
-                        metric_samples.append(sample)
-                        if "Component" in sample.labels:
-                            components_dict[address].add(
-                                sample.labels["Component"])
-        return components_dict, metric_names, metric_samples
-
     def test_cases():
         components_dict, metric_names, metric_samples = fetch_prometheus(
             prom_addresses)
@@ -139,6 +132,9 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # Make sure our user defined metrics exist
         for metric_name in ["test_counter", "test_histogram"]:
             assert any(metric_name in full_name for full_name in metric_names)
+
+        # Make sure GCS server metrics are recorded.
+        assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
 
         # Make sure the numeric value is correct
         test_counter_sample = [
@@ -182,6 +178,125 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         print(
             f"The compoenents are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
+
+
+@pytest.fixture
+def metric_mock():
+    mock = MagicMock()
+    mock.record.return_value = "haha"
+    yield mock
+
+
+"""
+Unit test custom metrics.
+"""
+
+
+def test_basic_custom_metrics(metric_mock):
+    # Make sure each of metric works as expected.
+    # -- Count --
+    count = Count("count", tag_keys=("a", ))
+    count._metric = metric_mock
+    count.record(1)
+    metric_mock.record.assert_called_with(1, tags={})
+
+    # -- Gauge --
+    gauge = Gauge("gauge", description="gauge")
+    gauge._metric = metric_mock
+    gauge.record(4)
+    metric_mock.record.assert_called_with(4, tags={})
+
+    # -- Histogram
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 3.0], tag_keys=("a", "b"))
+    histogram._metric = metric_mock
+    histogram.record(4)
+    metric_mock.record.assert_called_with(4, tags={})
+    tags = {"a": "3"}
+    histogram.record(10, tags=tags)
+    metric_mock.record.assert_called_with(10, tags=tags)
+    tags = {"a": "10", "b": "b"}
+    histogram.record(8, tags=tags)
+    metric_mock.record.assert_called_with(8, tags=tags)
+
+
+def test_custom_metrics_info(metric_mock):
+    # Make sure .info public method works.
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 2.0], tag_keys=("a", "b"))
+    assert histogram.info["name"] == "hist"
+    assert histogram.info["description"] == "hist"
+    assert histogram.info["boundaries"] == [1.0, 2.0]
+    assert histogram.info["tag_keys"] == ("a", "b")
+    assert histogram.info["default_tags"] == {}
+    histogram.set_default_tags({"a": "a"})
+    assert histogram.info["default_tags"] == {"a": "a"}
+
+
+def test_custom_metrics_default_tags(metric_mock):
+    histogram = Histogram(
+        "hist", description="hist", boundaries=[1.0, 2.0],
+        tag_keys=("a", "b")).set_default_tags({
+            "b": "b"
+        })
+    histogram._metric = metric_mock
+
+    # Check default tags.
+    histogram.record(4)
+    metric_mock.record.assert_called_with(4, tags={"b": "b"})
+
+    # Check specifying non-default tags.
+    histogram.record(10, tags={"a": "a"})
+    metric_mock.record.assert_called_with(10, tags={"a": "a", "b": "b"})
+
+    # Check overriding default tags.
+    tags = {"a": "10", "b": "c"}
+    histogram.record(8, tags=tags)
+    metric_mock.record.assert_called_with(8, tags=tags)
+
+
+def test_custom_metrics_edge_cases(metric_mock):
+    # None or empty boundaries are not allowed.
+    with pytest.raises(ValueError):
+        Histogram("hist")
+
+    with pytest.raises(ValueError):
+        Histogram("hist", boundaries=[])
+
+    # Empty name is not allowed.
+    with pytest.raises(ValueError):
+        Count("")
+
+    # The tag keys must be a tuple type.
+    with pytest.raises(ValueError):
+        Count("name", tag_keys=("a"))
+
+
+def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
+    # https://github.com/ray-project/ray/issues/12859
+
+    @ray.remote
+    def override():
+        a = Count("num_count", description="")
+        b = Count("num_count", description="")
+        a.record(1)
+        b.record(1)
+
+    ray.get(override.remote())
+
+    # Check the stderr from the worker.
+    start = time.time()
+    while True:
+        if (time.time() - start) > 5:
+            break
+        msg = log_pubsub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+
+        log_lines = json.loads(ray.utils.decode(msg["data"]))["lines"]
+        for line in log_lines:
+            assert "Attempt to register measure" not in line
 
 
 if __name__ == "__main__":

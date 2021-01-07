@@ -3,21 +3,6 @@
 #include <unordered_set>
 namespace ray {
 namespace streaming {
-
-boost::any &Config::Get(ConfigEnum key) const {
-  auto item = config_map_.find(key);
-  STREAMING_CHECK(item != config_map_.end());
-  return item->second;
-}
-
-boost::any Config::Get(ConfigEnum key, boost::any default_value) const {
-  auto item = config_map_.find(key);
-  if (item == config_map_.end()) {
-    return default_value;
-  }
-  return item->second;
-}
-
 std::string Util::Byte2hex(const uint8_t *data, uint32_t data_size) {
   constexpr char hex[] = "0123456789abcdef";
   std::string result;

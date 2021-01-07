@@ -9,6 +9,9 @@ proto_library(
     srcs = ["src/protobuf/streaming.proto"],
     strip_import_prefix = "src",
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 proto_library(
@@ -22,7 +25,10 @@ proto_library(
     srcs = ["src/protobuf/remote_call.proto"],
     strip_import_prefix = "src",
     visibility = ["//visibility:public"],
-    deps = ["streaming_proto"],
+    deps = [
+        "streaming_proto",
+        "@com_google_protobuf//:any_proto",
+    ],
 )
 
 cc_proto_library(
@@ -61,6 +67,13 @@ cc_binary(
     deps = ["//:core_worker_lib"],
 )
 
+cc_binary(
+    name = "exported_streaming_internal.so",
+    copts = COPTS,
+    linkshared = 1,
+    deps = ["//:exported_streaming_internal"],
+)
+
 cc_library(
     name = "streaming_util",
     srcs = glob([
@@ -70,9 +83,10 @@ cc_library(
         "src/util/*.h",
     ]),
     copts = COPTS,
-    strip_include_prefix = "src",
+    includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
+        "ray_common.so",
         "ray_util.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
@@ -136,11 +150,69 @@ cc_library(
         "@bazel_tools//src/conditions:windows": [
             # TODO(mehrdadn): This is to resolve symbols on Windows for now. Should remove this later. (See d7f8d18.)
             "//:core_worker_lib",
+            "//:exported_streaming_internal",
         ],
         "//conditions:default": [
             "core_worker_lib.so",
+            "exported_streaming_internal.so",
         ],
     }),
+)
+
+cc_library(
+    name = "streaming_channel",
+    srcs = glob(["src/channel/*.cc"]),
+    hdrs = glob(["src/channel/*.h"]),
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_common",
+        ":streaming_message",
+        ":streaming_queue",
+        ":streaming_ring_buffer",
+        ":streaming_util",
+    ],
+)
+
+cc_library(
+    name = "streaming_reliability",
+    srcs = glob(["src/reliability/*.cc"]),
+    hdrs = glob(["src/reliability/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_channel",
+        ":streaming_message",
+        ":streaming_util",
+    ],
+)
+
+cc_library(
+    name = "streaming_ring_buffer",
+    srcs = glob(["src/ring_buffer/*.cc"]),
+    hdrs = glob(["src/ring_buffer/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "core_worker_lib.so",
+        ":ray_common.so",
+        ":ray_util.so",
+        ":streaming_message",
+        "@boost//:circular_buffer",
+        "@boost//:thread",
+    ],
+)
+
+cc_library(
+    name = "streaming_common",
+    srcs = glob(["src/common/*.cc"]),
+    hdrs = glob(["src/common/*.h"]),
+    copts = COPTS,
+    includes = ["src/"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 cc_library(
@@ -159,15 +231,18 @@ cc_library(
     deps = [
         "ray_common.so",
         "ray_util.so",
+        ":streaming_channel",
+        ":streaming_common",
         ":streaming_config",
         ":streaming_message",
         ":streaming_queue",
+        ":streaming_reliability",
         ":streaming_util",
-        "@boost//:circular_buffer",
     ],
 )
 
 test_common_deps = [
+    "//:exported_streaming_internal",
     ":streaming_lib",
     "//:ray_common",
     "//:ray_util",
@@ -198,6 +273,15 @@ cc_test(
     name = "streaming_message_ring_buffer_tests",
     srcs = [
         "src/test/ring_buffer_tests.cc",
+    ],
+    copts = COPTS,
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "barrier_helper_tests",
+    srcs = [
+        "src/test/barrier_helper_tests.cc",
     ],
     copts = COPTS,
     deps = test_common_deps,
@@ -239,6 +323,23 @@ cc_test(
     deps = test_common_deps,
 )
 
+cc_test(
+    name = "queue_protobuf_tests",
+    srcs = [
+        "src/test/queue_protobuf_tests.cc",
+    ],
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "data_writer_tests",
+    srcs = [
+        "src/test/data_writer_tests.cc",
+    ],
+    copts = COPTS,
+    deps = test_common_deps,
+)
+
 python_proto_compile(
     name = "streaming_py_proto",
     deps = [":streaming_proto"],
@@ -275,7 +376,9 @@ genrule(
         GENERATED_DIR="streaming/python/generated"
         mkdir -p "$$GENERATED_DIR"
         touch "$$GENERATED_DIR/__init__.py"
+        # Use this `sed` command to change the import path in the generated file.
         sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
+        sed -i -E 's/from protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         date > $@
     """,
     local = 1,
@@ -290,7 +393,6 @@ cc_binary(
     ]),
     copts = COPTS,
     linkshared = 1,
-    linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":streaming_lib",

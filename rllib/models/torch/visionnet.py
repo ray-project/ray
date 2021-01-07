@@ -1,15 +1,15 @@
 import numpy as np
-from typing import Dict
+from typing import Dict, List
+import gym
 
-from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
-from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
+from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 _, nn = try_import_torch()
 
@@ -17,17 +17,19 @@ _, nn = try_import_torch()
 class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
         if not model_config.get("conv_filters"):
-            model_config["conv_filters"] = _get_filter_config(obs_space.shape)
-
+            model_config["conv_filters"] = get_filter_config(obs_space.shape)
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
 
         activation = self.model_config.get("conv_activation")
         filters = self.model_config["conv_filters"]
+        assert len(filters) > 0,\
+            "Must provide at least 1 entry in `conv_filters`!"
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
 
@@ -149,8 +151,16 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # Holds the current "base" output (before logits layer).
         self._features = None
 
+        # Optional: framestacking obs/new_obs for Atari.
+        if self.model_config["framestack"]:
+            self.view_requirements[SampleBatch.OBS].shift = "-3:0"
+            self.view_requirements[SampleBatch.OBS].shift_from = -3#hackish
+            self.view_requirements[SampleBatch.OBS].shift_to = 0
+
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens):
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
@@ -175,7 +185,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
             return conv_out, state
 
     @override(TorchModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             value = self._value_branch_separate(self._features)
@@ -190,15 +200,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 features = self._features
             return self._value_branch(features).squeeze(1)
 
-    @override(ModelV2)
-    def get_view_requirements(self) -> Dict[str, ViewRequirement]:
-        req = super().get_view_requirements()
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.model_config["framestack"]:
-            req[SampleBatch.OBS].shift = [-3, -2, -1, 0]
-        return req
-
-    def _hidden_layers(self, obs):
+    def _hidden_layers(self, obs: TensorType) -> TensorType:
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
         res = res.squeeze(3)
         res = res.squeeze(2)

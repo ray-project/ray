@@ -1,9 +1,8 @@
 import binascii
 import errno
 import hashlib
-import inspect
 import logging
-import numpy as np
+import multiprocessing
 import os
 import signal
 import subprocess
@@ -12,11 +11,17 @@ import tempfile
 import threading
 import time
 import uuid
+from inspect import signature
 
+import numpy as np
+import psutil
 import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
-import psutil
+
+pwd = None
+if sys.platform != "win32":
+    import pwd
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +50,9 @@ def get_ray_temp_dir():
 
 
 def _random_string():
-    id_hash = hashlib.sha1()
+    id_hash = hashlib.shake_128()
     id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest()
+    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
     assert len(id_bytes) == ray_constants.ID_SIZE
     return id_bytes
 
@@ -118,57 +123,10 @@ def push_error_to_driver_through_redis(redis_client,
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
     pubsub_msg = ray.gcs_utils.PubSubMessage()
-    pubsub_msg.id = job_id.hex()
+    pubsub_msg.id = job_id.binary()
     pubsub_msg.data = error_data
     redis_client.publish("ERROR_INFO:" + job_id.hex(),
-                         pubsub_msg.SerializeAsString())
-
-
-def is_cython(obj):
-    """Check if an object is a Cython function or method"""
-
-    # TODO(suo): We could split these into two functions, one for Cython
-    # functions and another for Cython methods.
-    # TODO(suo): There doesn't appear to be a Cython function 'type' we can
-    # check against via isinstance. Please correct me if I'm wrong.
-    def check_cython(x):
-        return type(x).__name__ == "cython_function_or_method"
-
-    # Check if function or method, respectively
-    return check_cython(obj) or \
-        (hasattr(obj, "__func__") and check_cython(obj.__func__))
-
-
-def is_function_or_method(obj):
-    """Check if an object is a function or method.
-
-    Args:
-        obj: The Python object in question.
-
-    Returns:
-        True if the object is an function or method.
-    """
-    return inspect.isfunction(obj) or inspect.ismethod(obj) or is_cython(obj)
-
-
-def is_class_method(f):
-    """Returns whether the given method is a class_method."""
-    return hasattr(f, "__self__") and f.__self__ is not None
-
-
-def is_static_method(cls, f_name):
-    """Returns whether the class has a static method with the given name.
-
-    Args:
-        cls: The Python class (i.e. object of type `type`) to
-            search for the method in.
-        f_name: The name of the method to look up in this class
-            and check whether or not it is static.
-    """
-    for cls in inspect.getmro(cls):
-        if f_name in cls.__dict__:
-            return isinstance(cls.__dict__[f_name], staticmethod)
-    return False
+                         pubsub_msg.SerializeToString())
 
 
 def random_string():
@@ -309,9 +267,10 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, runtime_num_cpus,
-        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources):
+        default_object_store_memory, default_resources,
+        default_accelerator_type, runtime_num_cpus, runtime_num_gpus,
+        runtime_memory, runtime_object_store_memory, runtime_resources,
+        runtime_accelerator_type):
     """Determine a task's resource requirements.
 
     Args:
@@ -361,9 +320,10 @@ def resources_from_resource_arguments(
     elif default_num_gpus is not None:
         resources["GPU"] = default_num_gpus
 
-    memory = default_memory or runtime_memory
-    object_store_memory = (default_object_store_memory
-                           or runtime_object_store_memory)
+    # Order of arguments matter for short circuiting.
+    memory = runtime_memory or default_memory
+    object_store_memory = (runtime_object_store_memory
+                           or default_object_store_memory)
     if memory is not None:
         resources["memory"] = ray_constants.to_memory_units(
             memory, round_up=True)
@@ -371,24 +331,14 @@ def resources_from_resource_arguments(
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
 
+    if runtime_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{runtime_accelerator_type}"] = 0.001
+    elif default_accelerator_type is not None:
+        resources[f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}"
+                  f"{default_accelerator_type}"] = 0.001
+
     return resources
-
-
-_default_handler = None
-
-
-def setup_logger(logging_level, logging_format):
-    """Setup default logging for ray."""
-    logger = logging.getLogger("ray")
-    if type(logging_level) is str:
-        logging_level = logging.getLevelName(logging_level.upper())
-    logger.setLevel(logging_level)
-    global _default_handler
-    if _default_handler is None:
-        _default_handler = logging.StreamHandler()
-        logger.addHandler(_default_handler)
-    _default_handler.setFormatter(logging.Formatter(logging_format))
-    logger.propagate = False
 
 
 class Unbuffered(object):
@@ -433,32 +383,6 @@ def open_log(path, unbuffered=False, **kwargs):
         return stream
 
 
-def create_and_init_new_worker_log(path, worker_pid):
-    """Opens or creates and sets up a new worker log file. Note that because we
-    expect to dup the underlying file descriptor, then fdopen it, the python
-    level metadata is not important.
-
-    Args:
-        path (str): The name/path of the file to be opened.
-        worker_pid (int): The pid of the worker process.
-
-    Returns:
-        A file-like object which can be written to.
-
-    """
-    # TODO (Alex): We should eventually be able to replace this with
-    # named-pipes.
-    f = open_log(path)
-    # Check to see if we're creating this file. No one else should ever write
-    # to this file, so we don't have to worry about TOCTOU.
-    if f.tell() == 0:
-        # This should always be the first message to appear in the worker's
-        # stdout and stderr log files. The string "Ray worker pid:" is
-        # parsed in the log monitor process.
-        print(f"Ray worker pid: {worker_pid}", file=f)
-    return f
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
@@ -483,6 +407,100 @@ def get_system_memory():
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
+
+
+def _get_docker_cpus(
+        cpu_quota_file_name="/sys/fs/cgroup/cpu/cpu.cfs_quota_us",
+        cpu_share_file_name="/sys/fs/cgroup/cpu/cpu.cfs_period_us",
+        cpuset_file_name="/sys/fs/cgroup/cpuset/cpuset.cpus"):
+    # TODO (Alex): Don't implement this logic oursleves.
+    # Docker has 2 underyling ways of implementing CPU limits:
+    # https://docs.docker.com/config/containers/resource_constraints/#configure-the-default-cfs-scheduler
+    # 1. --cpuset-cpus 2. --cpus or --cpu-quota/--cpu-period (--cpu-shares is a
+    # soft limit so we don't worry about it). For Ray's purposes, if we use
+    # docker, the number of vCPUs on a machine is whichever is set (ties broken
+    # by smaller value).
+
+    cpu_quota = None
+    # See: https://bugs.openjdk.java.net/browse/JDK-8146115
+    if os.path.exists(cpu_quota_file_name) and os.path.exists(
+            cpu_quota_file_name):
+        try:
+            with open(cpu_quota_file_name, "r") as quota_file, open(
+                    cpu_share_file_name, "r") as period_file:
+                cpu_quota = float(quota_file.read()) / float(
+                    period_file.read())
+        except Exception as e:
+            logger.exception("Unexpected error calculating docker cpu quota.",
+                             e)
+    if cpu_quota < 0:
+        cpu_quota = None
+
+    cpuset_num = None
+    if os.path.exists(cpuset_file_name):
+        try:
+            with open(cpuset_file_name) as cpuset_file:
+                ranges_as_string = cpuset_file.read()
+                ranges = ranges_as_string.split(",")
+                cpu_ids = []
+                for num_or_range in ranges:
+                    if "-" in num_or_range:
+                        start, end = num_or_range.split("-")
+                        cpu_ids.extend(list(range(int(start), int(end) + 1)))
+                    else:
+                        cpu_ids.append(int(num_or_range))
+                cpuset_num = len(cpu_ids)
+        except Exception as e:
+            logger.exception("Unexpected error calculating docker cpuset ids.",
+                             e)
+
+    if cpu_quota and cpuset_num:
+        return min(cpu_quota, cpuset_num)
+    else:
+        return cpu_quota or cpuset_num
+
+
+def get_num_cpus():
+    cpu_count = multiprocessing.cpu_count()
+    if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
+        logger.info(
+            "Detected RAY_USE_MULTIPROCESSING_CPU_COUNT=1: Using "
+            "multiprocessing.cpu_count() to detect the number of CPUs. "
+            "This may be inconsistent when used inside docker. "
+            "To correctly detect CPUs, unset the env var: "
+            "`RAY_USE_MULTIPROCESSING_CPU_COUNT`.")
+        return cpu_count
+    try:
+        # Not easy to get cpu count in docker, see:
+        # https://bugs.python.org/issue36054
+        docker_count = _get_docker_cpus()
+        if docker_count is not None and docker_count != cpu_count:
+            if "RAY_DISABLE_DOCKER_CPU_WARNING" not in os.environ:
+                logger.warning(
+                    "Detecting docker specified CPUs. In "
+                    "previous versions of Ray, CPU detection in containers "
+                    "was incorrect. Please ensure that Ray has enough CPUs "
+                    "allocated. As a temporary workaround to revert to the "
+                    "prior behavior, set "
+                    "`RAY_USE_MULTIPROCESSING_CPU_COUNT=1` as an env var "
+                    "before starting Ray. Set the env var: "
+                    "`RAY_DISABLE_DOCKER_CPU_WARNING=1` to mute this warning.")
+            # TODO (Alex): We should probably add support for fractional cpus.
+            if int(docker_count) != float(docker_count):
+                logger.warning(
+                    f"Ray currently does not support initializing Ray"
+                    f"with fractional cpus. Your num_cpus will be "
+                    f"truncated from {docker_count} to "
+                    f"{int(docker_count)}.")
+            docker_count = int(docker_count)
+            cpu_count = docker_count
+
+    except Exception:
+        # `nproc` and cgroup are linux-only. If docker only works on linux
+        # (will run in a linux VM on other platforms), so this is fine.
+        pass
+
+    return cpu_count
 
 
 def get_used_memory():
@@ -780,3 +798,17 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def get_user():
+    if pwd is None:
+        return ""
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except Exception:
+        return ""
+
+
+def get_function_args(callable):
+    all_parameters = frozenset(signature(callable).parameters)
+    return list(all_parameters)

@@ -1,4 +1,3 @@
-import json
 import os
 import signal
 import sys
@@ -64,14 +63,19 @@ def test_worker_failed(ray_start_workers_separate_multinode):
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
     for pid in pids:
-        os.kill(pid, SIGKILL)
+        try:
+            os.kill(pid, SIGKILL)
+        except OSError:
+            # The process may have already exited due to worker capping.
+            pass
         time.sleep(0.1)
     # Make sure that we either get the object or we get an appropriate
     # exception.
     for object_ref in object_refs:
         try:
             ray.get(object_ref)
-        except (ray.exceptions.RayTaskError, ray.exceptions.RayWorkerError):
+        except (ray.exceptions.RayTaskError,
+                ray.exceptions.WorkerCrashedError):
             pass
 
 
@@ -138,9 +142,9 @@ def check_components_alive(cluster, component_type, check_component_alive):
     "ray_start_cluster", [{
         "num_cpus": 8,
         "num_nodes": 4,
-        "_internal_config": json.dumps({
+        "_system_config": {
             "num_heartbeats_timeout": 100
-        }),
+        },
     }],
     indirect=True)
 def test_raylet_failed(ray_start_cluster):

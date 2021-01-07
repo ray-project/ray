@@ -32,8 +32,8 @@ public class NamedActorTest extends BaseTest {
     Optional<ActorHandle<Counter>> namedActor = Ray.getActor(name);
     Assert.assertTrue(namedActor.isPresent());
     // Verify that this handle is correct.
-    Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
-        Integer.valueOf(2));
+    Assert.assertEquals(
+        namedActor.get().task(Counter::increment).remote().get(), Integer.valueOf(2));
   }
 
   @Test
@@ -49,30 +49,31 @@ public class NamedActorTest extends BaseTest {
     Optional<ActorHandle<Counter>> namedActor = Ray.getGlobalActor(name);
     Assert.assertTrue(namedActor.isPresent());
     // Verify that this handle is correct.
-    Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
-        Integer.valueOf(2));
+    Assert.assertEquals(
+        namedActor.get().task(Counter::increment).remote().get(), Integer.valueOf(2));
 
     if (!TestUtils.isSingleProcessMode()) {
       // Get the global actor from another driver.
       RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-      ProcessBuilder builder = new ProcessBuilder(
-          "java",
-          "-cp",
-          System.getProperty("java.class.path"),
-          "-Dray.redis.address=" + rayConfig.getRedisAddress(),
-          "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-          "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-          "-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort(),
-          NamedActorTest.class.getName(),
-          name);
+      ProcessBuilder builder =
+          new ProcessBuilder(
+              "java",
+              "-cp",
+              System.getProperty("java.class.path"),
+              "-Dray.address=" + rayConfig.getRedisAddress(),
+              "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
+              "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
+              "-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort(),
+              NamedActorTest.class.getName(),
+              name);
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       Process driver = builder.start();
       Assert.assertTrue(driver.waitFor(60, TimeUnit.SECONDS));
-      Assert.assertEquals(driver.exitValue(), 0,
-          "The driver exited with code " + driver.exitValue());
+      Assert.assertEquals(
+          driver.exitValue(), 0, "The driver exited with code " + driver.exitValue());
 
-      Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
-          Integer.valueOf(4));
+      Assert.assertEquals(
+          namedActor.get().task(Counter::increment).remote().get(), Integer.valueOf(4));
     }
   }
 
@@ -83,8 +84,8 @@ public class NamedActorTest extends BaseTest {
     Optional<ActorHandle<Counter>> namedActor = Ray.getGlobalActor(actorName);
     Assert.assertTrue(namedActor.isPresent());
     // Verify that this handle is correct.
-    Assert.assertEquals(namedActor.get().task(Counter::increment).remote().get(),
-        Integer.valueOf(3));
+    Assert.assertEquals(
+        namedActor.get().task(Counter::increment).remote().get(), Integer.valueOf(3));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
@@ -97,5 +98,4 @@ public class NamedActorTest extends BaseTest {
     // Registering with the same name should fail.
     Ray.actor(Counter::new).setName(name).remote();
   }
-
 }

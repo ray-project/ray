@@ -22,9 +22,8 @@ import com.google.common.base.Preconditions;
 import java.io.Serializable;
 
 /**
- * This class defines key-groups. Key-groups is
- * the key space in a job, which is partitioned for keyed state processing in state backend.
- * The boundaries of the key-group are inclusive.
+ * This class defines key-groups. Key-groups is the key space in a job, which is partitioned for
+ * keyed state processing in state backend. The boundaries of the key-group are inclusive.
  */
 public class KeyGroup implements Serializable {
 
@@ -44,9 +43,7 @@ public class KeyGroup implements Serializable {
     Preconditions.checkArgument(size() >= 0, "overflow detected.");
   }
 
-  /**
-   * @return The number of key-group in the range
-   */
+  /** Returns The number of key-group in the range */
   public int size() {
     return 1 + endIndex - startIndex;
   }

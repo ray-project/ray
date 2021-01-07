@@ -13,7 +13,6 @@ all_modules = [
     "api",
     "runtime",
     "test",
-    "tutorial",
 ]
 
 java_import(
@@ -64,7 +63,6 @@ define_java_module(
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         "@maven//:org_apache_commons_commons_lang3",
-        "@maven//:com_beust_jcommander",
         "@maven//:org_testng_testng",
         "@maven//:commons_io_commons_io",
         "@maven//:javax_xml_bind_jaxb_api",
@@ -72,6 +70,7 @@ define_java_module(
     visibility = ["//visibility:public"],
     deps = [
         ":io_ray_ray_api",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_typesafe_config",
@@ -90,21 +89,13 @@ define_java_module(
 )
 
 define_java_module(
-    name = "tutorial",
-    deps = [
-        ":io_ray_ray_api",
-        ":io_ray_ray_runtime",
-        "@maven//:com_google_guava_guava",
-    ],
-)
-
-define_java_module(
     name = "test",
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
         "@maven//:commons_io_commons_io",
@@ -144,27 +135,12 @@ filegroup(
     ],
 )
 
-native_java_binary("runtime", "raylet", "//:raylet")
-
-native_java_binary("runtime", "plasma_store_server", "//:plasma_store_server")
-
-native_java_binary("runtime", "redis-server", "//:redis-server")
-
-native_java_binary("runtime", "gcs_server", "//:gcs_server")
-
-native_java_binary("runtime", "libray_redis_module.so", "//:libray_redis_module.so")
-
 native_java_library("runtime", "core_worker_library_java", "//:libcore_worker_library_java.so")
 
 filegroup(
     name = "java_native_deps",
     srcs = [
         ":core_worker_library_java",
-        ":gcs_server",
-        ":libray_redis_module.so",
-        ":plasma_store_server",
-        ":raylet",
-        ":redis-server",
     ],
 )
 
@@ -230,7 +206,6 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:io_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:io_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:io_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
         cp -f $(location //java:io_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         date > $@
     """,

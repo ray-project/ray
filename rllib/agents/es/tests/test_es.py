@@ -9,7 +9,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestES(unittest.TestCase):
     def test_es_compilation(self):
         """Test whether an ESTrainer can be built on all frameworks."""
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=4)
         config = es.DEFAULT_CONFIG.copy()
         # Keep it simple.
         config["model"]["fcnet_hiddens"] = [10]
@@ -18,6 +18,9 @@ class TestES(unittest.TestCase):
         config["num_workers"] = 1
         config["episodes_per_batch"] = 10
         config["train_batch_size"] = 100
+        # Test eval workers ("normal" Trainer eval WorkerSet).
+        config["evaluation_interval"] = 1
+        config["evaluation_num_workers"] = 2
 
         num_iterations = 1
 

@@ -17,7 +17,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class UnionStreamTest {
-  private static final Logger LOG = LoggerFactory.getLogger( UnionStreamTest.class );
+
+  private static final Logger LOG = LoggerFactory.getLogger(UnionStreamTest.class);
 
   @Test(timeOut = 60000)
   public void testUnionStream() throws Exception {
@@ -34,18 +35,22 @@ public class UnionStreamTest {
         DataStreamSource.fromCollection(context, Arrays.asList(1, 1));
     streamSource1
         .union(streamSource2, streamSource3)
-        .sink((SinkFunction<Integer>) value -> {
-          LOG.info("UnionStreamTest: {}", value);
-          try {
-            if (!Files.exists(Paths.get(sinkFileName))) {
-              Files.createFile(Paths.get(sinkFileName));
-            }
-            Files.write(Paths.get(sinkFileName), value.toString().getBytes(),
-                StandardOpenOption.APPEND);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-        });
+        .sink(
+            (SinkFunction<Integer>)
+                value -> {
+                  LOG.info("UnionStreamTest, sink: {}", value);
+                  try {
+                    if (!Files.exists(Paths.get(sinkFileName))) {
+                      Files.createFile(Paths.get(sinkFileName));
+                    }
+                    Files.write(
+                        Paths.get(sinkFileName),
+                        value.toString().getBytes(),
+                        StandardOpenOption.APPEND);
+                  } catch (IOException e) {
+                    throw new RuntimeException(e);
+                  }
+                });
     context.execute("UnionStreamTest");
     int sleptTime = 0;
     TimeUnit.SECONDS.sleep(3);
@@ -67,5 +72,4 @@ public class UnionStreamTest {
     context.stop();
     LOG.info("HybridStreamTest succeed");
   }
-
 }

@@ -19,8 +19,8 @@ import java.util.Map;
  * @param <S> Type of stream class
  * @param <T> Type of the data in the stream.
  */
-public abstract class Stream<S extends Stream<S, T>, T>
-    implements Serializable {
+public abstract class Stream<S extends Stream<S, T>, T> implements Serializable {
+
   private final int id;
   private final StreamingContext streamingContext;
   private final Stream inputStream;
@@ -34,14 +34,16 @@ public abstract class Stream<S extends Stream<S, T>, T>
     this(streamingContext, null, streamOperator, getForwardPartition(streamOperator));
   }
 
-  public Stream(StreamingContext streamingContext,
-                StreamOperator streamOperator,
-                Partition<T> partition) {
+  public Stream(
+      StreamingContext streamingContext, StreamOperator streamOperator, Partition<T> partition) {
     this(streamingContext, null, streamOperator, partition);
   }
 
   public Stream(Stream inputStream, StreamOperator streamOperator) {
-    this(inputStream.getStreamingContext(), inputStream, streamOperator,
+    this(
+        inputStream.getStreamingContext(),
+        inputStream,
+        streamOperator,
         getForwardPartition(streamOperator));
   }
 
@@ -49,10 +51,11 @@ public abstract class Stream<S extends Stream<S, T>, T>
     this(inputStream.getStreamingContext(), inputStream, streamOperator, partition);
   }
 
-  protected Stream(StreamingContext streamingContext,
-                   Stream inputStream,
-                   StreamOperator streamOperator,
-                   Partition<T> partition) {
+  protected Stream(
+      StreamingContext streamingContext,
+      Stream inputStream,
+      StreamOperator streamOperator,
+      Partition<T> partition) {
     this.streamingContext = streamingContext;
     this.inputStream = inputStream;
     this.operator = streamOperator;
@@ -64,8 +67,8 @@ public abstract class Stream<S extends Stream<S, T>, T>
   }
 
   /**
-   * Create a proxy stream of original stream.
-   * Changes in new stream will be reflected in original stream and vice versa
+   * Create a proxy stream of original stream. Changes in new stream will be reflected in original
+   * stream and vice versa
    */
   protected Stream(Stream originalStream) {
     this.originalStream = originalStream;
@@ -84,8 +87,7 @@ public abstract class Stream<S extends Stream<S, T>, T>
       case JAVA:
         return new ForwardPartition<>();
       default:
-        throw new UnsupportedOperationException(
-            "Unsupported language " + operator.getLanguage());
+        throw new UnsupportedOperationException("Unsupported language " + operator.getLanguage());
     }
   }
 
@@ -166,25 +168,21 @@ public abstract class Stream<S extends Stream<S, T>, T>
     return originalStream;
   }
 
-  /**
-   * Set chain strategy for this stream
-   */
+  /** Set chain strategy for this stream */
   public S withChainStrategy(ChainStrategy chainStrategy) {
     Preconditions.checkArgument(!isProxyStream());
     operator.setChainStrategy(chainStrategy);
     return self();
   }
 
-  /**
-   * Disable chain for this stream
-   */
+  /** Disable chain for this stream */
   public S disableChain() {
     return withChainStrategy(ChainStrategy.NEVER);
   }
 
   /**
-   * Set the partition function of this {@link Stream} so that output elements are forwarded to
-   * next operator locally.
+   * Set the partition function of this {@link Stream} so that output elements are forwarded to next
+   * operator locally.
    */
   public S forward() {
     return setPartition(getForwardPartition(operator));

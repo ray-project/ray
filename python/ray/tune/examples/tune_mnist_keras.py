@@ -1,8 +1,7 @@
 import argparse
-import numpy as np
 from tensorflow.keras.datasets import mnist
 
-from ray.tune.integration.keras import TuneReporterCallback
+from ray.tune.integration.keras import TuneReportCallback
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -39,7 +38,9 @@ def train_mnist(config):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneReporterCallback()])
+        callbacks=[TuneReportCallback({
+            "mean_accuracy": "accuracy"
+        })])
 
 
 if __name__ == "__main__":
@@ -50,16 +51,14 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=4 if args.smoke_test else None)
     sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
-        max_t=400,
-        grace_period=20)
+        time_attr="training_iteration", max_t=400, grace_period=20)
 
-    tune.run(
+    analysis = tune.run(
         train_mnist,
         name="exp",
         scheduler=sched,
+        metric="mean_accuracy",
+        mode="max",
         stop={
             "mean_accuracy": 0.99,
             "training_iteration": 5 if args.smoke_test else 300
@@ -71,9 +70,8 @@ if __name__ == "__main__":
         },
         config={
             "threads": 2,
-            "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
-            "momentum": tune.sample_from(
-                lambda spec: np.random.uniform(0.1, 0.9)),
-            "hidden": tune.sample_from(
-                lambda spec: np.random.randint(32, 512)),
+            "lr": tune.uniform(0.001, 0.1),
+            "momentum": tune.uniform(0.1, 0.9),
+            "hidden": tune.randint(32, 512),
         })
+    print("Best hyperparameters found were: ", analysis.best_config)

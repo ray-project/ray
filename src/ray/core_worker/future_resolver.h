@@ -29,9 +29,10 @@ namespace ray {
 class FutureResolver {
  public:
   FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 rpc::ClientFactoryFn client_factory, const rpc::Address &rpc_address)
+                 std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+                 const rpc::Address &rpc_address)
       : in_memory_store_(store),
-        owner_clients_(client_factory),
+        owner_clients_(core_worker_client_pool),
         rpc_address_(rpc_address) {}
 
   /// Resolve the value for a future. This will periodically contact the given
@@ -48,7 +49,7 @@ class FutureResolver {
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
-  rpc::CoreWorkerClientPool owner_clients_;
+  std::shared_ptr<rpc::CoreWorkerClientPool> owner_clients_;
 
   /// Address of our RPC server. Used to notify borrowed objects' owners of our
   /// address, so the owner can contact us to ask when our reference to the

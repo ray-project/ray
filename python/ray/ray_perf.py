@@ -1,18 +1,15 @@
 """This is the script for `ray microbenchmark`."""
 
 import asyncio
-import json
 import logging
-import os
-import time
+from ray._private.ray_microbenchmark_helpers import timeit
+from ray._private.ray_client_microbenchmark import (main as
+                                                    client_microbenchmark_main)
 import numpy as np
 import multiprocessing
 import ray
 
 logger = logging.getLogger(__name__)
-
-# Only run tests matching this filter pattern.
-filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 
 
 @ray.remote(num_cpus=0)
@@ -72,27 +69,6 @@ def small_value_batch(n):
     return 0
 
 
-def timeit(name, fn, multiplier=1):
-    if filter_pattern not in name:
-        return
-    # warmup
-    start = time.time()
-    while time.time() - start < 1:
-        fn()
-    # real run
-    stats = []
-    for _ in range(4):
-        start = time.time()
-        count = 0
-        while time.time() - start < 2:
-            fn()
-            count += 1
-        end = time.time()
-        stats.append(multiplier * count / (end - start))
-    print(name, "per second", round(np.mean(stats), 2), "+-",
-          round(np.std(stats), 2))
-
-
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
         msg = ("WARNING: Unoptimized build! "
@@ -110,10 +86,7 @@ def main():
 
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
 
-    ray.init(
-        _internal_config=json.dumps({
-            "put_small_object_in_memory_store": True
-        }))
+    ray.init(_system_config={"put_small_object_in_memory_store": True})
 
     value = ray.put(0)
 
@@ -138,10 +111,7 @@ def main():
     timeit("multi client put calls", put_multi_small, 1000)
 
     ray.shutdown()
-    ray.init(
-        _internal_config=json.dumps({
-            "put_small_object_in_memory_store": False
-        }))
+    ray.init(_system_config={"put_small_object_in_memory_store": False})
 
     value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
@@ -284,6 +254,9 @@ def main():
         ray.get([async_actor_work.remote(a) for _ in range(m)])
 
     timeit("n:n async-actor calls async", async_actor_multi, m * n)
+    ray.shutdown()
+
+    client_microbenchmark_main()
 
 
 if __name__ == "__main__":

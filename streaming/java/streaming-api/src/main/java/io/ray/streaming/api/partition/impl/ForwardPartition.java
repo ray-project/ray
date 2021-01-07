@@ -10,6 +10,7 @@ import io.ray.streaming.api.partition.Partition;
  * @param <T> Type of the input record.
  */
 public class ForwardPartition<T> implements Partition<T> {
+
   private int[] partitions = new int[] {0};
 
   @Override

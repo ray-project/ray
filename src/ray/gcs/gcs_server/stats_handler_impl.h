@@ -14,8 +14,8 @@
 
 #pragma once
 
+#include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -25,7 +25,12 @@ namespace rpc {
 class DefaultStatsHandler : public rpc::StatsHandler {
  public:
   explicit DefaultStatsHandler(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-      : gcs_table_storage_(std::move(gcs_table_storage)) {}
+      : gcs_table_storage_(std::move(gcs_table_storage)) {
+    for (int index = 0; index < RayConfig::instance().maximum_profile_table_rows_count();
+         ++index) {
+      ids_.emplace_back(UniqueID::FromRandom());
+    }
+  }
 
   void HandleAddProfileData(const AddProfileDataRequest &request,
                             AddProfileDataReply *reply,
@@ -36,6 +41,9 @@ class DefaultStatsHandler : public rpc::StatsHandler {
                                rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  int cursor_ = 0;
+  std::vector<UniqueID> ids_;
+
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 };
 

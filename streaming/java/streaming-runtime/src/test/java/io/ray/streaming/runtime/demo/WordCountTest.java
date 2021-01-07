@@ -37,18 +37,21 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
     text.add("hello world eagle eagle eagle");
     DataStreamSource<String> streamSource = DataStreamSource.fromCollection(streamingContext, text);
     streamSource
-        .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
-          String[] records = value.split(" ");
-          for (String record : records) {
-            collector.collect(new WordAndCount(record, 1));
-          }
-        })
+        .flatMap(
+            (FlatMapFunction<String, WordAndCount>)
+                (value, collector) -> {
+                  String[] records = value.split(" ");
+                  for (String record : records) {
+                    collector.collect(new WordAndCount(record, 1));
+                  }
+                })
         .filter(pair -> !pair.word.contains("world"))
         .keyBy(pair -> pair.word)
-        .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) ->
-            new WordAndCount(oldValue.word, oldValue.count + newValue.count))
-        .sink((SinkFunction<WordAndCount>)
-            result -> wordCount.put(result.word, result.count));
+        .reduce(
+            (ReduceFunction<WordAndCount>)
+                (oldValue, newValue) ->
+                    new WordAndCount(oldValue.word, oldValue.count + newValue.count))
+        .sink((SinkFunction<WordAndCount>) result -> wordCount.put(result.word, result.count));
 
     streamingContext.execute("testWordCount");
 
@@ -73,5 +76,4 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
       this.count = count;
     }
   }
-
 }

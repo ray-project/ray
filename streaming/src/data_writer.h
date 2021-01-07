@@ -6,15 +6,18 @@
 #include <thread>
 #include <vector>
 
-#include "channel.h"
+#include "channel/channel.h"
 #include "config/streaming_config.h"
 #include "event_service.h"
 #include "flow_control.h"
 #include "message/message_bundle.h"
+#include "reliability/barrier_helper.h"
+#include "reliability_helper.h"
 #include "runtime_context.h"
 
 namespace ray {
 namespace streaming {
+class ReliabilityHelper;
 
 /// DataWriter is designed for data transporting between upstream and downstream.
 /// After the user sends the data, it does not immediately send the data to
@@ -31,6 +34,9 @@ namespace streaming {
 /// buffers have no data in that moment.
 class DataWriter {
  public:
+  // For mock writer accessing inner fields.
+  friend class MockWriter;
+
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~DataWriter();
 
@@ -56,6 +62,27 @@ class DataWriter {
   uint64_t WriteMessageToBufferRing(
       const ObjectID &q_id, uint8_t *data, uint32_t data_size,
       StreamingMessageType message_type = StreamingMessageType::Message);
+
+  /// Send barrier to all channel. note there are user defined data in barrier bundle
+  /// \param barrier_id
+  /// \param data
+  /// \param data_size
+  ///
+  void BroadcastBarrier(uint64_t barrier_id, const uint8_t *data, uint32_t data_size);
+
+  /// To relieve stress from large source/input data, we define a new function
+  /// clear_check_point
+  /// in producer/writer class. Worker can invoke this function if and only if
+  /// notify_consumed each item
+  /// flag is passed in reader/consumer, which means writer's producing became more
+  /// rhythmical and reader
+  /// can't walk on old way anymore.
+  /// \param barrier_id: user-defined numerical checkpoint id
+  void ClearCheckpoint(uint64_t barrier_id);
+
+  /// Replay all queue from checkpoint, it's useful under FO
+  /// \param result offset vector
+  void GetChannelOffset(std::vector<uint64_t> &result);
 
   void Run();
 
@@ -112,6 +139,8 @@ class DataWriter {
 
   void FlowControlTimer();
 
+  void ClearCheckpointId(ProducerChannelInfo &channel_info, uint64_t seq_id);
+
  private:
   std::shared_ptr<EventService> event_service_;
 
@@ -123,6 +152,15 @@ class DataWriter {
   // Flow controller makes a decision when it's should be blocked and avoid
   // unnecessary overflow.
   std::shared_ptr<FlowControl> flow_controller_;
+
+  StreamingBarrierHelper barrier_helper_;
+  std::shared_ptr<ReliabilityHelper> reliability_helper_;
+
+  // Make thread-safe between loop thread and user thread.
+  // High-level runtime send notification about clear checkpoint if global
+  // checkpoint is finished and low-level will auto flush & evict item memory
+  // when no more space is available.
+  std::atomic_flag notify_flag_ = ATOMIC_FLAG_INIT;
 
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;

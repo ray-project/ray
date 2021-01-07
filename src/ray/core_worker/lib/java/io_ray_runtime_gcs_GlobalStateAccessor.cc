@@ -76,7 +76,7 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetNodeResourceInfo(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray node_id_bytes) {
   auto *gcs_accessor =
       reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto node_id = JavaByteArrayToId<ray::ClientID>(env, node_id_bytes);
+  auto node_id = JavaByteArrayToId<ray::NodeID>(env, node_id_bytes);
   auto node_resource_info = gcs_accessor->GetNodeResourceInfo(node_id);
   return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, node_resource_info));
 }
@@ -86,9 +86,8 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetInternalConfig(
     JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
   auto *gcs_accessor =
       reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto internal_config_string = gcs_accessor->GetInternalConfig();
-  return static_cast<jbyteArray>(
-      NativeStringToJavaByteArray(env, internal_config_string));
+  auto system_config_string = gcs_accessor->GetInternalConfig();
+  return static_cast<jbyteArray>(NativeStringToJavaByteArray(env, system_config_string));
 }
 
 JNIEXPORT jobject JNICALL
@@ -118,16 +117,29 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env, jobj
 }
 
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorCheckpointId(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray actorId) {
-  const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetPlacementGroupInfo(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr, jbyteArray placement_group_id_bytes) {
+  const auto placement_group_id =
+      JavaByteArrayToId<ray::PlacementGroupID>(env, placement_group_id_bytes);
   auto *gcs_accessor =
       reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto actor_checkpoint_id = gcs_accessor->GetActorCheckpointId(actor_id);
-  if (actor_checkpoint_id) {
-    return NativeStringToJavaByteArray(env, *actor_checkpoint_id);
+  auto placement_group = gcs_accessor->GetPlacementGroupInfo(placement_group_id);
+  if (placement_group) {
+    return NativeStringToJavaByteArray(env, *placement_group);
   }
   return nullptr;
+}
+
+JNIEXPORT jobject JNICALL
+Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllPlacementGroupInfo(
+    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
+  auto *gcs_accessor =
+      reinterpret_cast<ray::gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
+  auto placement_group_info_list = gcs_accessor->GetAllPlacementGroupInfo();
+  return NativeVectorToJavaList<std::string>(
+      env, placement_group_info_list, [](JNIEnv *env, const std::string &str) {
+        return NativeStringToJavaByteArray(env, str);
+      });
 }
 
 #ifdef __cplusplus

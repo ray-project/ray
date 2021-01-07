@@ -13,19 +13,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Represents a stream of data whose transformations will be executed in python.
- */
+/** Represents a stream of data whose transformations will be executed in python. */
 public class PythonDataStream extends Stream<PythonDataStream, Object> implements PythonStream {
 
-  protected PythonDataStream(StreamingContext streamingContext,
-                             PythonOperator pythonOperator) {
+  protected PythonDataStream(StreamingContext streamingContext, PythonOperator pythonOperator) {
     super(streamingContext, pythonOperator);
   }
 
-  protected PythonDataStream(StreamingContext streamingContext,
-                             PythonOperator pythonOperator,
-                             Partition<Object> partition) {
+  protected PythonDataStream(
+      StreamingContext streamingContext,
+      PythonOperator pythonOperator,
+      Partition<Object> partition) {
     super(streamingContext, pythonOperator, partition);
   }
 
@@ -33,15 +31,14 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
     super(input, pythonOperator);
   }
 
-  public PythonDataStream(PythonDataStream input,
-                          PythonOperator pythonOperator,
-                          Partition<Object> partition) {
+  public PythonDataStream(
+      PythonDataStream input, PythonOperator pythonOperator, Partition<Object> partition) {
     super(input, pythonOperator, partition);
   }
 
   /**
-   * Create a python stream that reference passed java stream.
-   * Changes in new stream will be reflected in referenced stream and vice versa
+   * Create a python stream that reference passed java stream. Changes in new stream will be
+   * reflected in referenced stream and vice versa
    */
   public PythonDataStream(DataStream referencedStream) {
     super(referencedStream);
@@ -54,8 +51,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a map function to this stream.
    *
-   * @param func The python MapFunction.
-   * @return A new PythonDataStream.
+   * @param func The python MapFunction. Returns A new PythonDataStream.
    */
   public PythonDataStream map(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.MAP_FUNCTION);
@@ -69,8 +65,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a flat-map function to this stream.
    *
-   * @param func The python FlapMapFunction.
-   * @return A new PythonDataStream
+   * @param func The python FlapMapFunction. Returns A new PythonDataStream
    */
   public PythonDataStream flatMap(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FLAT_MAP_FUNCTION);
@@ -84,9 +79,8 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a filter function to this stream.
    *
-   * @param func The python FilterFunction.
-   * @return A new PythonDataStream that contains only the elements satisfying
-   *     the given filter predicate.
+   * @param func The python FilterFunction. Returns A new PythonDataStream that contains only the
+   *     elements satisfying the given filter predicate.
    */
   public PythonDataStream filter(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);
@@ -94,12 +88,11 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of the
+   * same type with each other.
    *
    * @param stream The DataStream to union output with.
-   * @param others The other DataStreams to union output with.
-   * @return A new UnionStream.
+   * @param others The other DataStreams to union output with. Returns A new UnionStream.
    */
   public final PythonDataStream union(PythonDataStream stream, PythonDataStream... others) {
     List<PythonDataStream> streams = new ArrayList<>();
@@ -109,11 +102,10 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of
-   * the same type with each other.
+   * Apply union transformations to this stream by merging {@link PythonDataStream} outputs of the
+   * same type with each other.
    *
-   * @param streams The DataStreams to union output with.
-   * @return A new UnionStream.
+   * @param streams The DataStreams to union output with. Returns A new UnionStream.
    */
   public final PythonDataStream union(List<PythonDataStream> streams) {
     if (this instanceof PythonUnionStream) {
@@ -132,8 +124,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a sink function and get a StreamSink.
    *
-   * @param func The python SinkFunction.
-   * @return A new StreamSink.
+   * @param func The python SinkFunction. Returns A new StreamSink.
    */
   public PythonStreamSink sink(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.SINK_FUNCTION);
@@ -147,8 +138,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a key-by function to this stream.
    *
-   * @param func the  python keyFunction.
-   * @return A new KeyDataStream.
+   * @param func the python keyFunction. Returns A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(PythonFunction func) {
     checkPartitionCall();
@@ -159,7 +149,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply broadcast to this stream.
    *
-   * @return This stream.
+   * <p>Returns This stream.
    */
   public PythonDataStream broadcast() {
     checkPartitionCall();
@@ -169,8 +159,7 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   /**
    * Apply a partition to this stream.
    *
-   * @param partition The partitioning strategy.
-   * @return This stream.
+   * @param partition The partitioning strategy. Returns This stream.
    */
   public PythonDataStream partitionBy(PythonPartition partition) {
     checkPartitionCall();
@@ -178,20 +167,21 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   }
 
   /**
-   * If parent stream is a python stream, we can't call partition related methods
-   * in the java stream.
+   * If parent stream is a python stream, we can't call partition related methods in the java
+   * stream.
    */
   private void checkPartitionCall() {
     if (getInputStream() != null && getInputStream().getLanguage() == Language.JAVA) {
-      throw new RuntimeException("Partition related methods can't be called on a " +
-          "python stream if parent stream is a java stream.");
+      throw new RuntimeException(
+          "Partition related methods can't be called on a "
+              + "python stream if parent stream is a java stream.");
     }
   }
 
   /**
-   * Convert this stream as a java stream.
-   * The converted stream and this stream are the same logical stream, which has same stream id.
-   * Changes in converted stream will be reflected in this stream and vice versa.
+   * Convert this stream as a java stream. The converted stream and this stream are the same logical
+   * stream, which has same stream id. Changes in converted stream will be reflected in this stream
+   * and vice versa.
    */
   public DataStream<Object> asJavaStream() {
     return new DataStream<>(this);
@@ -201,5 +191,4 @@ public class PythonDataStream extends Stream<PythonDataStream, Object> implement
   public Language getLanguage() {
     return Language.PYTHON;
   }
-
 }

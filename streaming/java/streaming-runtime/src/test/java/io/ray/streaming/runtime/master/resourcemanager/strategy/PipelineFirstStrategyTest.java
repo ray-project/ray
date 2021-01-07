@@ -9,7 +9,7 @@ import io.ray.streaming.runtime.core.graph.ExecutionGraphTest;
 import io.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import io.ray.streaming.runtime.core.resource.Container;
 import io.ray.streaming.runtime.core.resource.ResourceType;
-import io.ray.streaming.runtime.master.JobRuntimeContext;
+import io.ray.streaming.runtime.master.context.JobMasterRuntimeContext;
 import io.ray.streaming.runtime.master.graphmanager.GraphManager;
 import io.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import io.ray.streaming.runtime.master.resourcemanager.ResourceAssignmentView;
@@ -64,12 +64,10 @@ public class PipelineFirstStrategyTest extends BaseUnitTest {
 
     Map<String, String> jobConf = new HashMap<>();
     StreamingConfig streamingConfig = new StreamingConfig(jobConf);
-    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(streamingConfig));
+    GraphManager graphManager = new GraphManagerImpl(new JobMasterRuntimeContext(streamingConfig));
     JobGraph jobGraph = ExecutionGraphTest.buildJobGraph();
     ExecutionGraph executionGraph = ExecutionGraphTest.buildExecutionGraph(graphManager, jobGraph);
     ResourceAssignmentView assignmentView = strategy.assignResource(containers, executionGraph);
     Assert.assertNotNull(assignmentView);
   }
-
-
 }

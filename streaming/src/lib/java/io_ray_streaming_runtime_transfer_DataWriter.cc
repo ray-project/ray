@@ -80,3 +80,39 @@ Java_io_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *env,
   auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   delete data_writer;
 }
+
+JNIEXPORT jlongArray JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_getOutputMsgIdNative(JNIEnv *env,
+                                                                       jobject thisObj,
+                                                                       jlong ptr) {
+  DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
+
+  std::vector<uint64_t> result;
+  writer_client->GetChannelOffset(result);
+
+  jlongArray jArray = env->NewLongArray(result.size());
+  jlong jdata[result.size()];
+  for (size_t i = 0; i < result.size(); ++i) {
+    *(jdata + i) = result[i];
+  }
+  env->SetLongArrayRegion(jArray, 0, result.size(), jdata);
+  return jArray;
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_broadcastBarrierNative(
+    JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId, jbyteArray data) {
+  STREAMING_LOG(INFO) << "jni: broadcast barrier, cp_id=" << checkpointId;
+  RawDataFromJByteArray raw_data(env, data);
+  DataWriter *writer_client = reinterpret_cast<DataWriter *>(ptr);
+  writer_client->BroadcastBarrier(checkpointId, raw_data.data, raw_data.data_size);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_DataWriter_clearCheckpointNative(
+    JNIEnv *env, jobject thisObj, jlong ptr, jlong checkpointId) {
+  STREAMING_LOG(INFO) << "[Producer] jni: clearCheckpoints.";
+  auto *writer = reinterpret_cast<DataWriter *>(ptr);
+  writer->ClearCheckpoint(checkpointId);
+  STREAMING_LOG(INFO) << "[Producer] clear checkpoint done.";
+}

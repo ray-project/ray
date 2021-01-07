@@ -14,8 +14,6 @@ import org.testng.annotations.Test;
 public class RuntimeContextTest extends BaseTest {
 
   private static JobId JOB_ID = getJobId();
-  private static String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
-  private static String OBJECT_STORE_SOCKET_NAME = "/tmp/ray/test/object_store_socket";
 
   private static JobId getJobId() {
     // Must be stable across different processes.
@@ -27,23 +25,16 @@ public class RuntimeContextTest extends BaseTest {
   @BeforeClass
   public void setUp() {
     System.setProperty("ray.job.id", JOB_ID.toString());
-    System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
-    System.setProperty("ray.object-store.socket-name", OBJECT_STORE_SOCKET_NAME);
   }
 
   @AfterClass
   public void tearDown() {
     System.clearProperty("ray.job.id");
-    System.clearProperty("ray.raylet.socket-name");
-    System.clearProperty("ray.object-store.socket-name");
   }
 
   @Test
   public void testRuntimeContextInDriver() {
     Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
-    Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
-    Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
-        Ray.getRuntimeContext().getObjectStoreSocketName());
   }
 
   public static class RuntimeContextTester {
@@ -51,9 +42,6 @@ public class RuntimeContextTest extends BaseTest {
     public String testRuntimeContext(ActorId actorId) {
       Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
       Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
-      Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
-      Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
-          Ray.getRuntimeContext().getObjectStoreSocketName());
       return "ok";
     }
   }
@@ -61,8 +49,7 @@ public class RuntimeContextTest extends BaseTest {
   @Test
   public void testRuntimeContextInActor() {
     ActorHandle<RuntimeContextTester> actor = Ray.actor(RuntimeContextTester::new).remote();
-    Assert.assertEquals("ok",
-        actor.task(RuntimeContextTester::testRuntimeContext, actor.getId()).remote().get());
+    Assert.assertEquals(
+        "ok", actor.task(RuntimeContextTester::testRuntimeContext, actor.getId()).remote().get());
   }
-
 }

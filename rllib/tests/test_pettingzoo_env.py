@@ -6,7 +6,7 @@ from ray.tune.registry import register_env
 from ray.rllib.env import PettingZooEnv
 from ray.rllib.agents.registry import get_agent_class
 
-from pettingzoo.mpe import simple_spread_v0
+from pettingzoo.mpe import simple_spread_v2
 
 
 class TestPettingZooEnv(unittest.TestCase):
@@ -17,13 +17,14 @@ class TestPettingZooEnv(unittest.TestCase):
         ray.shutdown()
 
     def test_pettingzoo_env(self):
-        register_env("prison", lambda _: PettingZooEnv(simple_spread_v0.env()))
+        register_env("simple_spread",
+                     lambda _: PettingZooEnv(simple_spread_v2.env()))
 
         agent_class = get_agent_class("PPO")
 
         config = deepcopy(agent_class._default_config)
 
-        test_env = PettingZooEnv(simple_spread_v0.env())
+        test_env = PettingZooEnv(simple_spread_v2.env())
         obs_space = test_env.observation_space
         act_space = test_env.action_space
         test_env.close()
@@ -43,7 +44,7 @@ class TestPettingZooEnv(unittest.TestCase):
         config["horizon"] = 200  # After n steps, force reset simulation
         config["no_done_at_end"] = False
 
-        agent = agent_class(env="prison", config=config)
+        agent = agent_class(env="simple_spread", config=config)
         agent.train()
 
 

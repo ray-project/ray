@@ -131,9 +131,16 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
+  std::string GetDebuggerBreakpoint() const;
+
+  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
+
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
+
+  // Returns the task's name.
+  const std::string GetName() const;
 
   /// Whether this task is a normal task.
   bool IsNormalTask() const;
@@ -189,8 +196,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Compute a static key that represents the given resource shape.
   static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
 
-  // Placement Group ID that this task or actor creation is associated with.
-  const PlacementGroupID PlacementGroupId() const;
+  // Placement Group bundle that this task or actor creation is associated with.
+  const BundleID PlacementGroupBundleId() const;
+
+  // Whether or not we should capture parent's placement group implicitly.
+  bool PlacementGroupCaptureChildTasks() const;
 
  private:
   void ComputeResources();

@@ -4,12 +4,11 @@ import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.api.function.Function;
 import io.ray.streaming.api.function.RichFunction;
 
-/**
- * A util class for {@link Function}
- */
+/** A util class for {@link Function} */
 public class Functions {
 
   private static class DefaultRichFunction implements RichFunction {
+
     private final Function function;
 
     private DefaultRichFunction(Function function) {
@@ -17,12 +16,10 @@ public class Functions {
     }
 
     @Override
-    public void open(RuntimeContext runtimeContext) {
-    }
+    public void open(RuntimeContext runtimeContext) {}
 
     @Override
-    public void close() {
-    }
+    public void close() {}
 
     public Function getFunction() {
       return function;
@@ -40,5 +37,4 @@ public class Functions {
   public static RichFunction emptyFunction() {
     return new DefaultRichFunction(null);
   }
-
 }

@@ -3,14 +3,12 @@ package io.ray.streaming.api.partition.impl;
 import io.ray.streaming.api.partition.Partition;
 import java.util.stream.IntStream;
 
-/**
- * Broadcast the record to all downstream partitions.
- */
+/** Broadcast the record to all downstream partitions. */
 public class BroadcastPartition<T> implements Partition<T> {
+
   private int[] partitions = new int[0];
 
-  public BroadcastPartition() {
-  }
+  public BroadcastPartition() {}
 
   @Override
   public int[] partition(T value, int numPartition) {
@@ -19,5 +17,4 @@ public class BroadcastPartition<T> implements Partition<T> {
     }
     return partitions;
   }
-
 }

@@ -1,11 +1,10 @@
-"""This test checks that AxSearch is functional.
+"""This example demonstrates the usage of AxSearch with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
 import numpy as np
 import time
 
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
@@ -46,71 +45,35 @@ def easy_objective(config):
 
 if __name__ == "__main__":
     import argparse
-    from ax.service.ax_client import AxClient
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
 
-    ray.init()
-
-    config = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "iterations": 100,
-        },
-        "stop": {
-            "timesteps_total": 100
-        }
-    }
-    parameters = [
-        {
-            "name": "x1",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-            "value_type": "float",  # Optional, defaults to "bounds".
-            "log_scale": False,  # Optional, defaults to False.
-        },
-        {
-            "name": "x2",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x3",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x4",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x5",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-        {
-            "name": "x6",
-            "type": "range",
-            "bounds": [0.0, 1.0],
-        },
-    ]
-    client = AxClient(enforce_sequential_optimization=False)
-    client.create_experiment(
-        parameters=parameters,
-        objective_name="hartmann6",
-        minimize=True,  # Optional, defaults to False.
+    algo = AxSearch(
+        max_concurrent=4,
         parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
-    algo = AxSearch(client, max_concurrent=4)
-    scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
-    tune.run(
+    scheduler = AsyncHyperBandScheduler()
+    analysis = tune.run(
         easy_objective,
         name="ax",
+        metric="hartmann6",  # provided in the 'easy_objective' function
+        mode="min",
         search_alg=algo,
         scheduler=scheduler,
-        **config)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "iterations": 100,
+            "x1": tune.uniform(0.0, 1.0),
+            "x2": tune.uniform(0.0, 1.0),
+            "x3": tune.uniform(0.0, 1.0),
+            "x4": tune.uniform(0.0, 1.0),
+            "x5": tune.uniform(0.0, 1.0),
+            "x6": tune.uniform(0.0, 1.0),
+        },
+        stop={"timesteps_total": 100})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

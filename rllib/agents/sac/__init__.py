@@ -3,8 +3,8 @@ from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.agents.sac.sac_torch_policy import SACTorchPolicy
 
 __all__ = [
+    "DEFAULT_CONFIG",
     "SACTFPolicy",
     "SACTorchPolicy",
     "SACTrainer",
-    "DEFAULT_CONFIG",
 ]

@@ -1,6 +1,9 @@
 package io.ray.runtime.config;
 
 import io.ray.runtime.generated.Common.WorkerType;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -10,36 +13,39 @@ public class RayConfigTest {
 
   @Test
   public void testCreateRayConfig() {
+    Map<String, String> rayletConfig = new HashMap<>();
+    rayletConfig.put("one", "1");
+    rayletConfig.put("zero", "0");
+    rayletConfig.put("positive-integer", "123");
+    rayletConfig.put("negative-integer", "-123");
+    rayletConfig.put("float", "-123.456");
+    rayletConfig.put("true", "true");
+    rayletConfig.put("false", "false");
+    rayletConfig.put("string", "abc");
+
     try {
-      System.setProperty("ray.job.resource-path", "path/to/ray/job/resource/path");
+      System.setProperty("ray.job.code-search-path", "path/to/ray/job/resource/path");
+      for (Map.Entry<String, String> entry : rayletConfig.entrySet()) {
+        System.setProperty("ray.raylet.config." + entry.getKey(), entry.getValue());
+      }
       RayConfig rayConfig = RayConfig.create();
       Assert.assertEquals(WorkerType.DRIVER, rayConfig.workerMode);
-      Assert.assertEquals("path/to/ray/job/resource/path", rayConfig.jobResourcePath);
+      Assert.assertEquals(
+          Collections.singletonList("path/to/ray/job/resource/path"), rayConfig.codeSearchPath);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("one"), 1);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("zero"), 0);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("positive-integer"), 123);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("negative-integer"), -123);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("float"), -123.456f);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("true"), true);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("false"), false);
+      Assert.assertEquals(rayConfig.rayletConfigParameters.get("string"), "abc");
     } finally {
       // Unset system properties.
-      System.clearProperty("ray.job.resource-path");
-    }
-  }
-
-  @Test
-  public void testGenerateHeadPortRandomly() {
-    boolean isSame = true;
-    final int port1 = RayConfig.create().headRedisPort;
-    // If we the 2 ports are the same, let's retry.
-    // This is used to avoid any flaky chance.
-    for (int i = 0; i < NUM_RETRIES; ++i) {
-      final int port2 = RayConfig.create().headRedisPort;
-      if (port1 != port2) {
-        isSame = false;
-        break;
+      System.clearProperty("ray.job.code-search-path");
+      for (String key : rayletConfig.keySet()) {
+        System.clearProperty("ray.raylet.config." + key);
       }
     }
-    Assert.assertFalse(isSame);
-  }
-
-  @Test
-  public void testSpecifyHeadPort() {
-    System.setProperty("ray.redis.head-port", "11111");
-    Assert.assertEquals(RayConfig.create().headRedisPort, 11111);
   }
 }

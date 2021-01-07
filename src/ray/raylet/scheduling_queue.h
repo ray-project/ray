@@ -44,16 +44,6 @@ enum class TaskState {
   // The task has resources that cannot be satisfied by any node, as far as we
   // know.
   INFEASIBLE,
-  // The task is an actor method and is waiting to learn where the actor was
-  // created.
-  WAITING_FOR_ACTOR_CREATION,
-  // Swap queue for tasks that are in between states. This can happen when a
-  // task is removed from one queue, and an async callback is responsible for
-  // re-queuing the task. For example, a READY task that has just been assigned
-  // to a worker will get moved to the SWAP queue while waiting for a response
-  // from the worker. If the worker accepts the task, the task will be added to
-  // the RUNNING queue, else it will be returned to READY.
-  SWAP,
   // The number of task queues. All states that precede this enum must have an
   // associated TaskQueue in SchedulingQueue. All states that succeed
   // this enum do not have an associated TaskQueue, since the tasks
@@ -118,6 +108,12 @@ class TaskQueue {
   /// require that shape.
   const std::unordered_map<SchedulingClass, uint64_t> &GetResourceLoadByShape() const;
 
+  /// \brief Get the resources required by the tasks queued in CoreWorkers.
+  ///
+  /// \return A map from resource shape key to the number of tasks queued that
+  /// require that shape.
+  const std::unordered_map<SchedulingClass, int64_t> &GetRequestBacklogByShape() const;
+
  protected:
   /// A list of tasks.
   std::list<Task> task_list_;
@@ -129,6 +125,11 @@ class TaskQueue {
   /// map from resource shape key to number of tasks queued that require that
   /// shape.
   std::unordered_map<SchedulingClass, uint64_t> resource_load_by_shape_;
+  /// Required resources for all the tasks that are queued in core workers
+  /// still.. This is a map from resource shape key to number of tasks queued
+  /// on any worker requesting a lease from this raylet that require that
+  /// shape.
+  std::unordered_map<SchedulingClass, int64_t> request_backlog_by_shape_;
 };
 
 class ReadyQueue : public TaskQueue {
@@ -177,8 +178,6 @@ class SchedulingQueue {
              TaskState::READY,
              TaskState::RUNNING,
              TaskState::INFEASIBLE,
-             TaskState::WAITING_FOR_ACTOR_CREATION,
-             TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
@@ -228,7 +227,8 @@ class SchedulingQueue {
   ///
   /// \return A message summarizing the number of requests, sorted by shape, in
   /// the ready and infeasible queues.
-  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1) const;
+  rpc::ResourceLoad GetResourceLoadByShape(int64_t max_shapes = -1,
+                                           bool report_worker_backlog = true) const;
 
   /// Get the tasks in the blocked state.
   ///
@@ -320,12 +320,6 @@ class SchedulingQueue {
   /// \param job_id All the tasks that have the given job_id are returned.
   /// \return All the tasks that have the given job ID.
   std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
-
-  /// \brief Get all the task IDs for an actor.
-  ///
-  /// \param actor_id All the tasks that have the given actor_id are returned.
-  /// \return All the tasks that have the given actor ID.
-  std::unordered_set<TaskID> GetTaskIdsForActor(const ActorID &actor_id) const;
 
   /// Returns the number of running tasks in this class.
   ///

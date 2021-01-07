@@ -13,7 +13,7 @@ typedef std::function<void(const std::shared_ptr<void>, const std::string &, int
     DispatchTaskCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void(const ClientID &, const std::string &, int)>
+typedef std::function<void(const NodeID &, const std::string &, int)>
     SpillbackTaskCallback;
 
 typedef std::function<void()> CancelTaskCallback;
@@ -33,19 +33,13 @@ class Task {
   /// Construct a `Task` object from a protobuf message.
   ///
   /// \param message The protobuf message.
-  explicit Task(const rpc::Task &message)
-      : task_spec_(message.task_spec()),
-        task_execution_spec_(message.task_execution_spec()) {
-    ComputeDependencies();
-  }
+  /// \param backlog_size The size of the task owner's backlog size for this
+  ///  task's shape.
+  explicit Task(const rpc::Task &message, int64_t backlog_size = -1);
 
   /// Construct a `Task` object from a `TaskSpecification` and a
   /// `TaskExecutionSpecification`.
-  Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
-      : task_spec_(std::move(task_spec)),
-        task_execution_spec_(std::move(task_execution_spec)) {
-    ComputeDependencies();
-  }
+  Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec);
 
   /// Override dispatch behaviour.
   void OnDispatchInstead(const DispatchTaskCallback &callback) {
@@ -95,6 +89,10 @@ class Task {
   /// Returns the cancellation task callback, or nullptr.
   const CancelTaskCallback &OnCancellation() const { return on_cancellation_; }
 
+  void SetBacklogSize(int64_t backlog_size);
+
+  int64_t BacklogSize() const;
+
   std::string DebugString() const;
 
  private:
@@ -121,6 +119,8 @@ class Task {
   /// For direct task calls, overrides the cancellation behaviour to send an
   /// RPC back to the submitting worker.
   mutable CancelTaskCallback on_cancellation_ = nullptr;
+  /// The size of the core worker's backlog when this task was submitted.
+  int64_t backlog_size_ = -1;
 };
 
 }  // namespace ray

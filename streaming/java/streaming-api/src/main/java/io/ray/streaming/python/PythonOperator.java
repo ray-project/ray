@@ -12,11 +12,10 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
-/**
- * Represents a {@link StreamOperator} that wraps python {@link PythonFunction}.
- */
+/** Represents a {@link StreamOperator} that wraps python {@link PythonFunction}. */
 @SuppressWarnings("unchecked")
 public class PythonOperator extends StreamOperator {
+
   private final String moduleName;
   private final String className;
 
@@ -64,8 +63,10 @@ public class PythonOperator extends StreamOperator {
     StackTraceElement[] trace = Thread.currentThread().getStackTrace();
     Preconditions.checkState(trace.length >= 2);
     StackTraceElement traceElement = trace[2];
-    String msg = String.format("Method %s.%s shouldn't be called.",
-        traceElement.getClassName(), traceElement.getMethodName());
+    String msg =
+        String.format(
+            "Method %s.%s shouldn't be called.",
+            traceElement.getClassName(), traceElement.getMethodName());
     throw new UnsupportedOperationException(msg);
   }
 
@@ -80,7 +81,7 @@ public class PythonOperator extends StreamOperator {
     StringBuilder builder = new StringBuilder();
     builder.append(PythonOperator.class.getSimpleName()).append("[");
     if (function != null) {
-      builder.append(((PythonFunction)function).toSimpleString());
+      builder.append(((PythonFunction) function).toSimpleString());
     } else {
       builder.append(moduleName).append(".").append(className);
     }
@@ -89,18 +90,18 @@ public class PythonOperator extends StreamOperator {
 
   @Override
   public String toString() {
-    StringJoiner stringJoiner = new StringJoiner(", ",
-        PythonOperator.class.getSimpleName() + "[", "]");
+    StringJoiner stringJoiner =
+        new StringJoiner(", ", PythonOperator.class.getSimpleName() + "[", "]");
     if (function != null) {
       stringJoiner.add("function='" + function + "'");
     } else {
-      stringJoiner.add("moduleName='" + moduleName + "'")
-          .add("className='" + className + "'");
+      stringJoiner.add("moduleName='" + moduleName + "'").add("className='" + className + "'");
     }
     return stringJoiner.toString();
   }
 
   public static class ChainedPythonOperator extends PythonOperator {
+
     private final List<PythonOperator> operators;
     private final PythonOperator headOperator;
     private final PythonOperator tailOperator;
@@ -128,7 +129,8 @@ public class PythonOperator extends StreamOperator {
 
     @Override
     public String getName() {
-      return operators.stream().map(Operator::getName)
+      return operators.stream()
+          .map(Operator::getName)
           .collect(Collectors.joining(" -> ", "[", "]"));
     }
 

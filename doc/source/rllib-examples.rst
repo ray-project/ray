@@ -102,7 +102,7 @@ Community Examples
    with RLlib-generated baselines.
 - `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
    Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
--  `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
+- `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
    "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication).
 - `Flatland <https://flatland.aicrowd.com/intro.html>`__:
@@ -123,5 +123,5 @@ Community Examples
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/master/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.

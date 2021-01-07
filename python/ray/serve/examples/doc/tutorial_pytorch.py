@@ -1,4 +1,5 @@
 # yapf: disable
+import ray
 # __doc_import_begin__
 from ray import serve
 
@@ -26,8 +27,8 @@ class ImageModel:
                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
-    def __call__(self, flask_request):
-        image_payload_bytes = flask_request.data
+    async def __call__(self, starlette_request):
+        image_payload_bytes = await starlette_request.body()
         pil_image = Image.open(BytesIO(image_payload_bytes))
         print("[1/3] Parsed image data: {}".format(pil_image))
 
@@ -45,10 +46,11 @@ class ImageModel:
 
 # __doc_define_servable_end__
 
+ray.init(num_cpus=8)
 # __doc_deploy_begin__
-serve.init()
-serve.create_backend("resnet18:v0", ImageModel)
-serve.create_endpoint(
+client = serve.start()
+client.create_backend("resnet18:v0", ImageModel)
+client.create_endpoint(
     "predictor",
     backend="resnet18:v0",
     route="/image_predict",

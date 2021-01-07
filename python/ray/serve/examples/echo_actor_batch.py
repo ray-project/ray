@@ -1,6 +1,6 @@
 """
 Example actor that adds an increment to a number. This number can
-come from either web (parsing Flask request) or python call.
+come from either web (parsing Starlette request) or python call.
 The queries incoming to this actor are batched.
 This actor can be called from HTTP as well as from Python.
 """
@@ -31,12 +31,13 @@ class MagicCounter:
         self.increment = increment
 
     @serve.accept_batch
-    def __call__(self, flask_request_list, base_number=None):
+    def __call__(self, starlette_request_list, base_number=None):
         # batch_size = serve.context.batch_size
         if serve.context.web:
             result = []
-            for flask_request in flask_request_list:
-                base_number = int(flask_request.args.get("base_number", "0"))
+            for starlette_request in starlette_request_list:
+                base_number = int(
+                    starlette_request.query_params.get("base_number", "0"))
                 result.append(base_number)
             return list(map(lambda x: x + self.increment, result))
         else:
@@ -47,11 +48,11 @@ class MagicCounter:
             return result
 
 
-serve.init()
-serve.create_backend(
+client = serve.start()
+client.create_backend(
     "counter:v1", MagicCounter, 42,
     config={"max_batch_size": 5})  # increment=42
-serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
+client.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
 print("Sending ten queries via HTTP")
 for i in range(10):
@@ -63,7 +64,7 @@ for i in range(10):
     time.sleep(0.2)
 
 print("Sending ten queries via Python")
-handle = serve.get_handle("magic_counter")
+handle = client.get_handle("magic_counter")
 for i in range(10):
     print("> Pinging handle.remote(base_number={})".format(i))
     result = ray.get(handle.remote(base_number=i))

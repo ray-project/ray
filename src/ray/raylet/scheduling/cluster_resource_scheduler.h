@@ -21,203 +21,24 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/util/logging.h"
 
-/// List of predefined resources.
-enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
+#include "src/ray/protobuf/gcs.pb.h"
+
+namespace ray {
+
+using rpc::HeartbeatTableData;
+
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
-
-/// Helper function to compare two vectors with FixedPoint values.
-bool EqualVectors(const std::vector<FixedPoint> &v1, const std::vector<FixedPoint> &v2);
-
-/// Convert a vector of doubles to a vector of resource units.
-std::vector<FixedPoint> VectorDoubleToVectorFixedPoint(const std::vector<double> &vector);
-
-/// Convert a vector of resource units to a vector of doubles.
-std::vector<double> VectorFixedPointToVectorDouble(
-    const std::vector<FixedPoint> &vector_fp);
-
-struct ResourceCapacity {
-  FixedPoint total;
-  FixedPoint available;
-};
-
-/// Capacities of each instance of a resource.
-struct ResourceInstanceCapacities {
-  std::vector<FixedPoint> total;
-  std::vector<FixedPoint> available;
-};
-
-struct ResourceRequest {
-  /// Amount of resource being requested.
-  FixedPoint demand;
-  /// Specify whether the request is soft or hard.
-  /// If hard, the entire request is denied if the demand exceeds the resource
-  /// availability. Otherwise, the request can be still be granted.
-  /// Prefernces are given to the nodes with the lowest number of violations.
-  bool soft;
-};
-
-/// Resource request, including resource ID. This is used for custom resources.
-struct ResourceRequestWithId : ResourceRequest {
-  /// Resource ID.
-  int64_t id;
-};
-
-// Data structure specifying the capacity of each resource requested by a task.
-class TaskRequest {
- public:
-  /// List of predefined resources required by the task.
-  std::vector<ResourceRequest> predefined_resources;
-  /// List of custom resources required by the task.
-  std::vector<ResourceRequestWithId> custom_resources;
-  /// List of placement hints. A placement hint is a node on which
-  /// we desire to run this task. This is a soft constraint in that
-  /// the task will run on a different node in the cluster, if none of the
-  /// nodes in this list can schedule this task.
-  absl::flat_hash_set<int64_t> placement_hints;
-  /// Returns human-readable string for this task request.
-  std::string DebugString() const;
-};
-
-// Data structure specifying the capacity of each instance of each resource
-// allocated to a task.
-class TaskResourceInstances {
- public:
-  /// The list of instances of each predifined resource allocated to a task.
-  std::vector<std::vector<FixedPoint>> predefined_resources;
-  /// The list of instances of each custom resource allocated to a task.
-  absl::flat_hash_map<int64_t, std::vector<FixedPoint>> custom_resources;
-  bool operator==(const TaskResourceInstances &other);
-  /// For each resource of this request aggregate its instances.
-  TaskRequest ToTaskRequest() const;
-  /// Get CPU instances only.
-  std::vector<FixedPoint> GetCPUInstances() const {
-    if (!this->predefined_resources.empty()) {
-      return this->predefined_resources[CPU];
-    } else {
-      return {};
-    }
-  };
-  std::vector<double> GetCPUInstancesDouble() const {
-    if (!this->predefined_resources.empty()) {
-      return VectorFixedPointToVectorDouble(this->predefined_resources[CPU]);
-    } else {
-      return {};
-    }
-  };
-  /// Get GPU instances only.
-  std::vector<FixedPoint> GetGPUInstances() const {
-    if (!this->predefined_resources.empty()) {
-      return this->predefined_resources[GPU];
-    } else {
-      return {};
-    }
-  };
-  std::vector<double> GetGPUInstancesDouble() const {
-    if (!this->predefined_resources.empty()) {
-      return VectorFixedPointToVectorDouble(this->predefined_resources[GPU]);
-    } else {
-      return {};
-    }
-  };
-  /// Get mem instances only.
-  std::vector<FixedPoint> GetMemInstances() const {
-    if (!this->predefined_resources.empty()) {
-      return this->predefined_resources[MEM];
-    } else {
-      return {};
-    }
-  };
-  std::vector<double> GetMemInstancesDouble() const {
-    if (!this->predefined_resources.empty()) {
-      return VectorFixedPointToVectorDouble(this->predefined_resources[MEM]);
-    } else {
-      return {};
-    }
-  };
-  /// Check whether there are no resource instances.
-  bool IsEmpty() const;
-  /// Returns human-readable string for these resources.
-  std::string DebugString() const;
-};
-
-/// Total and available capacities of each resource of a node.
-class NodeResources {
- public:
-  /// Available and total capacities for predefined resources.
-  std::vector<ResourceCapacity> predefined_resources;
-  /// Map containing custom resources. The key of each entry represents the
-  /// custom resource ID.
-  absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
-  /// Returns if this equals another node resources.
-  bool operator==(const NodeResources &other);
-  /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
-};
-
-/// Total and available capacities of each resource instance.
-/// This is used to describe the resources of the local node.
-class NodeResourceInstances {
- public:
-  /// Available and total capacities for each instance of a predefined resource.
-  std::vector<ResourceInstanceCapacities> predefined_resources;
-  /// Map containing custom resources. The key of each entry represents the
-  /// custom resource ID.
-  absl::flat_hash_map<int64_t, ResourceInstanceCapacities> custom_resources;
-  /// Extract available resource instances.
-  TaskResourceInstances GetAvailableResourceInstances();
-  /// Returns if this equals another node resources.
-  bool operator==(const NodeResourceInstances &other);
-  /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
-};
 
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
 class ClusterResourceScheduler {
-  /// List of nodes in the clusters and their resources organized as a map.
-  /// The key of the map is the node ID.
-  absl::flat_hash_map<int64_t, NodeResources> nodes_;
-  /// Identifier of local node.
-  int64_t local_node_id_;
-  /// Resources of local node.
-  NodeResourceInstances local_resources_;
-  /// Keep the mapping between node and resource IDs in string representation
-  /// to integer representation. Used for improving map performance.
-  StringIdMap string_to_int_map_;
-
-  /// Set predefined resources.
-  ///
-  /// \param[in] new_resources: New predefined resources.
-  /// \param[out] old_resources: Predefined resources to be updated.
-  void SetPredefinedResources(const NodeResources &new_resources,
-                              NodeResources *old_resources);
-  /// Set custom resources.
-  ///
-  /// \param[in] new_resources: New custom resources.
-  /// \param[out] old_resources: Custom resources to be updated.
-  void SetCustomResources(
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
-      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
-
-  /// Subtract the resources required by a given task request (task_req) from
-  /// a given node (node_id).
-  ///
-  /// \param node_id Node whose resources we allocate. Can be the local or a remote node.
-  /// \param task_req Task for which we allocate resources.
-  /// \param task_allocation Resources allocated to the task at instance granularity.
-  /// This is a return parameter.
-  ///
-  /// \return True if the node has enough resources to satisfy the task request.
-  /// False otherwise.
-  bool AllocateTaskResources(int64_t node_id, const TaskRequest &task_req,
-                             std::shared_ptr<TaskResourceInstances> task_allocation);
-
  public:
   ClusterResourceScheduler(void){};
 
@@ -252,6 +73,21 @@ class ClusterResourceScheduler {
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string);
 
+  /// Check whether a task request is feasible on a given node. A node is
+  /// feasible if it has the total resources needed to eventually execute the
+  /// task, even if those resources are currently allocated.
+  ///
+  /// \param shape The resource demand's shape.
+  bool IsLocallyFeasible(const std::unordered_map<std::string, double> shape);
+
+  /// Check whether a task request is feasible on a given node. A node is
+  /// feasible if it has the total resources needed to eventually execute the
+  /// task, even if those resources are currently allocated.
+  ///
+  /// \param task_req Task request to be scheduled.
+  /// \param resources Node's resources.
+  bool IsFeasible(const TaskRequest &task_req, const NodeResources &resources) const;
+
   /// Check whether a task request can be scheduled given a node.
   ///
   ///  \param task_req: Task request to be scheduled.
@@ -267,32 +103,42 @@ class ClusterResourceScheduler {
   ///           >= 0, the number soft constraint violations. If 0, no
   ///           constraint is violated.
   int64_t IsSchedulable(const TaskRequest &task_req, int64_t node_id,
-                        const NodeResources &resources);
+                        const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given task request.
   ///
-  ///  First, this function checks whether the local node can schedule
-  ///  the request without violating any constraints. If yes, it returns the
-  ///  ID of the local node.
+  ///  Ignoring soft constraints, this policy prioritizes nodes in the
+  ///  following order:
   ///
-  ///  If not, this function checks whether there is another node in the cluster
-  ///  that satisfies all request's constraints (both soft and hard).
+  ///  1. Local node if resources available.
+  ///  2. Any remote node if resources available.
+  ///  3. If the local node is not feasible, any remote node if feasible.
   ///
-  ///  If no such node exists, the function checks whether there are nodes
-  ///  that satisfy all the request's hard constraints, but might violate some
-  ///  soft constraints. Among these nodes, it returns a node which violates
-  ///  the least number of soft constraints.
+  ///  If soft constraints are specified, then this policy will prioritize:
+  ///  1. Local node if resources available and does not violate soft
+  ///     constraints.
+  ///  2. Any remote node if resources available and does not violate soft
+  ///     constraints.
+  ///  3. Out of all the nodes, including the local node, pick the one that
+  ///     has resources available and violates the fewest soft constraints.
+  ///  4. If the local node is not feasible, any remote node if feasible.
   ///
-  ///  Finally, if no such node exists, return -1.
+  ///  If no node can meet any of these, returns -1, in which case the caller
+  ///  should queue the task and try again once resource availability has been
+  ///  updated.
   ///
   ///  \param task_request: Task to be scheduled.
+  ///  \param actor_creation: True if this is an actor creation task.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
+  ///  \param is_infeasible[in]: It is set true if the task is not schedulable because it
+  ///  is infeasible.
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
+  int64_t GetBestSchedulableNode(const TaskRequest &task_request, bool actor_creation,
+                                 int64_t *violations, bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
@@ -302,40 +148,26 @@ class ClusterResourceScheduler {
   ///          return the ID in string format of a node that can schedule the
   //           task request.
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double> &task_request, int64_t *violations);
-
-  /// Decrease the available resources of a node when a task request is
-  /// scheduled on the given node.
-  ///
-  /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_req: task request being scheduled.
-  ///
-  /// \return true, if task_req can be indeed scheduled on the node,
-  /// and false otherwise.
-  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
-  bool SubtractNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
-
-  /// Increase available resources of a node when a worker has finished
-  /// a task.
-  ///
-  /// \param node_id: ID of node on which request is being scheduled.
-  /// \param task_request: resource requests of the task finishing execution.
-  ///
-  /// \return true, if task_req can be indeed scheduled on the node,
-  /// and false otherwise.
-  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
-  bool AddNodeAvailableResources(
-      const std::string &node_id,
-      const std::unordered_map<std::string, double> &task_request);
+      const std::unordered_map<std::string, double> &task_request, bool actor_creation,
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources);
+  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
+
+  /// Add a local resource that is available.
+  ///
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void AddLocalResource(const std::string &resource_name, double resource_total);
+
+  /// Check whether the available resources are empty.
+  ///
+  /// \param resource_name: Resource which we want to check.
+  bool IsAvailableResourceEmpty(const std::string &resource_name);
 
   /// Update total capacity of a given resource of a given node.
   ///
@@ -345,6 +177,11 @@ class ClusterResourceScheduler {
   void UpdateResourceCapacity(const std::string &node_name,
                               const std::string &resource_name, double resource_total);
 
+  /// Delete a given resource from the local node.
+  ///
+  /// \param resource_name: Resource we want to delete
+  void DeleteLocalResource(const std::string &resource_name);
+
   /// Delete a given resource from a given node.
   ///
   /// \param node_name: Node whose resource we want to delete.
@@ -353,6 +190,9 @@ class ClusterResourceScheduler {
 
   /// Return local resources.
   NodeResourceInstances GetLocalResources() { return local_resources_; };
+
+  /// Return local resources in human-readable string form.
+  std::string GetLocalResourceViewString() const;
 
   /// Create instances for each resource associated with the local node, given
   /// the node's resources.
@@ -439,11 +279,13 @@ class ClusterResourceScheduler {
   ///
   /// \param free A list of capacities for resource's instances to be freed.
   /// \param resource_instances List of the resource instances being updated.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   /// \return Underflow of "resource_instances" after subtracting instance
   /// capacities in "available", i.e.,.
   /// max(available - reasource_instances.available, 0)
   std::vector<FixedPoint> SubtractAvailableResourceInstances(
-      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances);
+      std::vector<FixedPoint> available, ResourceInstanceCapacities *resource_instances,
+      bool allow_going_negative = false);
 
   /// Increase the available CPU instances of this node.
   ///
@@ -456,10 +298,12 @@ class ClusterResourceScheduler {
   /// Decrease the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be removed from available cpus.
+  /// \param allow_going_negative Allow the values to go negative (disable underflow).
   ///
   /// \return Underflow capacities of CPU instances after subtracting CPU
   /// capacities in cpu_instances.
-  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+  std::vector<double> SubtractCPUResourceInstances(std::vector<double> &cpu_instances,
+                                                   bool allow_going_negative = false);
 
   /// Increase the available GPU instances of this node.
   ///
@@ -491,13 +335,18 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &task_resources,
       std::shared_ptr<TaskResourceInstances> task_allocation);
 
+  bool AllocateLocalTaskResources(const TaskRequest &task_request,
+                                  std::shared_ptr<TaskResourceInstances> task_allocation);
+
   /// Subtract the resources required by a given task request (task_req) from a given
   /// remote node.
   ///
   /// \param node_id Remote node whose resources we allocate.
   /// \param task_req Task for which we allocate resources.
-  void AllocateRemoteTaskResources(
-      std::string &node_id,
+  /// \return True if remote node has enough resources to satisfy the task request.
+  /// False otherwise.
+  bool AllocateRemoteTaskResources(
+      const std::string &node_id,
       const std::unordered_map<std::string, double> &task_resources);
 
   void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);
@@ -513,6 +362,76 @@ class ClusterResourceScheduler {
   // resources availabile at that node is 0.2 + 0.3 + 0.1 + 1. = 1.6
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
+  /// Populate the relevant parts of the heartbeat table. This is intended for
+  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// resources_available and resources_total.
+  ///
+  /// \param light_report_resource_usage_enabled Only send changed fields if true.
+  /// \param Output parameter. `resources_available` and `resources_total` are the only
+  /// fields used.
+  void FillResourceUsage(bool light_report_resource_usage_enabled,
+                         std::shared_ptr<rpc::ResourcesData> resources_data);
+
+  /// Update last report resources local cache from gcs cache,
+  /// this is needed when gcs fo.
+  ///
+  /// \param gcs_resources: The remote cache from gcs.
+  void UpdateLastReportResourcesFromGcs(
+      std::shared_ptr<SchedulingResources> gcs_resources);
+
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
+
+ private:
+  struct Node {
+    Node(const NodeResources &resources)
+        : last_reported_(resources), local_view_(resources) {}
+
+    void ResetLocalView() { local_view_ = last_reported_; }
+
+    NodeResources *GetMutableLocalView() { return &local_view_; }
+
+    const NodeResources &GetLocalView() const { return local_view_; }
+
+   private:
+    /// The resource information according to the last heartbeat reported by
+    /// this node.
+    /// NOTE(swang): For the local node, this field should be ignored because
+    /// we do not receive heartbeats from ourselves and the local view is
+    /// therefore always the most up-to-date.
+    NodeResources last_reported_;
+    /// Our local view of the remote node's resources. This may be dirty
+    /// because it includes any resource requests that we allocated to this
+    /// node through spillback since our last heartbeat tick. This view will
+    /// get overwritten by the last reported view on each heartbeat tick, to
+    /// make sure that our local view does not skew too much from the actual
+    /// resources when light heartbeats are enabled.
+    NodeResources local_view_;
+  };
+
+  /// Decrease the available resources of a node when a task request is
+  /// scheduled on the given node.
+  ///
+  /// \param node_id: ID of node on which request is being scheduled.
+  /// \param task_req: task request being scheduled.
+  ///
+  /// \return true, if task_req can be indeed scheduled on the node,
+  /// and false otherwise.
+  bool SubtractRemoteNodeAvailableResources(int64_t node_id,
+                                            const TaskRequest &task_request);
+
+  /// List of nodes in the clusters and their resources organized as a map.
+  /// The key of the map is the node ID.
+  absl::flat_hash_map<int64_t, Node> nodes_;
+  /// Identifier of local node.
+  int64_t local_node_id_;
+  /// Resources of local node.
+  NodeResourceInstances local_resources_;
+  /// Keep the mapping between node and resource IDs in string representation
+  /// to integer representation. Used for improving map performance.
+  StringIdMap string_to_int_map_;
+  /// Cached resources, used to compare with newest one in light heartbeat mode.
+  std::unique_ptr<NodeResources> last_report_resources_;
 };
+
+}  // end namespace ray

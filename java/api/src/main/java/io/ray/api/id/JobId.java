@@ -5,32 +5,24 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
 
-/**
- * Represents the id of a Ray job.
- */
+/** Represents the id of a Ray job. */
 public class JobId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 2;
+  public static final int LENGTH = 4;
 
   public static final JobId NIL = genNil();
 
-  /**
-   * Create a JobID instance according to the given bytes.
-   */
+  /** Create a JobID instance according to the given bytes. */
   private JobId(byte[] id) {
     super(id);
   }
 
-  /**
-   * Create a JobId from a given hex string.
-   */
+  /** Create a JobId from a given hex string. */
   public static JobId fromHexString(String hex) {
     return new JobId(hexString2Bytes(hex));
   }
 
-  /**
-   * Creates a JobId from the given ByteBuffer.
-   */
+  /** Creates a JobId from the given ByteBuffer. */
   public static JobId fromByteBuffer(ByteBuffer bb) {
     return new JobId(byteBuffer2Bytes(bb));
   }
@@ -49,9 +41,7 @@ public class JobId extends BaseId implements Serializable {
     return JobId.fromByteBuffer(wbb);
   }
 
-  /**
-   * Generate a nil JobId.
-   */
+  /** Generate a nil JobId. */
   private static JobId genNil() {
     byte[] b = new byte[LENGTH];
     Arrays.fill(b, (byte) 0xFF);

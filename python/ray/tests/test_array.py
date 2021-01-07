@@ -3,7 +3,6 @@ import numpy as np
 from numpy.testing import assert_equal, assert_almost_equal
 import pytest
 import sys
-import json
 
 import ray
 import ray.experimental.array.remote as ra
@@ -59,13 +58,13 @@ def test_distributed_array_assemble(ray_start_2_cpus, reload_modules):
 @pytest.mark.parametrize(
     "ray_start_cluster_2_nodes",
     [{
-        "_internal_config": json.dumps({
+        "_system_config": {
             # NOTE(swang): If plasma store notifications to the raylet for new
             # objects are delayed by long enough, then this causes concurrent
             # fetch calls to timeout and mistakenly mark the object as lost.
             # Set the timeout very high to prevent this.
-            "initial_reconstruction_timeout_milliseconds": 60000,
-        })
+            "object_timeout_milliseconds": 60000,
+        }
     }],
     indirect=True)
 def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):

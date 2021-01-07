@@ -28,25 +28,20 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * This class defines the StoreManager Abstract class.
- * We use three layer to store the state, frontStore, middleStore and keyValueStore(remote).
+ * This class defines the StoreManager Abstract class. We use three layer to store the state,
+ * frontStore, middleStore and keyValueStore(remote).
  */
 public abstract class AbstractStateStoreManager<V> implements StateStoreManager {
 
-  /**
-   * read-write
-   */
+  /** read-write */
   protected Map<String, StorageRecord<V>> frontStore = new ConcurrentHashMap<>();
 
-  /**
-   * remote-storage
-   */
+  /** remote-storage */
   protected KeyValueStore<String, Map<Long, byte[]>> kvStore;
 
-  /**
-   * read-only
-   */
+  /** read-only */
   protected Map<Long, Map<String, byte[]>> middleStore = new ConcurrentHashMap<>();
+
   protected int keyGroupIndex = -1;
 
   public AbstractStateStoreManager(KeyValueStore<String, Map<Long, byte[]>> backStore) {

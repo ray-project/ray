@@ -89,14 +89,15 @@ class MobileV2PlusRNNModel(RecurrentNetwork):
         return tf.reshape(self._value_out, [-1])
 
 
-class TorchMobileV2PlusRNNModel(TorchRNN):
+class TorchMobileV2PlusRNNModel(TorchRNN, nn.Module):
     """A conv. + recurrent torch net example using a pre-trained MobileNet."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name, cnn_shape):
 
-        super().__init__(obs_space, action_space, num_outputs, model_config,
-                         name)
+        TorchRNN.__init__(self, obs_space, action_space, num_outputs,
+                          model_config, name)
+        nn.Module.__init__(self)
 
         self.lstm_state_size = 16
         self.cnn_shape = list(cnn_shape)

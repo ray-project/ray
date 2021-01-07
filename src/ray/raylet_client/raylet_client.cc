@@ -25,6 +25,12 @@
 using MessageType = ray::protocol::MessageType;
 
 namespace {
+inline flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
+    flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
+  return ray::protocol::CreateAddress(
+      fbb, fbb.CreateString(address.raylet_id()), fbb.CreateString(address.ip_address()),
+      address.port(), fbb.CreateString(address.worker_id()));
+}
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<ray::protocol::Address>>>
 AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
@@ -32,10 +38,7 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
   std::vector<flatbuffers::Offset<ray::protocol::Address>> address_vec;
   address_vec.reserve(addresses.size());
   for (const auto &addr : addresses) {
-    auto fbb_addr = ray::protocol::CreateAddress(
-        fbb, fbb.CreateString(addr.raylet_id()), fbb.CreateString(addr.ip_address()),
-        addr.port(), fbb.CreateString(addr.worker_id()));
-    address_vec.push_back(fbb_addr);
+    address_vec.push_back(to_flatbuf(fbb, addr));
   }
   return fbb.CreateVector(address_vec);
 }
@@ -82,8 +85,8 @@ raylet::RayletClient::RayletClient(
     std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
     const std::string &raylet_socket, const WorkerID &worker_id,
     rpc::WorkerType worker_type, const JobID &job_id, const Language &language,
-    const std::string &ip_address, ClientID *raylet_id, int *port,
-    std::unordered_map<std::string, std::string> *internal_config,
+    const std::string &ip_address, Status *status, NodeID *raylet_id, int *port,
+    std::unordered_map<std::string, std::string> *system_config,
     const std::string &job_config)
     : grpc_client_(std::move(grpc_client)),
       worker_id_(worker_id),
@@ -103,19 +106,32 @@ raylet::RayletClient::RayletClient(
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
   std::vector<uint8_t> reply;
-  auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
-                                          MessageType::RegisterClientReply, &reply, &fbb);
-  RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+  auto request_status = conn_->AtomicRequestReply(
+      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  if (!request_status.ok()) {
+    *status =
+        Status(request_status.code(),
+               std::string("[RayletClient] Unable to register worker with raylet. ") +
+                   request_status.message());
+    return;
+  }
   auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
-  *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
+  bool success = reply_message->success();
+  if (success) {
+    *status = Status::OK();
+  } else {
+    *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+    return;
+  }
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
   *port = reply_message->port();
 
-  RAY_CHECK(internal_config);
-  auto keys = reply_message->internal_config_keys();
-  auto values = reply_message->internal_config_values();
+  RAY_CHECK(system_config);
+  auto keys = reply_message->system_config_keys();
+  auto values = reply_message->system_config_values();
   RAY_CHECK(keys->size() == values->size());
   for (size_t i = 0; i < keys->size(); i++) {
-    internal_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
+    system_config->emplace(keys->Get(i)->str(), values->Get(i)->str());
   }
 }
 
@@ -173,9 +189,9 @@ Status raylet::RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
-Status raylet::RayletClient::NotifyDirectCallTaskBlocked() {
+Status raylet::RayletClient::NotifyDirectCallTaskBlocked(bool release_resources) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  auto message = protocol::CreateNotifyDirectCallTaskBlocked(fbb, release_resources);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
 }
@@ -190,13 +206,13 @@ Status raylet::RayletClient::NotifyDirectCallTaskUnblocked() {
 Status raylet::RayletClient::Wait(const std::vector<ObjectID> &object_ids,
                                   const std::vector<rpc::Address> &owner_addresses,
                                   int num_returns, int64_t timeout_milliseconds,
-                                  bool wait_local, bool mark_worker_blocked,
-                                  const TaskID &current_task_id, WaitResultPair *result) {
+                                  bool mark_worker_blocked, const TaskID &current_task_id,
+                                  WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), AddressesToFlatbuffer(fbb, owner_addresses),
-      num_returns, timeout_milliseconds, wait_local, mark_worker_blocked,
+      num_returns, timeout_milliseconds, mark_worker_blocked,
       to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::vector<uint8_t> reply;
@@ -258,55 +274,30 @@ Status raylet::RayletClient::PushProfileEvents(const ProfileTableData &profile_e
 }
 
 Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids,
-                                         bool local_only, bool delete_creating_tasks) {
+                                         bool local_only) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateFreeObjectsRequest(
-      fbb, local_only, delete_creating_tasks, to_flatbuf(fbb, object_ids));
+  auto message =
+      protocol::CreateFreeObjectsRequest(fbb, local_only, to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::FreeObjectsInObjectStoreRequest, &fbb);
 }
 
-Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                    ActorCheckpointID *checkpoint_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
-  fbb.Finish(message);
-
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::PrepareActorCheckpointRequest,
-                                              MessageType::PrepareActorCheckpointReply,
-                                              &reply, &fbb));
-  auto reply_message =
-      flatbuffers::GetRoot<protocol::PrepareActorCheckpointReply>(reply.data());
-  *checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
-  return Status::OK();
-}
-
-Status raylet::RayletClient::NotifyActorResumedFromCheckpoint(
-    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateNotifyActorResumedFromCheckpoint(
-      fbb, to_flatbuf(fbb, actor_id), to_flatbuf(fbb, checkpoint_id));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::NotifyActorResumedFromCheckpoint, &fbb);
-}
-
 Status raylet::RayletClient::SetResource(const std::string &resource_name,
-                                         const double capacity,
-                                         const ClientID &client_Id) {
+                                         const double capacity, const NodeID &node_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = protocol::CreateSetResourceRequest(fbb, fbb.CreateString(resource_name),
-                                                    capacity, to_flatbuf(fbb, client_Id));
+                                                    capacity, to_flatbuf(fbb, node_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
 void raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
+    const int64_t backlog_size) {
   rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(request, callback);
 }
 
@@ -317,23 +308,6 @@ void raylet::RayletClient::RequestObjectSpillage(
   rpc::RequestObjectSpillageRequest request;
   request.set_object_id(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
-}
-
-/// Restore spilled objects from external storage.
-/// \param object_ids The IDs of objects to be restored.
-Status raylet::RayletClient::ForceRestoreSpilledObjects(
-    const std::vector<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message =
-      protocol::CreateForceRestoreSpilledObjectsRequest(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-  std::vector<uint8_t> reply;
-  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(
-      MessageType::ForceRestoreSpilledObjectsRequest,
-      MessageType::ForceRestoreSpilledObjectsReply, &reply, &fbb));
-  RAY_UNUSED(
-      flatbuffers::GetRoot<protocol::ForceRestoreSpilledObjectsReply>(reply.data()));
-  return Status::OK();
 }
 
 Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worker_id,
@@ -378,12 +352,20 @@ void raylet::RayletClient::CancelWorkerLease(
   grpc_client_->CancelWorkerLease(request, callback);
 }
 
-void raylet::RayletClient::RequestResourceReserve(
+void raylet::RayletClient::PrepareBundleResources(
     const BundleSpecification &bundle_spec,
-    const ray::rpc::ClientCallback<ray::rpc::RequestResourceReserveReply> &callback) {
-  rpc::RequestResourceReserveRequest request;
+    const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
+  rpc::PrepareBundleResourcesRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
-  grpc_client_->RequestResourceReserve(request, callback);
+  grpc_client_->PrepareBundleResources(request, callback);
+}
+
+void raylet::RayletClient::CommitBundleResources(
+    const BundleSpecification &bundle_spec,
+    const ray::rpc::ClientCallback<ray::rpc::CommitBundleResourcesReply> &callback) {
+  rpc::CommitBundleResourcesRequest request;
+  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  grpc_client_->CommitBundleResources(request, callback);
 }
 
 void raylet::RayletClient::CancelResourceReserve(
@@ -392,6 +374,25 @@ void raylet::RayletClient::CancelResourceReserve(
   rpc::CancelResourceReserveRequest request;
   request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
   grpc_client_->CancelResourceReserve(request, callback);
+}
+
+void raylet::RayletClient::ReleaseUnusedBundles(
+    const std::vector<rpc::Bundle> &bundles_in_use,
+    const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) {
+  rpc::ReleaseUnusedBundlesRequest request;
+  for (auto &bundle : bundles_in_use) {
+    request.add_bundles_in_use()->CopyFrom(bundle);
+  }
+  grpc_client_->ReleaseUnusedBundles(
+      request,
+      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error releasing bundles from raylet, the raylet may have died:"
+              << status;
+        }
+        callback(status, reply);
+      });
 }
 
 void raylet::RayletClient::PinObjectIDs(
@@ -411,11 +412,14 @@ void raylet::RayletClient::GlobalGC(
   grpc_client_->GlobalGC(request, callback);
 }
 
-Status raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id) {
+void raylet::RayletClient::SubscribeToPlasma(const ObjectID &object_id,
+                                             const rpc::Address &owner_address) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id));
+  auto message = protocol::CreateSubscribePlasmaReady(fbb, to_flatbuf(fbb, object_id),
+                                                      to_flatbuf(fbb, owner_address));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb);
+
+  RAY_CHECK_OK(conn_->WriteMessage(MessageType::SubscribePlasmaReady, &fbb));
 }
 
 }  // namespace ray

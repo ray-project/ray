@@ -34,10 +34,10 @@ public class ValueStateImplTest {
 
   @BeforeClass
   public void setUp() throws Exception {
-    keyStateBackend = new KeyStateBackend(1, new KeyGroup(1, 2),
-        new MemoryStateBackend(new HashMap<>()));
-    ValueStateDescriptor<String> descriptor = ValueStateDescriptor
-        .build("ValueStateImplTest", String.class, "hello");
+    keyStateBackend =
+        new KeyStateBackend(1, new KeyGroup(1, 2), new MemoryStateBackend(new HashMap<>()));
+    ValueStateDescriptor<String> descriptor =
+        ValueStateDescriptor.build("ValueStateImplTest", String.class, "hello");
     descriptor.setTableName("table");
 
     valueState = (ValueStateImpl<String>) keyStateBackend.getValueState(descriptor);

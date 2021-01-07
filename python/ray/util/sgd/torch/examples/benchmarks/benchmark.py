@@ -72,6 +72,17 @@ def init_hook():
 
 class Training(TrainingOperator):
     def setup(self, config):
+        model = getattr(models, config.get("model"))()
+        optimizer = optim.SGD(
+            model.parameters(), lr=0.01 * config["lr_scaler"])
+        train_data = LinearDataset(4,
+                                   2)  # Have to use dummy data for training.
+
+        self.model, self.optimizer = self.register(
+            models=model,
+            optimizers=optimizer,
+        )
+        self.register_data(train_loader=train_data, validation_loader=None)
         data = torch.randn(args.batch_size, 3, 224, 224)
         target = torch.LongTensor(args.batch_size).random_() % 1000
         if args.cuda:
@@ -98,7 +109,10 @@ class Training(TrainingOperator):
 
 
 if __name__ == "__main__":
-    ray.init(address=None if args.local else "auto")
+    if args.local:
+        ray.init(num_cpus=2)
+    else:
+        ray.init(address="auto")
     num_workers = 2 if args.local else int(ray.cluster_resources().get(device))
     from ray.util.sgd.torch.examples.train_example import LinearDataset
 
@@ -107,14 +121,12 @@ if __name__ == "__main__":
     print("Number of %ss: %d" % (device, num_workers))
 
     trainer = TorchTrainer(
-        model_creator=lambda cfg: getattr(models, args.model)(),
-        optimizer_creator=lambda model, cfg: optim.SGD(
-            model.parameters(), lr=0.01 * cfg.get("lr_scaler")),
-        data_creator=lambda cfg: LinearDataset(4, 2),  # Mock dataset.
-        initialization_hook=init_hook,
-        config=dict(
-            lr_scaler=num_workers),
         training_operator_cls=Training,
+        initialization_hook=init_hook,
+        config={
+            "lr_scaler": num_workers,
+            "model": args.model
+        },
         num_workers=num_workers,
         use_gpu=args.cuda,
         use_fp16=args.fp16,

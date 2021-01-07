@@ -5,7 +5,7 @@ RLlib works with several different types of environments, including `OpenAI Gym 
 
 .. tip::
 
-    Not all environments work with all algorithms. Check out the algorithm `feature compatibility matrix <rllib-algorithms.html#feature-compatibility-matrix>`__ for more information.
+    Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
 .. image:: rllib-envs.svg
 
@@ -71,7 +71,7 @@ In the above example, note that the ``env_creator`` function takes in an ``env_c
             return self.env.step(action)
 
     register_env("multienv", lambda config: MultiEnv(config))
-	
+
 .. tip::
 
    When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
@@ -211,17 +211,17 @@ To scale to hundreds of agents, MultiAgentEnv batches policy evaluations across 
 PettingZoo Multi-Agent Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is note directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
+`PettingZoo <https://github.com/PettingZoo-Team/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API is not directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
 
 .. code-block:: python
 
     from ray.tune.registry import register_env
     # import the pettingzoo environment
-    from pettingzoo.gamma import prison_v0
+    from pettingzoo.butterfly import prison_v2
     # import rllib pettingzoo interface
     from ray.rllib.env import PettingZooEnv
     # define how to make the environment. This way takes an optional environment config, num_floors
-    env_creator = lambda config: prison_v0.env(num_floors=config.get("num_floors", 4))
+    env_creator = lambda config: prison_v2.env(num_floors=config.get("num_floors", 4))
     # register that way to make the environment under an rllib name
     register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
     # now you can use `prison` as an environment

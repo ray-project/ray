@@ -19,27 +19,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Encapsulate the context information of a streaming Job.
- */
+/** Encapsulate the context information of a streaming Job. */
 public class StreamingContext implements Serializable {
+
   private static final Logger LOG = LoggerFactory.getLogger(StreamingContext.class);
 
   private transient AtomicInteger idGenerator;
 
-  /**
-   * The sinks of this streaming job.
-   */
+  /** The sinks of this streaming job. */
   private List<StreamSink> streamSinks;
 
-  /**
-   * The user custom streaming job configuration.
-   */
+  /** The user custom streaming job configuration. */
   private Map<String, String> jobConfig;
 
-  /**
-   * The logic plan.
-   */
+  /** The logic plan. */
   private JobGraph jobGraph;
 
   private StreamingContext() {
@@ -52,9 +45,7 @@ public class StreamingContext implements Serializable {
     return new StreamingContext();
   }
 
-  /**
-   * Construct job DAG, and execute the job.
-   */
+  /** Construct job DAG, and execute the job. */
   public void execute(String jobName) {
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks, jobName);
     JobGraph originalJobGraph = jobGraphBuilder.build();
@@ -62,13 +53,12 @@ public class StreamingContext implements Serializable {
     jobGraph.printJobGraph();
     LOG.info("JobGraph digraph\n{}", jobGraph.generateDigraph());
 
-    if (Ray.internal() == null) {
+    if (!Ray.isInitialized()) {
       if (Config.MEMORY_CHANNEL.equalsIgnoreCase(jobConfig.get(Config.CHANNEL_TYPE))) {
-        Preconditions.checkArgument(!jobGraph.isCrossLanguageGraph());
-        ClusterStarter.startCluster(false, true);
+        ClusterStarter.startCluster(true);
         LOG.info("Created local cluster for job {}.", jobName);
       } else {
-        ClusterStarter.startCluster(jobGraph.isCrossLanguageGraph(), false);
+        ClusterStarter.startCluster(false);
         LOG.info("Created multi process cluster for job {}.", jobName);
       }
       Runtime.getRuntime().addShutdownHook(new Thread(StreamingContext.this::stop));
@@ -78,8 +68,8 @@ public class StreamingContext implements Serializable {
 
     ServiceLoader<JobClient> serviceLoader = ServiceLoader.load(JobClient.class);
     Iterator<JobClient> iterator = serviceLoader.iterator();
-    Preconditions.checkArgument(iterator.hasNext(),
-        "No JobClient implementation has been provided.");
+    Preconditions.checkArgument(
+        iterator.hasNext(), "No JobClient implementation has been provided.");
     JobClient jobClient = iterator.next();
     jobClient.submit(jobGraph, jobConfig);
   }
@@ -101,8 +91,8 @@ public class StreamingContext implements Serializable {
   }
 
   public void stop() {
-    if (Ray.internal() != null) {
-      ClusterStarter.stopCluster(jobGraph.isCrossLanguageGraph());
+    if (Ray.isInitialized()) {
+      ClusterStarter.stopCluster();
     }
   }
 }

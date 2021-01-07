@@ -11,7 +11,7 @@ class MagicCounter:
         self.increment = increment
 
     @serve.accept_batch
-    def __call__(self, flask_request, base_number=None):
+    def __call__(self, starlette_request, base_number=None):
         # __call__ fn should preserve the batch size
         # base_number is a python list
 
@@ -26,16 +26,16 @@ class MagicCounter:
         return ""
 
 
-serve.init()
+client = serve.start()
 # specify max_batch_size in BackendConfig
 backend_config = {"max_batch_size": 5}
-serve.create_backend(
+client.create_backend(
     "counter:v1", MagicCounter, 42, config=backend_config)  # increment=42
 print("Backend Config for backend: 'counter:v1'")
 print(backend_config)
-serve.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
+client.create_endpoint("magic_counter", backend="counter:v1", route="/counter")
 
-handle = serve.get_handle("magic_counter")
+handle = client.get_handle("magic_counter")
 future_list = []
 
 # fire 30 requests

@@ -16,7 +16,9 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
    using-ray-with-gpus.rst
    serialization.rst
    memory-management.rst
+   placement-group.rst
    troubleshooting.rst
    advanced.rst
+   cross-language.rst
    using-ray-with-tensorflow.rst
    using-ray-with-pytorch.rst

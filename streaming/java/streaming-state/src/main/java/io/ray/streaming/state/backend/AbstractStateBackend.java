@@ -28,9 +28,7 @@ import io.ray.streaming.state.store.KeyValueStore;
 import java.io.Serializable;
 import java.util.Map;
 
-/**
- * This class is the abstract class for different kinds of StateBackend.
- */
+/** This class is the abstract class for different kinds of StateBackend. */
 public abstract class AbstractStateBackend implements Serializable {
 
   protected final Map<String, String> config;

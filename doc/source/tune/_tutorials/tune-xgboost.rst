@@ -73,7 +73,6 @@ Here is the full code to train a simple XGBoost model:
 
 .. code-block:: python
 
-    import numpy as np
     import sklearn.datasets
     import sklearn.metrics
     from sklearn.model_selection import train_test_split
@@ -90,31 +89,37 @@ Here is the full code to train a simple XGBoost model:
         train_set = xgb.DMatrix(train_x, label=train_y)
         test_set = xgb.DMatrix(test_x, label=test_y)
         # Train the classifier
-        bst = xgb.train(config, train_set, evals=[(test_set, "eval")], verbose_eval=False)
-        # Predict labels for the test set
-        preds = bst.predict(test_set)
-        pred_labels = np.rint(preds)
-        # Return prediction accuracy
-        accuracy = sklearn.metrics.accuracy_score(test_y, pred_labels)
-        return accuracy
+        results = {}
+        bst = xgb.train(
+            config,
+            train_set,
+            evals=[(test_set, "eval")],
+            evals_result=results,
+            verbose_eval=False)
+        return results
 
 
     if __name__ == "__main__":
-        accuracy = train_breast_cancer({
-            "objective": "binary:logistic"
+        results = train_breast_cancer({
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"]
         })
-        print("Accuracy: {:.2f}".format(accuracy))
+        accuracy = 1. - results["eval"]["error"][-1]
+        print(f"Accuracy: {accuracy:.4f}")
+
 
 As you can see, the code is quite simple. First, the dataset is loaded and split
-into a ``test`` and ``train`` set. The XGBoost model is trained with ``xgb.train()``
-and the predictions for the test set are obtained with ``bst.predict()``. Lastly, we
-return the accuracy of our predictions. Even in this simple example, most runs result
+into a ``test`` and ``train`` set. The XGBoost model is trained with ``xgb.train()``.
+XGBoost automatically evaluates metrics we specified on the test set. In our case
+it calculates the *logloss* and the prediction *error*, which is the percentage of
+misclassified examples. To calculate the accuracy, we just have to subtract the error
+from ``1.0``. Even in this simple example, most runs result
 in a good accuracy of over ``0.90``.
 
 Maybe you have noticed the ``config`` parameter we pass to the XGBoost algorithm. This
 is a ``dict`` in which you can specify parameters for the XGBoost algorithm. In this
-simple example, the only parameter we passed is the ``objective`` parameter. The value
-``binary:logistic`` tells XGBoost that we aim to train a logistic regression model for
+simple example, the only parameters we passed are the ``objective`` and ``eval_metric`` parameters.
+The value ``binary:logistic`` tells XGBoost that we aim to train a logistic regression model for
 a binary classification task. You can find an overview over all valid objectives
 `here in the XGBoost documentation <https://xgboost.readthedocs.io/en/latest/parameter.html#learning-task-parameters>`_.
 
@@ -228,13 +233,15 @@ Let's see how this looks like in code! We just need to adjust our ``config`` dic
     if __name__ == "__main__":
         config = {
             "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"]
             "max_depth": 2,
             "min_child_weight": 0,
             "subsample": 0.8,
             "eta": 0.2
         }
-        accuracy = train_breast_cancer(config)
-        print("Accuracy: {:.2f}".format(accuracy))
+        results = train_breast_cancer(config)
+        accuracy = 1. - results["eval"]["error"][-1]
+        print(f"Accuracy: {accuracy:.4f}")
 
 The rest stays the same. Please note that we do not adjust the ``num_boost_rounds`` here.
 The result should also show a high accuracy of over 90%.
@@ -261,9 +268,8 @@ Let's start with a basic example on how to use Tune for this. We just need to ma
 a few changes to our code-block:
 
 .. code-block:: python
-   :emphasize-lines: 26,32,33,34,35,37,38,39,40,41
+   :emphasize-lines: 26-28,35-38,40-44
 
-    import numpy as np
     import sklearn.datasets
     import sklearn.metrics
     from sklearn.model_selection import train_test_split
@@ -282,28 +288,33 @@ a few changes to our code-block:
         train_set = xgb.DMatrix(train_x, label=train_y)
         test_set = xgb.DMatrix(test_x, label=test_y)
         # Train the classifier
-        bst = xgb.train(config, train_set, evals=[(test_set, "eval")], verbose_eval=False)
-        # Predict labels for the test set
-        preds = bst.predict(test_set)
-        pred_labels = np.rint(preds)
+        results = {}
+        xgb.train(
+            config,
+            train_set,
+            evals=[(test_set, "eval")],
+            evals_result=results,
+            verbose_eval=False)
         # Return prediction accuracy
-        accuracy = sklearn.metrics.accuracy_score(test_y, pred_labels)
+        accuracy = 1. - results["eval"]["error"][-1]
         tune.report(mean_accuracy=accuracy, done=True)
 
 
     if __name__ == "__main__":
         config = {
             "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
             "max_depth": tune.randint(1, 9),
             "min_child_weight": tune.choice([1, 2, 3]),
             "subsample": tune.uniform(0.5, 1.0),
             "eta": tune.loguniform(1e-4, 1e-1)
         }
-        tune.run(
+        analysis = tune.run(
             train_breast_cancer,
             resources_per_trial={"cpu": 1},
             config=config,
             num_samples=10)
+
 
 As you can see, the changes in the actual training function are minimal. Instead of
 returning the accuracy value, we report it back to Tune using ``tune.report()``.
@@ -331,27 +342,28 @@ hyperparameter configurations from this search space.
 
 The output of our training run coud look like this:
 
-.. code-block::
-   :emphasize-lines: 10
+.. code-block:: bash
+   :emphasize-lines: 14
 
+    Number of trials: 10/10 (10 TERMINATED)
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+
     | Trial name                      | status     | loc   |         eta |   max_depth |   min_child_weight |   subsample |      acc |   iter |   total time (s) |
     |---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------|
-    | train_breast_cancer_c817a_00000 | TERMINATED |       | 0.00334038  |           8 |                  1 |    0.640256 | 0.93007  |      1 |        0.050081  |
-    | train_breast_cancer_c817a_00001 | TERMINATED |       | 0.00285335  |           4 |                  3 |    0.951621 | 0.93007  |      1 |        0.0453899 |
-    | train_breast_cancer_c817a_00002 | TERMINATED |       | 0.0597631   |           5 |                  2 |    0.96479  | 0.986014 |      1 |        0.0503612 |
-    | train_breast_cancer_c817a_00003 | TERMINATED |       | 0.000650095 |           6 |                  2 |    0.923812 | 0.951049 |      1 |        0.0588872 |
-    | train_breast_cancer_c817a_00004 | TERMINATED |       | 0.00753275  |           1 |                  1 |    0.973499 | 0.881119 |      1 |        0.0347321 |
-    | train_breast_cancer_c817a_00005 | TERMINATED |       | 0.000411214 |           5 |                  1 |    0.672503 | 0.958042 |      1 |        0.0477931 |
-    | train_breast_cancer_c817a_00006 | TERMINATED |       | 0.0940201   |           5 |                  2 |    0.711124 | 0.972028 |      1 |        0.069901  |
-    | train_breast_cancer_c817a_00007 | TERMINATED |       | 0.0372492   |           1 |                  1 |    0.76303  | 0.895105 |      1 |        0.0496318 |
-    | train_breast_cancer_c817a_00008 | TERMINATED |       | 0.000140322 |           1 |                  2 |    0.885415 | 0.909091 |      1 |        0.045424  |
-    | train_breast_cancer_c817a_00009 | TERMINATED |       | 0.000341654 |           5 |                  3 |    0.720523 | 0.937063 |      1 |        0.0657773 |
+    | train_breast_cancer_b63aa_00000 | TERMINATED |       | 0.000117625 |           2 |                  2 |    0.616347 | 0.916084 |      1 |        0.0306492 |
+    | train_breast_cancer_b63aa_00001 | TERMINATED |       | 0.0382954   |           8 |                  2 |    0.581549 | 0.937063 |      1 |        0.0357082 |
+    | train_breast_cancer_b63aa_00002 | TERMINATED |       | 0.000217926 |           1 |                  3 |    0.528428 | 0.874126 |      1 |        0.0264609 |
+    | train_breast_cancer_b63aa_00003 | TERMINATED |       | 0.000120929 |           8 |                  1 |    0.634508 | 0.958042 |      1 |        0.036406  |
+    | train_breast_cancer_b63aa_00004 | TERMINATED |       | 0.00839715  |           5 |                  1 |    0.730624 | 0.958042 |      1 |        0.0389378 |
+    | train_breast_cancer_b63aa_00005 | TERMINATED |       | 0.000732948 |           8 |                  2 |    0.915863 | 0.958042 |      1 |        0.0382841 |
+    | train_breast_cancer_b63aa_00006 | TERMINATED |       | 0.000856226 |           4 |                  1 |    0.645209 | 0.916084 |      1 |        0.0357089 |
+    | train_breast_cancer_b63aa_00007 | TERMINATED |       | 0.00769908  |           7 |                  1 |    0.729443 | 0.909091 |      1 |        0.0390737 |
+    | train_breast_cancer_b63aa_00008 | TERMINATED |       | 0.00186339  |           5 |                  3 |    0.595744 | 0.944056 |      1 |        0.0343912 |
+    | train_breast_cancer_b63aa_00009 | TERMINATED |       | 0.000950272 |           3 |                  2 |    0.835504 | 0.965035 |      1 |        0.0348201 |
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+
 
-The best configuration we found used ``eta=0.0940201``, ``max_depth=5``,
-``min_child_weight=2``, ``subsample=0.711124`` and reached an accuracy of
-``0.972028``.
+The best configuration we found used ``eta=0.000950272``, ``max_depth=3``,
+``min_child_weight=2``, ``subsample=0.835504`` and reached an accuracy of
+``0.965035``.
 
 Early stopping
 --------------
@@ -382,93 +394,52 @@ There are more parameters, which are explained in the
 :ref:`documentation <tune-scheduler-hyperband>`.
 
 Lastly, we have to report the loss metric to Tune. We do this with a ``Callback`` that
-XGBoost accepts and calls after each training iteration. We also tell XGBoost which
-loss metrics to calculate in the ``eval_metric`` parameter. These are the metrics
-available in ``env.evaluation_result_list`` below.
+XGBoost accepts and calls after each evaluation round. Ray Tune comes
+with :ref:`two XGBoost callbacks <tune-integration-xgboost>`
+we can use for this. The ``TuneReportCallback`` just reports the evaluation
+metrics back to Tune. The ``TuneReportCheckpointCallback`` also saves
+checkpoints after each evaluation round. We will just use the latter in this
+example so that we can retrieve the saved model later.
 
-.. code-block:: python
-   :emphasize-lines: 11,12,13,26,42,44,45,46,47,48,49
+These parameters from the ``eval_metrics`` configuration setting are then automatically
+reported to Tune via the callback. Here, the raw error will be reported, not the accuracy.
+To display the best reached accuracy, we will inverse it later.
 
-    import numpy as np
-    import sklearn.datasets
-    import sklearn.metrics
-    from ray.tune.schedulers import ASHAScheduler
-    from sklearn.model_selection import train_test_split
-    import xgboost as xgb
+We will also load the best checkpointed model so that we can use it for predictions.
+The best model is selected with respect to the ``metric`` and ``mode`` parameters we
+pass to ``tune.run()``.
 
-    from ray import tune
-
-
-    def XGBCallback(env):
-        # After every training iteration, report loss to Tune
-        tune.report(**dict(env.evaluation_result_list))
-
-
-    def train_breast_cancer(config):
-        # Load dataset
-        data, labels = sklearn.datasets.load_breast_cancer(return_X_y=True)
-        # Split into train and test set
-        train_x, test_x, train_y, test_y = train_test_split(
-            data, labels, test_size=0.25)
-        # Build input matrices for XGBoost
-        train_set = xgb.DMatrix(train_x, label=train_y)
-        test_set = xgb.DMatrix(test_x, label=test_y)
-        # Train the classifier
-        bst = xgb.train(config, train_set, evals=[(test_set, "eval")], verbose_eval=False, callbacks=[XGBCallback])
-        # Predict labels for the test set
-        preds = bst.predict(test_set)
-        pred_labels = np.rint(preds)
-        # Return prediction accuracy
-        accuracy = sklearn.metrics.accuracy_score(test_y, pred_labels)
-        tune.report(mean_accuracy=accuracy, done=True)
-
-
-    if __name__ == "__main__":
-        config = {
-            "objective": "binary:logistic",
-            "max_depth": tune.randint(1, 9),
-            "min_child_weight": tune.choice([1, 2, 3]),
-            "subsample": tune.uniform(0.5, 1.0),
-            "eta": tune.loguniform(1e-4, 1e-1),
-            "eval_metric": ["auc", "ams@0", "logloss"]
-        }
-        scheduler = ASHAScheduler(
-            metric="eval-logloss",  # The `eval` prefix is defined in xgb.train
-            mode="min",  # Retain configurations with a low logloss
-            max_t=11,  # 10 training iterations + 1 final evaluation
-            grace_period=1,  # Number of minimum iterations for each trial
-            reduction_factor=2)  # How aggressively to stop trials
-        tune.run(
-            train_breast_cancer,
-            resources_per_trial={"cpu": 1},
-            config=config,
-            num_samples=10,
-            scheduler=scheduler)
+.. literalinclude:: /../../python/ray/tune/examples/xgboost_example.py
+   :language: python
+   :emphasize-lines: 8,25,37-40,44-45,49,51-57
 
 The output of our run could look like this:
 
-.. code-block::
-   :emphasize-lines: 13
+.. code-block:: bash
+   :emphasize-lines: 7
 
-    +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+
-    | Trial name                      | status     | loc   |         eta |   max_depth |   min_child_weight |   subsample |      acc |   iter |   total time (s) |
-    |---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------|
-    | train_breast_cancer_806ea_00000 | TERMINATED |       | 0.0371055   |           2 |                  1 |    0.611729 | 0.951049 |     11 |        0.339279  |
-    | train_breast_cancer_806ea_00001 | TERMINATED |       | 0.0324613   |           3 |                  2 |    0.643815 |          |      4 |        0.230338  |
-    | train_breast_cancer_806ea_00002 | TERMINATED |       | 0.0100875   |           4 |                  3 |    0.985147 |          |      2 |        0.0661929 |
-    | train_breast_cancer_806ea_00003 | TERMINATED |       | 0.00124263  |           1 |                  3 |    0.890299 |          |      1 |        0.0201721 |
-    | train_breast_cancer_806ea_00004 | TERMINATED |       | 0.000230373 |           5 |                  3 |    0.627611 |          |      1 |        0.0265107 |
-    | train_breast_cancer_806ea_00005 | TERMINATED |       | 0.000186942 |           5 |                  2 |    0.831801 |          |      1 |        0.026082  |
-    | train_breast_cancer_806ea_00006 | TERMINATED |       | 0.00871051  |           2 |                  3 |    0.721523 | 0.958042 |     11 |        0.299392  |
-    | train_breast_cancer_806ea_00007 | TERMINATED |       | 0.00440949  |           2 |                  3 |    0.606252 |          |      1 |        0.0210171 |
-    | train_breast_cancer_806ea_00008 | TERMINATED |       | 0.00948289  |           5 |                  2 |    0.892979 |          |      2 |        0.140424  |
-    | train_breast_cancer_806ea_00009 | TERMINATED |       | 0.0514017   |           2 |                  1 |    0.859864 | 0.972028 |     11 |        0.365437  |
-    +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+----------+--------+------------------+
+    Number of trials: 10/10 (10 TERMINATED)
+    +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+--------+------------------+----------------+--------------+
+    | Trial name                      | status     | loc   |         eta |   max_depth |   min_child_weight |   subsample |   iter |   total time (s) |   eval-logloss |   eval-error |
+    |---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+--------+------------------+----------------+--------------|
+    | train_breast_cancer_ba275_00000 | TERMINATED |       | 0.00205087  |           2 |                  1 |    0.898391 |     10 |        0.380619  |       0.678039 |     0.090909 |
+    | train_breast_cancer_ba275_00001 | TERMINATED |       | 0.000183834 |           4 |                  3 |    0.924939 |      1 |        0.0228798 |       0.693009 |     0.111888 |
+    | train_breast_cancer_ba275_00002 | TERMINATED |       | 0.0242721   |           7 |                  2 |    0.501551 |     10 |        0.376154  |       0.54472  |     0.06993  |
+    | train_breast_cancer_ba275_00003 | TERMINATED |       | 0.000449692 |           5 |                  3 |    0.890212 |      1 |        0.0234981 |       0.692811 |     0.090909 |
+    | train_breast_cancer_ba275_00004 | TERMINATED |       | 0.000376393 |           7 |                  2 |    0.883609 |      1 |        0.0231569 |       0.692847 |     0.062937 |
+    | train_breast_cancer_ba275_00005 | TERMINATED |       | 0.00231942  |           3 |                  3 |    0.877464 |      2 |        0.104867  |       0.689541 |     0.083916 |
+    | train_breast_cancer_ba275_00006 | TERMINATED |       | 0.000542326 |           1 |                  2 |    0.578584 |      1 |        0.0213971 |       0.692765 |     0.083916 |
+    | train_breast_cancer_ba275_00007 | TERMINATED |       | 0.0016801   |           1 |                  2 |    0.975302 |      1 |        0.02226   |       0.691999 |     0.083916 |
+    | train_breast_cancer_ba275_00008 | TERMINATED |       | 0.000595756 |           8 |                  3 |    0.58429  |      1 |        0.0221152 |       0.692657 |     0.06993  |
+    | train_breast_cancer_ba275_00009 | TERMINATED |       | 0.000357845 |           8 |                  1 |    0.637776 |      1 |        0.022635  |       0.692859 |     0.090909 |
+    +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+--------+------------------+----------------+--------------+
 
-As you can see, four trials have been stopped after just one iteration, two after two iterations,
-one after four iterations, and the three most promising configurations have been run for
-ten iterations. The 11 is due to the fact that we finally report the accuracy after
-training the full model, which is internally interpreted as another iteration.
+
+    Best model parameters: {'objective': 'binary:logistic', 'eval_metric': ['logloss', 'error'], 'max_depth': 7, 'min_child_weight': 2, 'subsample': 0.5015513240240503, 'eta': 0.024272050872920895}
+    Best model total accuracy: 0.9301
+
+As you can see, most trials have been stopped only after a few iterations. Only the
+two most promising trials were run for the full 10 iterations.
 
 Using fractional GPUs
 ---------------------
@@ -480,16 +451,16 @@ Tune supports *fractional GPUs*. This means that each task is assigned a fractio
 of the GPU memory for training. For 10 tasks, this could look like this:
 
 .. code-block:: python
-   :emphasize-lines: 8,12
+   :emphasize-lines: 4,12
 
     config = {
         "objective": "binary:logistic",
+        "eval_metric": ["logloss", "error"],
+        "tree_method": "gpu_hist",
         "max_depth": tune.randint(1, 9),
         "min_child_weight": tune.choice([1, 2, 3]),
         "subsample": tune.uniform(0.5, 1.0),
-        "eta": tune.loguniform(1e-4, 1e-1),
-        "eval_metric": ["auc", "ams@0", "logloss"],
-        "tree_method": "gpu_hist"
+        "eta": tune.loguniform(1e-4, 1e-1)
     }
     tune.run(
         train_breast_cancer,

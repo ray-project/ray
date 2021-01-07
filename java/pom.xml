@@ -5,10 +5,10 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-superpom</artifactId>
-  <version>0.9.0-SNAPSHOT</version>
+  <version>1.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Ray Project Parent POM</name>
-  <description>A fast and simple framework for building and running distributed applications.
+  <description>An open source framework that provides a simple, universal API for building distributed applications.
   </description>
   <url>https://github.com/ray-project/ray</url>
 
@@ -24,6 +24,12 @@
     <connection>git@github.com:ray-project/ray.git</connection>
     <developerConnection>scm:git:ssh://github.com:ray-project/ray.git</developerConnection>
   </scm>
+
+  <developers>
+    <developer>
+      <organizationUrl>https://ray.io</organizationUrl>
+    </developer>
+  </developers>
 
   <distributionManagement>
     <snapshotRepository>
@@ -51,13 +57,13 @@
     <module>api</module>
     <module>runtime</module>
     <module>test</module>
-    <module>tutorial</module>
   </modules>
 
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>0.9.0-SNAPSHOT</projetct.version>
+    <projetct.version>1.1.0-SNAPSHOT</projetct.version>
+    <projetct.version>1.1.0-SNAPSHOT</projetct.version>
   </properties>
 
   <profiles>
@@ -119,7 +125,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>2.10.4</version>
+          <version>3.1.0</version>
           <executions>
             <execution>
               <id>attach-javadocs</id>
@@ -129,7 +135,7 @@
             </execution>
           </executions>
           <configuration>
-            <additionalparam>-Xdoclint:none</additionalparam>
+            <doclint>none</doclint>
           </configuration>
         </plugin>
 
@@ -171,7 +177,14 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-checkstyle-plugin</artifactId>
-          <version>3.0.0</version>
+          <version>3.1.0</version>
+          <dependencies>
+            <dependency>
+              <groupId>com.puppycrawl.tools</groupId>
+              <artifactId>checkstyle</artifactId>
+              <version>8.19</version>
+            </dependency>
+          </dependencies>
           <executions>
             <execution>
               <id>validate</id>
@@ -213,6 +226,26 @@
             </execution>
           </executions>
         </plugin>
+
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>2.5.0</version>
+          <configuration>
+            <java>
+              <excludes>
+                <exclude>**/RayCall.java</exclude>
+                <exclude>**/ActorCall.java</exclude>
+                <exclude>**/PyActorCall.java</exclude>
+                <exclude>**/runtime/generated/**/*.*</exclude>
+              </excludes>
+              <googleJavaFormat>
+                <version>1.7</version>
+                <style>GOOGLE</style>
+              </googleJavaFormat>
+            </java>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
     <plugins>
@@ -223,6 +256,10 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
       </plugin>
     </plugins>
   </build>

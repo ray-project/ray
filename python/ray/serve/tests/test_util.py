@@ -1,12 +1,15 @@
 import asyncio
+import os
 import json
 from copy import deepcopy
 
 import numpy as np
 import pytest
 
+import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
-                             try_schedule_resources_on_nodes)
+                             try_schedule_resources_on_nodes,
+                             get_conda_env_dir, import_class)
 
 
 def test_bytes_encoder():
@@ -69,20 +72,15 @@ async def test_future_chaining():
 
 
 def test_mock_scheduler():
-    ray_nodes = [{
-        "NodeID": "AAA",
-        "Alive": True,
-        "Resources": {
+    ray_nodes = {
+        "AAA": {
             "CPU": 2.0,
             "GPU": 2.0
-        }
-    }, {
-        "NodeID": "BBB",
-        "Alive": True,
-        "Resources": {
+        },
+        "BBB": {
             "CPU": 4.0,
         }
-    }]
+    }
 
     assert try_schedule_resources_on_nodes(
         [
@@ -112,6 +110,35 @@ def test_mock_scheduler():
             },  # Equals to the sum of cpus but shouldn't be scheduable.
         ],
         deepcopy(ray_nodes)) == [False]
+
+
+def test_get_conda_env_dir(tmp_path):
+    d = tmp_path / "tf1"
+    d.mkdir()
+    os.environ["CONDA_PREFIX"] = str(d)
+    with pytest.raises(ValueError):
+        # env does not exist
+        env_dir = get_conda_env_dir("tf2")
+    tf2_dir = tmp_path / "tf2"
+    tf2_dir.mkdir()
+    env_dir = get_conda_env_dir("tf2")
+    assert (env_dir == str(tmp_path / "tf2"))
+    os.environ["CONDA_PREFIX"] = ""
+
+
+def test_import_class():
+    assert import_class("ray.serve.Client") == ray.serve.api.Client
+    assert import_class("ray.serve.api.Client") == ray.serve.api.Client
+
+    policy_cls = import_class("ray.serve.controller.TrafficPolicy")
+    assert policy_cls == ray.serve.controller.TrafficPolicy
+
+    policy = policy_cls({"endpoint1": 0.5, "endpoint2": 0.5})
+    with pytest.raises(ValueError):
+        policy.set_traffic_dict({"endpoint1": 0.5, "endpoint2": 0.6})
+    policy.set_traffic_dict({"endpoint1": 0.4, "endpoint2": 0.6})
+
+    print(repr(policy))
 
 
 if __name__ == "__main__":

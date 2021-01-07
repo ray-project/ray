@@ -1,12 +1,12 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.exception.RayTaskException;
-import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.TaskId;
 import io.ray.api.id.UniqueId;
 import io.ray.runtime.RayRuntimeInternal;
+import io.ray.runtime.exception.RayIntentionalSystemExitException;
+import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import io.ray.runtime.generated.Common.TaskType;
@@ -17,12 +17,11 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * The task executor, which executes tasks assigned by raylet continuously.
- */
+/** The task executor, which executes tasks assigned by raylet continuously. */
 public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskExecutor.class);
@@ -35,14 +34,10 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   static class ActorContext {
 
-    /**
-     * The current actor object, if this worker is an actor, otherwise null.
-     */
+    /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
 
-    /**
-     * The exception that failed the actor creation task, if any.
-     */
+    /** The exception that failed the actor creation task, if any. */
     Throwable actorCreationException = null;
   }
 
@@ -64,15 +59,17 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     this.actorContextMap.put(runtime.getWorkerContext().getCurrentWorkerId(), actorContext);
   }
 
+  protected void removeActorContext(UniqueId workerId) {
+    this.actorContextMap.remove(workerId);
+  }
+
   private RayFunction getRayFunction(List<String> rayFunctionInfo) {
     JobId jobId = runtime.getWorkerContext().getCurrentJobId();
     JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
     return runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
   }
 
-  /**
-   * The return value indicates which parameters are ByteBuffer.
-   */
+  /** The return value indicates which parameters are ByteBuffer. */
   protected boolean[] checkByteBufferArguments(List<String> rayFunctionInfo) {
     localRayFunction.set(null);
     try {
@@ -89,8 +86,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     return results;
   }
 
-  protected List<NativeRayObject> execute(List<String> rayFunctionInfo,
-                                          List<Object> argsBytes) {
+  protected List<NativeRayObject> execute(List<String> rayFunctionInfo, List<Object> argsBytes) {
     runtime.setIsContextSet(true);
     TaskType taskType = runtime.getWorkerContext().getCurrentTaskType();
     TaskId taskId = runtime.getWorkerContext().getCurrentTaskId();
@@ -126,8 +122,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
         }
         actor = actorContext.currentActor;
       }
-      Object[] args = ArgumentsBuilder
-          .unwrap(argsBytes, rayFunction.executable.getParameterTypes());
+      Object[] args =
+          ArgumentsBuilder.unwrap(argsBytes, rayFunction.executable.getParameterTypes());
       // Execute the task.
       Object result;
       try {
@@ -145,27 +141,45 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       }
       // Set result
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        if (taskType == TaskType.ACTOR_TASK) {
-          // TODO (kfstorm): handle checkpoint in core worker.
-          maybeSaveCheckpoint(actor, runtime.getWorkerContext().getCurrentActorId());
-        }
         if (rayFunction.hasReturn()) {
           returnObjects.add(ObjectSerializer.serialize(result));
         }
       } else {
-        // TODO (kfstorm): handle checkpoint in core worker.
-        maybeLoadCheckpoint(result, runtime.getWorkerContext().getCurrentActorId());
         actorContext.currentActor = result;
       }
       LOGGER.debug("Finished executing task {}", taskId);
     } catch (Throwable e) {
+      if (e instanceof RayIntentionalSystemExitException) {
+        // We don't need to fill the `returnObjects` with an exception metadata
+        // because the node manager or the direct actor task submitter will fill
+        // the return object with the ACTOR_DIED metadata.
+        throw (RayIntentionalSystemExitException) e;
+      }
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
         boolean hasReturn = rayFunction != null && rayFunction.hasReturn();
         boolean isCrossLanguage = parseFunctionDescriptor(rayFunctionInfo).signature.equals("");
         if (hasReturn || isCrossLanguage) {
-          returnObjects.add(ObjectSerializer
-              .serialize(new RayTaskException("Error executing task " + taskId, e)));
+          NativeRayObject serializedException;
+          try {
+            serializedException =
+                ObjectSerializer.serialize(
+                    new RayTaskException("Error executing task " + taskId, e));
+          } catch (Exception unserializable) {
+            // We should try-catch `ObjectSerializer.serialize` here. Because otherwise if the
+            // application-level exception is not serializable. `ObjectSerializer.serialize`
+            // will throw an exception and crash the worker.
+            // Refer to the case `TaskExceptionTest.java` for more details.
+            LOGGER.warn("Failed to serialize the exception to a RayObject.", unserializable);
+            serializedException =
+                ObjectSerializer.serialize(
+                    new RayTaskException(
+                        String.format(
+                            "Error executing task %s with the exception: %s",
+                            taskId, ExceptionUtils.getStackTrace(e))));
+          }
+          Preconditions.checkNotNull(serializedException);
+          returnObjects.add(serializedException);
         }
       } else {
         actorContext.actorCreationException = e;
@@ -180,11 +194,7 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
   private JavaFunctionDescriptor parseFunctionDescriptor(List<String> rayFunctionInfo) {
     Preconditions.checkState(rayFunctionInfo != null && rayFunctionInfo.size() == 3);
-    return new JavaFunctionDescriptor(rayFunctionInfo.get(0), rayFunctionInfo.get(1),
-        rayFunctionInfo.get(2));
+    return new JavaFunctionDescriptor(
+        rayFunctionInfo.get(0), rayFunctionInfo.get(1), rayFunctionInfo.get(2));
   }
-
-  protected abstract void maybeSaveCheckpoint(Object actor, ActorId actorId);
-
-  protected abstract void maybeLoadCheckpoint(Object actor, ActorId actorId);
 }

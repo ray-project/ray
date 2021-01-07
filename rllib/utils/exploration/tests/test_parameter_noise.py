@@ -1,12 +1,21 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class TestParameterNoise(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
             ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v0", {},
@@ -37,6 +46,10 @@ class TestParameterNoise(unittest.TestCase):
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
             pol_sess = getattr(policy, "_sess", None)
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
 
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
@@ -96,6 +109,12 @@ class TestParameterNoise(unittest.TestCase):
             config["explore"] = False
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
+            pol_sess = getattr(policy, "_sess", None)
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
+
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
 
@@ -178,12 +197,21 @@ class TestParameterNoise(unittest.TestCase):
         noise = policy.exploration.noise[0][0][0]
         if fw == "tf":
             noise = policy.get_session().run(noise)
+        elif fw == "torch":
+            noise = noise.detach().cpu().numpy()
         else:
             noise = noise.numpy()
         return noise
 
     def _get_current_weight(self, policy, fw):
         weights = policy.get_weights()
+        if fw == "torch":
+            # DQN model.
+            if "_hidden_layers.0._model.0.weight" in weights:
+                return weights["_hidden_layers.0._model.0.weight"][0][0]
+            # DDPG model.
+            else:
+                return weights["policy_model.action_0._model.0.weight"][0][0]
         key = 0 if fw in ["tf2", "tfe"] else list(weights.keys())[0]
         return weights[key][0][0]
 

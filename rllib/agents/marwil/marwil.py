@@ -16,22 +16,22 @@ DEFAULT_CONFIG = with_common_config({
     # Use importance sampling estimators for reward
     "input_evaluation": ["is", "wis"],
 
-    # Scaling of advantages in exponential terms
-    # When beta is 0, MARWIL is reduced to imitation learning
+    # Scaling of advantages in exponential terms.
+    # When beta is 0.0, MARWIL is reduced to imitation learning.
     "beta": 1.0,
-    # Balancing value estimation loss and policy optimization loss
+    # Balancing value estimation loss and policy optimization loss.
     "vf_coeff": 1.0,
-    # Whether to calculate cumulative rewards
+    # Whether to calculate cumulative rewards.
     "postprocess_inputs": True,
-    # Whether to rollout "complete_episodes" or "truncate_episodes"
+    # Whether to rollout "complete_episodes" or "truncate_episodes".
     "batch_mode": "complete_episodes",
-    # Learning rate for adam optimizer
+    # Learning rate for adam optimizer.
     "lr": 1e-4,
-    # Number of timesteps collected for each SGD round
+    # Number of timesteps collected for each SGD round.
     "train_batch_size": 2000,
-    # Number of steps max to keep in the batch replay buffer
-    "replay_buffer_size": 100000,
-    # Number of steps to read before learning starts
+    # Size of the replay buffer in batches (not timesteps!).
+    "replay_buffer_size": 1000,
+    # Number of steps to read before learning starts.
     "learning_starts": 0,
     # === Parallelism ===
     "num_workers": 0,
@@ -45,8 +45,6 @@ def get_policy_class(config):
         from ray.rllib.agents.marwil.marwil_torch_policy import \
             MARWILTorchPolicy
         return MARWILTorchPolicy
-    else:
-        return MARWILTFPolicy
 
 
 def execution_plan(workers, config):
@@ -58,7 +56,10 @@ def execution_plan(workers, config):
 
     replay_op = Replay(local_buffer=replay_buffer) \
         .combine(
-            ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )) \
         .for_each(TrainOneStep(workers))
 
     train_op = Concurrently(

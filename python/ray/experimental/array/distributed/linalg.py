@@ -7,7 +7,7 @@ from . import core
 __all__ = ["tsqr", "modified_lu", "tsqr_hr", "qr"]
 
 
-@ray.remote(num_return_vals=2)
+@ray.remote(num_returns=2)
 def tsqr(a):
     """Perform a QR decomposition of a tall-skinny matrix.
 
@@ -83,7 +83,7 @@ def tsqr(a):
 # TODO(rkn): This is unoptimized, we really want a block version of this.
 # This is Algorithm 5 from
 # http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf.
-@ray.remote(num_return_vals=3)
+@ray.remote(num_returns=3)
 def modified_lu(q):
     """Perform a modified LU decomposition of a matrix.
 
@@ -121,7 +121,7 @@ def modified_lu(q):
     return ray.get(core.numpy_to_dist.remote(ray.put(L))), U, S
 
 
-@ray.remote(num_return_vals=2)
+@ray.remote(num_returns=2)
 def tsqr_hr_helper1(u, s, y_top_block, b):
     y_top = y_top_block[:b, :b]
     s_full = np.diag(s)
@@ -137,7 +137,7 @@ def tsqr_hr_helper2(s, r_temp):
 
 # This is Algorithm 6 from
 # http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf.
-@ray.remote(num_return_vals=4)
+@ray.remote(num_returns=4)
 def tsqr_hr(a):
     q, r_temp = tsqr.remote(a)
     y, u, s = modified_lu.remote(q)
@@ -160,7 +160,7 @@ def qr_helper2(y_ri, a_rc):
 
 # This is Algorithm 7 from
 # http://www.eecs.berkeley.edu/Pubs/TechRpts/2013/EECS-2013-175.pdf.
-@ray.remote(num_return_vals=2)
+@ray.remote(num_returns=2)
 def qr(a):
 
     m, n = a.shape[0], a.shape[1]

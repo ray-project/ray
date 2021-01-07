@@ -11,6 +11,7 @@ opencv-python-headless==4.3.0.36
 pandas
 pickle5
 pillow
+pydantic<1.7
 pygments
 pyyaml
 recommonmark
@@ -23,9 +24,11 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx-tabs
 sphinx-version-warning
-sphinx_rtd_theme
+sphinx-book-theme
+starlette
 tabulate
 uvicorn
 werkzeug
-tune-sklearn==0.0.5
+git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
+git+git://github.com/ray-project/xgboost_ray@master#xgboost_ray
 scikit-optimize

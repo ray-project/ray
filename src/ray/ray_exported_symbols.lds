@@ -21,9 +21,13 @@
 *ray*TaskID*
 *ray*ActorID*
 *ray*ObjectID*
+*ray*ObjectReference*
 # Others
 *ray*CoreWorker*
 *PyInit*
 *init_raylet*
 *Java*
 *JNI_*
+*ray*streaming*
+*aligned_free*
+*aligned_malloc*

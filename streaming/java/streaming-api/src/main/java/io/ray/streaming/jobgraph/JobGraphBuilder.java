@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JobGraphBuilder {
+
   private static final Logger LOG = LoggerFactory.getLogger(JobGraphBuilder.class);
 
   private JobGraph jobGraph;
@@ -34,8 +35,8 @@ public class JobGraphBuilder {
     this(streamSinkList, jobName, new HashMap<>());
   }
 
-  public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName,
-                         Map<String, String> jobConfig) {
+  public JobGraphBuilder(
+      List<StreamSink> streamSinkList, String jobName, Map<String, String> jobConfig) {
     this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;
     this.edgeIdGenerator = new AtomicInteger(0);
@@ -58,7 +59,8 @@ public class JobGraphBuilder {
       stream = stream.getOriginalStream();
     }
     StreamOperator streamOperator = stream.getOperator();
-    Preconditions.checkArgument(stream.getLanguage() == streamOperator.getLanguage(),
+    Preconditions.checkArgument(
+        stream.getLanguage() == streamOperator.getLanguage(),
         "Reference stream should be skipped.");
     int vertexId = stream.getId();
     int parallelism = stream.getParallelism();
@@ -74,8 +76,8 @@ public class JobGraphBuilder {
     } else if (stream instanceof StreamSource) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator, config);
     } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
-      jobVertex = new JobVertex(
-          vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator, config);
+      jobVertex =
+          new JobVertex(vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator, config);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
       JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
@@ -98,7 +100,7 @@ public class JobGraphBuilder {
 
       // process join stream
       if (stream instanceof JoinStream) {
-        DataStream rightStream =  ((JoinStream) stream).getRightStream();
+        DataStream rightStream = ((JoinStream) stream).getRightStream();
         this.jobGraph.addEdge(
             new JobEdge(rightStream.getId(), vertexId, rightStream.getPartition()));
         processStream(rightStream);
@@ -112,5 +114,4 @@ public class JobGraphBuilder {
   private int getEdgeId() {
     return this.edgeIdGenerator.incrementAndGet();
   }
-
 }

@@ -8,10 +8,13 @@ from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import add_mixins
+from ray.rllib.utils import add_mixins, force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.typing import ModelGradients, TensorType, \
+from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import AgentID, ModelGradients, TensorType, \
     TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
 
 
 @DeveloperAPI
@@ -24,8 +27,8 @@ def build_tf_policy(
         get_default_config: Optional[Callable[[None],
                                               TrainerConfigDict]] = None,
         postprocess_fn: Optional[Callable[[
-            Policy, SampleBatch, Optional[List[SampleBatch]], Optional[
-                "MultiAgentEpisode"]
+            Policy, SampleBatch, Optional[Dict[AgentID, SampleBatch]],
+            Optional["MultiAgentEpisode"]
         ], SampleBatch]] = None,
         stats_fn: Optional[Callable[[Policy, SampleBatch], Dict[
             str, TensorType]]] = None,
@@ -63,7 +66,9 @@ def build_tf_policy(
         ], Tuple[TensorType, type, List[TensorType]]]] = None,
         mixins: Optional[List[type]] = None,
         get_batch_divisibility_req: Optional[Callable[[Policy], int]] = None,
-        obs_include_prev_action_reward: bool = True):
+        # TODO: (sven) deprecate once _use_trajectory_view_api is always True.
+        obs_include_prev_action_reward: bool = True,
+) -> Type[DynamicTFPolicy]:
     """Helper function for creating a dynamic tf policy at runtime.
 
     Functions will be run in this order to initialize the policy:
@@ -94,9 +99,9 @@ def build_tf_policy(
             overrides. If None, uses only(!) the user-provided
             PartialTrainerConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
-            List[SampleBatch], MultiAgentEpisode], None]]): Optional callable
-            for post-processing experience batches (called after the
-            super's `postprocess_trajectory` method).
+            Optional[Dict[AgentID, SampleBatch]], MultiAgentEpisode], None]]):
+            Optional callable for post-processing experience batches (called
+            after the parent class' `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],
             Dict[str, TensorType]]]): Optional callable that returns a dict of
             TF tensors to fetch given the policy and batch input tensors. If
@@ -172,7 +177,8 @@ def build_tf_policy(
             previous action and reward in the model input.
 
     Returns:
-        a DynamicTFPolicy instance that uses the specified args
+        Type[DynamicTFPolicy]: A child class of DynamicTFPolicy based on the
+            specified args.
     """
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)
@@ -198,9 +204,12 @@ def build_tf_policy(
                 if before_loss_init:
                     before_loss_init(policy, obs_space, action_space, config)
                 if extra_action_fetches_fn is None:
-                    self._extra_action_fetches = {}
+                    policy._extra_action_fetches = {}
                 else:
-                    self._extra_action_fetches = extra_action_fetches_fn(self)
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
+                    policy._extra_action_fetches = extra_action_fetches_fn(
+                        policy)
 
             DynamicTFPolicy.__init__(
                 self,
@@ -214,13 +223,16 @@ def build_tf_policy(
                 make_model=make_model,
                 action_sampler_fn=action_sampler_fn,
                 action_distribution_fn=action_distribution_fn,
-                existing_model=existing_model,
                 existing_inputs=existing_inputs,
+                existing_model=existing_model,
                 get_batch_divisibility_req=get_batch_divisibility_req,
                 obs_include_prev_action_reward=obs_include_prev_action_reward)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
+
+            # Got to reset global_timestep again after this fake run-through.
+            self.global_timestep = 0
 
         @override(Policy)
         def postprocess_trajectory(self,
@@ -237,9 +249,16 @@ def build_tf_policy(
         @override(TFPolicy)
         def optimizer(self):
             if optimizer_fn:
-                return optimizer_fn(self, self.config)
+                optimizers = optimizer_fn(self, self.config)
             else:
-                return base.optimizer(self)
+                optimizers = base.optimizer(self)
+            optimizers = force_list(optimizers)
+            if getattr(self, "exploration", None):
+                optimizers = self.exploration.get_exploration_optimizer(
+                    optimizers)
+            # TODO: (sven) Allow tf-eager policy to have more than 1 optimizer.
+            #  Just like torch Policy does.
+            return optimizers[0] if optimizers else None
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):

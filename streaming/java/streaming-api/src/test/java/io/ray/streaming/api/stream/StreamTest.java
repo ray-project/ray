@@ -13,8 +13,8 @@ public class StreamTest {
 
   @Test
   public void testReferencedDataStream() {
-    DataStream dataStream = new DataStream(StreamingContext.buildContext(),
-        new MapOperator(value -> null));
+    DataStream dataStream =
+        new DataStream(StreamingContext.buildContext(), new MapOperator(value -> null));
     PythonDataStream pythonDataStream = dataStream.asPythonStream();
     DataStream javaStream = pythonDataStream.asJavaStream();
     assertEquals(dataStream.getId(), pythonDataStream.getId());
@@ -26,8 +26,8 @@ public class StreamTest {
 
   @Test
   public void testReferencedKeyDataStream() {
-    DataStream dataStream = new DataStream(StreamingContext.buildContext(),
-        new MapOperator(value -> null));
+    DataStream dataStream =
+        new DataStream(StreamingContext.buildContext(), new MapOperator(value -> null));
     KeyDataStream keyDataStream = dataStream.keyBy(value -> null);
     PythonKeyDataStream pythonKeyDataStream = keyDataStream.asPythonStream();
     KeyDataStream javaKeyDataStream = pythonKeyDataStream.asJavaStream();

@@ -20,7 +20,7 @@ class TrackApiTest(unittest.TestCase):
     def testSoftDeprecation(self):
         """Checks that tune.track.log code does not break."""
         from ray.tune import track
-        ray.init()
+        ray.init(num_cpus=2)
 
         def testme(config):
             for i in range(config["iters"]):

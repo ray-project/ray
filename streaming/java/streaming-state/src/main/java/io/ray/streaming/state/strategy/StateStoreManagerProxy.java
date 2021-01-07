@@ -27,21 +27,20 @@ import java.util.Map;
 
 /**
  * This class support ITransactionState.
- * <p>
- * Based on the given StorageMode, different implementation instance of the AbstractStateStrategy
+ *
+ * <p>Based on the given StorageMode, different implementation instance of the AbstractStateStrategy
  * class will be created. All method calls will be delegated to the strategy instance.
  */
-
 public abstract class StateStoreManagerProxy<V> implements StateStoreManager {
 
   protected final AbstractStateStoreManager<V> stateStrategy;
   private final AbstractKeyStateBackend keyStateBackend;
 
-  public StateStoreManagerProxy(AbstractKeyStateBackend keyStateBackend,
-                                AbstractStateDescriptor stateDescriptor) {
+  public StateStoreManagerProxy(
+      AbstractKeyStateBackend keyStateBackend, AbstractStateDescriptor stateDescriptor) {
     this.keyStateBackend = keyStateBackend;
-    KeyValueStore<String, Map<Long, byte[]>> backStorage = keyStateBackend
-        .getBackStorage(stateDescriptor);
+    KeyValueStore<String, Map<Long, byte[]>> backStorage =
+        keyStateBackend.getBackStorage(stateDescriptor);
     StateStrategy stateStrategy = keyStateBackend.getStateStrategy();
     switch (stateStrategy) {
       case DUAL_VERSION:
@@ -64,17 +63,13 @@ public abstract class StateStoreManagerProxy<V> implements StateStoreManager {
     this.stateStrategy.finish(checkpointId);
   }
 
-  /**
-   * The commit can be used in another thread to reach async state commit.
-   */
+  /** The commit can be used in another thread to reach async state commit. */
   @Override
   public void commit(long checkpointId) {
     this.stateStrategy.commit(checkpointId);
   }
 
-  /**
-   * The ackCommit must be called after commit in the same thread.
-   */
+  /** The ackCommit must be called after commit in the same thread. */
   @Override
   public void ackCommit(long checkpointId, long timeStamp) {
     this.stateStrategy.ackCommit(checkpointId);

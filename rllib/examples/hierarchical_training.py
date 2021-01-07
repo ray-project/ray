@@ -25,6 +25,7 @@ using --flat in this example.
 import argparse
 from gym.spaces import Discrete, Tuple
 import logging
+import os
 
 import ray
 from ray import tune
@@ -75,7 +76,6 @@ if __name__ == "__main__":
         config = {
             "env": HierarchicalWindyMazeEnv,
             "num_workers": 0,
-            "log_level": "INFO",
             "entropy_coeff": 0.01,
             "multiagent": {
                 "policies": {
@@ -94,9 +94,11 @@ if __name__ == "__main__":
                 "policy_mapping_fn": function(policy_mapping_fn),
             },
             "framework": "torch" if args.torch else "tf",
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }
 
-        results = tune.run("PPO", stop=stop, config=config)
+        results = tune.run("PPO", stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

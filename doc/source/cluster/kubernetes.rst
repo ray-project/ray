@@ -12,6 +12,9 @@ This document assumes that you have access to a Kubernetes cluster and have
 first walk you through how to deploy a Ray cluster on your existing Kubernetes
 cluster, then explore a few different ways to run programs on the Ray cluster.
 
+To learn about deploying an autoscaling Ray cluster using :ref:`Ray's Kubernetes operator<k8s-operator>`, read
+:ref:`here<k8s-operator>`.
+
 The configuration ``yaml`` files used here are provided in the `Ray repository`_
 as examples to get you started. When deploying real applications, you will probably
 want to build and use your own container images, add more worker nodes to the
@@ -37,6 +40,11 @@ flag passed to ``kubectl``.
 
 Starting a Ray Cluster
 ----------------------
+
+.. toctree::
+    :hidden:
+
+    /cluster/k8s-operator.rst
 
 A Ray cluster consists of a single head node and a set of worker nodes (the
 provided ``ray-cluster.yaml`` file will start 3 worker nodes). In the example
@@ -142,6 +150,8 @@ and checking that they are restarted by Kubernetes:
   ray-worker-5c49b7cc57-6m4kp   1/1     Running   0          10s
   ray-worker-5c49b7cc57-jx2w2   1/1     Running   0          10s
 
+.. _ray-k8s-run:
+ 
 Running Ray Programs
 --------------------
 
@@ -285,16 +295,8 @@ To delete a running Ray cluster, you can run the following command:
 Questions or Issues?
 --------------------
 
-You can post questions or issues or feedback through the following channels:
+.. include:: /_help.rst
 
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions and feedback.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
-
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 
 .. _`Kubernetes Horizontal Pod Autoscaler`: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
 .. _`Kubernetes Namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/

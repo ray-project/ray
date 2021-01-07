@@ -35,8 +35,9 @@ analysis = tune.run(
         "beta": tune.choice([1, 2, 3])
     })
 
-print("Best config: ", analysis.get_best_config(metric="mean_loss"))
+print("Best config: ", analysis.get_best_config(
+    metric="mean_loss", mode="min"))
 
 # Get a dataframe for analyzing trial results.
-df = analysis.dataframe()
+df = analysis.results_df
 # __quick_start_end__

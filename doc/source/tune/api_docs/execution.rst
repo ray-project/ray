@@ -18,10 +18,14 @@ tune.Experiment
 
 .. autofunction:: ray.tune.Experiment
 
-.. _tune-stop-ref:
+tune.with_parameters
+--------------------
 
-Stopper (tune.Stopper)
-----------------------
+.. autofunction:: ray.tune.with_parameters
 
-.. autoclass:: ray.tune.Stopper
-    :members: __call__, stop_all
+.. _tune-sync-config:
+
+tune.SyncConfig
+---------------
+
+.. autofunction:: ray.tune.SyncConfig

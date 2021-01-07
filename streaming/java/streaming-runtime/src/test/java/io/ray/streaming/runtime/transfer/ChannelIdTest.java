@@ -3,6 +3,7 @@ package io.ray.streaming.runtime.transfer;
 import static org.testng.Assert.assertEquals;
 
 import io.ray.streaming.runtime.BaseUnitTest;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
 import io.ray.streaming.runtime.util.EnvUtil;
 import org.testng.annotations.Test;
 
@@ -18,5 +19,4 @@ public class ChannelIdTest extends BaseUnitTest {
     assertEquals(idStr.length(), ChannelId.ID_LENGTH * 2);
     assertEquals(ChannelId.idStrToBytes(idStr).length, ChannelId.ID_LENGTH);
   }
-
 }

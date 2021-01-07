@@ -1,7 +1,6 @@
 import asyncio
 import errno
 import io
-import json
 import fnmatch
 import os
 import subprocess
@@ -13,8 +12,10 @@ import math
 from contextlib import redirect_stdout, redirect_stderr
 
 import ray
-import ray.services
+import ray._private.services
 import ray.utils
+import requests
+from prometheus_client.parser import text_string_to_metric_families
 from ray.scripts.scripts import main as ray_main
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -151,7 +152,7 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
 def kill_process_by_name(name, SIGKILL=False):
     for p in psutil.process_iter(attrs=["name"]):
-        if p.info["name"] == name + ray.services.EXE_SUFFIX:
+        if p.info["name"] == name + ray._private.services.EXE_SUFFIX:
             if SIGKILL:
                 p.kill()
             else:
@@ -208,10 +209,13 @@ def run_string_as_driver_nonblocking(driver_script):
     return proc
 
 
-def wait_for_num_actors(num_actors, timeout=10):
+def wait_for_num_actors(num_actors, state=None, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if len(ray.actors()) >= num_actors:
+        if len([
+                _ for _ in ray.actors().values()
+                if state is None or _["State"] == state
+        ]) >= num_actors:
             return
         time.sleep(0.1)
     raise RayTestTimeoutException("Timed out while waiting for global state.")
@@ -282,10 +286,9 @@ def recursive_fnmatch(dirpath, pattern):
     return matches
 
 
-def generate_internal_config_map(**kwargs):
-    internal_config = json.dumps(kwargs)
+def generate_system_config_map(**kwargs):
     ray_kwargs = {
-        "_internal_config": internal_config,
+        "_system_config": kwargs,
     }
     return ray_kwargs
 
@@ -333,6 +336,25 @@ def dicts_equal(dict1, dict2, abs_tol=1e-4):
             continue
         if v != dict2[k]:
             return False
+    return True
+
+
+def same_elements(elems_a, elems_b):
+    """Checks if two iterables (such as lists) contain the same elements. Elements
+        do not have to be hashable (this allows us to compare sets of dicts for
+        example). This comparison is not necessarily efficient.
+    """
+    a = list(elems_a)
+    b = list(elems_b)
+
+    for x in a:
+        if x not in b:
+            return False
+
+    for x in b:
+        if x not in a:
+            return False
+
     return True
 
 
@@ -394,7 +416,7 @@ def init_error_pubsub():
     return p
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=5):
+def get_error_message(pub_sub, num, error_type=None, timeout=20):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -411,3 +433,42 @@ def get_error_message(pub_sub, num, error_type=None, timeout=5):
             time.sleep(0.01)
 
     return msgs
+
+
+def format_web_url(url):
+    """Format web url."""
+    url = url.replace("localhost", "http://127.0.0.1")
+    if not url.startswith("http://"):
+        return "http://" + url
+    return url
+
+
+def new_scheduler_enabled():
+    return os.environ.get("RAY_ENABLE_NEW_SCHEDULER", "1") == "1"
+
+
+def client_test_enabled() -> bool:
+    return os.environ.get("RAY_CLIENT_MODE") == "1"
+
+
+def fetch_prometheus(prom_addresses):
+    components_dict = {}
+    metric_names = set()
+    metric_samples = []
+    for address in prom_addresses:
+        if address not in components_dict:
+            components_dict[address] = set()
+        try:
+            response = requests.get(f"http://{address}/metrics")
+        except requests.exceptions.ConnectionError:
+            continue
+
+        for line in response.text.split("\n"):
+            for family in text_string_to_metric_families(line):
+                for sample in family.samples:
+                    metric_names.add(sample.name)
+                    metric_samples.append(sample)
+                    if "Component" in sample.labels:
+                        components_dict[address].add(
+                            sample.labels["Component"])
+    return components_dict, metric_names, metric_samples

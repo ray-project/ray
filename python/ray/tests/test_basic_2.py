@@ -1,5 +1,4 @@
 # coding: utf-8
-import json
 import logging
 import sys
 import threading
@@ -10,10 +9,16 @@ import pytest
 
 from unittest.mock import MagicMock, patch
 
-import ray
 import ray.cluster_utils
-import ray.test_utils
-from ray.exceptions import RayTimeoutError
+from ray.test_utils import client_test_enabled
+from ray.tests.client_test_utils import create_remote_signal_actor
+from ray.exceptions import GetTimeoutError
+from ray.exceptions import RayTaskError
+
+if client_test_enabled():
+    from ray.util.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,8 @@ logger = logging.getLogger(__name__)
     }],
     indirect=True)
 def test_variable_number_of_args(shutdown_only):
+    ray.init(num_cpus=1)
+
     @ray.remote
     def varargs_fct1(*a):
         return " ".join(map(str, a))
@@ -33,8 +40,6 @@ def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
-
-    ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
@@ -161,7 +166,7 @@ def test_redefining_remote_functions(shutdown_only):
     def g():
         return nonexistent()
 
-    with pytest.raises(ray.exceptions.RayTaskError, match="nonexistent"):
+    with pytest.raises(RayTaskError, match="nonexistent"):
         ray.get(g.remote())
 
     def nonexistent():
@@ -188,6 +193,7 @@ def test_redefining_remote_functions(shutdown_only):
         assert ray.get(ray.get(h.remote(i))) == i
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
@@ -313,6 +319,7 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -333,29 +340,28 @@ def test_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
-def test_internal_config_when_connecting(ray_start_cluster):
-    config = json.dumps({
-        "object_pinning_enabled": 0,
-        "initial_reconstruction_timeout_milliseconds": 200
-    })
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
+def test_system_config_when_connecting(ray_start_cluster):
+    config = {"object_pinning_enabled": 0, "object_timeout_milliseconds": 200}
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
-        _internal_config=config, object_store_memory=100 * 1024 * 1024)
+        _system_config=config, object_store_memory=100 * 1024 * 1024)
     cluster.wait_for_nodes()
 
-    # Specifying _internal_config when connecting to a cluster is disallowed.
+    # Specifying _system_config when connecting to a cluster is disallowed.
     with pytest.raises(ValueError):
-        ray.init(address=cluster.address, _internal_config=config)
+        ray.init(address=cluster.address, _system_config=config)
 
     # Check that the config was picked up (object pinning is disabled).
     ray.init(address=cluster.address)
     obj_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
     for _ in range(5):
-        ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    del put_ref
 
     # This would not raise an exception if object pinning was enabled.
-    with pytest.raises(ray.exceptions.UnreconstructableError):
+    with pytest.raises(ray.exceptions.ObjectLostError):
         ray.get(obj_ref)
 
 
@@ -370,27 +376,9 @@ def test_get_multiple(ray_start_regular_shared):
     assert results == indices
 
 
-def test_get_multiple_experimental(ray_start_regular_shared):
-    object_refs = [ray.put(i) for i in range(10)]
-
-    object_refs_tuple = tuple(object_refs)
-    assert ray.experimental.get(object_refs_tuple) == list(range(10))
-
-    object_refs_nparray = np.array(object_refs)
-    assert ray.experimental.get(object_refs_nparray) == list(range(10))
-
-
-def test_get_dict(ray_start_regular_shared):
-    d = {str(i): ray.put(i) for i in range(5)}
-    for i in range(5, 10):
-        d[str(i)] = i
-    result = ray.experimental.get(d)
-    expected = {str(i): i for i in range(10)}
-    assert result == expected
-
-
 def test_get_with_timeout(ray_start_regular_shared):
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor(ray)
+    signal = SignalActor.remote()
 
     # Check that get() returns early if object is ready.
     start = time.time()
@@ -400,7 +388,7 @@ def test_get_with_timeout(ray_start_regular_shared):
     # Check that get() raises a TimeoutError after the timeout if the object
     # is not ready yet.
     result_id = signal.wait.remote()
-    with pytest.raises(RayTimeoutError):
+    with pytest.raises(GetTimeoutError):
         ray.get(result_id, timeout=0.1)
 
     # Check that a subsequent get() returns early.
@@ -460,6 +448,7 @@ def test_inline_arg_memory_corruption(ray_start_regular_shared):
         ray.get(a.add.remote(f.remote()))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_skip_plasma(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -476,6 +465,8 @@ def test_skip_plasma(ray_start_regular_shared):
     assert ray.get(obj_ref) == 2
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="internal api and message size")
 def test_actor_large_objects(ray_start_regular_shared):
     @ray.remote
     class Actor:
@@ -648,12 +639,13 @@ def test_duplicate_args(ray_start_regular_shared):
             arg1, arg2, arg1, kwarg1=arg1, kwarg2=arg2, kwarg1_duplicate=arg1))
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_get_correct_node_ip():
     with patch("ray.worker") as worker_mock:
         node_mock = MagicMock()
         node_mock.node_ip_address = "10.0.0.111"
         worker_mock._global_node = node_mock
-        found_ip = ray.services.get_node_ip_address()
+        found_ip = ray._private.services.get_node_ip_address()
         assert found_ip == "10.0.0.111"
 
 

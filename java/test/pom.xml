@@ -6,7 +6,7 @@
   <parent>
     <groupId>io.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>0.9.0-SNAPSHOT</version>
+    <version>1.1.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -42,6 +42,11 @@
   <version>27.0.1-jre</version>
 </dependency>
 <dependency>
+  <groupId>com.google.protobuf</groupId>
+  <artifactId>protobuf-java</artifactId>
+  <version>3.8.0</version>
+</dependency>
+<dependency>
   <groupId>com.sun.xml.bind</groupId>
   <artifactId>jaxb-core</artifactId>
   <version>2.3.0</version>
@@ -74,7 +79,7 @@
 <dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
-  <version>7.1.0</version>
+  <version>7.3.0</version>
 </dependency>
   </dependencies>
   <build>
@@ -111,6 +116,41 @@
             </configuration>
           </execution>
         </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>2.6.1</version>
+        <configuration>
+          <!-- optional: limit format enforcement to just the files changed by this feature branch -->
+<!--          <ratchetFrom>origin/main</ratchetFrom>-->
+          <formats>
+            <!-- you can define as many formats as you want, each is independent -->
+            <format>
+              <!-- define the files to apply to -->
+              <includes>
+                <include>.java</include>
+              </includes>
+              <excludes>
+              </excludes>
+              <!-- define the steps to apply to those files -->
+              <trimTrailingWhitespace/>
+              <endWithNewline/>
+              <indent>
+                <tabs>true</tabs>
+                <spacesPerTab>4</spacesPerTab>
+              </indent>
+            </format>
+          </formats>
+          <!-- define a language-specific format -->
+          <java>
+            <googleJavaFormat>
+              <version>1.7</version> <!-- optional -->
+              <style>GOOGLE</style>  <!-- or AOSP (optional) -->
+            </googleJavaFormat>
+          </java>
+        </configuration>
       </plugin>
     </plugins>
   </build>

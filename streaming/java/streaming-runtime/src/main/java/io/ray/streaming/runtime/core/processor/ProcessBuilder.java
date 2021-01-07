@@ -14,8 +14,10 @@ public class ProcessBuilder {
 
   public static StreamProcessor buildProcessor(StreamOperator streamOperator) {
     OperatorType type = streamOperator.getOpType();
-    LOGGER.info("Building StreamProcessor, operator type = {}, operator = {}.", type,
-        streamOperator.getClass().getSimpleName().toString());
+    LOGGER.info(
+        "Building StreamProcessor, operator type = {}, operator = {}.",
+        type,
+        streamOperator.getClass().getSimpleName());
     switch (type) {
       case SOURCE:
         return new SourceProcessor<>((SourceOperator) streamOperator);

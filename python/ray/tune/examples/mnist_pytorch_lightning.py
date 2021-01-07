@@ -13,14 +13,14 @@ import os
 
 # __import_tune_begin__
 import shutil
-from functools import partial
-from tempfile import mkdtemp
-from pytorch_lightning.callbacks import Callback
+import tempfile
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
+from ray.tune.integration.pytorch_lightning import TuneReportCallback, \
+    TuneReportCheckpointCallback
 # __import_tune_end__
 
 
@@ -76,27 +76,22 @@ class LightningMNISTClassifier(pl.LightningModule):
         loss = self.cross_entropy_loss(logits, y)
         accuracy = self.accuracy(logits, y)
 
-        logs = {"ptl/train_loss": loss, "ptl/train_accuracy": accuracy}
-        return {"loss": loss, "log": logs}
+        self.log("ptl/train_loss", loss)
+        self.log("ptl/train_accuracy", accuracy)
+        return loss
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
         logits = self.forward(x)
         loss = self.cross_entropy_loss(logits, y)
         accuracy = self.accuracy(logits, y)
-
         return {"val_loss": loss, "val_accuracy": accuracy}
 
     def validation_epoch_end(self, outputs):
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
-        logs = {"ptl/val_loss": avg_loss, "ptl/val_accuracy": avg_acc}
-
-        return {
-            "avg_val_loss": avg_loss,
-            "avg_val_accuracy": avg_acc,
-            "log": logs
-        }
+        self.log("ptl/val_loss", avg_loss)
+        self.log("ptl/val_accuracy", avg_acc)
 
     @staticmethod
     def download_data(data_dir):
@@ -131,15 +126,6 @@ def train_mnist(config):
 # __lightning_end__
 
 
-# __tune_callback_begin__
-class TuneReportCallback(Callback):
-    def on_validation_end(self, trainer, pl_module):
-        tune.report(
-            loss=trainer.callback_metrics["avg_val_loss"].item(),
-            mean_accuracy=trainer.callback_metrics["avg_val_accuracy"].item())
-# __tune_callback_end__
-
-
 # __tune_train_begin__
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     model = LightningMNISTClassifier(config, data_dir)
@@ -149,35 +135,39 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
-        callbacks=[TuneReportCallback()])
-
+        callbacks=[
+            TuneReportCallback(
+                {
+                    "loss": "ptl/val_loss",
+                    "mean_accuracy": "ptl/val_accuracy"
+                },
+                on="validation_end")
+        ])
     trainer.fit(model)
 # __tune_train_end__
 
 
-# __tune_checkpoint_callback_begin__
-class CheckpointCallback(Callback):
-    def on_validation_end(self, trainer, pl_module):
-        with tune.checkpoint_dir(step=trainer.global_step) as checkpoint_dir:
-            trainer.save_checkpoint(os.path.join(checkpoint_dir, "checkpoint"))
-# __tune_checkpoint_callback_end__
-
-
 # __tune_train_checkpoint_begin__
-def train_mnist_tune_checkpoint(
-    config,
-    checkpoint_dir=None,
-    data_dir=None,
-    num_epochs=10,
-    num_gpus=0):
+def train_mnist_tune_checkpoint(config,
+                                checkpoint_dir=None,
+                                data_dir=None,
+                                num_epochs=10,
+                                num_gpus=0):
     trainer = pl.Trainer(
         max_epochs=num_epochs,
         gpus=num_gpus,
         logger=TensorBoardLogger(
             save_dir=tune.get_trial_dir(), name="", version="."),
         progress_bar_refresh_rate=0,
-        callbacks=[CheckpointCallback(),
-                   TuneReportCallback()])
+        callbacks=[
+            TuneReportCheckpointCallback(
+                metrics={
+                    "loss": "ptl/val_loss",
+                    "mean_accuracy": "ptl/val_accuracy"
+                },
+                filename="checkpoint",
+                on="validation_end")
+        ])
     if checkpoint_dir:
         # Currently, this leads to errors:
         # model = LightningMNISTClassifier.load_from_checkpoint(
@@ -186,11 +176,11 @@ def train_mnist_tune_checkpoint(
         ckpt = pl_load(
             os.path.join(checkpoint_dir, "checkpoint"),
             map_location=lambda storage, loc: storage)
-        model = LightningMNISTClassifier._load_model_state(ckpt, config=config)
+        model = LightningMNISTClassifier._load_model_state(
+            ckpt, config=config, data_dir=data_dir)
         trainer.current_epoch = ckpt["epoch"]
     else:
-        model = LightningMNISTClassifier(
-            config=config, data_dir=data_dir)
+        model = LightningMNISTClassifier(config=config, data_dir=data_dir)
 
     trainer.fit(model)
 # __tune_train_checkpoint_end__
@@ -198,7 +188,7 @@ def train_mnist_tune_checkpoint(
 
 # __tune_asha_begin__
 def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = mkdtemp(prefix="mnist_data_")
+    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -209,8 +199,6 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     scheduler = ASHAScheduler(
-        metric="loss",
-        mode="min",
         max_t=num_epochs,
         grace_period=1,
         reduction_factor=2)
@@ -219,18 +207,25 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
-    tune.run(
-        partial(
+    analysis = tune.run(
+        tune.with_parameters(
             train_mnist_tune,
             data_dir=data_dir,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial),
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": gpus_per_trial
+        },
+        metric="loss",
+        mode="min",
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
         name="tune_mnist_asha")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
     shutil.rmtree(data_dir)
 # __tune_asha_end__
@@ -238,7 +233,7 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0):
 
 # __tune_pbt_begin__
 def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
-    data_dir = mkdtemp(prefix="mnist_data_")
+    data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     LightningMNISTClassifier.download_data(data_dir)
 
     config = {
@@ -249,12 +244,9 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     scheduler = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="loss",
-        mode="min",
         perturbation_interval=4,
         hyperparam_mutations={
-            "lr": lambda: tune.loguniform(1e-4, 1e-1).func(None),
+            "lr": tune.loguniform(1e-4, 1e-1),
             "batch_size": [32, 64, 128]
         })
 
@@ -262,18 +254,25 @@ def tune_mnist_pbt(num_samples=10, num_epochs=10, gpus_per_trial=0):
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
-    tune.run(
-        partial(
+    analysis = tune.run(
+        tune.with_parameters(
             train_mnist_tune_checkpoint,
             data_dir=data_dir,
             num_epochs=num_epochs,
             num_gpus=gpus_per_trial),
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": gpus_per_trial
+        },
+        metric="loss",
+        mode="min",
         config=config,
         num_samples=num_samples,
         scheduler=scheduler,
         progress_reporter=reporter,
         name="tune_mnist_pbt")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
 
     shutil.rmtree(data_dir)
 # __tune_pbt_end__
@@ -288,8 +287,8 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_mnist_asha(num_samples=1, num_epochs=1, gpus_per_trial=0)
-        tune_mnist_pbt(num_samples=1, num_epochs=1, gpus_per_trial=0)
+        tune_mnist_asha(num_samples=1, num_epochs=6, gpus_per_trial=0)
+        tune_mnist_pbt(num_samples=1, num_epochs=6, gpus_per_trial=0)
     else:
         # ASHA scheduler
         tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0)

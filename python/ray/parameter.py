@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -41,6 +42,12 @@ class RayParams:
             on. If not set or set to 0, random ports will be chosen.
         max_worker_port (int): The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
+        worker_port_list (str): An explicit list of ports to be used for
+            workers (comma-separated). Overrides min_worker_port and
+            max_worker_port.
+        ray_client_server_port (int): The port number the ray client server
+            will bind on. If not set, the ray client server will not
+            be started.
         object_ref_seed (int): Used to seed the deterministic generation of
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
@@ -84,15 +91,13 @@ class RayParams:
             monitor the log files for all processes on this node and push their
             contents to Redis.
         autoscaling_config: path to autoscaling config file.
-        include_java (bool): If True, the raylet backend can also support
-            Java worker.
         java_worker_options (list): The command options for Java worker.
-        load_code_from_local: Whether load code from local file or from GCS.
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
-        _internal_config (str): JSON configuration for overriding
-            RayConfig defaults. For testing purposes ONLY.
+        _system_config (dict): Configuration for overriding RayConfig
+            defaults. Used to set system configuration and for experimental Ray
+            core feature flags.
         lru_evict (bool): Enable LRU eviction if space is needed.
         enable_object_reconstruction (bool): Enable plasma reconstruction on
             failure.
@@ -117,6 +122,8 @@ class RayParams:
                  raylet_ip_address=None,
                  min_worker_port=None,
                  max_worker_port=None,
+                 worker_port_list=None,
+                 ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
@@ -128,7 +135,7 @@ class RayParams:
                  worker_path=None,
                  huge_pages=False,
                  include_dashboard=None,
-                 dashboard_host="localhost",
+                 dashboard_host=ray_constants.DEFAULT_DASHBOARD_IP,
                  dashboard_port=ray_constants.DEFAULT_DASHBOARD_PORT,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
@@ -137,16 +144,13 @@ class RayParams:
                  temp_dir=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
-                 include_java=False,
                  java_worker_options=None,
-                 load_code_from_local=False,
                  start_initial_python_workers_for_first_job=False,
-                 _internal_config=None,
+                 _system_config=None,
                  enable_object_reconstruction=False,
                  metrics_agent_port=None,
                  metrics_export_port=None,
-                 lru_evict=False,
-                 object_spilling_config=None):
+                 lru_evict=False):
         self.object_ref_seed = object_ref_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
@@ -164,6 +168,8 @@ class RayParams:
         self.raylet_ip_address = raylet_ip_address
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
+        self.worker_port_list = worker_port_list
+        self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output
@@ -181,42 +187,40 @@ class RayParams:
         self.temp_dir = temp_dir
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
-        self.include_java = include_java
         self.java_worker_options = java_worker_options
-        self.load_code_from_local = load_code_from_local
         self.metrics_agent_port = metrics_agent_port
         self.metrics_export_port = metrics_export_port
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
-        self._internal_config = _internal_config
+        self._system_config = _system_config or {}
         self._lru_evict = lru_evict
         self._enable_object_reconstruction = enable_object_reconstruction
-        self.object_spilling_config = object_spilling_config
         self._check_usage()
 
         # Set the internal config options for LRU eviction.
         if lru_evict:
             # Turn off object pinning.
-            if self._internal_config is None:
-                self._internal_config = dict()
-            if self._internal_config.get("object_pinning_enabled", False):
+            if self._system_config is None:
+                self._system_config = dict()
+            if self._system_config.get("object_pinning_enabled", False):
                 raise Exception(
                     "Object pinning cannot be enabled if using LRU eviction.")
-            self._internal_config["object_pinning_enabled"] = False
-            self._internal_config["object_store_full_max_retries"] = -1
-            self._internal_config["free_objects_period_milliseconds"] = 1000
+            self._system_config["object_pinning_enabled"] = False
+            self._system_config["object_store_full_max_retries"] = -1
+            self._system_config["free_objects_period_milliseconds"] = 1000
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
             # Turn off object pinning.
-            if self._internal_config is None:
-                self._internal_config = dict()
+            if self._system_config is None:
+                self._system_config = dict()
             if lru_evict:
                 raise Exception(
                     "Object reconstruction cannot be enabled if using LRU "
                     "eviction.")
-            self._internal_config["lineage_pinning_enabled"] = True
-            self._internal_config["free_objects_period_milliseconds"] = -1
+            print(self._system_config)
+            self._system_config["lineage_pinning_enabled"] = True
+            self._system_config["free_objects_period_milliseconds"] = -1
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.
@@ -250,6 +254,20 @@ class RayParams:
         self._check_usage()
 
     def _check_usage(self):
+        if self.worker_port_list is not None:
+            for port_str in self.worker_port_list.split(","):
+                try:
+                    port = int(port_str)
+                except ValueError as e:
+                    raise ValueError(
+                        "worker_port_list must be a comma-separated " +
+                        "list of integers: {}".format(e)) from None
+
+                if port < 1024 or port > 65535:
+                    raise ValueError(
+                        "Ports in worker_port_list must be "
+                        "between 1024 and 65535. Got: {}".format(port))
+
         # Used primarily for testing.
         if os.environ.get("RAY_USE_RANDOM_PORTS", False):
             if self.min_worker_port is None and self.min_worker_port is None:
@@ -299,3 +317,13 @@ class RayParams:
         if numpy_major <= 1 and numpy_minor < 16:
             logger.warning("Using ray with numpy < 1.16.0 will result in slow "
                            "serialization. Upgrade numpy if using with ray.")
+
+        # Make sure object spilling configuration is applicable.
+        object_spilling_config = self._system_config.get(
+            "object_spilling_config", {})
+        if object_spilling_config:
+            object_spilling_config = json.loads(object_spilling_config)
+            from ray import external_storage
+            # Validate external storage usage.
+            external_storage.setup_external_storage(object_spilling_config)
+            external_storage.reset_external_storage()

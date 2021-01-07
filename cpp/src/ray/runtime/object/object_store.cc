@@ -7,8 +7,12 @@
 namespace ray {
 namespace api {
 
-void ObjectStore::Put(const ObjectID &object_id, std::shared_ptr<msgpack::sbuffer> data) {
-  PutRaw(object_id, data);
+void ObjectStore::Put(std::shared_ptr<msgpack::sbuffer> data, ObjectID *object_id) {
+  PutRaw(data, object_id);
+}
+
+void ObjectStore::Put(std::shared_ptr<msgpack::sbuffer> data, const ObjectID &object_id) {
+  PutRaw(data, object_id);
 }
 
 std::shared_ptr<msgpack::sbuffer> ObjectStore::Get(const ObjectID &object_id,

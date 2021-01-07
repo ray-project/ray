@@ -3,6 +3,7 @@ package io.ray.streaming.runtime.core.processor;
 import io.ray.streaming.api.collector.Collector;
 import io.ray.streaming.api.context.RuntimeContext;
 import io.ray.streaming.operator.Operator;
+import java.io.Serializable;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,16 @@ public abstract class StreamProcessor<T, P extends Operator> implements Processo
       this.operator.open(collectors, runtimeContext);
     }
     LOGGER.info("opened {}", this);
+  }
+
+  @Override
+  public Serializable saveCheckpoint() {
+    return operator.saveCheckpoint();
+  }
+
+  @Override
+  public void loadCheckpoint(Serializable checkpointObject) {
+    operator.loadCheckpoint(checkpointObject);
   }
 
   @Override

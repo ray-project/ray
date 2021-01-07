@@ -55,15 +55,15 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
  * Signature: (Ljava/util/List;IJ)Ljava/util/List;
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
-    JNIEnv *, jclass, jobject, jint, jlong);
+    JNIEnv *, jclass, jobject, jint, jlong, jboolean);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativeDelete
- * Signature: (Ljava/util/List;ZZ)V
+ * Signature: (Ljava/util/List;Z)V
  */
 JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
-    JNIEnv *, jclass, jobject, jboolean, jboolean);
+    JNIEnv *, jclass, jobject, jboolean);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
@@ -93,6 +93,34 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeRemoveLocalReference(JNIEnv *
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_object_NativeObjectStore_nativeGetAllReferenceCounts(JNIEnv *,
                                                                          jclass);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeGetOwnerAddress
+ * Signature: ([B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnerAddress(JNIEnv *, jclass,
+                                                                   jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativePromoteAndGetOwnershipInfo
+ * Signature: ([B)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativePromoteAndGetOwnershipInfo(JNIEnv *,
+                                                                              jclass,
+                                                                              jbyteArray);
+
+/*
+ * Class:     io_ray_runtime_object_NativeObjectStore
+ * Method:    nativeRegisterOwnershipInfoAndResolveFuture
+ * Signature: ([B[B[B)V
+ */
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_object_NativeObjectStore_nativeRegisterOwnershipInfoAndResolveFuture(
+    JNIEnv *, jclass, jbyteArray, jbyteArray, jbyteArray);
 
 #ifdef __cplusplus
 }

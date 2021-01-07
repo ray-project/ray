@@ -3,6 +3,8 @@ import os
 import torch
 import torch.nn as nn
 import argparse
+
+from filelock import FileLock
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from torch.utils.data import DataLoader, Subset
@@ -11,9 +13,9 @@ import torchvision.transforms as transforms
 
 import ray
 from ray.tune import CLIReporter
-from ray.util.sgd.torch import TorchTrainer
+from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
-from ray.util.sgd.utils import BATCH_SIZE
+from ray.util.sgd.utils import BATCH_SIZE, override
 
 
 def initialization_hook():
@@ -26,42 +28,62 @@ def initialization_hook():
     # os.environ["NCCL_DEBUG"] = "INFO"
 
 
-def cifar_creator(config):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])  # meanstd transformation
+class CifarTrainingOperator(TrainingOperator):
+    @override(TrainingOperator)
+    def setup(self, config):
+        # Create model.
+        model = ResNet18(config)
 
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-    train_dataset = CIFAR10(
-        root="~/data", train=True, download=True, transform=transform_train)
-    validation_dataset = CIFAR10(
-        root="~/data", train=False, download=False, transform=transform_test)
+        # Create optimizer.
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=config.get("lr", 0.1),
+            momentum=config.get("momentum", 0.9))
 
-    if config.get("test_mode"):
-        train_dataset = Subset(train_dataset, list(range(64)))
-        validation_dataset = Subset(validation_dataset, list(range(64)))
+        # Load in training and validation data.
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010)),
+        ])  # meanstd transformation
 
-    train_loader = DataLoader(
-        train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
-    validation_loader = DataLoader(
-        validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
-    return train_loader, validation_loader
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465),
+                                 (0.2023, 0.1994, 0.2010)),
+        ])
 
+        with FileLock(".ray.lock"):
+            train_dataset = CIFAR10(
+                root="~/data",
+                train=True,
+                download=True,
+                transform=transform_train)
+            validation_dataset = CIFAR10(
+                root="~/data",
+                train=False,
+                download=False,
+                transform=transform_test)
 
-def optimizer_creator(model, config):
-    """Returns optimizer"""
-    return torch.optim.SGD(
-        model.parameters(),
-        lr=config.get("lr", 0.1),
-        momentum=config.get("momentum", 0.9))
+        if config.get("test_mode"):
+            train_dataset = Subset(train_dataset, list(range(64)))
+            validation_dataset = Subset(validation_dataset, list(range(64)))
+
+        train_loader = DataLoader(
+            train_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+        validation_loader = DataLoader(
+            validation_dataset, batch_size=config[BATCH_SIZE], num_workers=2)
+
+        # Create loss.
+        criterion = nn.CrossEntropyLoss()
+
+        self.model, self.optimizer, self.criterion = \
+            self.register(models=model, optimizers=optimizer,
+                          criterion=criterion,)
+        self.register_data(
+            train_loader=train_loader, validation_loader=validation_loader)
 
 
 if __name__ == "__main__":
@@ -101,10 +123,7 @@ if __name__ == "__main__":
     ray.init(address=args.address, log_to_driver=True)
 
     TorchTrainable = TorchTrainer.as_trainable(
-        model_creator=ResNet18,
-        data_creator=cifar_creator,
-        optimizer_creator=optimizer_creator,
-        loss_creator=nn.CrossEntropyLoss,
+        training_operator_cls=CifarTrainingOperator,
         initialization_hook=initialization_hook,
         num_workers=args.num_workers,
         config={

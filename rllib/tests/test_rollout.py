@@ -2,6 +2,7 @@ from gym.spaces import Box, Discrete
 import os
 from pathlib import Path
 import re
+import sys
 import unittest
 
 import ray
@@ -169,7 +170,7 @@ def learn_test_multi_agent_plus_rollout(algo):
                 "policy_mapping_fn": policy_fn,
             },
         }
-        stop = {"episode_reward_mean": 190.0}
+        stop = {"episode_reward_mean": 180.0}
         tune.run(
             algo,
             config=config,
@@ -257,7 +258,6 @@ class TestRolloutLearntPolicy(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
     import pytest
 
     # One can specify the specific TestCase class to run.

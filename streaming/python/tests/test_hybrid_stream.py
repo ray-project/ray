@@ -1,8 +1,9 @@
-import json
+import os
+import subprocess
+
 import ray
 from ray.streaming import StreamingContext
-import subprocess
-import os
+from ray.test_utils import wait_for_condition
 
 
 def map_func1(x):
@@ -28,16 +29,8 @@ def test_hybrid_stream():
         "../../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar")
     jar_path = os.path.abspath(jar_path)
     print("jar_path", jar_path)
-    java_worker_options = json.dumps(["-classpath", jar_path])
-    print("java_worker_options", java_worker_options)
     assert not ray.is_initialized()
-    ray.init(
-        load_code_from_local=True,
-        include_java=True,
-        java_worker_options=java_worker_options,
-        _internal_config=json.dumps({
-            "num_workers_per_process_java": 1
-        }))
+    ray.init(job_config=ray.job_config.JobConfig(code_search_path=[jar_path]))
 
     sink_file = "/tmp/ray_streaming_test_hybrid_stream.txt"
     if os.path.exists(sink_file):
@@ -47,6 +40,7 @@ def test_hybrid_stream():
         print("HybridStreamTest", x)
         with open(sink_file, "a") as f:
             f.write(str(x))
+            f.flush()
 
     ctx = StreamingContext.Builder().build()
     ctx.from_values("a", "b", "c") \
@@ -56,14 +50,23 @@ def test_hybrid_stream():
         .as_python_stream() \
         .sink(sink_func)
     ctx.submit("HybridStreamTest")
-    import time
-    time.sleep(3)
+
+    def check_succeed():
+        if os.path.exists(sink_file):
+            import time
+            time.sleep(3)  # Wait all data be written
+            with open(sink_file, "r") as f:
+                result = f.read()
+                assert "a" in result
+                assert "b" not in result
+                assert "c" in result
+            print("Execution succeed")
+            return True
+        return False
+
+    wait_for_condition(check_succeed, timeout=60, retry_interval_ms=1000)
+    print("Execution succeed")
     ray.shutdown()
-    with open(sink_file, "r") as f:
-        result = f.read()
-        assert "a" in result
-        assert "b" not in result
-        assert "c" in result
 
 
 if __name__ == "__main__":

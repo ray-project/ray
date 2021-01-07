@@ -8,11 +8,18 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
+import tempfile
 import datetime
 
+from ray.test_utils import client_test_enabled
+from ray.test_utils import wait_for_condition
+from ray.test_utils import wait_for_pid_to_exit
+from ray.tests.client_test_utils import create_remote_signal_actor
+
 import ray
-import ray.test_utils
-import ray.cluster_utils
+# NOTE: We have to import setproctitle after ray because we bundle setproctitle
+# with ray.
+import setproctitle  # noqa
 
 
 def test_caching_actors(shutdown_only):
@@ -233,6 +240,7 @@ def test_actor_import_counter(ray_start_10_cpus):
     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass
@@ -252,6 +260,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_class_name(ray_start_regular):
     @ray.remote
     class Foo:
@@ -613,6 +622,8 @@ def test_random_id_generation(ray_start_regular_shared):
     assert f1._actor_id != f2._actor_id
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="differing inheritence structure")
 def test_actor_inheritance(ray_start_regular_shared):
     class NonActorBase:
         def __init__(self):
@@ -625,8 +636,7 @@ def test_actor_inheritance(ray_start_regular_shared):
             pass
 
     # Test that you can't instantiate an actor class directly.
-    with pytest.raises(
-            Exception, match="Actors cannot be instantiated directly."):
+    with pytest.raises(Exception, match="cannot be instantiated directly"):
         ActorBase()
 
     # Test that you can't inherit from an actor class.
@@ -640,21 +650,22 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="ray.method unimplemented")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
         def method0(self):
             return 1
 
-        @ray.method(num_return_vals=1)
+        @ray.method(num_returns=1)
         def method1(self):
             return 1
 
-        @ray.method(num_return_vals=2)
+        @ray.method(num_returns=2)
         def method2(self):
             return 1, 2
 
-        @ray.method(num_return_vals=3)
+        @ray.method(num_returns=3)
         def method3(self):
             return 1, 2, 3
 
@@ -671,6 +682,33 @@ def test_multiple_return_values(ray_start_regular_shared):
 
     id3a, id3b, id3c = f.method3.remote()
     assert ray.get([id3a, id3b, id3c]) == [1, 2, 3]
+
+
+def test_options_num_returns(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method(self):
+            return 1, 2
+
+    f = Foo.remote()
+
+    obj = f.method.remote()
+    assert ray.get(obj) == (1, 2)
+
+    obj1, obj2 = f.method.options(num_returns=2).remote()
+    assert ray.get([obj1, obj2]) == [1, 2]
+
+
+def test_options_name(ray_start_regular_shared):
+    @ray.remote
+    class Foo:
+        def method(self, name):
+            assert setproctitle.getproctitle() == f"ray::{name}"
+
+    f = Foo.remote()
+
+    ray.get(f.method.options(name="foo").remote("foo"))
+    ray.get(f.method.options(name="bar").remote("bar"))
 
 
 def test_define_actor(ray_start_regular_shared):
@@ -702,13 +740,13 @@ def test_actor_deletion(ray_start_regular_shared):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     a = None
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     actors = [Actor.remote() for _ in range(10)]
     pids = ray.get([a.getpid.remote() for a in actors])
     a = None
     actors = None
-    [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
+    [wait_for_pid_to_exit(pid) for pid in pids]
 
 
 def test_actor_method_deletion(ray_start_regular_shared):
@@ -737,7 +775,8 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor(ray)
+    signal = SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     # Pass the handle to another task that cannot run yet.
@@ -748,7 +787,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())
     assert ray.get(x_id) == 1
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
 
 def test_multiple_actors(ray_start_regular_shared):
@@ -834,6 +873,63 @@ def test_actor_creation_latency(ray_start_regular_shared):
     end = datetime.datetime.now()
     print("actor_create_time_consume = {}, total_time_consume = {}".format(
         actor_create_time - start, end - start))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "exit_condition",
+    [
+        # "out_of_scope", TODO(edoakes): enable this once fixed.
+        "__ray_terminate__",
+        "ray.actor.exit_actor",
+        "ray.kill"
+    ])
+def test_atexit_handler(ray_start_regular_shared, exit_condition):
+    @ray.remote
+    class A():
+        def __init__(self, tmpfile, data):
+            import atexit
+
+            def f(*args, **kwargs):
+                with open(tmpfile, "w") as f:
+                    f.write(data)
+                    f.flush()
+
+            atexit.register(f)
+
+        def ready(self):
+            pass
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    data = "hello"
+    tmpfile = tempfile.NamedTemporaryFile()
+    a = A.remote(tmpfile.name, data)
+    ray.get(a.ready.remote())
+
+    if exit_condition == "out_of_scope":
+        del a
+    elif exit_condition == "__ray_terminate__":
+        ray.wait([a.__ray_terminate__.remote()])
+    elif exit_condition == "ray.actor.exit_actor":
+        ray.wait([a.exit.remote()])
+    elif exit_condition == "ray.kill":
+        ray.kill(a)
+    else:
+        assert False, "Unrecognized condition"
+
+    def check_file_written():
+        with open(tmpfile.name) as f:
+            if f.read() == data:
+                return True
+            return False
+
+    # ray.kill() should not trigger atexit handlers, all other methods should.
+    if exit_condition == "ray.kill":
+        assert not check_file_written()
+    else:
+        wait_for_condition(check_file_written)
 
 
 if __name__ == "__main__":

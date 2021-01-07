@@ -14,13 +14,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   protected ActorCreationOptions.Builder builder = new ActorCreationOptions.Builder();
 
   /**
-   * Set the actor name of a named actor.
-   * This named actor is only accessible from this job by this name via
-   * {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is accessible
-   * from all jobs, use {@link BaseActorCreator#setGlobalName(java.lang.String)} instead.
+   * Set the actor name of a named actor. This named actor is only accessible from this job by this
+   * name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that is
+   * accessible from all jobs, use {@link BaseActorCreator#setGlobalName(java.lang.String)} instead.
    *
-   * @param name The name of the named actor.
-   * @return self
+   * @param name The name of the named actor. Returns self
    * @see io.ray.api.options.ActorCreationOptions.Builder#setName(String)
    */
   public T setName(String name) {
@@ -29,12 +27,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the name of this actor. This actor will be accessible from all jobs by this name via
-   * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
-   * only accessible from this job, use {@link BaseActorCreator#setName(java.lang.String)} instead.
+   * Set the name of this actor. This actor will be accessible from all jobs by this name via {@link
+   * Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is only
+   * accessible from this job, use {@link BaseActorCreator#setName(java.lang.String)} instead.
    *
-   * @param name The name of the named actor.
-   * @return self
+   * @param name The name of the named actor. Returns self
    * @see io.ray.api.options.ActorCreationOptions.Builder#setGlobalName(String)
    */
   public T setGlobalName(String name) {
@@ -43,13 +40,12 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set a custom resource requirement to reserve for the lifetime of this actor.
-   * This method can be called multiple times. If the same resource is set multiple times,
-   * the latest quantity will be used.
+   * Set a custom resource requirement to reserve for the lifetime of this actor. This method can be
+   * called multiple times. If the same resource is set multiple times, the latest quantity will be
+   * used.
    *
    * @param resourceName resource name
-   * @param resourceQuantity resource quantity
-   * @return self
+   * @param resourceQuantity resource quantity Returns self
    * @see ActorCreationOptions.Builder#setResource(java.lang.String, java.lang.Double)
    */
   public T setResource(String resourceName, Double resourceQuantity) {
@@ -58,12 +54,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set custom resource requirements to reserve for the lifetime of this actor.
-   * This method can be called multiple times. If the same resource is set multiple times,
-   * the latest quantity will be used.
+   * Set custom resource requirements to reserve for the lifetime of this actor. This method can be
+   * called multiple times. If the same resource is set multiple times, the latest quantity will be
+   * used.
    *
-   * @param resources requirements for multiple resources.
-   * @return self
+   * @param resources requirements for multiple resources. Returns self
    * @see BaseActorCreator#setResources(java.util.Map)
    */
   public T setResources(Map<String, Double> resources) {
@@ -76,8 +71,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    * unexpectedly. The minimum valid value is 0 (default), which indicates that the actor doesn't
    * need to be restarted. A value of -1 indicates that an actor should be restarted indefinitely.
    *
-   * @param maxRestarts max number of actor restarts
-   * @return self
+   * @param maxRestarts max number of actor restarts Returns self
    * @see ActorCreationOptions.Builder#setMaxRestarts(int)
    */
   public T setMaxRestarts(int maxRestarts) {
@@ -87,12 +81,11 @@ public class BaseActorCreator<T extends BaseActorCreator> {
 
   /**
    * Set the max number of concurrent calls to allow for this actor.
-   * <p>
-   * The max concurrency defaults to 1 for threaded execution.
-   * Note that the execution order is not guaranteed when max_concurrency > 1.
    *
-   * @param maxConcurrency The max number of concurrent calls to allow for this actor.
-   * @return self
+   * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
+   * not guaranteed when {@code max_concurrency > 1}.
+   *
+   * @param maxConcurrency The max number of concurrent calls to allow for this actor. Returns self
    * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */
   public T setMaxConcurrency(int maxConcurrency) {
@@ -104,8 +97,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    * Set the placement group to place this actor in.
    *
    * @param group The placement group of the actor.
-   * @param bundleIndex The index of the bundle to place this actor in.
-   * @return self
+   * @param bundleIndex The index of the bundle to place this actor in. Returns self
    * @see ActorCreationOptions.Builder#setPlacementGroup(PlacementGroup, int)
    */
   public T setPlacementGroup(PlacementGroup group, int bundleIndex) {
@@ -121,5 +113,4 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   protected ActorCreationOptions buildOptions() {
     return builder.build();
   }
-
 }

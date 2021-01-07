@@ -20,16 +20,12 @@ package io.ray.streaming.state.config;
 
 import java.util.Map;
 
-/**
- * state config keys.
- * Todo replace this to config module.
- */
+/** state config keys. Todo replace this to config module. */
 public final class ConfigKey {
 
-  /**
-   * backend
-   */
+  /** backend */
   public static final String STATE_BACKEND_TYPE = "state.backend.type";
+
   public static final String STATE_TABLE_NAME = "state.table.name";
   public static final String STATE_STRATEGY_MODE = "state.strategy.mode";
   public static final String NUMBER_PER_CHECKPOINT = "number.per.checkpoint";

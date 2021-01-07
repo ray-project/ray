@@ -21,51 +21,33 @@ public class Container implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(Container.class);
 
-  /**
-   * container id
-   */
-  private ContainerID id;
+  /** container id */
+  private ContainerId id;
 
-  /**
-   * Container address
-   */
+  /** Container address */
   private String address;
 
-  /**
-   * Container hostname
-   */
+  /** Container hostname */
   private String hostname;
 
-  /**
-   * Container unique id fetched from raylet
-   */
+  /** Container unique id fetched from raylet */
   private UniqueId nodeId;
 
-  /**
-   * Container available resources
-   */
+  /** Container available resources */
   private Map<String, Double> availableResources = new HashMap<>();
 
-  /**
-   * List of {@link ExecutionVertex} ids
-   * belong to the container.
-   */
+  /** List of {@link ExecutionVertex} ids belong to the container. */
   private List<Integer> executionVertexIds = new ArrayList<>();
 
-  /**
-   * Capacity is max actor number could be allocated in the container
-   */
+  /** Capacity is max actor number could be allocated in the container */
   private int capacity = 0;
 
-  public Container() {
-  }
+  public Container() {}
 
   public Container(
-      String address,
-      UniqueId nodeId, String hostname,
-      Map<String, Double> availableResources) {
+      String address, UniqueId nodeId, String hostname, Map<String, Double> availableResources) {
 
-    this.id = new ContainerID();
+    this.id = new ContainerId();
     this.address = address;
     this.hostname = hostname;
     this.nodeId = nodeId;
@@ -74,18 +56,14 @@ public class Container implements Serializable {
 
   public static Container from(NodeInfo nodeInfo) {
     return new Container(
-        nodeInfo.nodeAddress,
-        nodeInfo.nodeId,
-        nodeInfo.nodeHostname,
-        nodeInfo.resources
-    );
+        nodeInfo.nodeAddress, nodeInfo.nodeId, nodeInfo.nodeHostname, nodeInfo.resources);
   }
 
-  public ContainerID getId() {
+  public ContainerId getId() {
     return id;
   }
 
-  public void setId(ContainerID id) {
+  public void setId(ContainerId id) {
     this.id = id;
   }
 
@@ -112,7 +90,6 @@ public class Container implements Serializable {
   public int getCapacity() {
     return capacity;
   }
-
 
   public void updateCapacity(int capacity) {
     LOG.info("Update container capacity, old value: {}, new value: {}.", this.capacity, capacity);
@@ -151,8 +128,10 @@ public class Container implements Serializable {
       executionVertexIds.removeIf(id -> id == vertex.getExecutionVertexId());
       reclaimResource(vertex.getResource());
     } else {
-      throw new RuntimeException(String.format("Current container [%s] not found vertex [%s].",
-          this, vertex.getExecutionJobVertexName()));
+      throw new RuntimeException(
+          String.format(
+              "Current container [%s] not found vertex [%s].",
+              this, vertex.getExecutionJobVertexName()));
     }
   }
 
@@ -161,24 +140,36 @@ public class Container implements Serializable {
   }
 
   private void decreaseResource(Map<String, Double> allocatedResource) {
-    allocatedResource.forEach((k, v) -> {
-      Preconditions.checkArgument(this.availableResources.get(k) >= v,
-          String.format("Available resource %s not >= decreased resource %s",
-              this.availableResources.get(k), v));
-      Double newValue = this.availableResources.get(k) - v;
-      LOG.info("Decrease container {} resource [{}], from {} to {}.",
-          this.address, k, this.availableResources.get(k), newValue);
-      this.availableResources.put(k, newValue);
-    });
+    allocatedResource.forEach(
+        (k, v) -> {
+          Preconditions.checkArgument(
+              this.availableResources.get(k) >= v,
+              String.format(
+                  "Available resource %s not >= decreased resource %s",
+                  this.availableResources.get(k), v));
+          Double newValue = this.availableResources.get(k) - v;
+          LOG.info(
+              "Decrease container {} resource [{}], from {} to {}.",
+              this.address,
+              k,
+              this.availableResources.get(k),
+              newValue);
+          this.availableResources.put(k, newValue);
+        });
   }
 
   private void reclaimResource(Map<String, Double> allocatedResource) {
-    allocatedResource.forEach((k, v) -> {
-      Double newValue = this.availableResources.get(k) + v;
-      LOG.info("Reclaim container {} resource [{}], from {} to {}.",
-          this.address, k, this.availableResources.get(k), newValue);
-      this.availableResources.put(k, newValue);
-    });
+    allocatedResource.forEach(
+        (k, v) -> {
+          Double newValue = this.availableResources.get(k) + v;
+          LOG.info(
+              "Reclaim container {} resource [{}], from {} to {}.",
+              this.address,
+              k,
+              this.availableResources.get(k),
+              newValue);
+          this.availableResources.put(k, newValue);
+        });
   }
 
   @Override

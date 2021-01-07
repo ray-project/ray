@@ -27,52 +27,93 @@
 ///
 /// Common
 ///
-static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
-                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                              {CustomKey});
+static Histogram GcsLatency("gcs_latency",
+                            "The latency of a GCS (by default Redis) operation.", "us",
+                            {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
+                            {CustomKey});
 
 ///
 /// Raylet Metrics
 ///
-static Gauge CurrentWorker("current_worker",
-                           "This metric is used for reporting states of workers."
-                           "Through this, we can see the worker's state on dashboard.",
-                           "1 pcs", {LanguageKey, WorkerPidKey});
-
-static Gauge CurrentDriver("current_driver",
-                           "This metric is used for reporting states of drivers.",
-                           "1 pcs", {LanguageKey, DriverPidKey});
-
-static Count TaskCountReceived("task_count_received",
-                               "Number of tasks received by raylet.", "pcs", {});
-
 static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.", "pcs",
+                                    "The available resources on this node.", "",
                                     {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
-                                "The total resources on this node.", "pcs",
+                                "The total resources on this node.", "",
                                 {ResourceNameKey});
 
-static Gauge ActorStats("actor_stats", "Stat metrics of the actors in raylet.", "pcs",
-                        {ValueTypeKey});
+static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
 
-static Gauge ObjectManagerStats("object_manager_stats",
-                                "Stat the metric values of object in raylet", "pcs",
-                                {ValueTypeKey});
+static Gauge RestartingActors("restarting_actors", "Number of restarting actors.",
+                              "actors");
 
-static Gauge TaskDependencyManagerStats("task_dependency_manager_stats",
-                                        "Stat the metric values of task dependency.",
-                                        "pcs", {ValueTypeKey});
+static Gauge ObjectStoreAvailableMemory(
+    "object_store_available_memory",
+    "Amount of memory currently available in the object store.", "bytes");
 
-static Gauge SchedulingQueueStats("scheduling_queue_stats",
-                                  "Stats the metric values of scheduling queue.", "pcs",
-                                  {ValueTypeKey});
+static Gauge ObjectStoreUsedMemory(
+    "object_store_used_memory",
+    "Amount of memory currently occupied in the object store.", "bytes");
 
-static Gauge ReconstructionPolicyStats(
-    "reconstruction_policy_stats", "Stats the metric values of reconstruction policy.",
-    "pcs", {ValueTypeKey});
+static Gauge ObjectStoreLocalObjects("object_store_num_local_objects",
+                                     "Number of objects currently in the object store.",
+                                     "objects");
 
-static Gauge ConnectionPoolStats("connection_pool_stats",
-                                 "Stats the connection pool metrics.", "pcs",
-                                 {ValueTypeKey});
+static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
+                                       "Number of active pull requests for objects.",
+                                       "requests");
+
+static Gauge NumInfeasibleTasks(
+    "num_infeasible_tasks",
+    "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
+
+static Histogram HeartbeatReportMs(
+    "heartbeat_report_ms",
+    "Heartbeat report time in raylet. If this value is high, that means there's a high "
+    "system load. It is possible that this node will be killed because of missing "
+    "heartbeats.",
+    "ms", {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
+
+static Histogram ProcessStartupTimeMs("process_startup_time_ms",
+                                      "Time to start up a worker process.", "ms",
+                                      {1, 10, 100, 1000, 10000});
+
+static Gauge AvgNumScheduledTasks(
+    "avg_num_scheduled_tasks",
+    "Number of tasks that are queued on this node per second. It doesn't guarantee "
+    "that the task will be executed in this node. If the task is executed, it is "
+    "recorded as avg_num_executed_tasks. If the task is not executed and needs to be "
+    "scheduled in other nodes, it will be recorded as avg_num_spilled_back_tasks",
+    "tasks");
+
+static Gauge AvgNumExecutedTasks("avg_num_executed_tasks",
+                                 "Number of executed tasks on this node per second.",
+                                 "tasks");
+
+static Gauge AvgNumSpilledBackTasks("avg_num_spilled_back_tasks",
+                                    "Number of spilled back tasks per second.", "tasks");
+
+///
+/// GCS Server Metrics
+///
+static Count UnintentionalWorkerFailures(
+    "unintentional_worker_failures_total",
+    "Number of worker failures that are not intentional. For example, worker failures "
+    "due to system related errors.",
+    "");
+
+static Count NodeFailureTotal(
+    "node_failure_total", "Number of node failures that have happened in the cluster.",
+    "");
+
+static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
+                           "actors");
+
+static Gauge PendingPlacementGroups(
+    "pending_placement_groups", "Number of pending placement groups in the GCS server.",
+    "placement_groups");
+
+static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
+                                         "Outbound heartbeat payload size", "kb",
+                                         {10, 50, 100, 1000, 10000, 100000});

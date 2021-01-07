@@ -32,7 +32,6 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -63,10 +62,11 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 class CoreWorkerDirectActorTaskSubmitter
     : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
-                                     std::shared_ptr<CoreWorkerMemoryStore> store,
-                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
-      : client_factory_(client_factory),
+  CoreWorkerDirectActorTaskSubmitter(
+      std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
+      std::shared_ptr<CoreWorkerMemoryStore> store,
+      std::shared_ptr<TaskFinisherInterface> task_finisher)
+      : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
@@ -146,17 +146,17 @@ class CoreWorkerDirectActorTaskSubmitter
     /// (0-5) so far, and have received a successful reply for 4 tasks (0-3).
     /// 0 1 2 3 4 5 6 7 8 9
     ///             ^ next_send_position
-    ///         ^ num_completed_tasks
+    ///         ^ next_task_reply_position
     /// ^ caller_starts_at
     ///
     /// Suppose the actor crashes and recovers. Then, caller_starts_at is reset
-    /// to the current num_completed_tasks. caller_starts_at is then subtracted
+    /// to the current next_task_reply_position. caller_starts_at is then subtracted
     /// from each task's counter, so the recovered actor will receive the
     /// sequence numbers 0, 1, 2 (and so on) for tasks 4, 5, 6, respectively.
     /// Therefore, the recovered actor will restart execution from task 4.
     /// 0 1 2 3 4 5 6 7 8 9
     ///             ^ next_send_position
-    ///         ^ num_completed_tasks
+    ///         ^ next_task_reply_position
     ///         ^ caller_starts_at
     ///
     /// New actor tasks will continue to be sent even while tasks are being
@@ -166,7 +166,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// received a successful reply for task 4.
     /// 0 1 2 3 4 5 6 7 8 9
     ///               ^ next_send_position
-    ///           ^ num_completed_tasks
+    ///           ^ next_task_reply_position
     ///         ^ caller_starts_at
     ///
     /// The send position of the next task to send to this actor. This sequence
@@ -180,8 +180,18 @@ class CoreWorkerDirectActorTaskSubmitter
     /// that we will never send to the actor again. This is used to reset
     /// caller_starts_at if the actor dies and is restarted. We only include
     /// tasks that will not be sent again, to support automatic task retry on
-    /// actor failure.
-    uint64_t num_completed_tasks = 0;
+    /// actor failure. This value only tracks consecutive tasks that are completed.
+    /// Tasks completed out of order will be cached in out_of_completed_tasks first.
+    uint64_t next_task_reply_position = 0;
+
+    /// The temporary container for tasks completed out of order. It can happen in
+    /// async or threaded actor mode. This map is used to store the seqno and task
+    /// spec for (1) increment next_task_reply_position later when the in order tasks are
+    /// returned (2) resend the tasks to restarted actor so retried tasks can maintain
+    /// ordering.
+    // NOTE(simon): consider absl::btree_set for performance, but it requires updating
+    // abseil.
+    std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
 
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
@@ -201,12 +211,17 @@ class CoreWorkerDirectActorTaskSubmitter
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
-  /// Note that this function doesn't take lock, the caller is expected to hold
-  /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
   void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Resend all previously-received, out-of-order, received tasks for an actor.
+  /// When sending these tasks, the tasks will have the flag skip_execution=true.
+  ///
+  /// \param[in] actor_id Actor ID.
+  /// \return Void.
+  void ResendOutOfOrderTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -217,15 +232,15 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
+  /// Pool for producing new core worker clients.
+  std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;
 
   absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
 
-  /// Resolve direct call object dependencies;
+  /// Resolve direct call object dependencies.
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
@@ -325,26 +340,41 @@ class BoundedExecutor {
   boost::asio::thread_pool pool_;
 };
 
-/// Used to ensure serial order of task execution per actor handle.
-/// See direct_actor.proto for a description of the ordering protocol.
+/// Used to implement task queueing at the worker. Abstraction to provide a common
+/// interface for actor tasks as well as normal ones.
 class SchedulingQueue {
  public:
-  SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  WorkerContext &worker_context,
-                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
+  virtual void Add(int64_t seq_no, int64_t client_processed_up_to,
+                   std::function<void()> accept_request,
+                   std::function<void()> reject_request,
+                   const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
+  virtual void ScheduleRequests() = 0;
+  virtual bool TaskQueueEmpty() const = 0;
+  virtual ~SchedulingQueue(){};
+};
+
+/// Used to ensure serial order of task execution per actor handle.
+/// See direct_actor.proto for a description of the ordering protocol.
+class ActorSchedulingQueue : public SchedulingQueue {
+ public:
+  ActorSchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
+                       WorkerContext &worker_context,
+                       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : worker_context_(worker_context),
         reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
         waiter_(waiter) {}
 
+  bool TaskQueueEmpty() const { return pending_actor_tasks_.empty(); }
+
+  /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    if (seq_no == -1) {
-      accept_request();  // A seq_no of -1 means no ordering constraint.
-      return;
-    }
+    // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
+    RAY_CHECK(seq_no != -1);
+
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
@@ -352,13 +382,13 @@ class SchedulingQueue {
       next_seq_no_ = client_processed_up_to + 1;
     }
     RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
-    pending_tasks_[seq_no] =
+    pending_actor_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
       waiter_.Wait(dependencies, [seq_no, this]() {
         RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-        auto it = pending_tasks_.find(seq_no);
-        if (it != pending_tasks_.end()) {
+        auto it = pending_actor_tasks_.find(seq_no);
+        if (it != pending_actor_tasks_.end()) {
           it->second.MarkDependenciesSatisfied();
           ScheduleRequests();
         }
@@ -367,7 +397,6 @@ class SchedulingQueue {
     ScheduleRequests();
   }
 
- private:
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
     // Only call SetMaxActorConcurrency to configure threadpool size when the
@@ -389,18 +418,20 @@ class SchedulingQueue {
     }
 
     // Cancel any stale requests that the client doesn't need any longer.
-    while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
-      auto head = pending_tasks_.begin();
+    while (!pending_actor_tasks_.empty() &&
+           pending_actor_tasks_.begin()->first < next_seq_no_) {
+      auto head = pending_actor_tasks_.begin();
       RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
-                     << pending_tasks_.begin()->first << " < " << next_seq_no_;
+                     << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
       head->second.Cancel();
-      pending_tasks_.erase(head);
+      pending_actor_tasks_.erase(head);
     }
 
     // Process as many in-order requests as we can.
-    while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_ &&
-           pending_tasks_.begin()->second.CanExecute()) {
-      auto head = pending_tasks_.begin();
+    while (!pending_actor_tasks_.empty() &&
+           pending_actor_tasks_.begin()->first == next_seq_no_ &&
+           pending_actor_tasks_.begin()->second.CanExecute()) {
+      auto head = pending_actor_tasks_.begin();
       auto request = head->second;
 
       if (is_asyncio_) {
@@ -413,18 +444,19 @@ class SchedulingQueue {
         // Process normal actor task.
         request.Accept();
       }
-      pending_tasks_.erase(head);
+      pending_actor_tasks_.erase(head);
       next_seq_no_++;
     }
 
-    if (pending_tasks_.empty() || !pending_tasks_.begin()->second.CanExecute()) {
+    if (pending_actor_tasks_.empty() ||
+        !pending_actor_tasks_.begin()->second.CanExecute()) {
       // No timeout for object dependency waits.
       wait_timer_.cancel();
     } else {
       // Set a timeout on the queued tasks to avoid an infinite wait on failure.
       wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
       RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
-                     << pending_tasks_.size();
+                     << pending_actor_tasks_.size();
       wait_timer_.async_wait([this](const boost::system::error_code &error) {
         if (error == boost::asio::error::operation_aborted) {
           return;  // time deadline was adjusted
@@ -434,16 +466,17 @@ class SchedulingQueue {
     }
   }
 
+ private:
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout() {
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                    << ", cancelling all queued tasks";
-    while (!pending_tasks_.empty()) {
-      auto head = pending_tasks_.begin();
+    while (!pending_actor_tasks_.empty()) {
+      auto head = pending_actor_tasks_.begin();
       head->second.Cancel();
       next_seq_no_ = std::max(next_seq_no_, head->first + 1);
-      pending_tasks_.erase(head);
+      pending_actor_tasks_.erase(head);
     }
   }
 
@@ -452,7 +485,7 @@ class SchedulingQueue {
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  std::map<int64_t, InboundRequest> pending_tasks_;
+  std::map<int64_t, InboundRequest> pending_actor_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies. Note that this is set on the task main
@@ -470,6 +503,47 @@ class SchedulingQueue {
   /// If use_asyncio_ is true, fiber_state_ contains the running state required
   /// to enable continuation and work together with python asyncio.
   std::unique_ptr<FiberState> fiber_state_;
+  friend class SchedulingQueueTest;
+};
+
+/// Used to implement the non-actor task queue. These tasks do not have ordering
+/// constraints.
+class NormalSchedulingQueue : public SchedulingQueue {
+ public:
+  NormalSchedulingQueue(){};
+
+  bool TaskQueueEmpty() const {
+    absl::MutexLock lock(&mu_);
+    return pending_normal_tasks_.empty();
+  }
+
+  /// Add a new task's callbacks to the worker queue.
+  void Add(int64_t seq_no, int64_t client_processed_up_to,
+           std::function<void()> accept_request, std::function<void()> reject_request,
+           const std::vector<rpc::ObjectReference> &dependencies = {}) {
+    absl::MutexLock lock(&mu_);
+    // Normal tasks should not have ordering constraints.
+    RAY_CHECK(seq_no == -1);
+    // Create a InboundRequest object for the new task, and add it to the queue.
+    pending_normal_tasks_.push_back(
+        InboundRequest(accept_request, reject_request, dependencies.size() > 0));
+  }
+
+  /// Schedules as many requests as possible in sequence.
+  void ScheduleRequests() {
+    absl::MutexLock lock(&mu_);
+    while (!pending_normal_tasks_.empty()) {
+      auto &head = pending_normal_tasks_.front();
+      head.Accept();
+      pending_normal_tasks_.pop_front();
+    }
+  }
+
+ private:
+  /// Protects access to the dequeue below.
+  mutable absl::Mutex mu_;
+  /// Queue with (accept, rej) callbacks for non-actor tasks
+  std::deque<InboundRequest> pending_normal_tasks_ GUARDED_BY(mu_);
   friend class SchedulingQueueTest;
 };
 
@@ -493,16 +567,21 @@ class CoreWorkerDirectTaskReceiver {
         task_done_(task_done) {}
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address,
+  void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
             std::shared_ptr<DependencyWaiter> dependency_waiter);
 
-  /// Handle a `PushTask` request.
+  /// Handle a `PushTask` request. If it's an actor request, this function will enqueue
+  /// the task and then start scheduling the requests to begin the execution. If it's a
+  /// non-actor request, this function will just enqueue the task.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+  void HandleTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+                  rpc::SendReplyCallback send_reply_callback);
+
+  /// Pop tasks from the queue and execute them sequentially
+  void RunNormalTasksFromQueue();
 
  private:
   // Worker context.
@@ -513,15 +592,18 @@ class CoreWorkerDirectTaskReceiver {
   boost::asio::io_service &task_main_io_service_;
   /// The callback function to be invoked when finishing a task.
   OnTaskDone task_done_;
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
+  /// Shared pool for producing new core worker clients.
+  std::shared_ptr<rpc::CoreWorkerClientPool> client_pool_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::shared_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<WorkerID, SchedulingQueue> scheduling_queue_;
+  std::unordered_map<WorkerID, std::unique_ptr<SchedulingQueue>> actor_scheduling_queues_;
+  // Queue of pending normal (non-actor) tasks.
+  std::unique_ptr<SchedulingQueue> normal_scheduling_queue_ =
+      std::unique_ptr<SchedulingQueue>(new NormalSchedulingQueue());
 };
 
 }  // namespace ray

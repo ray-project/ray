@@ -24,7 +24,8 @@ import org.testng.annotations.Test;
 
 public class DefaultKeyValueStoreSerializationTest {
 
-  DefaultKeyValueStoreSerialization<String, Integer> serDe = new DefaultKeyValueStoreSerialization<>();
+  DefaultKeyValueStoreSerialization<String, Integer> serDe =
+      new DefaultKeyValueStoreSerialization<>();
   byte[] ret;
 
   @Test

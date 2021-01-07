@@ -1,25 +1,26 @@
 import ray
 import ray.test_utils
-from ray import serve
 
 
 def test_new_driver(serve_instance):
+    client = serve_instance
+
     script = """
 import ray
 ray.init(address="{}")
 
 from ray import serve
-serve.init()
+client = serve.connect()
 
-def driver(flask_request):
+def driver(starlette_request):
     return "OK!"
 
-serve.create_backend("driver", driver)
-serve.create_endpoint("driver", backend="driver", route="/driver")
+client.create_backend("driver", driver)
+client.create_endpoint("driver", backend="driver", route="/driver")
 """.format(ray.worker._global_node._redis_address)
     ray.test_utils.run_string_as_driver(script)
 
-    handle = serve.get_handle("driver")
+    handle = client.get_handle("driver")
     assert ray.get(handle.remote()) == "OK!"
 
 

@@ -4,29 +4,19 @@ import com.google.common.base.MoreObjects;
 import io.ray.streaming.api.partition.Partition;
 import java.io.Serializable;
 
-/**
- * An edge that connects two execution vertices.
- */
+/** An edge that connects two execution vertices. */
 public class ExecutionEdge implements Serializable {
 
-  /**
-   * The source(upstream) execution vertex.
-   */
+  /** The source(upstream) execution vertex. */
   private final ExecutionVertex sourceExecutionVertex;
 
-  /**
-   * The target(downstream) execution vertex.
-   */
+  /** The target(downstream) execution vertex. */
   private final ExecutionVertex targetExecutionVertex;
 
-  /**
-   * The partition of current execution edge's execution job edge.
-   */
+  /** The partition of current execution edge's execution job edge. */
   private final Partition partition;
 
-  /**
-   * An unique id for execution edge.
-   */
+  /** An unique id for execution edge. */
   private final String executionEdgeIndex;
 
   public ExecutionEdge(
@@ -40,7 +30,8 @@ public class ExecutionEdge implements Serializable {
   }
 
   private String generateExecutionEdgeIndex() {
-    return sourceExecutionVertex.getExecutionVertexId() + "—"
+    return sourceExecutionVertex.getExecutionVertexId()
+        + "—"
         + targetExecutionVertex.getExecutionVertexId();
   }
 
@@ -75,10 +66,10 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("source", sourceExecutionVertex)
-      .add("target", targetExecutionVertex)
-      .add("partition", partition)
-      .add("index", executionEdgeIndex)
-      .toString();
+        .add("source", sourceExecutionVertex)
+        .add("target", targetExecutionVertex)
+        .add("partition", partition)
+        .add("index", executionEdgeIndex)
+        .toString();
   }
 }

@@ -1,16 +1,16 @@
 package io.ray.streaming.runtime.streamingqueue;
 
+import io.ray.api.ActorHandle;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.ActorHandle;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.streaming.runtime.config.StreamingWorkerConfig;
-import io.ray.streaming.runtime.transfer.ChannelId;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
-import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.transfer.TransferHandler;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
+import io.ray.streaming.runtime.transfer.message.DataMessage;
 import io.ray.streaming.util.Config;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
 public class Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   protected TransferHandler transferHandler = null;
@@ -50,6 +51,7 @@ public class Worker {
 }
 
 class ReaderWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
   private String name = null;
@@ -102,15 +104,18 @@ class ReaderWorker extends Worker {
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
-    dataReader = new DataReader(inputQueueList, inputActors, workerConfig);
+    dataReader = new DataReader(inputQueueList, inputActors, new HashMap<>(), workerConfig);
 
     // Should not GetBundle in RayCall thread
-    Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
-      @Override
-      public void run() {
-        consume();
-      }
-    }));
+    Thread readThread =
+        new Thread(
+            Ray.wrapRunnable(
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    consume();
+                  }
+                }));
     readThread.start();
 
     LOGGER.info("ReaderWorker init done");
@@ -122,7 +127,7 @@ class ReaderWorker extends Worker {
 
     int checkPointId = 1;
     for (int i = 0; i < msgCount * inputQueueList.size(); ++i) {
-      DataMessage dataMessage = dataReader.read(100);
+      DataMessage dataMessage = (DataMessage) dataReader.read(100);
 
       if (dataMessage == null) {
         LOGGER.error("dataMessage is null");
@@ -134,8 +139,11 @@ class ReaderWorker extends Worker {
       int dataSize = dataMessage.body().getInt();
 
       // check size
-      LOGGER.info("capacity {} bufferSize {} dataSize {}",
-          dataMessage.body().capacity(), bufferSize, dataSize);
+      LOGGER.info(
+          "capacity {} bufferSize {} dataSize {}",
+          dataMessage.body().capacity(),
+          bufferSize,
+          dataSize);
       Assert.assertEquals(bufferSize, dataSize);
       if (dataMessage instanceof DataMessage) {
         if (LOGGER.isInfoEnabled()) {
@@ -156,9 +164,7 @@ class ReaderWorker extends Worker {
     LOGGER.info("ReaderWorker consume data done.");
   }
 
-  void onQueueTransfer(long handler, byte[] buffer) {
-  }
-
+  void onQueueTransfer(long handler, byte[] buffer) {}
 
   public boolean done() {
     return totalMsg == msgCount;
@@ -170,6 +176,7 @@ class ReaderWorker extends Worker {
 }
 
 class WriterWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 
   private String name = null;
@@ -229,13 +236,16 @@ class WriterWorker extends Worker {
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
     StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
-    dataWriter = new DataWriter(outputQueueList, outputActors, workerConfig);
-    Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
-      @Override
-      public void run() {
-        produce();
-      }
-    }));
+    dataWriter = new DataWriter(outputQueueList, outputActors, new HashMap<>(), workerConfig);
+    Thread writerThread =
+        new Thread(
+            Ray.wrapRunnable(
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    produce();
+                  }
+                }));
     writerThread.start();
 
     LOGGER.info("WriterWorker init done");

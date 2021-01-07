@@ -85,7 +85,7 @@ class TuneRestoreTest(unittest.TestCase):
 
 class TuneExampleTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
@@ -105,18 +105,13 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(TrainMNIST)
         validate_save_restore(TrainMNIST, use_object_store=True)
 
-    def testLogging(self):
-        from ray.tune.examples.logging_example import MyTrainableClass
-        validate_save_restore(MyTrainableClass)
-        validate_save_restore(MyTrainableClass, use_object_store=True)
-
     def testHyperbandExample(self):
         from ray.tune.examples.hyperband_example import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
-        from ray.tune.examples.async_hyperband_example import MyTrainableClass
+        from ray.tune.utils.mock import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
@@ -124,11 +119,7 @@ class TuneExampleTest(unittest.TestCase):
 class AutoInitTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertFalse(ray.is_initialized())
-        tune.run(
-            "__fake",
-            name="TestAutoInit",
-            stop={"training_iteration": 1},
-            ray_auto_init=True)
+        tune.run("__fake", name="TestAutoInit", stop={"training_iteration": 1})
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
@@ -377,22 +368,72 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         def cost(space, reporter):
             reporter(loss=(space["height"] - 14)**2 - abs(space["width"] - 3))
 
+        # Unfortunately, SigOpt doesn't allow setting of random state. Thus,
+        # we always end up with different suggestions, which is unsuitable
+        # for the warm start test. Here we make do with points_to_evaluate,
+        # and ensure that state is preserved over checkpoints and restarts.
+        points = [
+            {
+                "width": 5,
+                "height": 20
+            },
+            {
+                "width": 10,
+                "height": -20
+            },
+            {
+                "width": 15,
+                "height": 30
+            },
+            {
+                "width": 5,
+                "height": -30
+            },
+            {
+                "width": 10,
+                "height": 40
+            },
+            {
+                "width": 15,
+                "height": -40
+            },
+            {
+                "width": 5,
+                "height": 50
+            },
+            {
+                "width": 10,
+                "height": -50
+            },
+            {
+                "width": 15,
+                "height": 60
+            },
+            {
+                "width": 12,
+                "height": -60
+            },
+        ]
+
         search_alg = SigOptSearch(
             space,
             name="SigOpt Example Experiment",
             max_concurrent=1,
             metric="loss",
-            mode="min")
+            mode="min",
+            points_to_evaluate=points)
         return search_alg, cost
 
     def testWarmStart(self):
-        if ("SIGOPT_KEY" not in os.environ):
+        if "SIGOPT_KEY" not in os.environ:
+            self.skipTest("No SigOpt API key found in environment.")
             return
 
         super().testWarmStart()
 
     def testRestore(self):
-        if ("SIGOPT_KEY" not in os.environ):
+        if "SIGOPT_KEY" not in os.environ:
+            self.skipTest("No SigOpt API key found in environment.")
             return
         super().testRestore()
 
@@ -415,10 +456,6 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             mode="min")
 
         return search_alg, cost
-
-    @unittest.skip("Skip because this seems to have leaking state.")
-    def testRestore(self):
-        pass
 
 
 class SearcherTest(unittest.TestCase):

@@ -1,6 +1,5 @@
 # coding: utf-8
 import copy
-import json
 import logging
 import os
 import time
@@ -11,21 +10,21 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object, wait_for_condition
+from ray.test_utils import (SignalActor, put_object, wait_for_condition,
+                            new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
 def one_worker_100MiB(request):
-    config = json.dumps({
-        "object_store_full_max_retries": 2,
+    config = {
         "task_retry_delay_ms": 0,
-    })
+    }
     yield ray.init(
         num_cpus=1,
         object_store_memory=100 * 1024 * 1024,
-        _internal_config=config)
+        _system_config=config)
     ray.shutdown()
 
 
@@ -167,6 +166,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic res todo")
 def test_actor_creation_task(ray_start_regular):
     @ray.remote
     def large_object():
@@ -245,9 +245,7 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
 def test_feature_flag(shutdown_only):
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        _internal_config=json.dumps({
-            "object_pinning_enabled": 0
-        }))
+        _system_config={"object_pinning_enabled": 0})
 
     @ray.remote
     def f(array):
@@ -270,7 +268,16 @@ def test_feature_flag(shutdown_only):
 
     # The ray.get below fails with only LRU eviction, as the object
     # that was ray.put by the actor should have been evicted.
-    _fill_object_store_and_get(actor.get_large_object.remote(), succeed=False)
+    ref = actor.get_large_object.remote()
+    ray.get(ref)
+
+    # Keep refs in scope so that they don't get GCed immediately.
+    for _ in range(5):
+        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    del put_ref
+
+    wait_for_condition(
+        lambda: not ray.worker.global_worker.core_worker.object_exists(ref))
 
 
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):
@@ -357,7 +364,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
     try:
         ray.get(obj_ref)
         assert not failure
-    except ray.exceptions.RayWorkerError:
+    except ray.exceptions.WorkerCrashedError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -406,7 +413,7 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
         assert ray.get(tail_oid) is None
         assert not failure
     # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.UnreconstructableError:
+    except ray.exceptions.ObjectLostError:
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -504,8 +511,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.RayWorkerError,
-            ray.exceptions.UnreconstructableError):
+    except (ray.exceptions.WorkerCrashedError, ray.exceptions.ObjectLostError):
         assert failure
     del child_return_id
 

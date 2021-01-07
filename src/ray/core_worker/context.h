@@ -35,15 +35,19 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id);
+  const PlacementGroupID &GetCurrentPlacementGroupId() const;
+
+  bool ShouldCaptureChildTasksInPlacementGroup() const;
+
+  const std::unordered_map<std::string, std::string>
+      &GetCurrentOverrideEnvironmentVariables() const;
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetCurrentTask(const TaskSpecification &task_spec);
 
-  void ResetCurrentTask(const TaskSpecification &task_spec);
+  void ResetCurrentTask();
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
@@ -67,8 +71,11 @@ class WorkerContext {
 
   bool CurrentActorIsAsync() const;
 
+  bool CurrentActorDetached() const;
+
   int GetNextTaskIndex();
 
+  // Returns the next put object index; used to calculate ObjectIDs for puts.
   int GetNextPutIndex();
 
  protected:
@@ -83,7 +90,13 @@ class WorkerContext {
   ActorID current_actor_id_;
   int current_actor_max_concurrency_ = 1;
   bool current_actor_is_asyncio_ = false;
-
+  bool is_detached_actor_ = false;
+  // The placement group id that the current actor belongs to.
+  PlacementGroupID current_actor_placement_group_id_;
+  // Whether or not we should implicitly capture parent's placement group.
+  bool placement_group_capture_child_tasks_;
+  // The environment variable overrides for the current actor or task.
+  std::unordered_map<std::string, std::string> override_environment_variables_;
   /// The id of the (main) thread that constructed this worker context.
   boost::thread::id main_thread_id_;
 

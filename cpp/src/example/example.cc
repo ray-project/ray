@@ -5,7 +5,7 @@
 #include <ray/api.h>
 
 /// using namespace
-using namespace ray::api;
+using namespace ::ray::api;
 
 /// general function of user code
 int Return1() { return 1; }
@@ -33,7 +33,7 @@ int main() {
 
   /// put and get object
   auto obj = Ray::Put(123);
-  auto getRsult = obj.Get();
+  auto get_result = obj.Get();
 
   /// general function remote call（args passed by value）
   auto r0 = Ray::Task(Return1).Remote();

@@ -40,35 +40,33 @@ class SchedulingPolicy {
   /// producing a mapping of tasks to raylets.
   ///
   /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster. For all client IDs in the returned
+  /// information for some subset of the cluster. For all node IDs in the returned
   /// placement map, the corresponding SchedulingResources::resources_load_ is
   /// incremented by the aggregate resource demand of the tasks assigned to it.
-  /// \param local_client_id The ID of the node manager that owns this
+  /// \param local_node_id The ID of the node manager that owns this
   /// SchedulingPolicy object.
   /// \return Scheduling decision, mapping tasks to raylets for placement.
-  std::unordered_map<TaskID, ClientID> Schedule(
-      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const ClientID &local_client_id);
+  std::unordered_map<TaskID, NodeID> Schedule(
+      std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
+      const NodeID &local_node_id);
 
-  /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster.
-  /// \param local_client_id The ID of the node manager that owns this
-  /// SchedulingPolicy object.
-  /// \param bundle_spec the description of a bundle which include the resource the bundle
-  /// need. \return If this bundle can be scheduled in this node, return true; else return
-  /// false.
-  bool ScheduleBundle(
-      std::unordered_map<ClientID, SchedulingResources> &cluster_resources,
-      const ClientID &local_client_id, const ray::BundleSpecification &bundle_spec);
+  /// \brief Given a set of cluster resources, try to spillover infeasible tasks.
+  ///
+  /// \param node_resources The resource information for a node. This may be
+  /// the local node.
+  /// \return Tasks that should be spilled to this node.
+  std::vector<TaskID> SpillOverInfeasibleTasks(SchedulingResources &node_resources) const;
 
   /// \brief Given a set of cluster resources perform a spill-over scheduling operation.
   ///
-  /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster. For all client IDs in the returned
-  /// placement map, the corresponding SchedulingResources::resources_load_ is
-  /// incremented by the aggregate resource demand of the tasks assigned to it.
-  /// \return Scheduling decision, mapping tasks to raylets for placement.
-  std::vector<TaskID> SpillOver(SchedulingResources &remote_scheduling_resources) const;
+  /// \param remote_resources The resource information for a remote node. This
+  /// is guaranteed to not be the local node. The load info is updated if a
+  /// task is spilled.
+  /// \param local_resources The resource information for the local node. The
+  /// load info is updated if a task is spilled.
+  /// \return Tasks that should be spilled to this node.
+  std::vector<TaskID> SpillOver(SchedulingResources &remote_resources,
+                                SchedulingResources &local_resources) const;
 
   /// \brief SchedulingPolicy destructor.
   virtual ~SchedulingPolicy();

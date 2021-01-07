@@ -102,7 +102,7 @@ class PolicyClient:
                    ) -> Union[EnvActionType, MultiAgentDict]:
         """Record an observation and get the on-policy action.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
 
@@ -133,7 +133,7 @@ class PolicyClient:
                    action: Union[EnvActionType, MultiAgentDict]) -> None:
         """Record an observation and (off-policy) action taken.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
             action (obj): Action for the observation.
@@ -163,7 +163,7 @@ class PolicyClient:
         episode. Rewards accumulate until the next action. If no reward is
         logged before the next action, a reward of 0.0 is assumed.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             reward (float): Reward from the environment.
             info (dict): Extra info dict.
@@ -191,7 +191,7 @@ class PolicyClient:
                     observation: Union[EnvObsType, MultiAgentDict]) -> None:
         """Record the end of an episode.
 
-        Arguments:
+        Args:
             episode_id (str): Episode id returned from start_episode().
             observation (obj): Current environment observation.
         """
@@ -269,7 +269,8 @@ class _LocalInferenceThread(threading.Thread):
                 if isinstance(samples, MultiAgentBatch):
                     logger.info(
                         "Sending batch of {} env steps ({} agent steps) to "
-                        "server.".format(samples.count, samples.total()))
+                        "server.".format(samples.env_steps(),
+                                         samples.agent_steps()))
                 else:
                     logger.info(
                         "Sending batch of {} steps back to server.".format(
@@ -323,7 +324,7 @@ def _auto_wrap_external(real_env_creator):
 def _create_embedded_rollout_worker(kwargs, send_fn):
     """Create a local rollout worker and a thread that samples from it.
 
-    Arguments:
+    Args:
         kwargs (dict): args for the RolloutWorker constructor.
         send_fn (fn): function to send a JSON request to the server.
     """

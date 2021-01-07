@@ -25,7 +25,6 @@
 namespace ray {
 
 using WorkerType = rpc::WorkerType;
-using PlacementOptions = std::pair<PlacementGroupID, int64_t>;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -54,13 +53,25 @@ class RayFunction {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), resources(resources) {}
+  TaskOptions(std::string name, int num_returns,
+              std::unordered_map<std::string, double> &resources,
+              const std::unordered_map<std::string, std::string>
+                  &override_environment_variables = {})
+      : name(name),
+        num_returns(num_returns),
+        resources(resources),
+        override_environment_variables(override_environment_variables) {}
 
+  /// The name of this task.
+  std::string name;
   /// Number of returns of this task.
   int num_returns = 1;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
+  /// Environment variables to update for this task.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 
 /// Options for actor creation tasks.
@@ -72,7 +83,10 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, bool is_asyncio,
-      PlacementOptions placement_options = std::make_pair(PlacementGroupID::Nil(), -1))
+      BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
+      bool placement_group_capture_child_tasks = true,
+      const std::unordered_map<std::string, std::string> &override_environment_variables =
+          {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -82,7 +96,9 @@ struct ActorCreationOptions {
         is_detached(is_detached),
         name(name),
         is_asyncio(is_asyncio),
-        placement_options(placement_options){};
+        placement_options(placement_options),
+        placement_group_capture_child_tasks(placement_group_capture_child_tasks),
+        override_environment_variables(override_environment_variables){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -113,7 +129,14 @@ struct ActorCreationOptions {
   /// The placement_options include placement_group_id and bundle_index.
   /// If the actor doesn't belong to a placement group, the placement_group_id will be
   /// nil, and the bundle_index will be -1.
-  PlacementOptions placement_options;
+  BundleID placement_options;
+  /// When true, the child task will always scheduled on the same placement group
+  /// specified in the PlacementOptions.
+  bool placement_group_capture_child_tasks = true;
+  /// Environment variables to update for this actor.  Maps a variable name to its
+  /// value.  Can override existing environment variables and introduce new ones.
+  /// Propagated to child actors and/or tasks.
+  const std::unordered_map<std::string, std::string> override_environment_variables;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

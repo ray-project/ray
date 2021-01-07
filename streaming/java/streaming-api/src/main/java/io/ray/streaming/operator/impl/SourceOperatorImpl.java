@@ -13,6 +13,7 @@ import java.util.List;
 
 public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
     implements SourceOperator {
+
   private SourceContextImpl sourceContext;
 
   public SourceOperatorImpl(SourceFunction<T> function) {
@@ -28,9 +29,9 @@ public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
   }
 
   @Override
-  public void run() {
+  public void fetch() {
     try {
-      this.function.run(this.sourceContext);
+      this.function.fetch(this.sourceContext);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -47,6 +48,7 @@ public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
   }
 
   class SourceContextImpl implements SourceContext<T> {
+
     private List<Collector> collectors;
 
     public SourceContextImpl(List<Collector> collectors) {
@@ -59,7 +61,5 @@ public class SourceOperatorImpl<T> extends StreamOperator<SourceFunction<T>>
         collector.collect(new Record<>(t));
       }
     }
-
   }
-
 }

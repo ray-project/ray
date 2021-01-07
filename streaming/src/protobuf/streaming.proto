@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ray.streaming.proto;
 
+import "google/protobuf/any.proto";
+
 option java_package = "io.ray.streaming.runtime.generated";
 
 enum Language {
@@ -18,6 +20,12 @@ enum NodeType {
   // Sinks consume DataStreams and forward them to files, sockets, external
   // systems, or print them.
   SINK = 3;
+}
+
+enum ReliabilityLevel {
+  NONE = 0;
+  AT_LEAST_ONCE = 1;
+  EXACTLY_ONCE = 2;
 }
 
 enum FlowControlType {

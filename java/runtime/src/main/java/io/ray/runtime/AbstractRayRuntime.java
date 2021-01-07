@@ -8,13 +8,13 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
-import io.ray.api.exception.RayException;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.placementgroup.PlacementGroup;
@@ -45,13 +45,12 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Core functionality to implement Ray APIs.
- */
+/** Core functionality to implement Ray APIs. */
 public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRayRuntime.class);
   public static final String PYTHON_INIT_METHOD_NAME = "__init__";
+  private static final String DEFAULT_PLACEMENT_GROUP_NAME = "unnamed_group";
   protected RayConfig rayConfig;
   protected TaskExecutor taskExecutor;
   protected FunctionManager functionManager;
@@ -62,26 +61,24 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  /**
-   * Whether the required thread context is set on the current thread.
-   */
+  /** Whether the required thread context is set on the current thread. */
   final ThreadLocal<Boolean> isContextSet = ThreadLocal.withInitial(() -> false);
 
   public AbstractRayRuntime(RayConfig rayConfig) {
     this.rayConfig = rayConfig;
     setIsContextSet(rayConfig.workerMode == Common.WorkerType.DRIVER);
-    functionManager = new FunctionManager(rayConfig.jobResourcePath);
+    functionManager = new FunctionManager(rayConfig.codeSearchPath);
     runtimeContext = new RuntimeContextImpl(this);
   }
 
   @Override
   public <T> ObjectRef<T> put(T obj) {
     ObjectId objectId = objectStore.put(obj);
-    return new ObjectRefImpl<T>(objectId, (Class<T>)(obj == null ? Object.class : obj.getClass()));
+    return new ObjectRefImpl<T>(objectId, (Class<T>) (obj == null ? Object.class : obj.getClass()));
   }
 
   @Override
-  public <T> T get(ObjectRef<T> objectRef) throws RayException {
+  public <T> T get(ObjectRef<T> objectRef) throws RuntimeException {
     List<T> ret = get(ImmutableList.of(objectRef));
     return ret.get(0);
   }
@@ -99,9 +96,12 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks) {
-    objectStore.delete(objectRefs.stream().map(ref -> ((ObjectRefImpl<?>) ref).getId()).collect(
-        Collectors.toList()), localOnly, deleteCreatingTasks);
+  public void free(List<ObjectRef<?>> objectRefs, boolean localOnly) {
+    objectStore.delete(
+        objectRefs.stream()
+            .map(ref -> ((ObjectRefImpl<?>) ref).getId())
+            .collect(Collectors.toList()),
+        localOnly);
   }
 
   @Override
@@ -119,13 +119,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public ObjectRef call(PyFunction pyFunction, Object[] args, CallOptions options) {
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
-        pyFunction.moduleName,
-        "",
-        pyFunction.functionName);
+    PyFunctionDescriptor functionDescriptor =
+        new PyFunctionDescriptor(pyFunction.moduleName, "", pyFunction.functionName);
     // Python functions always have a return value, even if it's `None`.
-    return callNormalFunction(functionDescriptor, args,
-        /*returnType=*/Optional.of(pyFunction.returnType), options);
+    return callNormalFunction(
+        functionDescriptor, args, /*returnType=*/ Optional.of(pyFunction.returnType), options);
   }
 
   @Override
@@ -138,17 +136,18 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public ObjectRef callActor(PyActorHandle pyActor, PyActorMethod pyActorMethod, Object... args) {
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
-        pyActor.getClassName(), pyActorMethod.methodName);
+    PyFunctionDescriptor functionDescriptor =
+        new PyFunctionDescriptor(
+            pyActor.getModuleName(), pyActor.getClassName(), pyActorMethod.methodName);
     // Python functions always have a return value, even if it's `None`.
-    return callActorFunction(pyActor, functionDescriptor, args,
-        /*returnType=*/Optional.of(pyActorMethod.returnType));
+    return callActorFunction(
+        pyActor, functionDescriptor, args, /*returnType=*/ Optional.of(pyActorMethod.returnType));
   }
 
   @Override
   @SuppressWarnings("unchecked")
-  public <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc,
-                                        Object[] args, ActorCreationOptions options) {
+  public <T> ActorHandle<T> createActor(
+      RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options) {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), actorFactoryFunc)
             .functionDescriptor;
@@ -156,19 +155,52 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
-                                   ActorCreationOptions options) {
-    PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(
-        pyActorClass.moduleName,
-        pyActorClass.className,
-        PYTHON_INIT_METHOD_NAME);
+  public PyActorHandle createActor(
+      PyActorClass pyActorClass, Object[] args, ActorCreationOptions options) {
+    PyFunctionDescriptor functionDescriptor =
+        new PyFunctionDescriptor(
+            pyActorClass.moduleName, pyActorClass.className, PYTHON_INIT_METHOD_NAME);
     return (PyActorHandle) createActorImpl(functionDescriptor, args, options);
   }
 
   @Override
-  public PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy) {
-    return taskSubmitter.createPlacementGroup(bundles, strategy);
+  public PlacementGroup createPlacementGroup(
+      String name, List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    boolean bundleResourceValid =
+        bundles.stream()
+            .allMatch(bundle -> bundle.values().stream().allMatch(resource -> resource > 0));
+
+    if (bundles.isEmpty() || !bundleResourceValid) {
+      throw new IllegalArgumentException(
+          "Bundles cannot be empty or bundle's resource must be positive.");
+    }
+    return taskSubmitter.createPlacementGroup(name, bundles, strategy);
+  }
+
+  @Override
+  public PlacementGroup createPlacementGroup(
+      List<Map<String, Double>> bundles, PlacementStrategy strategy) {
+    return createPlacementGroup(DEFAULT_PLACEMENT_GROUP_NAME, bundles, strategy);
+  }
+
+  @Override
+  public void removePlacementGroup(PlacementGroupId id) {
+    taskSubmitter.removePlacementGroup(id);
+  }
+
+  @Override
+  public PlacementGroup getPlacementGroup(PlacementGroupId id) {
+    return gcsClient.getPlacementGroupInfo(id);
+  }
+
+  @Override
+  public List<PlacementGroup> getAllPlacementGroups() {
+    return gcsClient.getAllPlacementGroupInfo();
+  }
+
+  @Override
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
+    return taskSubmitter.waitPlacementGroupReady(id, timeoutMs);
   }
 
   @SuppressWarnings("unchecked")
@@ -230,12 +262,13 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   private ObjectRef callNormalFunction(
       FunctionDescriptor functionDescriptor,
-      Object[] args, Optional<Class<?>> returnType, CallOptions options) {
+      Object[] args,
+      Optional<Class<?>> returnType,
+      CallOptions options) {
     int numReturns = returnType.isPresent() ? 1 : 0;
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage());
-    List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
-        functionArgs, numReturns, options);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+    List<ObjectId> returnIds =
+        taskSubmitter.submitTask(functionDescriptor, functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns);
     if (returnIds.isEmpty()) {
       return null;
@@ -250,10 +283,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       Object[] args,
       Optional<Class<?>> returnType) {
     int numReturns = returnType.isPresent() ? 1 : 0;
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage());
-    List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
-        functionDescriptor, functionArgs, numReturns, null);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
+    List<ObjectId> returnIds =
+        taskSubmitter.submitActorTask(rayActor, functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns);
     if (returnIds.isEmpty()) {
       return null;
@@ -262,10 +294,9 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
     }
   }
 
-  private BaseActorHandle createActorImpl(FunctionDescriptor functionDescriptor,
-                                          Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage());
+  private BaseActorHandle createActorImpl(
+      FunctionDescriptor functionDescriptor, Object[] args, ActorCreationOptions options) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, functionDescriptor.getLanguage());
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
@@ -281,6 +312,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   @Override
   public ObjectStore getObjectStore() {
     return objectStore;
+  }
+
+  @Override
+  public TaskExecutor getTaskExecutor() {
+    return taskExecutor;
   }
 
   @Override

@@ -111,6 +111,15 @@ Trial
 
 .. autoclass:: ray.tune.trial.Trial
 
+.. _tune-callbacks-docs:
+
+Callbacks
+---------
+
+.. autoclass:: ray.tune.callback.Callback
+   :members:
+
+
 .. _resources-docstring:
 
 Resources

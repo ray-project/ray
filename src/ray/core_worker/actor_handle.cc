@@ -45,7 +45,7 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serial
 }
 
 ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
-    const ray::gcs::ActorTableData &actor_table_data) {
+    const ray::rpc::ActorTableData &actor_table_data) {
   ray::rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
   inner.set_owner_id(actor_table_data.parent_id());
@@ -58,6 +58,8 @@ ray::rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.set_actor_cursor(task_spec.ReturnId(0).Binary());
   inner.set_extension_data(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
+  inner.set_max_task_retries(
+      actor_table_data.task_spec().actor_creation_task_spec().max_task_retries());
   return inner;
 }
 
@@ -78,7 +80,7 @@ ActorHandle::ActorHandle(
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
 
-ActorHandle::ActorHandle(const gcs::ActorTableData &actor_table_data)
+ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data)
     : ActorHandle(CreateInnerActorHandleFromActorTableData(actor_table_data)) {}
 
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_cursor) {
@@ -86,7 +88,7 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder, const ObjectID new_
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
-      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1);
+      ObjectID::FromIndex(actor_creation_task_id, /*index=*/1);
   builder.SetActorTaskSpec(GetActorID(), actor_creation_dummy_object_id,
                            /*previous_actor_task_dummy_object_id=*/actor_cursor_,
                            task_counter_++);

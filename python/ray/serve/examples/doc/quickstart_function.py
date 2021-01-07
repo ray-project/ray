@@ -1,15 +1,21 @@
+import ray
 from ray import serve
 import requests
 
-serve.init()
+ray.init(num_cpus=4)
+client = serve.start()
 
 
-def echo(flask_request):
-    return "hello " + flask_request.args.get("name", "serve!")
+def say_hello(request):
+    return "hello " + request.query_params["name"] + "!"
 
 
-serve.create_backend("hello", echo)
-serve.create_endpoint("hello", backend="hello", route="/hello")
+# Form a backend from our function and connect it to an endpoint.
+client.create_backend("my_backend", say_hello)
+client.create_endpoint("my_endpoint", backend="my_backend", route="/hello")
 
-requests.get("http://127.0.0.1:8000/hello").text
-# > "hello serve!"
+# Query our endpoint in two different ways: from HTTP and from Python.
+print(requests.get("http://127.0.0.1:8000/hello?name=serve").text)
+# > hello serve!
+print(ray.get(client.get_handle("my_endpoint").remote(name="serve")))
+# > hello serve!

@@ -1,6 +1,5 @@
 package io.ray.streaming.jobgraph;
 
-import io.ray.streaming.api.Language;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,9 +9,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Job graph, the logical plan of streaming job.
- */
+/** Job graph, the logical plan of streaming job. */
 public class JobGraph implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobGraph.class);
@@ -30,8 +27,11 @@ public class JobGraph implements Serializable {
     this.jobEdges = new ArrayList<>();
   }
 
-  public JobGraph(String jobName, Map<String, String> jobConfig,
-                  List<JobVertex> jobVertices, List<JobEdge> jobEdges) {
+  public JobGraph(
+      String jobName,
+      Map<String, String> jobConfig,
+      List<JobVertex> jobVertices,
+      List<JobEdge> jobEdges) {
     this.jobName = jobName;
     this.jobConfig = jobConfig;
     this.jobVertices = jobVertices;
@@ -40,10 +40,10 @@ public class JobGraph implements Serializable {
   }
 
   /**
-   * Generate direct-graph(made up of a set of vertices and connected by edges)
-   * by current job graph for simple log printing.
+   * Generate direct-graph(made up of a set of vertices and connected by edges) by current job graph
+   * for simple log printing.
    *
-   * @return Digraph in string type.
+   * <p>Returns Digraph in string type.
    */
   public String generateDigraph() {
     StringBuilder digraph = new StringBuilder();
@@ -136,15 +136,4 @@ public class JobGraph implements Serializable {
       LOG.info(jobEdge.toString());
     }
   }
-
-  public boolean isCrossLanguageGraph() {
-    Language language = jobVertices.get(0).getLanguage();
-    for (JobVertex jobVertex : jobVertices) {
-      if (jobVertex.getLanguage() != language) {
-        return true;
-      }
-    }
-    return false;
-  }
-
 }

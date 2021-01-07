@@ -15,7 +15,7 @@ from ray.tune.suggest.variant_generator import (RecursiveDependencyError,
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
-        ray.init()
+        ray.init(num_cpus=2)
 
     def tearDown(self):
         ray.shutdown()
@@ -24,7 +24,14 @@ class VariantGeneratorTest(unittest.TestCase):
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
-        return suggester.next_trials()
+        trials = []
+        while not suggester.is_finished():
+            trial = suggester.next_trial()
+            if trial:
+                trials.append(trial)
+            else:
+                break
+        return trials
 
     def testParseToTrials(self):
         trials = self.generate_trials({
@@ -263,13 +270,13 @@ class VariantGeneratorTest(unittest.TestCase):
         })
 
     def testLogUniform(self):
-        sampler = tune.loguniform(1e-10, 1e-1).func
-        results = [sampler(None) for i in range(1000)]
+        sampler = tune.loguniform(1e-10, 1e-1)
+        results = sampler.sample(None, 1000)
         assert abs(np.log(min(results)) / np.log(10) - -10) < 0.1
         assert abs(np.log(max(results)) / np.log(10) - -1) < 0.1
 
-        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e).func
-        results_e = [sampler_e(None) for i in range(1000)]
+        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e)
+        results_e = sampler_e.sample(None, 1000)
         assert abs(np.log(min(results_e)) - -4) < 0.1
         assert abs(np.log(max(results_e)) - 1) < 0.1
 

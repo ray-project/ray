@@ -1,6 +1,7 @@
 """Example of using a custom ModelV2 Keras-style model."""
 
 import argparse
+import os
 
 import ray
 from ray import tune
@@ -10,6 +11,7 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
@@ -106,8 +108,8 @@ if __name__ == "__main__":
     # Tests https://github.com/ray-project/ray/issues/7293
     def check_has_custom_metric(result):
         r = result["result"]["info"]["learner"]
-        if "default_policy" in r:
-            r = r["default_policy"]
+        if DEFAULT_POLICY_ID in r:
+            r = r[DEFAULT_POLICY_ID]
         assert r["model"]["foo"] == 42, result
 
     if args.run == "DQN":
@@ -119,11 +121,12 @@ if __name__ == "__main__":
         args.run,
         stop={"episode_reward_mean": args.stop},
         config=dict(
-            extra_config, **{
-                "log_level": "INFO",
+            extra_config,
+            **{
                 "env": "BreakoutNoFrameskip-v4"
                 if args.use_vision_network else "CartPole-v0",
-                "num_gpus": 0,
+                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+                "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
                 "callbacks": {
                     "on_train_result": check_has_custom_metric,
                 },

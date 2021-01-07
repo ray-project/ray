@@ -43,8 +43,13 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
   return sched_cls_id;
 }
 
-const PlacementGroupID TaskSpecification::PlacementGroupId() const {
-  return PlacementGroupID::FromBinary(message_->placement_group_id());
+const BundleID TaskSpecification::PlacementGroupBundleId() const {
+  return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
+                        message_->placement_group_bundle_index());
+}
+
+bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
+  return message_->placement_group_capture_child_tasks();
 }
 
 void TaskSpecification::ComputeResources() {
@@ -116,11 +121,11 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
+  return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return message_->args(arg_index).object_ref().object_id() != "";
+  return message_->args(arg_index).has_object_ref();
 }
 
 ObjectID TaskSpecification::ArgId(size_t arg_index) const {
@@ -188,9 +193,20 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
+std::string TaskSpecification::GetDebuggerBreakpoint() const {
+  return message_->debugger_breakpoint();
+}
+
+std::unordered_map<std::string, std::string>
+TaskSpecification::OverrideEnvironmentVariables() const {
+  return MapFromProtobuf(message_->override_environment_variables());
+}
+
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
+
+const std::string TaskSpecification::GetName() const { return message_->name(); }
 
 Language TaskSpecification::GetLanguage() const { return message_->language(); }
 
@@ -299,8 +315,9 @@ std::string TaskSpecification::DebugString() const {
   // Print function descriptor.
   stream << FunctionDescriptor()->ToString();
 
-  stream << ", task_id=" << TaskId() << ", job_id=" << JobId()
-         << ", num_args=" << NumArgs() << ", num_returns=" << NumReturns();
+  stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
+         << ", job_id=" << JobId() << ", num_args=" << NumArgs()
+         << ", num_returns=" << NumReturns();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.

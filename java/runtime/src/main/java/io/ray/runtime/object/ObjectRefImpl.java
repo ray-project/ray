@@ -17,9 +17,7 @@ import java.lang.ref.Reference;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Implementation of {@link ObjectRef}.
- */
+/** Implementation of {@link ObjectRef}. */
 public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
 
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
@@ -64,6 +62,10 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void writeExternal(ObjectOutput out) throws IOException {
     out.writeObject(this.getId());
     out.writeObject(this.getType());
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    byte[] ownerAddress = runtime.getObjectStore().promoteAndGetOwnershipInfo(this.getId());
+    out.writeInt(ownerAddress.length);
+    out.write(ownerAddress);
     ObjectSerializer.addContainedObjectId(this.getId());
   }
 
@@ -71,7 +73,15 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.id = (ObjectId) in.readObject();
     this.type = (Class<T>) in.readObject();
+    int len = in.readInt();
+    byte[] ownerAddress = new byte[len];
+    in.readFully(ownerAddress);
     addLocalReference();
+    RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
+    runtime
+        .getObjectStore()
+        .registerOwnershipInfoAndResolveFuture(
+            this.id, ObjectSerializer.getOuterObjectId(), ownerAddress);
   }
 
   private void addLocalReference() {
@@ -82,8 +92,8 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     new ObjectRefImplReference(this);
   }
 
-  private static final class ObjectRefImplReference extends
-      FinalizableWeakReference<ObjectRefImpl<?>> {
+  private static final class ObjectRefImplReference
+      extends FinalizableWeakReference<ObjectRefImpl<?>> {
 
     private final UniqueId workerId;
     private final ObjectId objectId;
@@ -103,10 +113,11 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
       // unit tests). So if `workerId` is null, it means this method has been invoked.
       if (!removed.getAndSet(true)) {
         REFERENCES.remove(this);
-        RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
         // It's possible that GC is executed after the runtime is shutdown.
-        if (runtime != null) {
-          runtime.getObjectStore().removeLocalReference(workerId, objectId);
+        if (Ray.isInitialized()) {
+          ((RayRuntimeInternal) (Ray.internal()))
+              .getObjectStore()
+              .removeLocalReference(workerId, objectId);
         }
       }
     }

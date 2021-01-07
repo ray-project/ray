@@ -20,22 +20,21 @@ package io.ray.streaming.state;
 
 /**
  * TransactionState interface.
- * <p>
- * Streaming State should implement transaction in case of failure,
- * which in our case is four default method, finish, commit, ackCommit, rollback.
+ *
+ * <p>Streaming State should implement transaction in case of failure, which in our case is four
+ * default method, finish, commit, ackCommit, rollback.
  */
 public interface StateStoreManager {
 
   /**
-   * The finish method is used when the batched data is all saved in state.
-   * Normally, serialization job is done here.
+   * The finish method is used when the batched data is all saved in state. Normally, serialization
+   * job is done here.
    */
   void finish(long checkpointId);
 
   /**
    * The commit method is used for persistent, and can be used in another thread to reach async
-   * state commit.
-   * Normally, data persistent is done here.
+   * state commit. Normally, data persistent is done here.
    */
   void commit(long checkpointId);
 
@@ -45,8 +44,6 @@ public interface StateStoreManager {
    */
   void ackCommit(long checkpointId, long timeStamp);
 
-  /**
-   * The rollback method is used for recovering the checkpoint.
-   */
+  /** The rollback method is used for recovering the checkpoint. */
   void rollBack(long checkpointId);
 }

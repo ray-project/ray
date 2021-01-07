@@ -13,6 +13,7 @@ import java.io.Serializable;
  * @param <O> Type of the data in the joined stream.
  */
 public class JoinStream<L, R, O> extends DataStream<L> {
+
   private final DataStream<R> rightStream;
 
   public JoinStream(DataStream<L> leftStream, DataStream<R> rightStream) {
@@ -24,9 +25,7 @@ public class JoinStream<L, R, O> extends DataStream<L> {
     return rightStream;
   }
 
-  /**
-   * Apply key-by to the left join stream.
-   */
+  /** Apply key-by to the left join stream. */
   public <K> Where<K> where(KeyFunction<L, K> keyFunction) {
     return new Where<>(this, keyFunction);
   }
@@ -37,6 +36,7 @@ public class JoinStream<L, R, O> extends DataStream<L> {
    * @param <K> Type of the join key.
    */
   class Where<K> implements Serializable {
+
     private JoinStream<L, R, O> joinStream;
     private KeyFunction<L, K> leftKeyByFunction;
 
@@ -56,12 +56,15 @@ public class JoinStream<L, R, O> extends DataStream<L> {
    * @param <K> Type of the join key.
    */
   class Equal<K> implements Serializable {
+
     private JoinStream<L, R, O> joinStream;
     private KeyFunction<L, K> leftKeyByFunction;
     private KeyFunction<R, K> rightKeyByFunction;
 
-    Equal(JoinStream<L, R, O> joinStream, KeyFunction<L, K> leftKeyByFunction,
-          KeyFunction<R, K> rightKeyByFunction) {
+    Equal(
+        JoinStream<L, R, O> joinStream,
+        KeyFunction<L, K> leftKeyByFunction,
+        KeyFunction<R, K> rightKeyByFunction) {
       this.joinStream = joinStream;
       this.leftKeyByFunction = leftKeyByFunction;
       this.rightKeyByFunction = rightKeyByFunction;
@@ -74,5 +77,4 @@ public class JoinStream<L, R, O> extends DataStream<L> {
       return (DataStream<O>) joinStream;
     }
   }
-
 }

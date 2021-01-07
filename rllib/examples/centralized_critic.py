@@ -16,14 +16,15 @@ modifies the environment.
 import argparse
 import numpy as np
 from gym.spaces import Discrete
+import os
 
 import ray
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
-    PPOLoss as TFLoss
+    ppo_surrogate_loss as tf_loss
 from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy, \
-    KLCoeffMixin as TorchKLCoeffMixin, PPOLoss as TorchLoss
+    KLCoeffMixin as TorchKLCoeffMixin, ppo_surrogate_loss as torch_loss
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -90,7 +91,7 @@ def centralized_critic_postprocessing(policy,
                     sample_batch[OPPONENT_OBS], policy.device),
                 convert_to_torch_tensor(
                     sample_batch[OPPONENT_ACTION], policy.device)) \
-                .detach().numpy()
+                .cpu().detach().numpy()
         else:
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 sample_batch[SampleBatch.CUR_OBS], sample_batch[OPPONENT_OBS],
@@ -119,50 +120,38 @@ def centralized_critic_postprocessing(policy,
     return train_batch
 
 
-# Copied from PPO but optimizing the central value function
+# Copied from PPO but optimizing the central value function.
 def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
+    func = tf_loss if not policy.config["framework"] == "torch" else torch_loss
 
-    logits, state = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
-    policy.central_value_out = policy.model.central_value_function(
+    vf_saved = model.value_function
+    model.value_function = lambda: policy.model.central_value_function(
         train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
         train_batch[OPPONENT_ACTION])
 
-    func = TFLoss if not policy.config["framework"] == "torch" else TorchLoss
-    adv = tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool) \
-        if policy.config["framework"] != "torch" else \
-        torch.ones_like(train_batch[Postprocessing.ADVANTAGES],
-                        dtype=torch.bool)
+    policy._central_value_out = model.value_function()
+    loss = func(policy, model, dist_class, train_batch)
 
-    policy.loss_obj = func(
-        dist_class,
-        model,
-        train_batch[Postprocessing.VALUE_TARGETS],
-        train_batch[Postprocessing.ADVANTAGES],
-        train_batch[SampleBatch.ACTIONS],
-        train_batch[SampleBatch.ACTION_DIST_INPUTS],
-        train_batch[SampleBatch.ACTION_LOGP],
-        train_batch[SampleBatch.VF_PREDS],
-        action_dist,
-        policy.central_value_out,
-        policy.kl_coeff,
-        adv,
-        entropy_coeff=policy.entropy_coeff,
-        clip_param=policy.config["clip_param"],
-        vf_clip_param=policy.config["vf_clip_param"],
-        vf_loss_coeff=policy.config["vf_loss_coeff"],
-        use_gae=policy.config["use_gae"])
+    model.value_function = vf_saved
 
-    return policy.loss_obj.loss
+    return loss
 
 
-def setup_mixins(policy, obs_space, action_space, config):
-    # copied from PPO
+def setup_tf_mixins(policy, obs_space, action_space, config):
+    # Copied from PPOTFPolicy (w/o ValueNetworkMixin).
     KLCoeffMixin.__init__(policy, config)
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
+
+
+def setup_torch_mixins(policy, obs_space, action_space, config):
+    # Copied from PPOTorchPolicy  (w/o ValueNetworkMixin).
+    TorchKLCoeffMixin.__init__(policy, config)
+    TorchEntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                       config["entropy_coeff_schedule"])
+    TorchLR.__init__(policy, config["lr"], config["lr_schedule"])
 
 
 def central_vf_stats(policy, train_batch, grads):
@@ -170,7 +159,7 @@ def central_vf_stats(policy, train_batch, grads):
     return {
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.central_value_out),
+            policy._central_value_out),
     }
 
 
@@ -178,7 +167,7 @@ CCPPOTFPolicy = PPOTFPolicy.with_updates(
     name="CCPPOTFPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
-    before_loss_init=setup_mixins,
+    before_loss_init=setup_tf_mixins,
     grad_stats_fn=central_vf_stats,
     mixins=[
         LearningRateSchedule, EntropyCoeffSchedule, KLCoeffMixin,
@@ -189,7 +178,7 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
     name="CCPPOTorchPolicy",
     postprocess_fn=centralized_critic_postprocessing,
     loss_fn=loss_with_central_critic,
-    before_init=setup_mixins,
+    before_init=setup_torch_mixins,
     mixins=[
         TorchLR, TorchEntropyCoeffSchedule, TorchKLCoeffMixin,
         CentralizedValueMixin
@@ -197,8 +186,8 @@ CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
 
 
 def get_policy_class(config):
-    return CCPPOTorchPolicy if config["framework"] == "torch" \
-        else CCPPOTFPolicy
+    if config["framework"] == "torch":
+        return CCPPOTorchPolicy
 
 
 CCTrainer = PPOTrainer.with_updates(
@@ -208,7 +197,7 @@ CCTrainer = PPOTrainer.with_updates(
 )
 
 if __name__ == "__main__":
-    ray.init(local_mode=True)
+    ray.init()
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model(
@@ -218,6 +207,8 @@ if __name__ == "__main__":
     config = {
         "env": TwoStepGame,
         "batch_mode": "complete_episodes",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
         "multiagent": {
             "policies": {
@@ -242,7 +233,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(CCTrainer, config=config, stop=stop)
+    results = tune.run(CCTrainer, config=config, stop=stop, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

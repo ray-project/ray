@@ -20,17 +20,17 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/redis_accessor.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisActorInfoAccessor(client) {}
+  MockActorInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : gcs::ServiceBasedActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
@@ -44,7 +44,7 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
   }
 
   bool ActorStateNotificationPublished(const ActorID &actor_id,
-                                       const gcs::ActorTableData &actor_data) {
+                                       const rpc::ActorTableData &actor_data) {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
@@ -60,15 +60,13 @@ class MockActorInfoAccessor : public gcs::RedisActorInfoAccessor {
       callback_map_;
 };
 
-class MockGcsClient : public gcs::RedisGcsClient {
+class MockGcsClient : public gcs::ServiceBasedGcsClient {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : gcs::RedisGcsClient(options) {}
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
 
-  void Init(MockActorInfoAccessor *actor_accesor_mock) {
-    actor_accessor_.reset(actor_accesor_mock);
+  void Init(MockActorInfoAccessor *actor_info_accessor) {
+    actor_accessor_.reset(actor_info_accessor);
   }
-
-  ~MockGcsClient() {}
 };
 
 class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
@@ -101,7 +99,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
                     const rpc::Address &owner_address, const std::string &call_site,
                     const int64_t object_size, bool is_reconstructable,
-                    const absl::optional<ClientID> &pinned_at_raylet_id));
+                    const absl::optional<NodeID> &pinned_at_raylet_id));
 
   MOCK_METHOD2(SetDeleteCallback,
                bool(const ObjectID &object_id,

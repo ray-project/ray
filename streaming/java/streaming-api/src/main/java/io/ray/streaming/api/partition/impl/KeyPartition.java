@@ -10,6 +10,7 @@ import io.ray.streaming.message.KeyRecord;
  * @param <T> Type of the input record.
  */
 public class KeyPartition<K, T> implements Partition<KeyRecord<K, T>> {
+
   private int[] partitions = new int[1];
 
   @Override

@@ -37,6 +37,14 @@ DEFAULT_CONFIG = with_common_config({
     "observation_filter": "MeanStdFilter",
     "noise_size": 250000000,
     "report_length": 10,
+    # ARS will use Trainer's evaluation WorkerSet (if evaluation_interval > 0).
+    # Therefore, we must be careful not to use more than 1 env per eval worker
+    # (would break ESPolicy's compute_action method) and to not do obs-
+    # filtering.
+    "evaluation_config": {
+        "num_envs_per_worker": 1,
+        "observation_filter": "NoFilter"
+    },
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -83,9 +91,9 @@ class Worker:
         self.preprocessor = models.ModelCatalog.get_preprocessor(
             self.env, config["model"])
 
-        policy_cls = get_policy_class(config)
-        self.policy = policy_cls(self.env.observation_space,
-                                 self.env.action_space, config)
+        _policy_class = get_policy_class(config)
+        self.policy = _policy_class(self.env.observation_space,
+                                    self.env.action_space, config)
 
     @property
     def filters(self):
@@ -172,6 +180,15 @@ def get_policy_class(config):
 def validate_config(config):
     if config["num_workers"] <= 0:
         raise ValueError("`num_workers` must be > 0 for ES!")
+    if config["evaluation_config"]["num_envs_per_worker"] != 1:
+        raise ValueError(
+            "`evaluation_config.num_envs_per_worker` must always be 1 for "
+            "ES/ARS! To parallelize evaluation, increase "
+            "`evaluation_num_workers` to > 1.")
+    if config["evaluation_config"]["observation_filter"] != "NoFilter":
+        raise ValueError(
+            "`evaluation_config.observation_filter` must always be `NoFilter` "
+            "for ES/ARS!")
 
 
 class ESTrainer(Trainer):
@@ -185,8 +202,8 @@ class ESTrainer(Trainer):
         validate_config(config)
         env_context = EnvContext(config["env_config"] or {}, worker_index=0)
         env = env_creator(env_context)
-        policy_cls = get_policy_class(config)
-        self.policy = policy_cls(
+        self._policy_class = get_policy_class(config)
+        self.policy = self._policy_class(
             obs_space=env.observation_space,
             action_space=env.action_space,
             config=config)
@@ -307,10 +324,19 @@ class ESTrainer(Trainer):
 
     @override(Trainer)
     def compute_action(self, observation, *args, **kwargs):
-        action = self.policy.compute_actions(observation, update=False)[0]
+        action, _, _ = self.policy.compute_actions([observation], update=False)
         if kwargs.get("full_fetch"):
-            return action, [], {}
-        return action
+            return action[0], [], {}
+        return action[0]
+
+    @override(Trainer)
+    def _sync_weights_to_workers(self, *, worker_set=None, workers=None):
+        # Broadcast the new policy weights to all evaluation workers.
+        assert worker_set is not None
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.policy.get_flat_weights())
+        worker_set.foreach_policy(
+            lambda p, pid: p.set_flat_weights(ray.get(weights)))
 
     @override(Trainer)
     def cleanup(self):

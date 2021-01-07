@@ -11,6 +11,7 @@ import argparse
 import gym
 from gym.spaces import Discrete, Box
 import numpy as np
+import os
 
 import ray
 from ray import tune
@@ -114,6 +115,8 @@ if __name__ == "__main__":
         "env_config": {
             "corridor_length": 5,
         },
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "model": {
             "custom_model": "my_model",
         },

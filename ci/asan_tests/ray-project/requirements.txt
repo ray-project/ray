@@ -2,7 +2,7 @@ aiohttp
 blist
 boto3
 cython==0.29.0
-dataclasses
+dataclasses; python_version < '3.7'
 dm-tree
 feather-format
 flask

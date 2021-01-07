@@ -9,10 +9,9 @@ See https://github.com/ray-project/ray/issues/3721.
 import os
 
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
     CActorClassID,
     CActorID,
-    CClientID,
+    CNodeID,
     CConfigID,
     CJobID,
     CFunctionID,
@@ -32,7 +31,7 @@ def check_id(b, size=kUniqueIDSize):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(size))
+                         str(size) + ", got " + str(len(b)))
 
 
 cdef extern from "ray/common/constants.h" nogil:
@@ -152,6 +151,9 @@ cdef class TaskID(BaseID):
     def actor_id(self):
         return ActorID(self.data.ActorId().Binary())
 
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
+
     cdef size_t hash(self):
         return self.data.Hash()
 
@@ -199,14 +201,14 @@ cdef class TaskID(BaseID):
             CTaskID.FromBinary(parent_task_id.binary()),
             parent_task_counter).Binary())
 
-cdef class ClientID(UniqueID):
+cdef class NodeID(UniqueID):
 
     def __init__(self, id):
         check_id(id)
-        self.data = CClientID.FromBinary(<c_string>id)
+        self.data = CNodeID.FromBinary(<c_string>id)
 
-    cdef CClientID native(self):
-        return <CClientID>self.data
+    cdef CNodeID native(self):
+        return <CNodeID>self.data
 
 
 cdef class JobID(BaseID):
@@ -221,7 +223,7 @@ cdef class JobID(BaseID):
 
     @classmethod
     def from_int(cls, value):
-        assert value < 65536, "Maximum JobID integer is 65535."
+        assert value < 2**32, "Maximum JobID integer is 2**32 - 1."
         return cls(CJobID.FromInt(value).Binary())
 
     @classmethod
@@ -300,16 +302,6 @@ cdef class ActorID(BaseID):
         return self.data.Hash()
 
 
-cdef class ActorCheckpointID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorCheckpointID.FromBinary(<c_string>id)
-
-    cdef CActorCheckpointID native(self):
-        return <CActorCheckpointID>self.data
-
-
 cdef class FunctionID(UniqueID):
 
     def __init__(self, id):
@@ -370,10 +362,9 @@ cdef class PlacementGroupID(BaseID):
         return self.data.Hash()
 
 _ID_TYPES = [
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
-    ClientID,
+    NodeID,
     JobID,
     WorkerID,
     FunctionID,

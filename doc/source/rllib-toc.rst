@@ -60,7 +60,6 @@ Training APIs
 Environments
 ------------
 *  `RLlib Environments Overview <rllib-env.html>`__
-*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 *  `OpenAI Gym <rllib-env.html#openai-gym>`__
 *  `Vectorized <rllib-env.html#vectorized>`__
 *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
@@ -96,8 +95,6 @@ Algorithms
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
 
-   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
-
 *  Gradient-based
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
@@ -105,8 +102,6 @@ Algorithms
    -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
-
-   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
 
    -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
@@ -120,7 +115,17 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Multi-agent specific
+*  Model-based / Meta-learning
+
+   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+
+   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
+
+   -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
+
+   -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+*  Multi-agent
 
    -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
    -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
@@ -133,6 +138,16 @@ Algorithms
 
    -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
    -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+
+*  Exploration-based plug-ins (can be combined with any algo)
+
+   -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+Sample Collection
+-----------------
+*  `The SampleCollector Class is Used to Store and Retrieve Temporary Data <rllib-sample-collection.html#the-samplecollector-class-is-used-to-store-and-retrieve-temporary-data>`__
+*  `Trajectory View API <rllib-sample-collection.html#trajectory-view-api>`__
+
 
 Offline Datasets
 ----------------
@@ -206,7 +221,9 @@ TensorFlow 2.0
 RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 16
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 16
