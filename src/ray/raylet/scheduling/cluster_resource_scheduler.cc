@@ -936,8 +936,8 @@ void ClusterResourceScheduler::FillResourceUsage(
     }
   }
   for (const auto &it : resources.custom_resources) {
-    uint64_t custom_id = it->first;
-    const auto &capacity = it->second;
+    uint64_t custom_id = it.first;
+    const auto &capacity = it.second;
     const auto &last_capacity = last_report_resources_->custom_resources[custom_id];
     const auto &label = string_to_int_map_.Get(custom_id);
     // Note: available may be negative, but only report positive to GCS.
