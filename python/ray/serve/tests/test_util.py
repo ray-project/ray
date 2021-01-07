@@ -10,7 +10,6 @@ import ray
 from ray.serve.utils import (ServeEncoder, chain_future, unpack_future,
                              try_schedule_resources_on_nodes,
                              get_conda_env_dir, import_class)
-from ray.serve.exceptions import RayServeException
 
 
 def test_bytes_encoder():
@@ -117,7 +116,7 @@ def test_get_conda_env_dir(tmp_path):
     d = tmp_path / "tf1"
     d.mkdir()
     os.environ["CONDA_PREFIX"] = str(d)
-    with pytest.raises(RayServeException):
+    with pytest.raises(ValueError):
         # env does not exist
         env_dir = get_conda_env_dir("tf2")
     tf2_dir = tmp_path / "tf2"
