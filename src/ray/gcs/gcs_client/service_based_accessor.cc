@@ -265,7 +265,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAllStates(
         [subscribe, done](
             const std::unordered_map<std::string, rpc::ActorStates> &actor_states_map) {
           for (auto &actor_states_iter : actor_states_map) {
-            subscribe(ActorID::FromBinary(actor_states_iter.first),
+            subscribe(ActorID::FromHex(actor_states_iter.first),
                       actor_states_iter.second);
           }
           if (done) {

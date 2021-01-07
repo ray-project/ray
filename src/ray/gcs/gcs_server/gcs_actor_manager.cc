@@ -204,11 +204,11 @@ void GcsActorManager::HandleGetAllActorStates(
   RAY_LOG(DEBUG) << "Getting all actor states.";
 
   for (const auto &iter : registered_actors_) {
-    (*reply->mutable_actor_states_map())[iter.first.Binary()] =
+    (*reply->mutable_actor_states_map())[iter.first.Hex()] =
         iter.second->GetActorTableData().states();
   }
   for (const auto &iter : destroyed_actors_) {
-    (*reply->mutable_actor_states_map())[iter.first.Binary()] =
+    (*reply->mutable_actor_states_map())[iter.first.Hex()] =
         iter.second->GetActorTableData().states();
   }
   RAY_LOG(DEBUG) << "Finished getting all actor states.";
