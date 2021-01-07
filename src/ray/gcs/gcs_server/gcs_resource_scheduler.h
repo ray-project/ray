@@ -84,8 +84,9 @@ class GcsResourceScheduler {
   ///
   /// \param required_resources_list The resources to be scheduled.
   /// \param scheduling_type This scheduling strategy.
-  /// \param node_filter_func This function is used to filter candidate nodes. By default,
-  /// all nodes in the cluster can be used for scheduling.
+  /// \param node_filter_func This function is used to filter candidate nodes. If a node
+  /// returns true, it can be used for scheduling. By default, all nodes in the cluster
+  /// can be used for scheduling.
   /// \return Scheduling selected nodes, it corresponds to `required_resources_list` one
   /// by one. If the scheduling fails, an empty vector is returned.
   std::vector<NodeID> Schedule(
@@ -97,8 +98,9 @@ class GcsResourceScheduler {
   /// Filter out candidate nodes which can be used for scheduling.
   ///
   /// \param cluster_resources The cluster node resources.
-  /// \param node_filter_func This function is used to filter candidate nodes. By default,
-  /// all nodes in the cluster can be used for scheduling.
+  /// \param node_filter_func This function is used to filter candidate nodes. If a node
+  /// returns true, it can be used for scheduling. By default, all nodes in the cluster
+  /// can be used for scheduling.
   /// \return The candidate nodes which can be used for scheduling.
   absl::flat_hash_set<NodeID> FilterCandidateNodes(
       const absl::flat_hash_map<NodeID, SchedulingResources> &cluster_resources,

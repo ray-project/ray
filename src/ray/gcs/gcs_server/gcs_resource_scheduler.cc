@@ -37,9 +37,8 @@ double LeastResourceScorer::Score(const ResourceSet &required_resources,
     node_score += calculated_score;
   }
 
-  // TODO(ffbin): When applying for CPU resources, if there are two nodes, one node has
-  // both GPU and CPU, and the other node only has CPU, we need to try our best to
-  // transfer to the node that only contains CPU. We will solve it in next pr.
+  // TODO(ffbin): We always want to choose the node with the least matching resources. We
+  // will solve it in next pr.
   return node_score;
 }
 
