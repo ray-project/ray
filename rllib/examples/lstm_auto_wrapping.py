@@ -8,8 +8,8 @@ from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()
 
-
 # __sphinx_doc_begin__
+
 
 # The custom model that will be wrapped by an LSTM.
 class MyCustomModel(TorchModelV2):
@@ -42,20 +42,22 @@ if __name__ == "__main__":
     ModelCatalog.register_custom_model("my_torch_model", MyCustomModel)
 
     # Create the Trainer.
-    trainer = ppo.PPOTrainer(env="CartPole-v0", config={
-        "framework": "torch",
-        "model": {
-            # Auto-wrap the custom(!) model with an LSTM.
-            "use_lstm": True,
-            # To further customize the LSTM auto-wrapper.
-            "lstm_cell_size": 64,
+    trainer = ppo.PPOTrainer(
+        env="CartPole-v0",
+        config={
+            "framework": "torch",
+            "model": {
+                # Auto-wrap the custom(!) model with an LSTM.
+                "use_lstm": True,
+                # To further customize the LSTM auto-wrapper.
+                "lstm_cell_size": 64,
 
-            # Specify our custom model from above.
-            "custom_model": "my_torch_model",
-            # Extra kwargs to be passed to your model's c'tor.
-            "custom_model_config": {},
-        },
-    })
+                # Specify our custom model from above.
+                "custom_model": "my_torch_model",
+                # Extra kwargs to be passed to your model's c'tor.
+                "custom_model_config": {},
+            },
+        })
     trainer.train()
 
 # __sphinx_doc_end__

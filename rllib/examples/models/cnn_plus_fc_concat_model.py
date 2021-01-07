@@ -15,6 +15,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
+
 # __sphinx_doc_begin__
 class CNNPlusFCConcatModel(TFModelV2):
     """TFModelV2 concat'ing CNN outputs to flat input(s), followed by FC(s).
@@ -22,6 +23,7 @@ class CNNPlusFCConcatModel(TFModelV2):
     Note: This model should be used for complex (Dict or Tuple) observation
     spaces that have one or more image components.
     """
+
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         # TODO: (sven) Support Dicts as well.
@@ -42,12 +44,13 @@ class CNNPlusFCConcatModel(TFModelV2):
                         "conv_filters", get_filter_config(component.shape)),
                     "conv_activation": model_config.get("conv_activation"),
                 }
-                cnn = ModelCatalog.get_model_v2(component,
-                                                action_space,
-                                                num_outputs=None,
-                                                model_config=config,
-                                                framework="tf",
-                                                name="cnn_{}".format(i))
+                cnn = ModelCatalog.get_model_v2(
+                    component,
+                    action_space,
+                    num_outputs=None,
+                    model_config=config,
+                    framework="tf",
+                    name="cnn_{}".format(i))
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
                 self.register_variables(cnn.variables())
@@ -106,6 +109,8 @@ class CNNPlusFCConcatModel(TFModelV2):
     @override(ModelV2)
     def value_function(self):
         return self._value_out
+
+
 # __sphinx_doc_end__
 
 
@@ -115,6 +120,7 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
     Note: This model should be used for complex (Dict or Tuple) observation
     spaces that have one or more image components.
     """
+
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
         # TODO: (sven) Support Dicts as well.
@@ -122,8 +128,8 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
             "`obs_space.original_space` must be Tuple!"
 
         nn.Module.__init__(self)
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config,
-                              name)
+        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
+                              model_config, name)
 
         # Atari type CNNs or IMPALA type CNNs (with residual layers)?
         self.cnn_type = self.model_config["custom_model_config"].get(
@@ -142,13 +148,19 @@ class TorchCNNPlusFCConcatModel(TorchModelV2, nn.Module):
                 }
                 if self.cnn_type == "atari":
                     cnn = ModelCatalog.get_model_v2(
-                        component, action_space, num_outputs=None,
-                        model_config=config, framework="torch",
+                        component,
+                        action_space,
+                        num_outputs=None,
+                        model_config=config,
+                        framework="torch",
                         name="cnn_{}".format(i))
                 else:
                     cnn = TorchImpalaVisionNet(
-                        component, action_space, num_outputs=None,
-                        model_config=config, name="cnn_{}".format(i))
+                        component,
+                        action_space,
+                        num_outputs=None,
+                        model_config=config,
+                        name="cnn_{}".format(i))
 
                 concat_size += cnn.num_outputs
                 self.cnns[i] = cnn
