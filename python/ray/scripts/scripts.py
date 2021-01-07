@@ -7,7 +7,6 @@ import os
 from socket import socket
 import subprocess
 import sys
-from tabulate import tabulate
 import time
 import urllib
 import urllib.parse
@@ -1375,6 +1374,7 @@ def memory(address, redis_password, group_by, sort_by):
 
     # Step 1: Fetch core memory worker stats and convert into a dictionary
     stats = ray.internal.internal_api.node_stats()
+    store_summary = ray.internal.internal_api.store_stats_summary(stats)
     stats = stats_collector.node_stats_to_dict(stats)
 
     # Step 2: Build memory table with "group_by" and "sort_by" parameters
@@ -1390,6 +1390,10 @@ def memory(address, redis_password, group_by, sort_by):
         "Memory Used by Objects", "Local Reference Ct", "Pinned in Memory Ct",
         "Used by Pending Tasks Ct", "Captured in Objects Ct", "Actor Handle Ct"
     ]
+    object_ref_labels = [
+        "IP Address", "PID", "Type", "Object Ref", "Object Size",
+        "Reference Type", "Call Site"
+    ]
     print(
         f"Grouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
     for key, group in memory_table["group"].items():
@@ -1397,48 +1401,47 @@ def memory(address, redis_password, group_by, sort_by):
         summary = group["summary"]
         summary["total_object_size"] = str(
             summary["total_object_size"]) + " MiB"
-        print(f"Summary for {group_by_label}: {key}")
-        print(
-            tabulate(
-                [summary.values()], headers=summary_labels, tablefmt="psql"))
+        print(f"--- Summary for {group_by_label}: {key} ---")
+        print("{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}".format(
+            *summary_labels))
+        print("{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n".format(
+            *summary.values()))
 
         # Part B: Memory table
-        rows = []
-        print(f"Object references for {group_by_label}: {key}")
+        print(f"--- Object references for {group_by_label}: {key} ---")
+        print("{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22} {:<39}".format(
+            *object_ref_labels))
         for entry in group["entries"]:
-            rows.append([
+            entry["object_size"] = str(
+                entry["object_size"]
+            ) + " MiB" if entry["object_size"] > -1 else "?"
+            entry["object_ref"] = [
+                entry["object_ref"][i:i + 39]
+                for i in range(0, len(entry["object_ref"]), 39)
+            ]
+            entry["call_site"] = [
+                entry["call_site"][i:i + 39]
+                for i in range(0, len(entry["call_site"]), 39)
+            ]
+            num_lines = max(len(entry["object_ref"]), len(entry["call_site"]))
+            object_ref_values = [
                 entry["node_ip_address"], entry["pid"], entry["type"],
-                f_newline(entry["object_ref"]),
-                str(entry["object_size"]) + " MiB", entry["reference_type"],
-                f_newline(entry["call_site"])
-            ])
-        print(
-            tabulate(
-                rows,
-                headers=[
-                    "IP Address", "PID", "Type", "Object Ref", "Object Size",
-                    "Reference Type", "Call Site"
-                ],
-                tablefmt="psql"), "\n")
+                entry["object_ref"], entry["object_size"],
+                entry["reference_type"], entry["call_site"]
+            ]
+            for i in range(len(object_ref_values)):
+                if not isinstance(object_ref_values[i], list):
+                    object_ref_values[i] = [object_ref_values[i]]
+                object_ref_values[i].extend(
+                    ["" for x in range(num_lines - len(object_ref_values[i]))])
+            for i in range(num_lines):
+                row = [elem[i] for elem in object_ref_values]
+                print("{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}".
+                      format(*row))
+        print("\n\n")
 
     # Step 4: Display overall summary
-    num_groups = len(memory_table["group"])
-    print(f"\n\nFinished computing Ray object references across \
-{num_groups} group(s). Overall summary:")
-    memory_table["summary"]["total_object_size"] = str(
-        memory_table["summary"]["total_object_size"]) + " MiB"
-    print(
-        tabulate(
-            [memory_table["summary"].values()],
-            headers=summary_labels,
-            tablefmt="psql"))
-
-
-def f_newline(string, group=39, char="\n"):
-    """Insert 'char; after every 'group' chars in a string.
-    Useful for setting the max width of tabulate table columns."""
-    string = str(string)
-    return char.join(string[i:i + group] for i in range(0, len(string), group))
+    print(store_summary)
 
 
 @cli.command()
