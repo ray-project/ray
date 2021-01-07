@@ -119,7 +119,8 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
 
   // Scheduling succeeded.
   const auto &result2 = gcs_resource_scheduler_->Schedule(
-      required_resources_list, gcs::SchedulingType::STRICT_SPREAD);
+      required_resources_list, gcs::SchedulingType::STRICT_SPREAD,
+      [](const NodeID &) { return true; });
   ASSERT_EQ(result2.size(), 1);
 }
 
