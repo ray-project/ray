@@ -84,13 +84,11 @@ class PullManager {
           spilled_url(),
           next_pull_time(first_retry_time),
           num_retries(0),
-          num_pulls(0),
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     double next_pull_time;
     uint8_t num_retries;
-    int num_pulls;
     absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
 
@@ -111,7 +109,7 @@ class PullManager {
   /// Update the request retry time for the given request.
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
   ///
-  /// \param request The request to update the retry time of
+  /// \param request The request to update the retry time of.
   void UpdateRetryTimer(ObjectPullRequest &request);
 
   /// See the constructor's arguments.

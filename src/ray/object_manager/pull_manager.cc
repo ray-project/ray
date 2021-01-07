@@ -30,7 +30,11 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       // We don't have an active pull for this object yet. Ask the caller to
       // send us notifications about the object's location.
       objects_to_locate->push_back(ref);
-      it = object_pull_requests_.emplace(obj_id, ObjectPullRequest(get_time_())).first;
+      // The first pull request doesn't need to be special case. Instead we can just let
+      // the retry timer fire immediately.
+      it = object_pull_requests_
+               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_()))
+               .first;
     }
     it->second.bundle_request_ids.insert(bundle_it->first);
   }
@@ -92,7 +96,6 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  bool did_pull = false;
   if (!request.spilled_url.empty()) {
     // Try to restore the spilled object.
     restore_spilled_object_(object_id, request.spilled_url,
@@ -113,11 +116,10 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     // New object locations were found, so begin trying to pull from a
     // client. This will be called every time a new client location
     // appears.
-    did_pull = PullFromRandomLocation(object_id);
-  }
-
-  if (did_pull) {
-    UpdateRetryTimer(request);
+    bool did_pull = PullFromRandomLocation(object_id);
+    if (did_pull) {
+      UpdateRetryTimer(request);
+    }
   }
 }
 
