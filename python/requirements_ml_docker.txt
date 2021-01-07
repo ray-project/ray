@@ -1,4 +1,4 @@
 -r requirements_rllib.txt
--r requirements/requirements_tune.txt
+-r requirements_tune.txt
 ipython
 tensorflow-gpu
