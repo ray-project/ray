@@ -189,7 +189,6 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             replay_buffer.append(ref)
             solution_buffer.append(arr)
 
-    print("-----------------------------------")
     # randomly sample objects
     for _ in range(1000):
         index = random.choice(list(range(buffer_length)))
@@ -238,7 +237,6 @@ def test_spill_stats(tmp_path, shutdown_only):
     x_id = f.remote()  # noqa
     ray.get(x_id)
     s = memory_summary()
-    print(s)
     assert "Plasma memory usage 50 MiB, 1 objects, 50.0% full" in s, s
     assert "Spilled 200 MiB, 4 objects" in s, s
     assert "Restored 150 MiB, 3 objects" in s, s
