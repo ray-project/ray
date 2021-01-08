@@ -1,34 +1,34 @@
 import asyncio
-from collections import defaultdict
 import os
 import random
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional
 from uuid import uuid4, UUID
 
 import ray
 import ray.cloudpickle as pickle
+from ray.actor import ActorHandle
+from ray.serve.backend_state import BackendState
 from ray.serve.backend_worker import create_backend_replica
 from ray.serve.constants import LongPollKey
-from ray.serve.kv_store import RayInternalKVStore
-from ray.serve.exceptions import RayServeException
-from ray.serve.utils import logger
-from ray.serve.config import BackendConfig, ReplicaConfig, HTTPConfig
-from ray.serve.long_poll import LongPollHost
-from ray.serve.backend_state import BackendState
-from ray.serve.endpoint_state import EndpointState
-from ray.serve.http_state import HTTPState
 from ray.serve.common import (
     BackendInfo,
     BackendTag,
     EndpointTag,
     GoalId,
-    ReplicaTag,
     NodeId,
+    ReplicaTag,
     TrafficPolicy,
 )
-from ray.actor import ActorHandle
+from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
+from ray.serve.endpoint_state import EndpointState
+from ray.serve.exceptions import RayServeException
+from ray.serve.http_state import HTTPState
+from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.long_poll import LongPollHost
+from ray.serve.utils import logger
 
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
@@ -37,8 +37,6 @@ CHECKPOINT_KEY = "serve-controller-checkpoint"
 
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 1.0
-
-REPLICA_STARTUP_TIME_WARNING_S = 5
 
 
 @dataclass
@@ -82,7 +80,7 @@ class ServeController:
 
     async def __init__(self,
                        controller_name: str,
-                       http_config: HTTPConfig,
+                       http_config: HTTPOptions,
                        detached: bool = False):
         # Used to read/write checkpoints.
         self.kv_store = RayInternalKVStore(namespace=controller_name)

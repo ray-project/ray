@@ -47,9 +47,6 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(int64_t, raylet_report_resources_period_milliseconds, 100)
-/// Whether to report resource usage lightly. When it is enalbed, only changed part,
-/// like should_global_gc or changed resources, will be included in the message.
-RAY_CONFIG(bool, light_report_resource_usage_enabled, true)
 
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
@@ -288,7 +285,7 @@ RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(int64_t, enable_metrics_collection, true)
 
-/// Whether start the Plasma Store as a Raylet thread.
+/// Whether put small objects in the local memory store.
 RAY_CONFIG(bool, put_small_object_in_memory_store, false)
 
 /// Maximum number of tasks that can be in flight between an owner and a worker for which
