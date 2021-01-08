@@ -63,37 +63,41 @@ ScheduleMap GcsScheduleStrategy::GenerateScheduleMap(
 
 ScheduleMap GcsStrictPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context) {
+    const std::unique_ptr<ScheduleContext> &context,
+    GcsResourceScheduler &gcs_resource_scheduler) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
-      required_resources, SchedulingType::STRICT_PACK);
+  const auto &selected_nodes =
+      gcs_resource_scheduler.Schedule(required_resources, SchedulingType::STRICT_PACK);
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 
 ScheduleMap GcsPackStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context) {
+    const std::unique_ptr<ScheduleContext> &context,
+    GcsResourceScheduler &gcs_resource_scheduler) {
   // The current algorithm is to select a node and deploy as many bundles as possible.
   // First fill up a node. If the node resource is insufficient, select a new node.
   // TODO(ffbin): We will speed this up in next PR. Currently it is a double for loop.
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
   const auto &selected_nodes =
-      context->gcs_resource_scheduler_.Schedule(required_resources, SchedulingType::PACK);
+      gcs_resource_scheduler.Schedule(required_resources, SchedulingType::PACK);
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 
 ScheduleMap GcsSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context) {
+    const std::unique_ptr<ScheduleContext> &context,
+    GcsResourceScheduler &gcs_resource_scheduler) {
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
-      required_resources, SchedulingType::SPREAD);
+  const auto &selected_nodes =
+      gcs_resource_scheduler.Schedule(required_resources, SchedulingType::SPREAD);
   return GenerateScheduleMap(bundles, selected_nodes);
 }
 
 ScheduleMap GcsStrictSpreadStrategy::Schedule(
     std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-    const std::unique_ptr<ScheduleContext> &context) {
+    const std::unique_ptr<ScheduleContext> &context,
+    GcsResourceScheduler &gcs_resource_scheduler) {
   // TODO(ffbin): A bundle may require special resources, such as GPU. We need to
   // schedule bundles with special resource requirements first, which will be implemented
   // in the next pr.
@@ -108,7 +112,7 @@ ScheduleMap GcsStrictSpreadStrategy::Schedule(
   }
 
   const auto &required_resources = GetRequiredResourcesFromBundles(bundles);
-  const auto &selected_nodes = context->gcs_resource_scheduler_.Schedule(
+  const auto &selected_nodes = gcs_resource_scheduler.Schedule(
       required_resources, SchedulingType::STRICT_SPREAD,
       /*node_filter_func=*/[&nodes_in_use](const NodeID &node_id) {
         return nodes_in_use.count(node_id) == 0;
@@ -138,7 +142,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 << ", id: " << placement_group->GetPlacementGroupID()
                 << ", bundles size = " << bundles.size();
   auto selected_nodes = scheduler_strategies_[strategy]->Schedule(
-      bundles, GetScheduleContext(placement_group->GetPlacementGroupID()));
+      bundles, GetScheduleContext(placement_group->GetPlacementGroupID()),
+      gcs_resource_scheduler_);
 
   // If no nodes are available, scheduling fails.
   if (selected_nodes.empty()) {
@@ -448,8 +453,8 @@ std::unique_ptr<ScheduleContext> GcsPlacementGroupScheduler::GetScheduleContext(
 
   auto &bundle_locations =
       committed_bundle_location_index_.GetBundleLocations(placement_group_id);
-  return std::unique_ptr<ScheduleContext>(new ScheduleContext(
-      std::move(node_to_bundles), bundle_locations, gcs_resource_scheduler_));
+  return std::unique_ptr<ScheduleContext>(
+      new ScheduleContext(std::move(node_to_bundles), bundle_locations));
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>

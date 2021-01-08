@@ -91,18 +91,14 @@ class GcsPlacementGroupSchedulerInterface {
 class ScheduleContext {
  public:
   ScheduleContext(std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles,
-                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations,
-                  GcsResourceScheduler &gcs_resource_scheduler)
+                  const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations)
       : node_to_bundles_(std::move(node_to_bundles)),
-        bundle_locations_(bundle_locations),
-        gcs_resource_scheduler_(gcs_resource_scheduler) {}
+        bundle_locations_(bundle_locations) {}
 
   // Key is node id, value is the number of bundles on the node.
   const std::shared_ptr<absl::flat_hash_map<NodeID, int64_t>> node_to_bundles_;
   // The locations of existing bundles for this placement group.
   const absl::optional<std::shared_ptr<BundleLocations>> bundle_locations_;
-  // The gcs resource scheduler.
-  GcsResourceScheduler &gcs_resource_scheduler_;
 };
 
 class GcsScheduleStrategy {
@@ -110,7 +106,8 @@ class GcsScheduleStrategy {
   virtual ~GcsScheduleStrategy() {}
   virtual ScheduleMap Schedule(
       std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-      const std::unique_ptr<ScheduleContext> &context) = 0;
+      const std::unique_ptr<ScheduleContext> &context,
+      GcsResourceScheduler &gcs_resource_scheduler) = 0;
 
  protected:
   /// Get required resources from bundles.
@@ -136,14 +133,16 @@ class GcsScheduleStrategy {
 class GcsPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context) override;
+                       const std::unique_ptr<ScheduleContext> &context,
+                       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsSpreadStrategy` is that spread all bundles in different nodes.
 class GcsSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context) override;
+                       const std::unique_ptr<ScheduleContext> &context,
+                       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictPackStrategy` is that all bundles must be scheduled to one node. If one
@@ -151,7 +150,8 @@ class GcsSpreadStrategy : public GcsScheduleStrategy {
 class GcsStrictPackStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context) override;
+                       const std::unique_ptr<ScheduleContext> &context,
+                       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 /// The `GcsStrictSpreadStrategy` is that spread all bundles in different nodes.
@@ -160,7 +160,8 @@ class GcsStrictPackStrategy : public GcsScheduleStrategy {
 class GcsStrictSpreadStrategy : public GcsScheduleStrategy {
  public:
   ScheduleMap Schedule(std::vector<std::shared_ptr<ray::BundleSpecification>> &bundles,
-                       const std::unique_ptr<ScheduleContext> &context) override;
+                       const std::unique_ptr<ScheduleContext> &context,
+                       GcsResourceScheduler &gcs_resource_scheduler) override;
 };
 
 enum class LeasingState {
