@@ -12,7 +12,7 @@ What is the Ray runtime?
 Ray programs are able to parallelize and distribute by leveraging an underlying *Ray runtime*.
 The Ray runtime consists of multiple services/processes started in the background for communication, data transfer, scheduling, and more. The Ray runtime can be started on a laptop, a single server, or multiple servers.
 
-There are four ways of starting the Ray runtime:
+There are three ways of starting the Ray runtime:
 
 * Implicitly via ``ray.init()`` (:ref:`start-ray-init`)
 * Explicitly via CLI (:ref:`start-ray-cli`)
