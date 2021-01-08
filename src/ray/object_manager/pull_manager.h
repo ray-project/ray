@@ -102,7 +102,15 @@ class PullManager {
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
   /// will try each of the other clients in succession.
-  void PullFromRandomLocation(const ObjectID &object_id);
+  ///
+  /// \return True if a pull request was sent, otherwise false.
+  bool PullFromRandomLocation(const ObjectID &object_id);
+
+  /// Update the request retry time for the given request.
+  /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
+  ///
+  /// \param request The request to update the retry time of.
+  void UpdateRetryTimer(ObjectPullRequest &request);
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
