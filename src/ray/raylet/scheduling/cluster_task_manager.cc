@@ -395,7 +395,6 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 }
 
 void ClusterTaskManager::FillResourceUsage(
-    bool light_report_resource_usage_enabled,
     std::shared_ptr<rpc::ResourcesData> data) const {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;

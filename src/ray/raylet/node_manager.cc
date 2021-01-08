@@ -133,8 +133,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
-      light_report_resource_usage_enabled_(
-          RayConfig::instance().light_report_resource_usage_enabled()),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(io_service, config.num_workers_soft_limit,
@@ -286,7 +284,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to resource usage batches from the monitor.
   const auto &resource_usage_batch_added =
       [this](const ResourceUsageBatchData &resource_usage_batch) {
-        ResourceUsageBatchAdded(resource_usage_batch);
+        ResourceUsageBatchReceived(resource_usage_batch);
       };
   RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
       resource_usage_batch_added, /*done*/ nullptr));
@@ -447,76 +445,50 @@ void NodeManager::ReportResourceUsage() {
   if (new_scheduler_enabled_) {
     // Update local chche from gcs remote cache, this is needed when gcs restart.
     // We should always keep the cache view consistent.
-    new_resource_scheduler_->UpdateLastReportResourcesFromGcs(
+    new_resource_scheduler_->UpdateLastResourceUsage(
         gcs_client_->NodeResources().GetLastResourceUsage());
-    new_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
-                                               resources_data);
-    cluster_task_manager_->FillResourceUsage(light_report_resource_usage_enabled_,
-                                             resources_data);
+    new_resource_scheduler_->FillResourceUsage(resources_data);
+    cluster_task_manager_->FillResourceUsage(resources_data);
   } else {
     // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
     // directly.
     // TODO(atumanov): implement a ResourceSet const_iterator.
-    // If light resource usage report enabled, we only set filed that represent resources
-    // changed.
-    if (light_report_resource_usage_enabled_) {
-      auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
-      if (!last_heartbeat_resources->GetTotalResources().IsEqual(
-              local_resources.GetTotalResources())) {
-        for (const auto &resource_pair :
-             local_resources.GetTotalResources().GetResourceMap()) {
-          (*resources_data->mutable_resources_total())[resource_pair.first] =
-              resource_pair.second;
-        }
-        last_heartbeat_resources->SetTotalResources(
-            ResourceSet(local_resources.GetTotalResources()));
-      }
-
-      if (!last_heartbeat_resources->GetAvailableResources().IsEqual(
-              local_resources.GetAvailableResources())) {
-        resources_data->set_resources_available_changed(true);
-        for (const auto &resource_pair :
-             local_resources.GetAvailableResources().GetResourceMap()) {
-          (*resources_data->mutable_resources_available())[resource_pair.first] =
-              resource_pair.second;
-        }
-        last_heartbeat_resources->SetAvailableResources(
-            ResourceSet(local_resources.GetAvailableResources()));
-      }
-
-      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
-      if (!last_heartbeat_resources->GetLoadResources().IsEqual(
-              local_resources.GetLoadResources())) {
-        resources_data->set_resource_load_changed(true);
-        for (const auto &resource_pair :
-             local_resources.GetLoadResources().GetResourceMap()) {
-          (*resources_data->mutable_resource_load())[resource_pair.first] =
-              resource_pair.second;
-        }
-        last_heartbeat_resources->SetLoadResources(
-            ResourceSet(local_resources.GetLoadResources()));
-      }
-    } else {
-      // If light resource usage report disabled, we send whole resources information
-      // every time.
+    // We only set fileds that changed.
+    auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
+    if (!last_heartbeat_resources->GetTotalResources().IsEqual(
+            local_resources.GetTotalResources())) {
       for (const auto &resource_pair :
            local_resources.GetTotalResources().GetResourceMap()) {
         (*resources_data->mutable_resources_total())[resource_pair.first] =
             resource_pair.second;
       }
+      last_heartbeat_resources->SetTotalResources(
+          ResourceSet(local_resources.GetTotalResources()));
+    }
 
+    if (!last_heartbeat_resources->GetAvailableResources().IsEqual(
+            local_resources.GetAvailableResources())) {
+      resources_data->set_resources_available_changed(true);
       for (const auto &resource_pair :
            local_resources.GetAvailableResources().GetResourceMap()) {
         (*resources_data->mutable_resources_available())[resource_pair.first] =
             resource_pair.second;
       }
+      last_heartbeat_resources->SetAvailableResources(
+          ResourceSet(local_resources.GetAvailableResources()));
+    }
 
-      local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+    local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+    if (!last_heartbeat_resources->GetLoadResources().IsEqual(
+            local_resources.GetLoadResources())) {
+      resources_data->set_resource_load_changed(true);
       for (const auto &resource_pair :
            local_resources.GetLoadResources().GetResourceMap()) {
         (*resources_data->mutable_resource_load())[resource_pair.first] =
             resource_pair.second;
       }
+      last_heartbeat_resources->SetLoadResources(
+          ResourceSet(local_resources.GetLoadResources()));
     }
   }
 
@@ -951,15 +923,16 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
   }
 }
 
-void NodeManager::ResourceUsageAdded(const NodeID &node_id,
-                                     const rpc::ResourcesData &resource_data) {
+void NodeManager::UpdateResourceUsage(const NodeID &node_id,
+                                      const rpc::ResourcesData &resource_data) {
   // Locate the node id in remote node table and update available resources based on
   // the received resource usage information.
   auto it = cluster_resource_map_.find(node_id);
   if (it == cluster_resource_map_.end()) {
     // Haven't received the node registration for this node yet, skip this message.
-    RAY_LOG(INFO) << "[ResourceUsageAdded]: received resource usage from unknown node id "
-                  << node_id;
+    RAY_LOG(INFO)
+        << "[UpdateResourceUsage]: received resource usage from unknown node id "
+        << node_id;
     return;
   }
   // Trigger local GC at the next heartbeat interval.
@@ -969,28 +942,17 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
 
   SchedulingResources &remote_resources = it->second;
 
-  // If light resource usage report enabled, we update remote resources only when related
-  // resources map in heartbeat is not empty.
-  if (light_report_resource_usage_enabled_) {
-    if (resource_data.resources_total_size() > 0) {
-      ResourceSet remote_total(MapFromProtobuf(resource_data.resources_total()));
-      remote_resources.SetTotalResources(std::move(remote_total));
-    }
-    if (resource_data.resources_available_changed()) {
-      ResourceSet remote_available(MapFromProtobuf(resource_data.resources_available()));
-      remote_resources.SetAvailableResources(std::move(remote_available));
-    }
-    if (resource_data.resource_load_changed()) {
-      ResourceSet remote_load(MapFromProtobuf(resource_data.resource_load()));
-      // Extract the load information and save it locally.
-      remote_resources.SetLoadResources(std::move(remote_load));
-    }
-  } else {
-    // If light resource usage report disabled, we update remote resources every time.
+  // We update remote resources only when related
+  // resources map in message changed.
+  if (resource_data.resources_total_size() > 0) {
     ResourceSet remote_total(MapFromProtobuf(resource_data.resources_total()));
     remote_resources.SetTotalResources(std::move(remote_total));
+  }
+  if (resource_data.resources_available_changed()) {
     ResourceSet remote_available(MapFromProtobuf(resource_data.resources_available()));
     remote_resources.SetAvailableResources(std::move(remote_available));
+  }
+  if (resource_data.resource_load_changed()) {
     ResourceSet remote_load(MapFromProtobuf(resource_data.resource_load()));
     // Extract the load information and save it locally.
     remote_resources.SetLoadResources(std::move(remote_load));
@@ -1030,7 +992,7 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
   }
 }
 
-void NodeManager::ResourceUsageBatchAdded(
+void NodeManager::ResourceUsageBatchReceived(
     const ResourceUsageBatchData &resource_usage_batch) {
   // Update load information provided by each message.
   for (const auto &resource_usage : resource_usage_batch.batch()) {
@@ -1039,7 +1001,7 @@ void NodeManager::ResourceUsageBatchAdded(
       // Skip messages from self.
       continue;
     }
-    ResourceUsageAdded(node_id, resource_usage);
+    UpdateResourceUsage(node_id, resource_usage);
   }
 }
 

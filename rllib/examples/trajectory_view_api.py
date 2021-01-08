@@ -21,7 +21,7 @@ parser.add_argument("--stop-reward", type=float, default=150.0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(num_cpus=3)
 
     ModelCatalog.register_custom_model(
         "frame_stack_model", FrameStackingCartPoleModel
