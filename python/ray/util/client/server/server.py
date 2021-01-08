@@ -427,7 +427,7 @@ def main():
         "-p", "--port", type=int, default=50051, help="Port to bind to")
     parser.add_argument(
         "--redis-address",
-        required=True,
+        required=False,
         type=str,
         help="Address to use to connect to Ray")
     parser.add_argument(
@@ -437,11 +437,14 @@ def main():
         help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    if args.redis_password:
-        ray.init(
-            address=args.redis_address, _redis_password=args.redis_password)
+    if args.redis_address:
+        if args.redis_password:
+            ray.init(
+                address=args.redis_address, _redis_password=args.redis_password)
+        else:
+            ray.init(address=args.redis_address)
     else:
-        ray.init(address=args.redis_address)
+        ray.init()
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     server = serve(hostport)
