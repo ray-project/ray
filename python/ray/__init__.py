@@ -65,7 +65,8 @@ import ray._raylet  # noqa: E402
 from ray._raylet import (  # noqa: E402
     ActorClassID, ActorID, NodeID, Config as _Config, JobID, WorkerID,
     FunctionID, ObjectID, ObjectRef, TaskID, UniqueID, Language,
-    PlacementGroupID)  # noqa: E402
+    PlacementGroupID,
+)
 
 _config = _Config()
 
@@ -80,8 +81,9 @@ from ray.api import (  # noqa: E402
 )
 from ray.worker import (  # noqa: E402,F401
     LOCAL_MODE, SCRIPT_MODE, WORKER_MODE, RESTORE_WORKER_MODE,
-    SPILL_WORKER_MODE, connect, disconnect, init,
+    SPILL_WORKER_MODE, init,
 )  # noqa: E402
+
 import ray.internal  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
@@ -105,8 +107,6 @@ __all__ = [
     "available_resources",
     "cancel",
     "cluster_resources",
-    "connect",
-    "disconnect",
     "get",
     "get_actor",
     "get_gpu_ids",

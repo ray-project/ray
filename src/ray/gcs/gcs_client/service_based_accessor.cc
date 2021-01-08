@@ -731,32 +731,29 @@ void ServiceBasedNodeResourceInfoAccessor::AsyncReReportResourceUsage() {
 
 void ServiceBasedNodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
-  if (RayConfig::instance().light_report_resource_usage_enabled()) {
-    SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+  SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
 
-    auto resources_data = resources.mutable_resources();
-    resources_data->clear_resources_total();
-    for (const auto &resource_pair :
-         cached_resources.GetTotalResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
+  auto resources_data = resources.mutable_resources();
+  resources_data->clear_resources_total();
+  for (const auto &resource_pair :
+       cached_resources.GetTotalResources().GetResourceMap()) {
+    (*resources_data->mutable_resources_total())[resource_pair.first] =
+        resource_pair.second;
+  }
 
-    resources_data->clear_resources_available();
-    resources_data->set_resources_available_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetAvailableResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
+  resources_data->clear_resources_available();
+  resources_data->set_resources_available_changed(true);
+  for (const auto &resource_pair :
+       cached_resources.GetAvailableResources().GetResourceMap()) {
+    (*resources_data->mutable_resources_available())[resource_pair.first] =
+        resource_pair.second;
+  }
 
-    resources_data->clear_resource_load();
-    resources_data->set_resource_load_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetLoadResources().GetResourceMap()) {
-      (*resources_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
-    }
+  resources_data->clear_resource_load();
+  resources_data->set_resource_load_changed(true);
+  for (const auto &resource_pair : cached_resources.GetLoadResources().GetResourceMap()) {
+    (*resources_data->mutable_resource_load())[resource_pair.first] =
+        resource_pair.second;
   }
 }
 
