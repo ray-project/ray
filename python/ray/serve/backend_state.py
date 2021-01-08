@@ -19,6 +19,12 @@ _RESOURCE_CHECK_ENABLED = True
 
 
 class BackendState:
+    """Manages all state for backends in the system.
+
+    This class is *not* thread safe, so any state-modifying methods should be
+    called with a lock held.
+    """
+
     def __init__(self,
                  controller_name: str,
                  detached: bool,

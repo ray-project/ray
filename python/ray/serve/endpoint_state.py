@@ -10,6 +10,12 @@ CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
 
 
 class EndpointState:
+    """Manages all state for endpoints in the system.
+
+    This class is *not* thread safe, so any state-modifying methods should be
+    called with a lock held.
+    """
+
     def __init__(self, kv_store: RayInternalKVStore,
                  long_poll_host: LongPollHost):
         self._kv_store = kv_store
