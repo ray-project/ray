@@ -572,6 +572,7 @@ def start_ray_process(command,
     # before the process itself is assigned to the job.
     # After that point, its children will not be added to the job anymore.
     CREATE_SUSPENDED = 0x00000004  # from Windows headers
+    CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 
     process = ConsolePopen(
         command,
@@ -581,7 +582,7 @@ def start_ray_process(command,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
         preexec_fn=preexec_fn if sys.platform != "win32" else None,
-        creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0)
+        creationflags=(CREATE_SUSPENDED if win32_fate_sharing else 0) | CREATE_BREAKAWAY_FROM_JOB)
 
     if win32_fate_sharing:
         try:
