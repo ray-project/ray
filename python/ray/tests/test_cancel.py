@@ -235,8 +235,7 @@ def test_fast(shutdown_only, use_force):
         try:
             ray.get(obj_ref, timeout=120)
         except Exception as e:
-            assert isinstance(
-                e, valid_exceptions(use_force)), f"Failure on iteration {i}"
+            assert isinstance(e, valid_exceptions(use_force)), f"Failure on iteration: {i}"
 
 
 @pytest.mark.parametrize("use_force", [True, False])
