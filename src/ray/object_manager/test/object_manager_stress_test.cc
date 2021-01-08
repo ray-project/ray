@@ -169,7 +169,7 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     uint64_t retry_with_request_id = 0;
-    std::shared_ptr<arrow::Buffer> data;
+    std::shared_ptr<Buffer> data;
     RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata,
                                metadata_size, &retry_with_request_id, &data));
     RAY_CHECK(retry_with_request_id == 0);
@@ -300,11 +300,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
   void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
     plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
-    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
-    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
-    ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data->size());
-    ASSERT_EQ(object_buffer_1.metadata->size(), object_buffer_2.metadata->size());
-    int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata->size();
+    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->Data());
+    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->Data());
+    ASSERT_EQ(object_buffer_1.data->Size(), object_buffer_2.data->Size());
+    ASSERT_EQ(object_buffer_1.metadata->Size(), object_buffer_2.metadata->Size());
+    int64_t total_size = object_buffer_1.data->Size() + object_buffer_1.metadata->Size();
     RAY_LOG(DEBUG) << "total_size " << total_size;
     for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);

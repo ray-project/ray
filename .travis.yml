@@ -141,6 +141,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_ENABLE_NEW_SCHEDULER=0
       language: java
       jdk: openjdk8
       install:
@@ -357,9 +358,6 @@ matrix:
       env:
         - TUNE_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.2.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -377,9 +375,6 @@ matrix:
       env:
         - SGD_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
@@ -397,9 +392,6 @@ matrix:
       env:
         - DOC_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
@@ -415,9 +407,6 @@ matrix:
       env:
         - PYTHON=3.7 TUNE_TESTING=1
         - INSTALL_HOROVOD=1
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.7
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED

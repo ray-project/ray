@@ -222,8 +222,8 @@ def mlflow_mixin(func: Callable):
 
     You can also use MlFlow's autologging feature if using a training
     framework like Pytorch Lightning, XGBoost, etc. More information can be
-    found here (https://mlflow.org/docs/latest/tracking.html#automatic
-    -logging).
+    found here
+    (https://mlflow.org/docs/latest/tracking.html#automatic-logging).
 
     .. code-block:: python
 

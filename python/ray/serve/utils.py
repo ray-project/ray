@@ -19,6 +19,7 @@ import pydantic
 
 import ray
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
+from ray.ray_constants import MEMORY_RESOURCE_UNIT_BYTES
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
@@ -295,8 +296,18 @@ def try_schedule_resources_on_nodes(
         for node_id, node_resource in ray_resource.items():
             # Check if we can schedule on this node
             feasible = True
+
             for key, count in resource_dict.items():
-                if node_resource.get(key, 0) - count < 0:
+                # Fix legacy behaviour in all memory objects
+                if "memory" in key:
+                    memory_resource = node_resource.get(key, 0)
+                    if memory_resource > 0:
+                        # Convert from chunks to bytes
+                        memory_resource *= MEMORY_RESOURCE_UNIT_BYTES
+                    if memory_resource - count < 0:
+                        feasible = False
+
+                elif node_resource.get(key, 0) - count < 0:
                     feasible = False
 
             # If we can, schedule it on this node
@@ -374,8 +385,8 @@ class MockImportedBackend:
     def __call__(self, *args):
         return {"arg": self.arg, "config": self.config}
 
-    def other_method(self, request):
-        return request.data
+    async def other_method(self, request):
+        return await request.body()
 
 
 def compute_iterable_delta(old: Iterable,
@@ -414,3 +425,19 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
         {k: new_dict[k]
          for k in updated_keys},
     )
+
+
+def get_current_node_resource_key() -> str:
+    """Get the Ray resource key for current node.
+
+    It can be used for actor placement.
+    """
+    current_node_id = ray.get_runtime_context().node_id.hex()
+    for node in ray.nodes():
+        if node["NodeID"] == current_node_id:
+            # Found the node.
+            for key in node["Resources"].keys():
+                if key.startswith("node:"):
+                    return key
+    else:
+        raise ValueError("Cannot found the node dictionary for current node.")

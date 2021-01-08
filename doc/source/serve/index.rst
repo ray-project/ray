@@ -25,10 +25,11 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 1. Have Python functions and classes automatically placed behind HTTP endpoints.
 
-2. Alternatively, call them from within your existing Python web server using the Python-native :ref:`servehandle-api` .
+2. Alternatively, call them from :ref:`within your existing Python web server <serve-web-server-integration-tutorial>` using the Python-native :ref:`servehandle-api`.
 
 
-.. note::
+
+.. tip::
   Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel and on our `forum <https://discuss.ray.io/>`_!
 
 .. note::
@@ -67,7 +68,7 @@ The first approach is easy to get started with, but it's hard to scale each comp
 requires vendor lock-in (SageMaker), framework-specific tooling (TFServing), and a general
 lack of flexibility.
 
-Ray Serve solves these problems by giving you a simple web server (and the ability to use your own) while still handling the complex routing, scaling, and testing logic
+Ray Serve solves these problems by giving you a simple web server (and the ability to :ref:`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
 Beyond scaling up your backends with multiple replicas, Ray Serve also enables:

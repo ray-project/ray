@@ -103,9 +103,9 @@ class ReplicaSet:
                 continue
             logger.debug(f"Assigned query {query.metadata.request_id} "
                          f"to replica {replica}.")
-            ref = replica.handle_request.remote(query)
-            self.in_flight_queries[replica].add(ref)
-            return ref
+            tracker_ref, user_ref = replica.handle_request.remote(query)
+            self.in_flight_queries[replica].add(tracker_ref)
+            return user_ref
         return None
 
     @property
@@ -172,8 +172,8 @@ class Router:
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Count(
-            "num_router_requests",
-            description="Number of requests processed by the router.",
+            "serve_num_router_requests",
+            description="The number of requests processed by the router.",
             tag_keys=("endpoint", ))
 
     async def setup_in_async_loop(self):
