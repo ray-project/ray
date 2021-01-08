@@ -747,15 +747,41 @@ class TFPolicy(Policy):
 
         # `input_dict` given: Simply build what's in that dict.
         if input_dict is not None:
-            for key, value in input_dict.items():
-                if key in self._input_dict:
-                    builder.add_feed_dict({self._input_dict[key]: value})
+            if hasattr(self, "_input_dict"):
+                for key, value in input_dict.items():
+                    if key in self._input_dict:
+                        builder.add_feed_dict({self._input_dict[key]: value})
+            # For policies that inherit directly from TFPolicy.
+            else:
+                builder.add_feed_dict({
+                    self._obs_input: input_dict[SampleBatch.OBS]
+                })
+                if SampleBatch.PREV_ACTIONS in input_dict:
+                    builder.add_feed_dict({
+                        self._prev_action_input: input_dict[
+                            SampleBatch.PREV_ACTIONS]
+                    })
+                if SampleBatch.PREV_REWARDS in input_dict:
+                    builder.add_feed_dict({
+                        self._prev_reward_input: input_dict[
+                            SampleBatch.PREV_REWARDS]
+                    })
+                state_batches = []
+                i = 0
+                while "state_in_{}".format(i) in input_dict:
+                    state_batches.append(input_dict["state_in_{}".format(i)])
+                    i += 1
+                builder.add_feed_dict(
+                    dict(zip(self._state_inputs, state_batches)))
+
             if "state_in_0" in input_dict:
                 builder.add_feed_dict({
                     self._seq_lens: np.ones(len(input_dict["state_in_0"]))
                 })
 
         # Hardcoded old way: Build fixed fields, if provided.
+        # TODO: (sven) This can be deprecated after trajectory view API flag is
+        #  removed and always True.
         else:
             state_batches = state_batches or []
             if len(self._state_inputs) != len(state_batches):
