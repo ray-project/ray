@@ -106,6 +106,17 @@ void NodeManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
 void NodeManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+  if (!last_heartbeat_resources->GetLoadResources().IsEqual(
+          local_resources.GetLoadResources())) {
+    resources_data->set_resource_load_changed(true);
+    for (const auto &resource_pair :
+         local_resources.GetLoadResources().GetResourceMap()) {
+      (*resources_data->mutable_resource_load())[resource_pair.first] =
+          resource_pair.second;
+    }
+    last_heartbeat_resources->SetLoadResources(
+        ResourceSet(local_resources.GetLoadResources()));
+  }
 
   // Add resource load by shape. This will be used by the new autoscaler.
   auto resource_load = local_queues_.GetResourceLoadByShape(
@@ -258,9 +269,9 @@ void NodeManager::OnNodeResourceUsageUpdated(const NodeID &node_id,
     return;
   }
 
-// Extract decision for this raylet.
-  auto decision = scheduling_policy_.SpillOver(it->second,
-                                               cluster_resource_map_[self_node_id_]);
+  // Extract decision for this raylet.
+  auto decision =
+      scheduling_policy_.SpillOver(it->second, cluster_resource_map_[self_node_id_]);
   std::unordered_set<TaskID> local_task_ids;
   for (const auto &task_id : decision) {
     // (See design_docs/task_states.rst for the state transition diagram.)

@@ -7,7 +7,8 @@ import inspect
 import threading
 import time
 import uuid
-from collections import defaultdict, deque, Mapping, Sequence
+from collections import defaultdict, deque
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from threading import Thread
 

@@ -57,7 +57,6 @@ void OldClusterResourceScheduler::DeleteResource(const std::string &node_id_stri
 }
 
 void OldClusterResourceScheduler::FillResourceUsage(
-    bool light_report_resource_usage_enabled,
     std::shared_ptr<rpc::ResourcesData> resources_data) {
   // TODO(atumanov): modify the heartbeat table protocol to use the ResourceSet
   // directly.
@@ -65,61 +64,27 @@ void OldClusterResourceScheduler::FillResourceUsage(
   // If light resource usage report enabled, we only set filed that represent resources
   // changed.
   auto &local_resources = cluster_resource_map_[NodeID::FromBinary(self_node_id_string_)];
-  if (light_report_resource_usage_enabled) {
-    if (!last_heartbeat_resources_->GetTotalResources().IsEqual(
-            local_resources.GetTotalResources())) {
-      for (const auto &resource_pair :
-           local_resources.GetTotalResources().GetResourceMap()) {
-        (*resources_data->mutable_resources_total())[resource_pair.first] =
-            resource_pair.second;
-      }
-      last_heartbeat_resources_->SetTotalResources(
-          ResourceSet(local_resources.GetTotalResources()));
-    }
-
-    if (!last_heartbeat_resources_->GetAvailableResources().IsEqual(
-            local_resources.GetAvailableResources())) {
-      resources_data->set_resources_available_changed(true);
-      for (const auto &resource_pair :
-           local_resources.GetAvailableResources().GetResourceMap()) {
-        (*resources_data->mutable_resources_available())[resource_pair.first] =
-            resource_pair.second;
-      }
-      last_heartbeat_resources_->SetAvailableResources(
-          ResourceSet(local_resources.GetAvailableResources()));
-    }
-
-    if (!last_heartbeat_resources_->GetLoadResources().IsEqual(
-            local_resources.GetLoadResources())) {
-      resources_data->set_resource_load_changed(true);
-      for (const auto &resource_pair :
-           local_resources.GetLoadResources().GetResourceMap()) {
-        (*resources_data->mutable_resource_load())[resource_pair.first] =
-            resource_pair.second;
-      }
-      last_heartbeat_resources_->SetLoadResources(
-          ResourceSet(local_resources.GetLoadResources()));
-    }
-  } else {
-    // If light resource usage report disabled, we send whole resources information
-    // every time.
+  if (!last_heartbeat_resources_->GetTotalResources().IsEqual(
+          local_resources.GetTotalResources())) {
     for (const auto &resource_pair :
          local_resources.GetTotalResources().GetResourceMap()) {
       (*resources_data->mutable_resources_total())[resource_pair.first] =
           resource_pair.second;
     }
+    last_heartbeat_resources_->SetTotalResources(
+        ResourceSet(local_resources.GetTotalResources()));
+  }
 
+  if (!last_heartbeat_resources_->GetAvailableResources().IsEqual(
+          local_resources.GetAvailableResources())) {
+    resources_data->set_resources_available_changed(true);
     for (const auto &resource_pair :
          local_resources.GetAvailableResources().GetResourceMap()) {
       (*resources_data->mutable_resources_available())[resource_pair.first] =
           resource_pair.second;
     }
-
-    for (const auto &resource_pair :
-         local_resources.GetLoadResources().GetResourceMap()) {
-      (*resources_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
-    }
+    last_heartbeat_resources_->SetAvailableResources(
+        ResourceSet(local_resources.GetAvailableResources()));
   }
 }
 
@@ -132,28 +97,15 @@ bool OldClusterResourceScheduler::UpdateNode(const std::string &node_id_string,
   }
 
   SchedulingResources &remote_resources = iter->second;
-  // If light resource usage report enabled, we update remote resources only when related
-  // resources map in heartbeat is not empty.
-  if (RayConfig::instance().light_report_resource_usage_enabled()) {
-    if (resource_data.resources_total_size() > 0) {
-      ResourceSet remote_total(MapFromProtobuf(resource_data.resources_total()));
-      remote_resources.SetTotalResources(std::move(remote_total));
-    }
-    if (resource_data.resources_available_changed()) {
-      ResourceSet remote_available(MapFromProtobuf(resource_data.resources_available()));
-      remote_resources.SetAvailableResources(std::move(remote_available));
-    }
-    if (resource_data.resource_load_changed()) {
-      ResourceSet remote_load(MapFromProtobuf(resource_data.resource_load()));
-      // Extract the load information and save it locally.
-      remote_resources.SetLoadResources(std::move(remote_load));
-    }
-  } else {
-    // If light resource usage report disabled, we update remote resources every time.
+  if (resource_data.resources_total_size() > 0) {
     ResourceSet remote_total(MapFromProtobuf(resource_data.resources_total()));
     remote_resources.SetTotalResources(std::move(remote_total));
+  }
+  if (resource_data.resources_available_changed()) {
     ResourceSet remote_available(MapFromProtobuf(resource_data.resources_available()));
     remote_resources.SetAvailableResources(std::move(remote_available));
+  }
+  if (resource_data.resource_load_changed()) {
     ResourceSet remote_load(MapFromProtobuf(resource_data.resource_load()));
     // Extract the load information and save it locally.
     remote_resources.SetLoadResources(std::move(remote_load));

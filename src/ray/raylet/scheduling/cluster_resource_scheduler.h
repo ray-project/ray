@@ -368,14 +368,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   void UpdateLocalAvailableResourcesFromResourceInstances();
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  void FillResourceUsage(bool light_report_resource_usage_enabled,
-                         std::shared_ptr<rpc::ResourcesData> resources_data) override;
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) override;
 
   /// Update last report resources local cache from gcs cache,
   /// this is needed when gcs fo.

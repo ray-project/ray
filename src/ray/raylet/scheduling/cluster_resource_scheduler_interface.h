@@ -60,11 +60,9 @@ class ClusterResourceSchedulerInterface {
   /// sending raylet <-> gcs heartbeats. In particular, this should fill in
   /// resources_available and resources_total.
   ///
-  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resources_available` and `resources_total` are the only
   /// fields used.
-  virtual void FillResourceUsage(bool light_report_resource_usage_enabled,
-                                 std::shared_ptr<rpc::ResourcesData> data) = 0;
+  virtual void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) = 0;
 
   /// Return local resources in human-readable string form.
   virtual std::string GetLocalResourceViewString() const = 0;

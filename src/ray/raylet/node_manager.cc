@@ -133,8 +133,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
-      light_report_resource_usage_enabled_(
-          RayConfig::instance().light_report_resource_usage_enabled()),
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(io_service, config.num_workers_soft_limit,
@@ -173,7 +171,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
                                                           /*local_only=*/false);
                             },
                             is_plasma_object_spillable),
-      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
@@ -193,7 +190,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  if (new_scheduler_enabled_) {
+  if (RayConfig::instance().new_scheduler_enabled()) {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
     auto cluster_resource_scheduler =
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
@@ -288,7 +285,7 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to resource usage batches from the monitor.
   const auto &resource_usage_batch_added =
       [this](const ResourceUsageBatchData &resource_usage_batch) {
-        ResourceUsageBatchAdded(resource_usage_batch);
+        ResourceUsageBatchReceived(resource_usage_batch);
       };
   RAY_RETURN_NOT_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
       resource_usage_batch_added, /*done*/ nullptr));
@@ -298,7 +295,7 @@ ray::Status NodeManager::RegisterGcs() {
   // node failure. These workers can be identified by comparing the raylet_id
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
-      [this](const WorkerID &id, const rpc::WorkerTableData &worker_failure_data) {
+      [this](const rpc::WorkerTableData &worker_failure_data) {
         HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
@@ -442,10 +439,9 @@ void NodeManager::ReportResourceUsage() {
   resources_data->set_node_id(self_node_id_.Binary());
   // Update local chche from gcs remote cache, this is needed when gcs restart.
   // We should always keep the cache view consistent.
-  cluster_resource_scheduler_->UpdateLastReportResourcesFromGcs(
+  cluster_resource_scheduler_->UpdateLastResourceUsage(
       gcs_client_->NodeResources().GetLastResourceUsage());
-  cluster_resource_scheduler_->FillResourceUsage(light_report_resource_usage_enabled_,
-                                                 resources_data);
+  cluster_resource_scheduler_->FillResourceUsage(resources_data);
   cluster_task_manager_->FillResourceUsage(resources_data);
 
   // Set the global gc bit on the outgoing heartbeat message.
@@ -827,11 +823,12 @@ void NodeManager::TryLocalInfeasibleTaskScheduling() {
   }
 }
 
-void NodeManager::ResourceUsageAdded(const NodeID &node_id,
-                                     const rpc::ResourcesData &resource_data) {
+void NodeManager::UpdateResourceUsage(const NodeID &node_id,
+                                      const rpc::ResourcesData &resource_data) {
   if (!cluster_resource_scheduler_->UpdateNode(node_id.Binary(), resource_data)) {
-    RAY_LOG(INFO) << "[ResourceUsageAdded]: received resource usage from unknown node id "
-                  << node_id;
+    RAY_LOG(INFO)
+        << "[UpdateResourceUsage]: received resource usage from unknown node id "
+        << node_id;
     return;
   }
 
@@ -840,10 +837,12 @@ void NodeManager::ResourceUsageAdded(const NodeID &node_id,
     should_local_gc_ = true;
   }
 
+  // If light resource usage report enabled, we update remote resources only when related
+  // resources map in heartbeat is not empty.
   cluster_task_manager_->OnNodeResourceUsageUpdated(node_id, resource_data);
 }
 
-void NodeManager::ResourceUsageBatchAdded(
+void NodeManager::ResourceUsageBatchReceived(
     const ResourceUsageBatchData &resource_usage_batch) {
   // Update load information provided by each message.
   for (const auto &resource_usage : resource_usage_batch.batch()) {
@@ -852,7 +851,7 @@ void NodeManager::ResourceUsageBatchAdded(
       // Skip messages from self.
       continue;
     }
-    ResourceUsageAdded(node_id, resource_usage);
+    UpdateResourceUsage(node_id, resource_usage);
   }
 }
 

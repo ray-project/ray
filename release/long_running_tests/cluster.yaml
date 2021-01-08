@@ -1,7 +1,7 @@
 cluster_name: ray-release-long-running-tests
 
 docker:
-    image: anyscale/ray:latest
+    image: anyscale/ray-ml:latest
     container_name: ray_container
     pull_before_run: False
 

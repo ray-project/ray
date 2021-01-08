@@ -228,11 +228,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
   /// \return Void.
-  void ResourceUsageAdded(const NodeID &id, const rpc::ResourcesData &data);
+  void UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+
   /// Handler for a resource usage batch notification from the GCS
   ///
   /// \param resource_usage_batch The batch of resource usage data.
-  void ResourceUsageBatchAdded(const ResourceUsageBatchData &resource_usage_batch);
+  void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
 
@@ -634,7 +635,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       const std::vector<Task> &tasks) const;
 
   ///////////////////////////////////////////////////////////////////////////////////////
-  //////////////////// Begin of the Override of ClusterTaskManager //////////////////////
+  //////////////////// Begin of the override methods of ClusterTaskManager //////////////
   // The following methods are defined in node_manager.task.cc instead of node_manager.cc
 
   /// Return the resources that were being used by this worker.
@@ -773,8 +774,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// Only the changed part will be included in resource usage if this is true.
-  const bool light_report_resource_usage_enabled_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -832,9 +831,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.
   absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
-
-  /// Whether new schedule is enabled.
-  const bool new_scheduler_enabled_;
 
   /// Whether to report the worker's backlog size in the GCS heartbeat.
   const bool report_worker_backlog_;
