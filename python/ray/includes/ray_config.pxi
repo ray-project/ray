@@ -115,3 +115,7 @@ cdef class Config:
     @staticmethod
     def max_grpc_message_size():
         return RayConfig.instance().max_grpc_message_size()
+
+    @staticmethod
+    def new_scheduler_enabled():
+        return RayConfig.instance().new_scheduler_enabled()

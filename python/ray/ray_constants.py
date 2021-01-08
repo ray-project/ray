@@ -4,6 +4,10 @@ import logging
 import math
 import os
 
+from ray._raylet import Config as _Config
+_config = _Config()
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,13 +64,19 @@ PICKLE_OBJECT_WARNING_SIZE = 10**7
 # print a warning.
 DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 
-# The maximum resource quantity that is allowed. TODO(rkn): This could be
-# relaxed, but the current implementation of the node manager will be slower
-# for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 100000
+if _config.new_scheduler_enabled:
+    MAX_RESOURCE_QUANTITY = 2**63 / 10**4
+else:
+    # The maximum resource quantity that is allowed. TODO(rkn): This could be
+    # relaxed, but the current implementation of the node manager will be slower
+    # for large resource quantities due to bookkeeping of specific resource IDs.
+    MAX_RESOURCE_QUANTITY = 100000
 
 # Each memory "resource" counts as this many bytes of memory.
-MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
+if _config.new_scheduler_enabled:
+    MEMORY_RESOURCE_UNIT_BYTES = 2**20
+else:
+    MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
 
 # Number of units 1 resource can be subdivided into.
 MIN_RESOURCE_GRANULARITY = 0.0001
