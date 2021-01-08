@@ -440,7 +440,8 @@ def main():
     if args.redis_address:
         if args.redis_password:
             ray.init(
-                address=args.redis_address, _redis_password=args.redis_password)
+                address=args.redis_address,
+                _redis_password=args.redis_password)
         else:
             ray.init(address=args.redis_address)
     else:
