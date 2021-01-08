@@ -12,7 +12,7 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
-# __sphinx_doc_model_api_tf_start__
+# __sphinx_doc_model_api_tf_begin__
 class DuelingQModel(TFModelV2):  # or: TorchModelV2
     """A simple, hard-coded dueling head model."""
 
