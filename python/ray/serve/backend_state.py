@@ -166,9 +166,6 @@ class BackendState:
             if (backend_info.backend_config == backend_config
                     and backend_info.replica_config == replica_config):
                 return None
-            else:
-                raise ValueError(
-                    f"Backend {backend_tag} is already registered.")
 
         backend_replica = create_backend_replica(replica_config.func_or_class)
 
