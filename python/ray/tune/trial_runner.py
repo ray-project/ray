@@ -533,7 +533,11 @@ class TrialRunner:
             results = self.trial_executor.fetch_result(trial)
             for result in results:
                 with warn_if_slow("process_trial_result"):
-                    self._process_trial_result(trial, result)
+                    decision = self._process_trial_result(trial, result)
+                if decision == TrialScheduler.STOP:
+                    # If the decision is to stop the trial, ignore all results
+                    # that came after that.
+                    break
         except Exception:
             error_msg = "Trial %s: Error processing event." % trial
             if self._fail_fast == TrialRunner.RAISE:
@@ -622,6 +626,8 @@ class TrialRunner:
             self._cached_trial_decisions[trial.trial_id] = decision
         else:
             self._queue_decision(trial, decision)
+
+        return decision
 
     def _validate_result_metrics(self, result):
         """

@@ -27,7 +27,6 @@ from ray.tune.utils import UtilMonitor
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
-BUFFER_TIME_S = 5
 
 
 class Trainable:
@@ -141,18 +140,26 @@ class Trainable:
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
-    def train_buffered(self, max_buffer_length: int = 100):
+    def train_buffered(self,
+                       buffer_time_s: float,
+                       max_buffer_length: int = 1000):
         """Runs multiple iterations of training.
 
         Calls ``train()`` internally. Collects and combines multiple results.
         This function
 
+        Args:
+            buffer_time_s (float): Maximum time to buffer. The next result
+                received after this amount of time has passed will return
+                the whole buffer.
+            max_buffer_length (int): Maximum number of results to buffer.
+
         """
         results = []
 
         now = time.time()
-        send_buffer_at = now + BUFFER_TIME_S
-        while now < send_buffer_at:
+        send_buffer_at = now + buffer_time_s
+        while now < send_buffer_at or not results:  # At least one result
             result = self.train()
             results.append(result)
             if result.get(DONE, False) or result.get(
