@@ -73,7 +73,6 @@ jobs:
           pip-${{ runner.os }}-
           pip-
     - name: Run CI script
-      continue-on-error: true
       shell: bash -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
@@ -91,9 +90,10 @@ jobs:
         . ./ci/travis/ci.sh test_core
         . ./ci/travis/ci.sh test_wheels
     - name: Upload test result
-      continue-on-error: true
       # TODO: re-enable this before merge
+      if: always()
       # if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
+      shell: bash -e -o pipefail -l {0}
       env:
         # TODO: upload this secret to github
         BAZEL_LOG_BUCKET_ACCESS_KEY: ${{ secrets.BAZEL_LOG_BUCKET_ACCESS_KEY }}
