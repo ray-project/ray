@@ -171,6 +171,10 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            AxSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -239,6 +243,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            BayesOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -294,6 +304,10 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.bohb import TuneBOHB
         import ConfigSpace
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            TuneBOHB.convert_search_space({"grid": tune.grid_search([0, 1])})
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -345,6 +359,12 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            DragonflySearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -426,6 +446,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertHyperOpt(self):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            HyperOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -528,6 +554,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            NevergradSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -589,6 +621,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            OptunaSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -640,6 +678,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.skopt import SkOptSearch
         from skopt.space import Real, Integer
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            SkOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -685,6 +729,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
         from zoopt import ValueType
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            ZOOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
