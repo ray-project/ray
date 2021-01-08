@@ -910,33 +910,41 @@ void ReferenceCounter::SetReleaseLineageCallback(
   on_lineage_released_ = callback;
 }
 
-void ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
+bool ReferenceCounter::AddObjectLocation(const ObjectID &object_id,
                                          const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end())
-      << "Tried to add an object location for an object " << object_id
-      << " that doesn't exist in the reference table";
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to add an object location for an object " << object_id
+                     << " that doesn't exist in the reference table";
+    return false;
+  }
   it->second.locations.insert(node_id);
+  return true;
 }
 
-void ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
+bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
                                             const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end())
-      << "Tried to remove an object location for an object " << object_id
-      << " that doesn't exist in the reference table";
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to remove an object location for an object " << object_id
+                     << " that doesn't exist in the reference table";
+    return false;
+  }
   it->second.locations.erase(node_id);
+  return true;
 }
 
-absl::flat_hash_set<NodeID> ReferenceCounter::GetObjectLocations(
+absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
-  RAY_CHECK(it != object_id_refs_.end())
-      << "Tried to get the object locations for an object " << object_id
-      << " that doesn't exist in the reference table";
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to get the object locations for an object " << object_id
+                     << " that doesn't exist in the reference table";
+    return absl::nullopt;
+  }
   return it->second.locations;
 }
 

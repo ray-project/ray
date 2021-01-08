@@ -2160,9 +2160,14 @@ void CoreWorker::HandleAddObjectLocationOwner(
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->AddObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                        NodeID::FromBinary(request.node_id()));
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto reference_exists = reference_counter_->AddObjectLocation(
+      object_id, NodeID::FromBinary(request.node_id()));
+  Status status =
+      reference_exists
+          ? Status::OK()
+          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleRemoveObjectLocationOwner(
@@ -2173,9 +2178,14 @@ void CoreWorker::HandleRemoveObjectLocationOwner(
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->RemoveObjectLocation(ObjectID::FromBinary(request.object_id()),
-                                           NodeID::FromBinary(request.node_id()));
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  auto reference_exists = reference_counter_->RemoveObjectLocation(
+      object_id, NodeID::FromBinary(request.node_id()));
+  Status status =
+      reference_exists
+          ? Status::OK()
+          : Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(
@@ -2186,12 +2196,19 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  absl::flat_hash_set<NodeID> node_ids =
-      reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
-  for (const auto &node_id : node_ids) {
-    reply->add_node_ids(node_id.Binary());
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  absl::optional<absl::flat_hash_set<NodeID>> node_ids =
+      reference_counter_->GetObjectLocations(object_id);
+  Status status;
+  if (node_ids.has_value()) {
+    for (const auto &node_id : node_ids.value()) {
+      reply->add_node_ids(node_id.Binary());
+    }
+    status = Status::OK();
+  } else {
+    status = Status::ObjectNotFound("Object " + object_id.Hex() + " not found");
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,

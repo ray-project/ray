@@ -373,22 +373,25 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The new object location to be added.
-  void AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
+  /// \return True if the reference exists, false otherwise.
+  bool AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Remove a location for the given object.
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The object location to be removed.
-  void RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
+  /// \return True if the reference exists, false otherwise.
+  bool RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the locations of the given object.
   ///
   /// \param[in] object_id The object to get locations for.
-  /// \return The nodes that have the object.
-  absl::flat_hash_set<NodeID> GetObjectLocations(const ObjectID &object_id)
-      LOCKS_EXCLUDED(mutex_);
+  /// \return The nodes that have the object if the reference exists, empty optional
+  ///         otherwise.
+  absl::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
+      const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Handle an object has been spilled to external storage.
   ///
