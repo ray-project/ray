@@ -64,7 +64,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)  #TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -84,10 +84,10 @@ class TestPPO(unittest.TestCase):
         config["train_batch_size"] = 128
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="torch"):  #TODO
-            for env in ["MsPacmanNoFrameskip-v4"]:  #TODO, "CartPole-v0"]:
+        for _ in framework_iterator(config):
+            for env in ["CartPole-v0", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
-                for lstm in [False]:  #TODO[True, False]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config["model"]["use_lstm"] = lstm
                     config["model"]["lstm_use_prev_action"] = lstm

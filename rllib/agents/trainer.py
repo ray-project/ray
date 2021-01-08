@@ -848,13 +848,15 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
-        filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
+        # Check the preprocessor and preprocess, if necessary.
+        pp = self.workers.local_worker().preprocessors[policy_id]
+        if type(pp).__name__ != "NoPreprocessor":
+            observation = pp.transform(observation)
+        filtered_observation = self.workers.local_worker().filters[policy_id](
+            observation, update=False)
 
         result = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
+            filtered_observation,
             state,
             prev_action,
             prev_reward,
@@ -1091,10 +1093,13 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
-        if not config.get("_use_trajectory_view_api") and \
-                config.get("model", {}).get("_time_major"):
-            raise ValueError("`model._time_major` only supported "
-                             "iff `_use_trajectory_view_api` is True!")
+        if not config.get("_use_trajectory_view_api"):
+            if config.get("model", {}).get("_time_major"):
+                raise ValueError("`model._time_major` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
+            elif config.get("model", {}).get("num_framestacks", 0) > 1:
+                raise ValueError("`model.num_framestacks` only supported "
+                                 "iff `_use_trajectory_view_api` is True!")
 
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])

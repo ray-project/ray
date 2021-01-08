@@ -321,6 +321,10 @@ def check_compute_single_action(trainer,
                     call_kwargs["clip_actions"] = True
 
                 obs = obs_space.sample()
+                # Framestacking w/ traj. view API.
+                if pol.config["model"].get("num_framestacks") > 1:
+                    obs = np.stack(
+                        [obs] * pol.config["model"].get("num_framestacks"))
                 if isinstance(obs_space, gym.spaces.Box):
                     obs = np.clip(obs, -1.0, 1.0)
                 state_in = None

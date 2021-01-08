@@ -91,7 +91,9 @@ class Policy(metaclass=ABCMeta):
         if not hasattr(self, "view_requirements"):
             self.view_requirements = view_reqs
         else:
-            self.view_requirements.update(view_reqs)
+            for k, v in view_reqs.items():
+                if k not in self.view_requirements:
+                    self.view_requirements[k] = v
         self._model_init_state_automatically_added = False
 
     @abstractmethod

@@ -45,8 +45,7 @@ class MyCallbacks(DefaultCallbacks):
 class TestTrajectoryViewAPI(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        #TODO remove local-mode
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:

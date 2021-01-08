@@ -226,6 +226,7 @@ class WarpFrame(gym.ObservationWrapper):
         return frame[:, :, None]
 
 
+# TODO: (sven) Deprecated class. Remove once traj. view is the norm.
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames."""
@@ -283,7 +284,12 @@ class ScaledFloatFrame(gym.ObservationWrapper):
         return np.array(observation).astype(np.float32) / 255.0
 
 
-def wrap_deepmind(env, dim=84, framestack=True):
+def wrap_deepmind(
+        env,
+        dim=84,
+        # TODO: (sven) Remove once traj. view is norm.
+        framestack=True,
+        framestack_via_traj_view_api=False):
     """Configure environment for DeepMind-style Atari.
 
     Note that we assume reward clipping is done outside the wrapper.
@@ -302,8 +308,12 @@ def wrap_deepmind(env, dim=84, framestack=True):
     env = WarpFrame(env, dim)
     # env = ScaledFloatFrame(env)  # TODO: use for dqn?
     # env = ClipRewardEnv(env)  # reward clipping is handled by policy eval
-    if framestack == "traj_view":
+    # New way of frame stacking via the trajectory view API (model config key:
+    # `num_framestacks=[int]`.
+    if framestack_via_traj_view_api:
         env = FrameStackTrajectoryView(env)
+    # Old way (w/o traj. view API) via model config key: `framestack=True`.
+    # TODO: (sven) Remove once traj. view is norm.
     elif framestack is True:
         env = FrameStack(env, 4)
     return env

@@ -19,7 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -108,8 +108,15 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
-    # Whether to enable framestack for Atari envs
-    "framestack": True,
+    # What framestacking size to use for Atari envs.
+    # If > 1, uses the trajectory view API in the default VisionNets (tf and
+    # torch) to request the last n observations (single, grayscaled 84x84 image
+    # frames) as inputs. The time axis in the so provided observation tensors
+    # will come right after the batch axis (channels first format),
+    # e.g. BxTx84x84, where T=num_framestacks.
+    # Use the deprecated `framestack=True`, to disable the above behavor and to
+    # enable legacy stacking behavior (w/o trajectory view API) instead.
+    "num_framestacks": 4,
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
@@ -134,6 +141,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
+    # Use `num_framestacks` (int) instead.
+    "framestack": DEPRECATED_VALUE,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -680,10 +689,12 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Discrete/1D obs-spaces.
+        # Discrete/1D obs-spaces or 2D obs space but traj. view framestacking
+        # disabled.
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
-            len(input_space.shape) == 1 or (
-            len(input_space.shape) == 2 and not model_config["framestack"]):
+                len(input_space.shape) == 1 or (
+                len(input_space.shape) == 2 and model_config[
+                "num_framestacks"] <= 1):
             return FCNet
         # Default Conv2D net.
         else:
@@ -735,3 +746,7 @@ class ModelCatalog:
             elif config.get("use_lstm"):
                 raise ValueError("`use_lstm` not available for "
                                  "framework=jax so far!")
+
+        if config.get("framestack") != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="framestack", new="num_framestacks (int)", error=False)

@@ -4,6 +4,7 @@ import gym
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
@@ -30,8 +31,14 @@ class VisionNetwork(TFModelV2):
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
 
-        inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+        if model_config.get("num_framestacks") > 1:
+            input_shape = obs_space.shape + (model_config["num_framestacks"], )
+            self.data_format = "channels_first"
+        else:
+            input_shape = obs_space.shape
+            self.data_format = "channels_last"
+
+        inputs = tf.keras.layers.Input(shape=input_shape, name="observations")
         last_layer = inputs
         # Whether the last layer is the output of a Flattened (rather than
         # a n x (1,1) Conv2D).
@@ -142,12 +149,22 @@ class VisionNetwork(TFModelV2):
         self.base_model = tf.keras.Model(inputs, [conv_out, value_out])
         self.register_variables(self.base_model.variables)
 
+        # Optional: framestacking obs/new_obs for Atari.
+        from_ = model_config["num_framestacks"] - 1
+        if from_ > 0:
+            self.view_requirements[SampleBatch.OBS].shift = \
+                "-{}:0".format(from_)
+            self.view_requirements[SampleBatch.OBS].shift_from = -from_
+            self.view_requirements[SampleBatch.OBS].shift_to = 0
+
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
+        obs = input_dict["obs"]
+        if self.data_format == "channels_first":
+            obs = tf.transpose(obs, [0, 2, 3, 1])
         # Explicit cast to float32 needed in eager.
-        model_out, self._value_out = self.base_model(
-            tf.cast(input_dict["obs"], tf.float32))
+        model_out, self._value_out = self.base_model(tf.cast(obs, tf.float32))
         # Our last layer is already flat.
         if self.last_layer_is_flattened:
             return model_out, state

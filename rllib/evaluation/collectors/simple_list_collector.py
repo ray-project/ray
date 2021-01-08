@@ -185,16 +185,17 @@ class _AgentCollector:
                 # each timestep.
                 else:
                     d = np_data[data_col]
-                    # TODO: For now, assume simple 1D data (B x x).
-                    #  Will expand this for Atari examples.
-                    assert len(d.shape) == 2
                     shift_win = view_req.shift_to - view_req.shift_from + 1
                     data_size = d.itemsize * int(np.product(d.shape[1:]))
-
+                    strides = [
+                        d.itemsize * int(np.product(d.shape[i + 1:]))
+                        for i in range(1, len(d.shape))
+                    ]
                     data = np.lib.stride_tricks.as_strided(
                         d[self.shift_before - shift_win:],
-                        [self.agent_steps, shift_win, d.shape[1]],
-                        [data_size, data_size, d.itemsize])
+                        [self.agent_steps, shift_win
+                         ] + [d.shape[i] for i in range(1, len(d.shape))],
+                        [data_size, data_size] + strides)
             # Set of (probably non-consecutive) indices.
             # Example:
             #  shift=[-3, 0]

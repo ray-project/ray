@@ -21,15 +21,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
 
-        #if model_config.get("framestack"):
-        #    obs_space = type(obs_space)(
-        #        low=np.stack([obs_space.low] * 4),
-        #        high=np.stack([obs_space.high] * 4),
-        #        shape=(4, ) + obs_space.shape,
-        #        dtype=obs_space.dtype)
-
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
+
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
@@ -47,9 +41,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._logits = None
 
         layers = []
-        if model_config.get("framestack"):
+        if model_config.get("num_framestacks") > 1:
             (w, h) = obs_space.shape
-            in_channels = 4
+            in_channels = model_config.get("num_framestacks")
         else:
             (w, h, in_channels) = obs_space.shape
 
@@ -125,9 +119,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 activation_fn=None)
         else:
             vf_layers = []
-            if model_config.get("framestack"):
+            if model_config.get("num_framestacks") > 1:
                 (w, h) = obs_space.shape
-                in_channels = 4
+                in_channels = model_config.get("num_framestacks")
             else:
                 (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
@@ -169,9 +163,11 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._features = None
 
         # Optional: framestacking obs/new_obs for Atari.
-        if self.model_config["framestack"]:
-            self.view_requirements[SampleBatch.OBS].shift = "-3:0"
-            self.view_requirements[SampleBatch.OBS].shift_from = -3  #hackish
+        from_ = model_config["num_framestacks"] - 1
+        if from_ > 0:
+            self.view_requirements[SampleBatch.OBS].shift = \
+                "-{}:0".format(from_)
+            self.view_requirements[SampleBatch.OBS].shift_from = -from_
             self.view_requirements[SampleBatch.OBS].shift_to = 0
 
     @override(TorchModelV2)
@@ -179,7 +175,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float()
-        if not self.model_config["framestack"]:
+        if not self.model_config["num_framestacks"] > 1:
             self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
