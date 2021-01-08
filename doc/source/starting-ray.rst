@@ -17,7 +17,8 @@ There are four ways of starting the Ray runtime:
 * Implicitly via ``ray.init()`` (:ref:`start-ray-init`)
 * Explicitly via CLI (:ref:`start-ray-cli`)
 * Explicitly via the cluster launcher (:ref:`start-ray-up`)
-* (Beta) Implicitly via the `Ray Client <ray-client.html>`
+
+You can also connect to an existing Ray runtime using the `Ray Client <ray-client.html>`
 
 .. _start-ray-init:
 

@@ -16,12 +16,14 @@ While in beta, the server is available as an executable module. To start the ser
 
 This runs ``ray.init()`` with default options and exposes the client gRPC port at ``host_ip:port`` (by default, ``0.0.0.0:50051``). Providing ``redis-address`` and ``redis-password`` will be passed into ``ray.init()`` when the server starts, allowing connection to an existing Ray cluster, as per the `cluster setup <cluster/index.html>`_ instructions.
 
-From here, another Ray script can access that server from a networked machine with ``ray.connect()``
+From here, another Ray script can access that server from a networked machine with ``ray.util.connect()``
 
 .. code-block:: python
    
    import ray
-   ray.connect("0.0.0.0:50051")  # replace with the appropriate host and port
+   import ray.util
+
+   ray.util.connect("0.0.0.0:50051")  # replace with the appropriate host and port
 
    # Normal Ray code follows
    @ray.remote
@@ -38,9 +40,9 @@ When the client disconnects, any object or actor references held by the server o
 ``RAY_CLIENT_MODE``
 ===================
 
-Because Ray client mode affects the behavior of the Ray API, larger scripts or libraries imported before ``ray.connect()`` may not realize they're in client mode. This feature is being tracked with `issue #13272 <https://github.com/ray-project/ray/issues/13272>`_ but the workaround here is provided for beta users.
+Because Ray client mode affects the behavior of the Ray API, larger scripts or libraries imported before ``ray.util.connect()`` may not realize they're in client mode. This feature is being tracked with `issue #13272 <https://github.com/ray-project/ray/issues/13272>`_ but the workaround here is provided for beta users.
 
-One option is to defer the imports from a ``main`` script that calls ``ray.connect()`` first. However, some older scripts or libraries might not support that.
+One option is to defer the imports from a ``main`` script that calls ``ray.util.connect()`` first. However, some older scripts or libraries might not support that.
 
 Therefore, an environment variable is also available to force a Ray program into client mode: ``RAY_CLIENT_MODE`` An example usage:
 
