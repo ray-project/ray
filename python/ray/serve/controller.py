@@ -47,7 +47,6 @@ class FutureResult:
 
 @dataclass
 class Checkpoint:
-    backend_state_checkpoint: bytes
     # TODO(ilr) Rename reconciler to PendingState
     inflight_reqs: Dict[uuid4, FutureResult]
 
@@ -106,18 +105,13 @@ class ServeController:
 
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
+        self.backend_state = BackendState(controller_name, detached, self.kv_store, self.long_poll_host)
 
         checkpoint_bytes = self.kv_store.get(CHECKPOINT_KEY)
         if checkpoint_bytes is None:
             logger.debug("No checkpoint found")
-            self.backend_state = BackendState(controller_name, detached)
         else:
             checkpoint: Checkpoint = pickle.loads(checkpoint_bytes)
-            self.backend_state = BackendState(
-                controller_name,
-                detached,
-                checkpoint=checkpoint.backend_state_checkpoint)
-
             self._serializable_inflight_results = checkpoint.inflight_reqs
             for uuid, fut_result in self._serializable_inflight_results.items(
             ):

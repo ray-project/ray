@@ -6,12 +6,16 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
+from ray.serve.common import (
+    BackendInfo, BackendTag, Duration, GoalId,
+    ReplicaTag,
+)
 from ray.serve.config import BackendConfig
 from ray.serve.exceptions import RayServeException
+from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes)
-from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
-                              ReplicaTag)
 
 # Feature flag for controller resource checking. If true, controller will
 # error if the desired replicas exceed current resource availability.
@@ -28,7 +32,8 @@ class BackendState:
     def __init__(self,
                  controller_name: str,
                  detached: bool,
-                 checkpoint: bytes = None):
+                 kv_store: RayInternalKVStore,
+                 long_poll_host: LongPollHost):
         self.controller_name = controller_name
         self.detached = detached
 
