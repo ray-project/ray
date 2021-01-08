@@ -1935,6 +1935,42 @@ MemAvailable:   33000000 kB
         runner.assert_has_call("172.0.0.0", pattern="--shm-size")
         runner.assert_has_call("172.0.0.0", pattern="--runtime=nvidia")
 
+    def testDockerImageExistsBeforeInspect(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["min_workers"] = 1
+        config["max_workers"] = 1
+        config["docker"]["pull_before_run"] = False
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0)
+        autoscaler.update()
+        autoscaler.update()
+        self.waitForNodes(1)
+        self.provider.finish_starting_nodes()
+        autoscaler.update()
+        self.waitForNodes(
+            1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
+        first_pull = [(i, cmd)
+                      for i, cmd in enumerate(runner.command_history())
+                      if "docker pull" in cmd]
+        first_targeted_inspect = [
+            (i, cmd) for i, cmd in enumerate(runner.command_history())
+            if "docker inspect -f" in cmd
+        ]
+
+        # This checks for the bug mentioned #13128 where the image is inspected
+        # before the image is present.
+        assert min(x[0]
+                   for x in first_pull) < min(x[0]
+                                              for x in first_targeted_inspect)
+
 
 if __name__ == "__main__":
     import sys
