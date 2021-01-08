@@ -1,3 +1,5 @@
+from typing import Optional
+
 import click
 from datetime import datetime
 import json
@@ -11,7 +13,8 @@ from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.ray_trial_executor import RayTrialExecutor, \
+    TRIAL_STARTUP_GRACE_PERIOD
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
@@ -108,6 +111,7 @@ class TrialRunner:
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
+        self._pending_trial_queue_times = {}
 
         self._metric = metric
 
@@ -350,6 +354,7 @@ class TrialRunner:
                 iteration=self._iteration, trials=self._trials)
         next_trial = self._get_next_trial()  # blocking
         may_handle_events = True
+        process_events_timeout = None
         if next_trial is not None:
             with warn_if_slow("start_trial"):
                 if self.trial_executor.start_trial(next_trial):
@@ -362,9 +367,22 @@ class TrialRunner:
                     # make sure we first start all required trials before
                     # we wait for their results
                     may_handle_events = False
+                    self._pending_trial_queue_times.pop(
+                        next_trial.trial_id, None)
+                else:
+                    # If trial startup wasn't successful (e.g. because the
+                    # placement group is still pending), we'll process
+                    # events. However, in the first N seconds we won't block
+                    # for processing events, as the placement groups might
+                    # come up, and we would want to start the trial then.
+                    queue_time = self._pending_trial_queue_times.setdefault(
+                        next_trial.trial_id, time.time())
+                    if time.time() - queue_time < TRIAL_STARTUP_GRACE_PERIOD:
+                        process_events_timeout = 0.1
 
         if may_handle_events and self.trial_executor.get_running_trials():
-            self._process_events()  # blocking
+            # Might be blocking
+            self._process_events(timeout=process_events_timeout)
         else:
             self.trial_executor.on_no_available_trials(self)
 
@@ -460,7 +478,7 @@ class TrialRunner:
                 logger.debug("Running trial {}".format(trial))
         return trial
 
-    def _process_events(self):
+    def _process_events(self, timeout: Optional[float] = None):
         with warn_if_slow("get_next_failed_trial"):
             failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
@@ -473,7 +491,10 @@ class TrialRunner:
         else:
             # TODO(ujvl): Consider combining get_next_available_trial and
             #  fetch_result functionality so that we don't timeout on fetch.
-            trial = self.trial_executor.get_next_available_trial()  # blocking
+            trial = self.trial_executor.get_next_available_trial(
+                timeout=timeout)  # blocking
+            if not trial:
+                return
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
@@ -920,7 +941,8 @@ class TrialRunner:
         state = self.__dict__.copy()
         for k in [
                 "_trials", "_stop_queue", "_server", "_search_alg",
-                "_scheduler_alg", "trial_executor", "_syncer", "_callbacks"
+                "_scheduler_alg", "_pending_trial_queue_times",
+                "trial_executor", "_syncer", "_callbacks"
         ]:
             del state[k]
         state["launch_web_server"] = bool(self._server)

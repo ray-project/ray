@@ -1,6 +1,5 @@
 # coding: utf-8
 import copy
-import threading
 from functools import partial
 import logging
 import os
@@ -8,9 +7,10 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ObjectRef, ray_constants
 from ray.resource_spec import ResourceSpec
@@ -35,20 +35,9 @@ DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
 TUNE_MAX_COMMITTED_PLACEMENT_GROUPS = 1000
 
-
-def _remove_placement_group_after_future(future: ObjectRef,
-                                         placement_group: PlacementGroup,
-                                         force_after: float = 10.):
-    force_at = time.time() + force_after
-
-    def remove():
-        ready, _ = ray.wait([future], timeout=0.1)
-        if ready or time.time() >= force_at:
-            remove_placement_group(placement_group)
-
-    remove_thread = threading.Thread(target=remove)
-    remove_thread.setDaemon(True)
-    remove_thread.start()
+# Seconds we wait for a trial to come up before we make blocking calls
+# to process events
+TRIAL_STARTUP_GRACE_PERIOD = 2.
 
 
 class _ActorClassCache:
@@ -102,11 +91,14 @@ class _TrialCleanup:
             is passed, cleanup will kick in and remove futures.
     """
 
-    def __init__(self, threshold=TRIAL_CLEANUP_THRESHOLD):
+    def __init__(self, threshold: int = TRIAL_CLEANUP_THRESHOLD):
         self.threshold = threshold
         self._cleanup_map = {}
 
-    def add(self, trial, actor, placement_group=None):
+    def add(self,
+            trial: Trial,
+            actor: ActorHandle,
+            placement_group: Optional[PlacementGroup] = None):
         """Adds a trial actor to be stopped.
 
         If the number of futures exceeds the threshold, the cleanup mechanism
@@ -118,16 +110,17 @@ class _TrialCleanup:
             placement_group (PlacementGroup): Placement group to stop.
         """
         future = actor.stop.remote()
-        actor.__ray_terminate__.remote()
 
         if placement_group:
-            _remove_placement_group_after_future(future, placement_group)
+            remove_placement_group(placement_group)
+        else:
+            actor.__ray_terminate__.remote()
 
-        self._cleanup_map[future] = trial, placement_group
+        self._cleanup_map[future] = trial
         if len(self._cleanup_map) > self.threshold:
             self.cleanup(partial=True)
 
-    def cleanup(self, partial=True):
+    def cleanup(self, partial: bool = True):
         """Waits for cleanup to finish.
 
         If partial=False, all futures are expected to return. If a future
@@ -144,9 +137,6 @@ class _TrialCleanup:
                     "time. Consider making `stop` a faster operation.")
             else:
                 done = dones[0]
-                trial, placement_group = self._cleanup_map[done]
-                if placement_group:
-                    remove_placement_group(placement_group)
                 del self._cleanup_map[done]
 
 
@@ -525,7 +515,7 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
-    def get_next_available_trial(self):
+    def get_next_available_trial(self, timeout: Optional[float] = None):
         if not self._running:
             return None
         shuffled_results = list(self._running.keys())
@@ -535,7 +525,10 @@ class RayTrialExecutor(TrialExecutor):
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
         start = time.time()
-        [result_id], _ = ray.wait(shuffled_results)
+        ready, _ = ray.wait(shuffled_results, timeout=timeout)
+        if not ready:
+            return None
+        result_id = ready[0]
         wait_time = time.time() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
             self._last_nontrivial_wait = time.time()
