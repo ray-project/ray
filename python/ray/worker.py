@@ -533,8 +533,8 @@ def init(
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
             specify a specific node address. If the environment variable
-            `RAY_ADDRESS` is defined and the address is None or "auto", Ray will
-            set `address` to `RAY_ADDRESS`.
+            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
+            will set `address` to `RAY_ADDRESS`.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
