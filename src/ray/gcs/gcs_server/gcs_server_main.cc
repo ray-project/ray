@@ -17,6 +17,7 @@
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
+#include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -51,11 +52,16 @@ int main(int argc, char *argv[]) {
       std::make_shared<std::promise<std::unordered_map<std::string, std::string>>>();
   std::thread([=] {
     boost::asio::io_service service;
-    ray::gcs::GcsClientOptions options(redis_address, redis_port, redis_password);
-    auto client = std::make_shared<ray::gcs::RedisGcsClient>(options);
-    RAY_CHECK_OK(client->Connect(service));
-    auto store =
-        std::make_shared<ray::gcs::RedisGcsTableStorage>(client->GetRedisClient());
+
+    // Init backend client.
+    ray::gcs::RedisClientOptions redis_client_options(redis_address, redis_port,
+                                                      redis_password);
+    auto redis_client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
+    auto status = redis_client->Connect(service);
+    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+
+    // Init storage.
+    auto storage = std::make_shared<ray::gcs::RedisGcsTableStorage>(redis_client);
 
     // Parse the configuration list.
     std::unordered_map<std::string, std::string> config;
@@ -77,8 +83,8 @@ int main(int argc, char *argv[]) {
       promise->set_value(config);
       service.stop();
     };
-    RAY_CHECK_OK(
-      store->InternalConfigTable().Put(ray::UniqueID::Nil(), request.config(), on_done));
+    RAY_CHECK_OK(store->InternalConfigTable().Put(ray::UniqueID::Nil(), request.config(),
+                                                  on_done));
     boost::asio::io_service::work work(service);
     service.run();
   }).detach();
