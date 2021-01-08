@@ -1,21 +1,30 @@
 import asyncio
 from asyncio.futures import Future
 from collections import defaultdict
+import time
 from typing import Dict, Any, List, Optional, Set, Tuple
+from uuid import uuid4
 
 import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
+from ray.serve.backend_worker import create_backend_replica
 from ray.serve.common import (
-    BackendInfo, BackendTag, Duration, GoalId,
+    BackendInfo,
+    BackendTag,
+    Duration,
+    GoalId,
     ReplicaTag,
 )
-from ray.serve.config import BackendConfig
+from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.constants import LongPollKey
 from ray.serve.exceptions import RayServeException
 from ray.serve.kv_store import RayInternalKVStore
 from ray.serve.long_poll import LongPollHost
 from ray.serve.utils import (format_actor_name, get_random_letters, logger,
                              try_schedule_resources_on_nodes)
+
+CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 
 # Feature flag for controller resource checking. If true, controller will
 # error if the desired replicas exceed current resource availability.
@@ -29,13 +38,12 @@ class BackendState:
     called with a lock held.
     """
 
-    def __init__(self,
-                 controller_name: str,
-                 detached: bool,
-                 kv_store: RayInternalKVStore,
-                 long_poll_host: LongPollHost):
-        self.controller_name = controller_name
-        self.detached = detached
+    def __init__(self, controller_name: str, detached: bool,
+                 kv_store: RayInternalKVStore, long_poll_host: LongPollHost):
+        self._controller_name = controller_name
+        self._detached = detached
+        self._kv_store = kv_store
+        self._long_poll_host = long_poll_host
 
         # Non-checkpointed state.
         self.currently_starting_replicas: Dict[asyncio.Future, Tuple[
@@ -53,28 +61,50 @@ class BackendState:
         self.backend_replicas_to_stop: Dict[BackendTag, List[Tuple[
             ReplicaTag, Duration]]] = defaultdict(list)
         self.backends_to_remove: List[BackendTag] = list()
+        self.pending_goals: Dict[GoalId, asyncio.Event] = dict()
 
+        checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (self.backends, self.backend_replicas, self.goals,
              self.backend_replicas_to_start, self.backend_replicas_to_stop,
-             self.backend_to_remove) = pickle.loads(checkpoint)
+             self.backend_to_remove,
+             pending_goal_ids) = pickle.loads(checkpoint)
 
-        # Fetch actor handles for all of the backend replicas in the system.
-        # All of these backend_replicas are guaranteed to already exist because
-        # they would not be written to a checkpoint in self.backend_replicas
-        # until they were created.
-        for backend_tag, replica_dict in self.backend_replicas.items():
-            for replica_tag in replica_dict.keys():
-                replica_name = format_actor_name(replica_tag,
-                                                 self.controller_name)
-                self.backend_replicas[backend_tag][
-                    replica_tag] = ray.get_actor(replica_name)
+            for goal_id in pending_goal_ids:
+                self._create_goal(goal_id)
 
-    def checkpoint(self):
-        return pickle.dumps(
-            (self.backends, self.backend_replicas, self.goals,
-             self.backend_replicas_to_start, self.backend_replicas_to_stop,
-             self.backends_to_remove))
+            # Fetch actor handles for all backend replicas in the system.
+            # All of these backend_replicas are guaranteed to already exist
+            # because they would not be written to a checkpoint in
+            # self.backend_replicas until they were created.
+            for backend_tag, replica_dict in self.backend_replicas.items():
+                for replica_tag in replica_dict.keys():
+                    replica_name = format_actor_name(replica_tag,
+                                                     self._controller_name)
+                    self.backend_replicas[backend_tag][
+                        replica_tag] = ray.get_actor(replica_name)
+
+        self._notify_backend_configs_changed()
+        self._notify_replica_handles_changed()
+
+    def _checkpoint(self) -> None:
+        self._kv_store.put(
+            CHECKPOINT_KEY,
+            pickle.dumps(
+                (self.backends, self.backend_replicas, self.goals,
+                 self.backend_replicas_to_start, self.backend_replicas_to_stop,
+                 self.backends_to_remove, list(self.pending_goals.keys()))))
+
+    def _notify_backend_configs_changed(self) -> None:
+        self._long_poll_host.notify_changed(LongPollKey.BACKEND_CONFIGS,
+                                            self.get_backend_configs())
+
+    def _notify_replica_handles_changed(self) -> None:
+        self._long_poll_host.notify_changed(
+            LongPollKey.REPLICA_HANDLES, {
+                backend_tag: list(replica_dict.values())
+                for backend_tag, replica_dict in self.backend_replicas.items()
+            })
 
     def get_backend_configs(self) -> Dict[BackendTag, BackendConfig]:
         return {
@@ -89,35 +119,139 @@ class BackendState:
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
 
+    def num_pending_goals(self) -> int:
+        return len(self.pending_goals)
+
+    async def wait_for_goal(self, goal_id: GoalId) -> None:
+        start = time.time()
+        if goal_id not in self.pending_goals:
+            logger.debug(f"Goal {goal_id} not found")
+            return True
+        event = self.pending_goals[goal_id]
+        await event.wait()
+        logger.debug(
+            f"Waiting for goal {goal_id} took {time.time() - start} seconds")
+
+    def _complete_goal(self, goal_id: GoalId) -> None:
+        logger.debug(f"Completing goal {goal_id}")
+        event = self.pending_goals.pop(goal_id, None)
+        if event:
+            event.set()
+
+    def _create_goal(self, goal_id: Optional[GoalId] = None) -> GoalId:
+        if goal_id is None:
+            goal_id = uuid4()
+        event = asyncio.Event()
+        self.pending_goals[goal_id] = event
+        return goal_id
+
     def _set_backend_goal(self, backend_tag: BackendTag,
-                          backend_info: Optional[BackendInfo],
-                          goal_id: GoalId) -> Optional[GoalId]:
+                          backend_info: BackendInfo) -> None:
         existing_goal = self.goals.get(backend_tag)
-        self.backends[backend_tag] = backend_info
-        if not backend_info:
+        new_goal = self._create_goal()
+
+        if backend_info is not None:
+            self.backends[backend_tag] = backend_info
+
+        self.goals[backend_tag] = new_goal
+
+        return new_goal, existing_goal
+
+    def create_backend(self, backend_tag: BackendTag,
+                       backend_config: BackendConfig,
+                       replica_config: ReplicaConfig) -> Optional[GoalId]:
+        # Ensures this method is idempotent.
+        backend_info = self.backends.get(backend_tag)
+        if backend_info is not None:
+            if (backend_info.backend_config == backend_config
+                    and backend_info.replica_config == replica_config):
+                return None
+            else:
+                raise ValueError(
+                    f"Backend {backend_tag} is already registered.")
+
+        backend_replica = create_backend_replica(replica_config.func_or_class)
+
+        # Save creator that starts replicas, the arguments to be passed in,
+        # and the configuration for the backends.
+        backend_info = BackendInfo(
+            worker_class=backend_replica,
+            backend_config=backend_config,
+            replica_config=replica_config)
+
+        new_goal, existing_goal = self._set_backend_goal(
+            backend_tag, backend_info)
+
+        try:
+            self.scale_backend_replicas(backend_tag,
+                                        backend_config.num_replicas)
+        except RayServeException as e:
             del self.backends[backend_tag]
-        self.goals[backend_tag] = goal_id
-        return existing_goal
+            raise e
 
-    def completed_goals(self) -> List[GoalId]:
-        completed_goals = []
-        all_tags = set(self.backend_replicas.keys()).union(
-            set(self.backends.keys()))
+        # NOTE(edoakes): we must write a checkpoint before starting new
+        # or pushing the updated config to avoid inconsistent state if we
+        # crash while making the change.
+        self._checkpoint()
+        self._notify_backend_configs_changed()
 
-        for backend_tag in all_tags:
-            desired_info = self.backends.get(backend_tag)
-            existing_info = self.backend_replicas.get(backend_tag)
-            # Check for deleting
-            if (not desired_info or
-                    desired_info.backend_config.num_replicas == 0) and \
-                    (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self.goals[backend_tag])
+        if existing_goal is not None:
+            self._complete_goal(existing_goal)
+        return new_goal
 
-            # Check for a non-zero number of backends
-            if desired_info and existing_info and desired_info.backend_config.\
-                    num_replicas == len(existing_info):
-                completed_goals.append(self.goals[backend_tag])
-        return completed_goals
+    def delete_backend(self, backend_tag: BackendTag,
+                       force_kill: bool = False) -> Optional[GoalId]:
+        # This method must be idempotent. We should validate that the
+        # specified backend exists on the client.
+        if backend_tag not in self.backends:
+            return None
+
+        # Scale its replicas down to 0.
+        self.scale_backend_replicas(backend_tag, 0, force_kill)
+
+        # Remove the backend's metadata.
+        del self.backends[backend_tag]
+
+        # Add the intention to remove the backend from the routers.
+        self.backends_to_remove.append(backend_tag)
+
+        new_goal, existing_goal = self._set_backend_goal(backend_tag, None)
+
+        self._checkpoint()
+        if existing_goal is not None:
+            self._complete_goal(existing_goal)
+        return new_goal
+
+    def update_backend_config(self, backend_tag: BackendTag,
+                              config_options: BackendConfig):
+        if backend_tag not in self.backends:
+            raise ValueError(f"Backend {backend_tag} is not registered")
+
+        stored_backend_config = self.backends[backend_tag].backend_config
+        updated_config = stored_backend_config.copy(
+            update=config_options.dict(exclude_unset=True))
+        updated_config._validate_complete()
+        self.backends[backend_tag].backend_config = updated_config
+
+        new_goal, existing_goal = self._set_backend_goal(
+            backend_tag, self.backends[backend_tag])
+
+        # Scale the replicas with the new configuration.
+        self.scale_backend_replicas(backend_tag, updated_config.num_replicas)
+
+        # NOTE(edoakes): we must write a checkpoint before pushing the
+        # update to avoid inconsistent state if we crash after pushing the
+        # update.
+        self._checkpoint()
+        if existing_goal is not None:
+            self._complete_goal(existing_goal)
+
+        # Inform the routers and backend replicas about config changes.
+        # TODO(edoakes): this should only happen if we change something other
+        # than num_replicas.
+        self._notify_backend_configs_changed()
+
+        return new_goal
 
     def _start_backend_replica(self, backend_tag: BackendTag,
                                replica_tag: ReplicaTag) -> ActorHandle:
@@ -130,7 +264,7 @@ class BackendState:
         # NOTE(edoakes): the replicas may already be created if we
         # failed after creating them but before writing a
         # checkpoint.
-        replica_name = format_actor_name(replica_tag, self.controller_name)
+        replica_name = format_actor_name(replica_tag, self._controller_name)
         try:
             replica_handle = ray.get_actor(replica_name)
         except ValueError:
@@ -140,13 +274,13 @@ class BackendState:
 
             replica_handle = ray.remote(backend_info.worker_class).options(
                 name=replica_name,
-                lifetime="detached" if self.detached else None,
+                lifetime="detached" if self._detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
                 **backend_info.replica_config.ray_actor_options).remote(
                     backend_tag, replica_tag,
                     backend_info.replica_config.actor_init_args,
-                    backend_info.backend_config, self.controller_name)
+                    backend_info.backend_config, self._controller_name)
 
         return replica_handle
 
@@ -233,7 +367,7 @@ class BackendState:
                 self.backend_replicas_to_stop.items()):
             for replica_tag, shutdown_timeout in replicas_to_stop:
                 replica_name = format_actor_name(replica_tag,
-                                                 self.controller_name)
+                                                 self._controller_name)
 
                 async def kill_actor(replica_name_to_use):
                     # NOTE: the replicas may already be stopped if we failed
@@ -285,9 +419,9 @@ class BackendState:
         in_flight: Set[Future[Any]] = set()
 
         if self.currently_stopping_replicas:
-            done_stoppping, in_flight = await asyncio.wait(
+            done_stopping, in_flight = await asyncio.wait(
                 list(self.currently_stopping_replicas.keys()), timeout=0)
-            for fut in done_stoppping:
+            for fut in done_stopping:
                 (backend_tag,
                  replica_tag) = self.currently_stopping_replicas.pop(fut)
 
@@ -312,8 +446,30 @@ class BackendState:
                     if len(self.backend_replicas[backend_tag]) == 0:
                         del self.backend_replicas[backend_tag]
 
+    def _completed_goals(self) -> List[GoalId]:
+        completed_goals = []
+        all_tags = set(self.backend_replicas.keys()).union(
+            set(self.backends.keys()))
+
+        for backend_tag in all_tags:
+            desired_info = self.backends.get(backend_tag)
+            existing_info = self.backend_replicas.get(backend_tag)
+            # Check for deleting
+            if (not desired_info or
+                    desired_info.backend_config.num_replicas == 0) and \
+                    (not existing_info or len(existing_info) == 0):
+                completed_goals.append(self.goals[backend_tag])
+
+            # Check for a non-zero number of backends
+            if desired_info and existing_info and desired_info.backend_config.\
+                    num_replicas == len(existing_info):
+                completed_goals.append(self.goals[backend_tag])
+        return completed_goals
+
     async def update(self) -> bool:
-        """Returns whether the number of backends has changed."""
+        for goal_id in self._completed_goals():
+            self._complete_goal(goal_id)
+
         self._start_pending_replicas()
         self._stop_pending_replicas()
 
@@ -323,5 +479,7 @@ class BackendState:
         await self._check_currently_starting_replicas()
         await self._check_currently_stopping_replicas()
 
-        return (len(self.currently_starting_replicas) != num_starting) or \
-            (len(self.currently_stopping_replicas) != num_stopping)
+        if (len(self.currently_starting_replicas) != num_starting) or \
+           (len(self.currently_stopping_replicas) != num_stopping):
+            self._checkpoint()
+            self._notify_replica_handles_changed()
