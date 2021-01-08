@@ -13,7 +13,7 @@ updates:
       # Use Pacific Standard Time
       timezone: "America/Los_Angeles"
     commit-message:
-      prefix: "[Tune]"
+      prefix: "[tune]"
       include: "scope"
     # Only 3 upgrade PRs at a time.
     open-pull-requests-limit: 3
