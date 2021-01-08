@@ -105,13 +105,18 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                               if (!status.ok()) {
                                 did_pull = PullFromRandomLocation(object_id);
                               }
-                              if (did_pull) {
-                                auto it = object_pull_requests_.find(object_id);
-                                RAY_CHECK(it != object_pull_requests_.end());
-                                auto &request = it->second;
-                                UpdateRetryTimer(request);
-                              }
+                              RAY_CHECK(did_pull || !did_pull);
+                              // if (did_pull) {
+                              //   auto it = object_pull_requests_.find(object_id);
+                              //   // The pull could be finished/cancelled before the
+                              //   // callback is invoked.
+                              //   if (it != object_pull_requests_.end()) {
+                              //     auto &request = it->second;
+                              //     UpdateRetryTimer(request);
+                              //   }
+                              // }
                             });
+    UpdateRetryTimer(request);
   } else {
     // New object locations were found, so begin trying to pull from a
     // client. This will be called every time a new client location
