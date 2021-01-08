@@ -145,7 +145,13 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   client_ids.insert(NodeID::FromRandom());
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
 
-  // The first pull failed so we're allowed to retry again immediately.
+  // We always assume the restore succeeded so there's only 1 restore call still.
+  ASSERT_EQ(num_send_pull_request_calls_, 0);
+  ASSERT_EQ(num_restore_spilled_object_calls_, 1);
+
+  fake_time_ += 10.0;
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 

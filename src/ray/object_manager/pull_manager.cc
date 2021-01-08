@@ -98,24 +98,19 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 
   if (!request.spilled_url.empty()) {
     // Try to restore the spilled object.
-    restore_spilled_object_(object_id, request.spilled_url,
-                            [this, object_id](const ray::Status &status) {
-                              bool did_pull = true;
-                              // Fall back to fetching from another object manager.
-                              if (!status.ok()) {
-                                did_pull = PullFromRandomLocation(object_id);
-                              }
-                              RAY_CHECK(did_pull || !did_pull);
-                              // if (did_pull) {
-                              //   auto it = object_pull_requests_.find(object_id);
-                              //   // The pull could be finished/cancelled before the
-                              //   // callback is invoked.
-                              //   if (it != object_pull_requests_.end()) {
-                              //     auto &request = it->second;
-                              //     UpdateRetryTimer(request);
-                              //   }
-                              // }
-                            });
+    restore_spilled_object_(
+        object_id, request.spilled_url, [this, object_id](const ray::Status &status) {
+          bool did_pull = true;
+          // Fall back to fetching from another object manager.
+          if (!status.ok()) {
+            did_pull = PullFromRandomLocation(object_id);
+          }
+          if (!did_pull) {
+            RAY_LOG(WARNING) << "Object restoration failed and the object could not be "
+                                "found on any other nodes. Object id: "
+                             << object_id;
+          }
+        });
     UpdateRetryTimer(request);
   } else {
     // New object locations were found, so begin trying to pull from a
