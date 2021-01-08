@@ -3,12 +3,15 @@ from typing import Dict, Any, List, Optional, Tuple
 import ray.cloudpickle as pickle
 from ray.serve.common import BackendTag, EndpointTag, TrafficPolicy
 from ray.serve.constants import LongPollKey
+from ray.serve.kv_store import RayInternalKVStore
+from ray.serve.long_poll import LongPollHost
 
 CHECKPOINT_KEY = "serve-endpoint-state-checkpoint"
 
 
 class EndpointState:
-    def __init__(self, kv_store, long_poll_host):
+    def __init__(self, kv_store: RayInternalKVStore,
+                 long_poll_host: LongPollHost):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._routes: Dict[BackendTag, Tuple[EndpointTag, Any]] = dict()
