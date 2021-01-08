@@ -76,10 +76,10 @@ class TestPreprocessors(unittest.TestCase):
         pp = get_preprocessor(space)(space)
         self.assertTrue(pp.shape == (9, ))
         check(
-            pp.transform(np.array([1, 2, 0])),
+            pp.transform((np.array([1, 2, 0]), )),
             [0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0])
         check(
-            pp.transform(np.array([0, 1, 3])),
+            pp.transform((np.array([0, 1, 3]), )),
             [1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0])
 
 
