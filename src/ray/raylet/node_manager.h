@@ -225,11 +225,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
   /// \return Void.
-  void ResourceUsageAdded(const NodeID &id, const rpc::ResourcesData &data);
+  void UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+
   /// Handler for a resource usage batch notification from the GCS
   ///
   /// \param resource_usage_batch The batch of resource usage data.
-  void ResourceUsageBatchAdded(const ResourceUsageBatchData &resource_usage_batch);
+  void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
 
@@ -673,8 +674,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// Only the changed part will be included in resource usage if this is true.
-  const bool light_report_resource_usage_enabled_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the

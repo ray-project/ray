@@ -157,8 +157,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler {
 
   /// A timer that ticks every raylet_report_resources_period_milliseconds.
   boost::asio::deadline_timer resource_timer_;
-  // Only the changed part will be reported if this is true.
-  const bool light_report_resource_usage_enabled_;
   /// Newest resource usage of all nodes.
   absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
   /// A buffer containing resource usage received from node managers in the last tick.

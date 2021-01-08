@@ -311,13 +311,13 @@ class TestMultiAgentEnv(unittest.TestCase):
 
     def test_returning_model_based_rollouts_data(self):
         class ModelBasedPolicy(DQNTFPolicy):
-            def compute_actions(self,
-                                obs_batch,
-                                state_batches,
-                                prev_action_batch=None,
-                                prev_reward_batch=None,
-                                episodes=None,
-                                **kwargs):
+            def compute_actions_from_input_dict(self,
+                                                input_dict,
+                                                explore=None,
+                                                timestep=None,
+                                                episodes=None,
+                                                **kwargs):
+                obs_batch = input_dict["obs"]
                 # In policy loss initialization phase, no episodes are passed
                 # in.
                 if episodes is not None:
