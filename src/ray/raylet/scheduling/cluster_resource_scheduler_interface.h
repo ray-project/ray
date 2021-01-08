@@ -53,7 +53,7 @@ class ClusterResourceSchedulerInterface {
   /// this is needed when gcs fo.
   ///
   /// \param gcs_resources: The remote cache from gcs.
-  virtual void UpdateLastReportResourcesFromGcs(
+  virtual void UpdateLastResourceUsage(
       std::shared_ptr<SchedulingResources> gcs_resources) {}
 
   /// Populate the relevant parts of the heartbeat table. This is intended for

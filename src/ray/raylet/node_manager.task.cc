@@ -17,7 +17,7 @@
 namespace ray {
 namespace raylet {
 
-void NodeManager::FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) {
+void NodeManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   auto const &task_resources = worker->GetTaskResourceIds();
   local_available_resources_.ReleaseConstrained(
       task_resources, cluster_resource_map_[self_node_id_].GetTotalResources());
@@ -45,7 +45,7 @@ bool NodeManager::ReleaseCpuResourcesAndMarkWorkerAsBlocked(
   return true;
 }
 
-bool NodeManager::ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+bool NodeManager::ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
     std::shared_ptr<WorkerInterface> worker) {
   if (!worker->IsBlocked()) {
     return false;  // Don't need to unblock the worker.
@@ -80,6 +80,10 @@ void NodeManager::ScheduleAndDispatchTasks() {
 }
 
 void NodeManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
+  if (ready_ids.empty()) {
+    return;
+  }
+
   std::unordered_set<TaskID> ready_task_id_set(ready_ids.begin(), ready_ids.end());
 
   // First filter out the tasks that should not be moved to READY.
@@ -106,6 +110,7 @@ void NodeManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
 void NodeManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resources_data) {
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   local_resources.SetLoadResources(local_queues_.GetTotalResourceLoad());
+  auto last_heartbeat_resources = gcs_client_->NodeResources().GetLastResourceUsage();
   if (!last_heartbeat_resources->GetLoadResources().IsEqual(
           local_resources.GetLoadResources())) {
     resources_data->set_resource_load_changed(true);
@@ -170,13 +175,15 @@ bool NodeManager::CancelTask(const TaskID &task_id) {
   return canceled;
 }
 
-void NodeManager::QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply *reply,
+void NodeManager::QueueAndScheduleTask(const Task &task,
+                                       rpc::RequestWorkerLeaseReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   // Override the task dispatch to call back to the client instead of executing the
   // task directly on the worker.
   TaskID task_id = task.GetTaskSpecification().TaskId();
   rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
-  task.OnDispatchInstead(
+  Task &mutable_task = const_cast<Task &>(task);
+  mutable_task.OnDispatchInstead(
       [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
@@ -218,7 +225,7 @@ void NodeManager::QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply
 
         leased_workers_[worker_id] = worker;
       });
-  task.OnSpillbackInstead(
+  mutable_task.OnSpillbackInstead(
       [this, reply, task_id, send_reply_callback](const NodeID &spillback_to,
                                                   const std::string &address, int port) {
         RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
@@ -228,13 +235,15 @@ void NodeManager::QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply
         metrics_num_task_spilled_back_ += 1;
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
-  task.OnCancellationInstead([reply, task_id, send_reply_callback]() {
+  mutable_task.OnCancellationInstead([reply, task_id, send_reply_callback]() {
     RAY_LOG(DEBUG) << "Task lease request canceled " << task_id;
     reply->set_canceled(true);
     send_reply_callback(Status::OK(), nullptr, nullptr);
   });
   SubmitTask(task);
 }
+
+void NodeManager::ScheduleInfeasibleTasks() { TryLocalInfeasibleTaskScheduling(); }
 
 /// Return if any tasks are pending resource acquisition.
 ///
@@ -295,24 +304,6 @@ void NodeManager::OnNodeResourceUsageUpdated(const NodeID &node_id,
 
 void NodeManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const {
   // TODO(Shanly): Implement.
-}
-
-void NodeManager::OnBundleResourcesPrepared() {
-  // Call task dispatch to assign work to the new group.
-  TryLocalInfeasibleTaskScheduling();
-  DispatchTasks(local_queues_.GetReadyTasksByClass());
-}
-
-void NodeManager::OnBundleResourcesCommitted() {
-  // Call task dispatch to assign work to the new group.
-  TryLocalInfeasibleTaskScheduling();
-  DispatchTasks(local_queues_.GetReadyTasksByClass());
-}
-
-void NodeManager::OnReservedResourcesCanceled() {
-  // Call task dispatch to assign work to the new group.
-  TryLocalInfeasibleTaskScheduling();
-  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::OnObjectMissing(const ObjectID &object_id,

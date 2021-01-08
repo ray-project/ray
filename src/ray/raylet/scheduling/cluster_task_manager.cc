@@ -246,10 +246,14 @@ bool ClusterTaskManager::AttemptDispatchWork(const Work &work,
   return dispatched;
 }
 
-void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                                   std::function<void(void)> callback) {
-  RAY_LOG(DEBUG) << "Queuing task " << task.GetTaskSpecification().TaskId();
-  Work work = std::make_tuple(task, reply, callback);
+void ClusterTaskManager::QueueAndScheduleTask(
+    const Task &task, rpc::RequestWorkerLeaseReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Queuing and scheduling task "
+                 << task.GetTaskSpecification().TaskId();
+  Work work = std::make_tuple(task, reply, [send_reply_callback] {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -259,18 +263,19 @@ void ClusterTaskManager::QueueTask(const Task &task, rpc::RequestWorkerLeaseRepl
     tasks_to_schedule_[scheduling_class].push_back(work);
   }
   AddToBacklogTracker(task);
-}
-
-void ClusterTaskManager::QueueAndScheduleTask(
-    Task &&task, rpc::RequestWorkerLeaseReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  QueueTask(task, reply, [send_reply_callback] {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
   ScheduleAndDispatchTasks();
 }
 
+void ClusterTaskManager::ScheduleInfeasibleTasks() {
+  // Do nothing.
+  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
+}
+
 void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
+  if (ready_ids.empty()) {
+    return;
+  }
+
   for (const auto &task_id : ready_ids) {
     auto it = waiting_tasks_.find(task_id);
     if (it != waiting_tasks_.end()) {
@@ -293,9 +298,9 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
   }
 
   if (worker->GetAllocatedInstances() != nullptr) {
-    cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
     worker->ClearAllocatedInstances();
-    cluster_resource_scheduler_->FreeLocalTaskResources(
+    cluster_resource_scheduler_->ReleaseWorkerResources(
         worker->GetLifetimeAllocatedInstances());
     worker->ClearLifetimeAllocatedInstances();
   }
@@ -303,9 +308,9 @@ void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> wor
 
 void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {
   if (worker->GetAllocatedInstances() != nullptr) {
-    cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
     worker->ClearAllocatedInstances();
-    cluster_resource_scheduler_->FreeLocalTaskResources(
+    cluster_resource_scheduler_->ReleaseWorkerResources(
         worker->GetLifetimeAllocatedInstances());
     worker->ClearLifetimeAllocatedInstances();
   }
@@ -622,6 +627,8 @@ bool ClusterTaskManager::AnyPendingTasks(Task *exemplar, bool *any_pending,
 }
 
 std::string ClusterTaskManager::DebugStr() const {
+  // TODO(Shanly): This method will be replaced with `DebugString` once we remove the
+  // legacy scheduler.
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
   buffer << "Schedule queue length: " << tasks_to_schedule_.size() << "\n";
@@ -777,10 +784,10 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
   }
 }
 
-void ClusterTaskManager::FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) {
-  cluster_resource_scheduler_->FreeLocalTaskResources(worker->GetAllocatedInstances());
+void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
+  cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
   worker->ClearAllocatedInstances();
-  cluster_resource_scheduler_->FreeLocalTaskResources(
+  cluster_resource_scheduler_->ReleaseWorkerResources(
       worker->GetLifetimeAllocatedInstances());
   worker->ClearLifetimeAllocatedInstances();
 }
@@ -806,7 +813,7 @@ bool ClusterTaskManager::ReleaseCpuResourcesAndMarkWorkerAsBlocked(
   return true;
 }
 
-bool ClusterTaskManager::ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+bool ClusterTaskManager::ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
     std::shared_ptr<WorkerInterface> worker) {
   // Important: avoid double unblocking if the unblock RPC finishes after task end.
   if (!worker || !worker->IsBlocked()) {
@@ -834,22 +841,8 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
 
 void ClusterTaskManager::OnNodeResourceUsageUpdated(
     const NodeID &node_id, const rpc::ResourcesData &resource_data) {
-  ScheduleAndDispatchTasks();
-}
-
-void ClusterTaskManager::OnBundleResourcesPrepared() {
-  // Do nothing.
-}
-
-void ClusterTaskManager::OnBundleResourcesCommitted() {
-  // Schedule in case a lease request for this placement group arrived before the commit
-  // message.
-  ScheduleAndDispatchTasks();
-}
-
-void ClusterTaskManager::OnReservedResourcesCanceled() {
-  // Schedule in case a lease request for this placement group arrived before the commit
-  // message.
+  // TODO(Shanly): This method will be removed and can be replaced by
+  // `ScheduleAndDispatchTasks` directly once we remove the legacy scheduler.
   ScheduleAndDispatchTasks();
 }
 
@@ -858,6 +851,7 @@ void ClusterTaskManager::OnObjectMissing(const ObjectID &object_id,
   // We don't need to do anything if the new scheduler is enabled because tasks
   // will get moved back to waiting once they reach the front of the dispatch
   // queue.
+  // TODO(Shanly): This method will be removed once we remove the legacy scheduler.
 }
 
 }  // namespace raylet

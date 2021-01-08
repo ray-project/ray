@@ -192,11 +192,10 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
 
   if (RayConfig::instance().new_scheduler_enabled()) {
     SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
-    auto cluster_resource_scheduler =
+    cluster_resource_scheduler_ =
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
             self_node_id_.Binary(),
             local_resources.GetTotalResources().GetResourceMap()));
-    cluster_resource_scheduler_ = cluster_resource_scheduler;
 
     auto get_node_info_func = [this](const NodeID &node_id) {
       return gcs_client_->Nodes().Get(node_id);
@@ -210,17 +209,22 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       PublishInfeasibleTaskError(task);
     };
     cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
-        self_node_id_, cluster_resource_scheduler, dependency_manager_, is_owner_alive,
-        get_node_info_func, announce_infeasible_task, worker_pool_, leased_workers_));
+        self_node_id_,
+        std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+        dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
+        worker_pool_, leased_workers_));
     placement_group_resource_manager_ =
-        std::make_shared<NewPlacementGroupResourceManager>(cluster_resource_scheduler);
+        std::make_shared<NewPlacementGroupResourceManager>(
+            std::dynamic_pointer_cast<ClusterResourceScheduler>(
+                cluster_resource_scheduler_));
   } else {
     cluster_resource_scheduler_ = std::make_shared<OldClusterResourceScheduler>(
         self_node_id_, local_available_resources_, cluster_resource_map_,
         gcs_client_->NodeResources().GetLastResourceUsage());
     cluster_task_manager_ = std::shared_ptr<NodeManager>(this, [](NodeManager *) {
-      // cluster_task_manager_ is not responsible for lifetime of the NodeManager,
-      // so it should not call delete here.
+      // If new scheduler is not enabled, the `cluster_task_manager_` is this NodeManager
+      // itself. So we create a `shared_ptr` that points to `this` and the deleter does
+      // nothing.
     });
     placement_group_resource_manager_ =
         std::make_shared<OldPlacementGroupResourceManager>(
@@ -1241,7 +1245,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     worker_pool_.DisconnectWorker(worker);
 
     // Return the resources that were being used by this worker.
-    cluster_task_manager_->FreeLocalTaskResources(worker);
+    cluster_task_manager_->ReleaseWorkerResources(worker);
 
     // Since some resources may have been released, we can try to dispatch more tasks. YYY
     cluster_task_manager_->ScheduleAndDispatchTasks();
@@ -1449,8 +1453,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
   }
 
-  cluster_task_manager_->QueueAndScheduleTask(std::move(task), reply,
-                                              send_reply_callback);
+  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
 }
 
 void NodeManager::HandlePrepareBundleResources(
@@ -1463,8 +1466,6 @@ void NodeManager::HandlePrepareBundleResources(
   auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
-
-  cluster_task_manager_->OnBundleResourcesPrepared();
 }
 
 void NodeManager::HandleCommitBundleResources(
@@ -1476,7 +1477,8 @@ void NodeManager::HandleCommitBundleResources(
   placement_group_resource_manager_->CommitBundle(bundle_spec);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
-  cluster_task_manager_->OnBundleResourcesCommitted();
+  cluster_task_manager_->ScheduleInfeasibleTasks();
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::HandleCancelResourceReserve(
@@ -1510,7 +1512,8 @@ void NodeManager::HandleCancelResourceReserve(
 
   // Return bundle resources.
   placement_group_resource_manager_->ReturnBundle(bundle_spec);
-  cluster_task_manager_->OnReservedResourcesCanceled();
+  cluster_task_manager_->ScheduleInfeasibleTasks();
+  cluster_task_manager_->ScheduleAndDispatchTasks();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1770,7 +1773,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   // if we don't need to unblock the worker below.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
-  if (cluster_task_manager_->ReturnCpuResourcesAndMarkWorkerAsUnblocked(worker)) {
+  if (cluster_task_manager_->ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(worker)) {
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
@@ -2087,9 +2090,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Object local " << object_id << ", "
                  << " on " << self_node_id_ << ", " << ready_task_ids.size()
                  << " tasks ready";
-  if (!ready_task_ids.empty()) {
-    cluster_task_manager_->TasksUnblocked(ready_task_ids);
-  }
+  cluster_task_manager_->TasksUnblocked(ready_task_ids);
 }
 
 bool NodeManager::IsActorCreationTask(const TaskID &task_id) {

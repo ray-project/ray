@@ -62,32 +62,15 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       WorkerPoolInterface &worker_pool,
       std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
 
-  /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
-  /// (local or remote) that has enough resources available to run the task, if
-  /// any such node exist. Skip tasks which are not schedulable.
-  ///
-  /// \return True if any tasks are ready for dispatch.
-  bool SchedulePendingTasks();
-
-  /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
-  /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
-  /// available resources on the node.
-  ///
-  /// If there are not enough resources locally, up to one task per resource
-  /// shape (the task at the head of the queue) will get spilled back to a
-  /// different node.
-  void DispatchScheduledTasksToWorkers(
-      WorkerPoolInterface &worker_pool,
-      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
-
   /// (Step 1) Queue tasks for scheduling.
+  ///
   /// \param fn: The function used during dispatching.
   /// \param task: The incoming task to schedule.
-  void QueueTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
-                 std::function<void(void)>);
-
-  void QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply *reply,
+  void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Schedule infeasible tasks.
+  void ScheduleInfeasibleTasks() override;
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
   /// dependencies are resolved.
@@ -135,17 +118,23 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                        int *num_pending_tasks) const override;
 
   /// Return the resources that were being used by this worker.
-  void FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) override;
+  void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
 
-  /// When direct call task is blocked, the worker who is executing the task should give
-  /// up the cpu resources allocated for the running task for the time being and the
-  /// worker itself should also be marked as blocked.
+  /// When a task is blocked in ray.get or ray.wait, the worker who is executing the task
+  /// should give up the CPU resources allocated for the running task for the time being
+  /// and the worker itself should also be marked as blocked.
+  ///
+  /// \param worker The worker to be marked as blocked.
+  /// \return true if the worker is non-block and release_resources is true, else false.
   bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(std::shared_ptr<WorkerInterface> worker,
                                                  bool release_resources) override;
 
-  // When direct call task is unblocked, the cpu resources that the worker gave up should
-  // be returned to it.
-  bool ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+  /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
+  /// the worker gave up should be returned to it.
+  ///
+  /// \param worker The blocked worker.
+  /// \return true if the worker is blocking, else false.
+  bool ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
       std::shared_ptr<WorkerInterface> worker) override;
 
   // Schedule and dispatch tasks.
@@ -158,15 +147,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   void OnNodeResourceUsageUpdated(const NodeID &node_id,
                                   const rpc::ResourcesData &resource_data) override;
 
-  /// Handle the bundle resources prepared event.
-  void OnBundleResourcesPrepared() override;
-
-  /// Handle the bundle resources committed event.
-  void OnBundleResourcesCommitted() override;
-
-  /// Handle the reserved resources canceled event.
-  void OnReservedResourcesCanceled() override;
-
   /// Handle the object missing event.
   void OnObjectMissing(const ObjectID &object_id,
                        const std::vector<TaskID> &waiting_task_ids) override;
@@ -175,6 +155,24 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::string DebugStr() const override;
 
  private:
+   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
+  /// (local or remote) that has enough resources available to run the task, if
+  /// any such node exist. Skip tasks which are not schedulable.
+  ///
+  /// \return True if any tasks are ready for dispatch.
+  bool SchedulePendingTasks();
+
+  /// (Step 3) Attempts to dispatch all tasks which are ready to run. A task
+  /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
+  /// available resources on the node.
+  ///
+  /// If there are not enough resources locally, up to one task per resource
+  /// shape (the task at the head of the queue) will get spilled back to a
+  /// different node.
+  void DispatchScheduledTasksToWorkers(
+      WorkerPoolInterface &worker_pool,
+      std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers);
+
   /// Helper method to try dispatching a single task from the queue to an
   /// available worker. Returns whether the task should be removed from the
   /// queue and whether the worker was successfully leased to execute the work.

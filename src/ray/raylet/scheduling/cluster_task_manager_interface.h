@@ -25,22 +25,23 @@ class ClusterTaskManagerInterface {
   virtual ~ClusterTaskManagerInterface() = default;
 
   /// Return the resources that were being used by this worker.
-  virtual void FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) = 0;
+  virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 
-  /// When direct call task is blocked, the worker who is executing the task should give
-  /// up the cpu resources allocated for the running task for the time being and the
-  /// worker itself should also be marked as blocked.
+  /// When a task is blocked in ray.get or ray.wait, the worker who is executing the task
+  /// should give up the CPU resources allocated for the running task for the time being
+  /// and the worker itself should also be marked as blocked.
   ///
   /// \param worker The worker to be marked as blocked.
   /// \return true if the worker is non-block and release_resources is true, else false.
   virtual bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(
       std::shared_ptr<WorkerInterface> worker, bool release_resources) = 0;
 
-  /// When direct call task is unblocked, the cpu resources that the worker gave up should
-  /// be returned to it.
+  /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
+  /// the worker gave up should be returned to it.
+  ///
   /// \param worker The blocked worker.
   /// \return true if the worker is blocking, else false.
-  virtual bool ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+  virtual bool ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
       std::shared_ptr<WorkerInterface> worker) = 0;
 
   // Schedule and dispatch tasks.
@@ -86,10 +87,14 @@ class ClusterTaskManagerInterface {
   virtual bool CancelTask(const TaskID &task_id) = 0;
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.
+  ///
   /// \param fn: The function used during dispatching.
   /// \param task: The incoming task to schedule.
-  virtual void QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply *reply,
+  virtual void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) = 0;
+
+  /// Schedule infeasible tasks.
+  virtual void ScheduleInfeasibleTasks() = 0;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -108,15 +113,6 @@ class ClusterTaskManagerInterface {
   /// \param resource_data The node resources.
   virtual void OnNodeResourceUsageUpdated(const NodeID &node_id,
                                           const rpc::ResourcesData &resource_data) = 0;
-
-  /// Handle the bundle resources prepared event.
-  virtual void OnBundleResourcesPrepared() = 0;
-
-  /// Handle the bundle resources committed event.
-  virtual void OnBundleResourcesCommitted() = 0;
-
-  /// Handle the reserved resources canceled event.
-  virtual void OnReservedResourcesCanceled() = 0;
 
   /// Handle the object missing event.
   virtual void OnObjectMissing(const ObjectID &object_id,

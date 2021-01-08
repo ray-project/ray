@@ -354,7 +354,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
       const std::string &node_id,
       const std::unordered_map<std::string, double> &task_resources);
 
-  void FreeLocalTaskResources(std::shared_ptr<TaskResourceInstances> task_allocation);
+  void ReleaseWorkerResources(std::shared_ptr<TaskResourceInstances> task_allocation);
 
   /// Update the available resources of the local node given
   /// the available instances of each resource of the local node.
@@ -379,7 +379,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// this is needed when gcs fo.
   ///
   /// \param gcs_resources: The remote cache from gcs.
-  void UpdateLastReportResourcesFromGcs(
+  void UpdateLastResourceUsage(
       std::shared_ptr<SchedulingResources> gcs_resources) override;
 
   /// Return human-readable string for this scheduler state.

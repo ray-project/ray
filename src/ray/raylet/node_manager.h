@@ -639,17 +639,23 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   // The following methods are defined in node_manager.task.cc instead of node_manager.cc
 
   /// Return the resources that were being used by this worker.
-  void FreeLocalTaskResources(std::shared_ptr<WorkerInterface> worker) override;
+  void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
 
-  /// When direct call task is blocked, the worker who is executing the task should give
-  /// up the cpu resources allocated for the running task for the time being and the
-  /// worker itself should also be marked as blocked.
+  /// When a task is blocked in ray.get or ray.wait, the worker who is executing the task
+  /// should give up the CPU resources allocated for the running task for the time being
+  /// and the worker itself should also be marked as blocked.
+  ///
+  /// \param worker The worker to be marked as blocked.
+  /// \return true if the worker is non-block and release_resources is true, else false.
   bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(std::shared_ptr<WorkerInterface> worker,
                                                  bool release_resources) override;
 
-  // When direct call task is unblocked, the cpu resources that the worker gave up should
-  // be returned to it.
-  bool ReturnCpuResourcesAndMarkWorkerAsUnblocked(
+  /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
+  /// the worker gave up should be returned to it.
+  ///
+  /// \param worker The blocked worker.
+  /// \return true if the worker is blocking, else false.
+  bool ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
       std::shared_ptr<WorkerInterface> worker) override;
 
   // Schedule and dispatch tasks.
@@ -696,8 +702,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Queue task and schedule.
   /// \param fn: The function used during dispatching.
   /// \param task: The incoming task to schedule.
-  void QueueAndScheduleTask(Task &&task, rpc::RequestWorkerLeaseReply *reply,
+  void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Schedule infeasible tasks.
+  void ScheduleInfeasibleTasks() override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -715,15 +724,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param resource_data The node resources.
   void OnNodeResourceUsageUpdated(const NodeID &node_id,
                                   const rpc::ResourcesData &resource_data) override;
-
-  /// Handle the bundle resources prepared event.
-  void OnBundleResourcesPrepared() override;
-
-  /// Handle the bundle resources committed event.
-  void OnBundleResourcesCommitted() override;
-
-  /// Handle the reserved resources canceled event.
-  void OnReservedResourcesCanceled() override;
 
   /// Handle the object missing event.
   void OnObjectMissing(const ObjectID &object_id,

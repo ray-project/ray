@@ -920,7 +920,7 @@ bool ClusterResourceScheduler::AllocateRemoteTaskResources(
   return SubtractRemoteNodeAvailableResources(node_id, task_request);
 }
 
-void ClusterResourceScheduler::FreeLocalTaskResources(
+void ClusterResourceScheduler::ReleaseWorkerResources(
     std::shared_ptr<TaskResourceInstances> task_allocation) {
   if (task_allocation == nullptr || task_allocation->IsEmpty()) {
     return;
