@@ -1,6 +1,10 @@
 from ray.util.client import ray
+
 from ray._private.client_mode_hook import _enable_client_hook
 from ray._private.client_mode_hook import _explicitly_enable_client_mode
+
+from typing import List
+from typing import Tuple
 
 
 def connect(conn_str: str,
