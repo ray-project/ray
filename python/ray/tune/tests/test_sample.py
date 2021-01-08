@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import unittest
 
 from ray import tune
@@ -192,6 +193,28 @@ class SearchSpaceTest(unittest.TestCase):
 
         samples = tune.sample.Float(0, 33).quantized(3).sample(size=1000)
         self.assertTrue(all(0 <= s <= 33 for s in samples))
+
+    def testCategoricalSeedInTrainingLoop(self):
+        def train(config):
+            return 0
+
+        config = {"choice": tune.sample.Categorical(list(range(100_000)))}
+
+        np.random.seed(1000)
+        random.seed(1000)
+
+        out_1 = tune.run(train, config=config, num_samples=8, verbose=0)
+
+        choices_1 = [t.config["choice"] for t in out_1.trials]
+
+        np.random.seed(1000)
+        random.seed(1000)
+
+        out_2 = tune.run(train, config=config, num_samples=8, verbose=0)
+
+        choices_2 = [t.config["choice"] for t in out_2.trials]
+
+        self.assertSequenceEqual(sorted(choices_1), sorted(choices_2))
 
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
