@@ -440,7 +440,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(ERROR) << "Resubmitting task that produced lost plasma object: "
                          << spec.DebugString();
           if (spec.IsActorTask()) {
-            const auto &actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+            auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
@@ -1500,8 +1500,7 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
                                  const std::vector<std::unique_ptr<TaskArg>> &args,
                                  const TaskOptions &task_options,
                                  std::vector<ObjectID> *return_ids) {
-  const std::unique_ptr<ActorHandle> &actor_handle =
-      actor_manager_->GetActorHandle(actor_id);
+  auto actor_handle = actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -1628,18 +1627,18 @@ ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &seriali
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output,
                                         ObjectID *actor_handle_id) const {
-  const std::unique_ptr<ActorHandle> &actor_handle =
-      actor_manager_->GetActorHandle(actor_id);
+  auto actor_handle = actor_manager_->GetActorHandle(actor_id);
   actor_handle->Serialize(output);
   *actor_handle_id = ObjectID::ForActorHandle(actor_id);
   return Status::OK();
 }
 
-const ActorHandle *CoreWorker::GetActorHandle(const ActorID &actor_id) const {
-  return actor_manager_->GetActorHandle(actor_id).get();
+std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
+    const ActorID &actor_id) const {
+  return actor_manager_->GetActorHandle(actor_id);
 }
 
-std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
+std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
     const std::string &name) {
   RAY_CHECK(!name.empty());
   if (options_.is_local_mode) {
@@ -1693,8 +1692,8 @@ std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandle(
   return std::make_pair(GetActorHandle(actor_id), Status::OK());
 }
 
-std::pair<const ActorHandle *, Status> CoreWorker::GetNamedActorHandleLocalMode(
-    const std::string &name) {
+std::pair<std::shared_ptr<const ActorHandle>, Status>
+CoreWorker::GetNamedActorHandleLocalMode(const std::string &name) {
   auto it = local_mode_named_actor_registry_.find(name);
   if (it == local_mode_named_actor_registry_.end()) {
     std::ostringstream stream;
