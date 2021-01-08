@@ -41,7 +41,7 @@ class Worker:
             secure: whether to use SSL secure channel or not.
             metadata: additional metadata passed in the grpc request headers.
         """
-        self.metadata = metadata
+        self.metadata = metadata if metadata else []
         self.channel = None
         self._client_id = make_client_id()
         if secure:
@@ -51,10 +51,11 @@ class Worker:
             self.channel = grpc.insecure_channel(conn_str)
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
 
-        self.data_client = DataClient(self.channel, self._client_id, metadata)
+        self.data_client = DataClient(self.channel, self._client_id,
+                                      self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
-        self.log_client = LogstreamClient(self.channel, metadata)
+        self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
 
