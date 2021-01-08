@@ -1,15 +1,25 @@
 import copy
-import itertools
 import logging
+from typing import Dict, List, Optional
+
 import numpy as np
 
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.suggest.suggestion import Searcher
 
 logger = logging.getLogger(__name__)
 
 TRIAL_INDEX = "__trial_index__"
 """str: A constant value representing the repeat index of the trial."""
+
+
+def _warn_num_samples(searcher: Searcher, num_samples: int):
+    if isinstance(searcher, Repeater) and num_samples % searcher.repeat:
+        logger.warning(
+            "`num_samples` is now expected to be the total number of trials, "
+            "including the repeat trials. For example, set num_samples=15 if "
+            "you intend to obtain 3 search algorithm suggestions and repeat "
+            "each suggestion 5 times. Any leftover trials "
+            "(num_samples mod repeat) will be ignored.")
 
 
 class _TrialGroup:
@@ -26,7 +36,10 @@ class _TrialGroup:
 
     """
 
-    def __init__(self, primary_trial_id, config, max_trials=1):
+    def __init__(self,
+                 primary_trial_id: str,
+                 config: Dict,
+                 max_trials: int = 1):
         assert type(config) is dict, (
             "config is not a dict, got {}".format(config))
         self.primary_trial_id = primary_trial_id
@@ -34,40 +47,46 @@ class _TrialGroup:
         self._trials = {primary_trial_id: None}
         self.max_trials = max_trials
 
-    def add(self, trial_id):
+    def add(self, trial_id: str):
         assert len(self._trials) < self.max_trials
-        self._trials[trial_id] = None
+        self._trials.setdefault(trial_id, None)
 
-    def full(self):
+    def full(self) -> bool:
         return len(self._trials) == self.max_trials
 
-    def report(self, trial_id, score):
+    def report(self, trial_id: str, score: float):
         assert trial_id in self._trials
         if score is None:
             raise ValueError("Internal Error: Score cannot be None.")
         self._trials[trial_id] = score
 
-    def finished_reporting(self):
-        return None not in self._trials.values()
+    def finished_reporting(self) -> bool:
+        return None not in self._trials.values() and len(
+            self._trials) == self.max_trials
 
-    def scores(self):
+    def scores(self) -> List[Optional[float]]:
         return list(self._trials.values())
 
-    def count(self):
+    def count(self) -> int:
         return len(self._trials)
 
 
-class Repeater(SuggestionAlgorithm):
+class Repeater(Searcher):
     """A wrapper algorithm for repeating trials of same parameters.
+
+    Set tune.run(num_samples=...) to be a multiple of `repeat`. For example,
+    set num_samples=15 if you intend to obtain 3 search algorithm suggestions
+    and repeat each suggestion 5 times. Any leftover trials
+    (num_samples mod repeat) will be ignored.
 
     It is recommended that you do not run an early-stopping TrialScheduler
     simultaneously.
 
     Args:
-        search_alg (SearchAlgorithm): SearchAlgorithm object that the
-            Repeater will optimize. Note that the SearchAlgorithm
+        searcher (Searcher): Searcher object that the
+            Repeater will optimize. Note that the Searcher
             will only see 1 trial among multiple repeated trials.
-            The result/metric passed to the SearchAlgorithm upon
+            The result/metric passed to the Searcher upon
             trial completion will be averaged among all repeats.
         repeat (int): Number of times to generate a trial with a repeated
             configuration. Defaults to 1.
@@ -75,43 +94,40 @@ class Repeater(SuggestionAlgorithm):
             Trainable/Function config which corresponds to the index of the
             repeated trial. This can be used for seeds. Defaults to True.
 
+    Example:
+
+    .. code-block:: python
+
+        from ray.tune.suggest import Repeater
+
+        search_alg = BayesOptSearch(...)
+        re_search_alg = Repeater(search_alg, repeat=10)
+
+        # Repeat 2 samples 10 times each.
+        tune.run(trainable, num_samples=20, search_alg=re_search_alg)
+
     """
 
-    def __init__(self, search_alg, repeat=1, set_index=True):
-        self.search_alg = search_alg
-        self._repeat = repeat
+    def __init__(self,
+                 searcher: Searcher,
+                 repeat: int = 1,
+                 set_index: bool = True):
+        self.searcher = searcher
+        self.repeat = repeat
         self._set_index = set_index
         self._groups = []
         self._trial_id_to_group = {}
         self._current_group = None
         super(Repeater, self).__init__(
-            metric=self.search_alg.metric,
-            mode=self.search_alg.mode,
-            use_early_stopped_trials=self.search_alg._use_early_stopped)
+            metric=self.searcher.metric, mode=self.searcher.mode)
 
-    def add_configurations(self, experiments):
-        """Chains generator given experiment specifications.
-
-        Multiplies the number of trials by the repeat factor.
-
-        Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
-        """
-        experiment_list = convert_to_experiment_list(experiments)
-        for experiment in experiment_list:
-            self._trial_generator = itertools.chain(
-                self._trial_generator,
-                self._generate_trials(
-                    experiment.spec.get("num_samples", 1) * self._repeat,
-                    experiment.spec, experiment.name))
-
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if self._current_group is None or self._current_group.full():
-            config = self.search_alg.suggest(trial_id)
+            config = self.searcher.suggest(trial_id)
             if config is None:
                 return config
             self._current_group = _TrialGroup(
-                trial_id, copy.deepcopy(config), max_trials=self._repeat)
+                trial_id, copy.deepcopy(config), max_trials=self.repeat)
             self._groups.append(self._current_group)
             index_in_group = 0
         else:
@@ -124,7 +140,10 @@ class Repeater(SuggestionAlgorithm):
         self._trial_id_to_group[trial_id] = self._current_group
         return config
 
-    def on_trial_complete(self, trial_id, result=None, **kwargs):
+    def on_trial_complete(self,
+                          trial_id: str,
+                          result: Optional[Dict] = None,
+                          **kwargs):
         """Stores the score for and keeps track of a completed trial.
 
         Stores the metric of a trial as nan if any of the following conditions
@@ -139,15 +158,27 @@ class Repeater(SuggestionAlgorithm):
                          "Seen trials: {}".format(
                              trial_id, list(self._trial_id_to_group)))
         trial_group = self._trial_id_to_group[trial_id]
-        if not result or self.search_alg.metric not in result:
+        if not result or self.searcher.metric not in result:
             score = np.nan
         else:
-            score = result[self.search_alg.metric]
+            score = result[self.searcher.metric]
         trial_group.report(trial_id, score)
 
         if trial_group.finished_reporting():
             scores = trial_group.scores()
-            self.search_alg.on_trial_complete(
+            self.searcher.on_trial_complete(
                 trial_group.primary_trial_id,
-                result={self.search_alg.metric: np.nanmean(scores)},
+                result={self.searcher.metric: np.nanmean(scores)},
                 **kwargs)
+
+    def get_state(self) -> Dict:
+        self_state = self.__dict__.copy()
+        del self_state["searcher"]
+        return self_state
+
+    def set_state(self, state: Dict):
+        self.__dict__.update(state)
+
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict) -> bool:
+        return self.searcher.set_search_properties(metric, mode, config)

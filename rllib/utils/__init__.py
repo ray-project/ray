@@ -2,20 +2,17 @@ from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
-    try_import_torch, check_framework
+    try_import_torch
 from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
     renamed_class, renamed_function
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
-from ray.rllib.utils.policy_client import PolicyClient
-from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
-from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
-    convert_to_torch_tensor
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -56,30 +53,41 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, tuple] else ctor([elements])
 
 
+class NullContextManager:
+    """No-op context manager"""
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+
 force_tuple = partial(force_list, to_tuple=True)
 
 __all__ = [
     "add_mixins",
     "check",
-    "check_framework",
-    "convert_to_non_torch_type",
-    "convert_to_torch_tensor",
+    "check_compute_single_action",
+    "deep_update",
     "deprecation_warning",
     "fc",
     "force_list",
     "force_tuple",
     "framework_iterator",
     "lstm",
-    "one_hot",
-    "relu",
-    "sigmoid",
-    "softmax",
-    "deep_update",
     "merge_dicts",
+    "one_hot",
     "override",
+    "relu",
     "renamed_function",
     "renamed_agent",
     "renamed_class",
+    "sigmoid",
+    "softmax",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
@@ -93,8 +101,6 @@ __all__ = [
     "MAX_LOG_NN_OUTPUT",
     "MIN_LOG_NN_OUTPUT",
     "PiecewiseSchedule",
-    "PolicyClient",
-    "PolicyServer",
     "PolynomialSchedule",
     "PublicAPI",
     "SMALL_NUMBER",

@@ -4,7 +4,7 @@
 # rewards reached seem reasonably in line with previous results.
 #
 # You can find the reference results here:
-# https://github.com/ray-project/ray/tree/master/doc/dev/release_logs
+# https://github.com/ray-project/ray/tree/master/release/release_logs
 atari-impala:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
@@ -52,7 +52,7 @@ atari-ppo-torch:
     stop:
         time_total_s: 3600
     config:
-        use_pytorch: true,
+        framework: torch
         lambda: 0.95
         kl_coeff: 0.5
         clip_rewards: True

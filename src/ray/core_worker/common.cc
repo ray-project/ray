@@ -17,10 +17,15 @@
 namespace ray {
 
 std::string WorkerTypeString(WorkerType type) {
+  // TODO(suquark): Use proto3 utils to get the string.
   if (type == WorkerType::DRIVER) {
     return "driver";
   } else if (type == WorkerType::WORKER) {
     return "worker";
+  } else if (type == WorkerType::SPILL_WORKER) {
+    return "spill_worker";
+  } else if (type == WorkerType::RESTORE_WORKER) {
+    return "restore_worker";
   }
   RAY_CHECK(false);
   return "";
@@ -31,6 +36,8 @@ std::string LanguageString(Language language) {
     return "python";
   } else if (language == Language::JAVA) {
     return "java";
+  } else if (language == Language::CPP) {
+    return "cpp";
   }
   RAY_CHECK(false);
   return "";

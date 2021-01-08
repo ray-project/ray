@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "asio.h"
-
-#ifdef _WIN32
-#include <win32fd.h>
-#endif
+#include "ray/gcs/asio.h"
 
 #include "ray/util/logging.h"
+
+extern "C" {
+#include "hiredis/async.h"
+}
 
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
@@ -37,7 +37,7 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
 #ifdef _WIN32
   SOCKET sock = SOCKET_ERROR;
   WSAPROTOCOL_INFO pi;
-  if (WSADuplicateSocket(fh_get(c->fd), GetCurrentProcessId(), &pi) == 0) {
+  if (WSADuplicateSocket(c->fd, GetCurrentProcessId(), &pi) == 0) {
     DWORD flag = WSA_FLAG_OVERLAPPED;
     sock = WSASocket(pi.iAddressFamily, pi.iSocketType, pi.iProtocol, &pi, 0, flag);
   }
@@ -65,59 +65,48 @@ void RedisAsioClient::operate() {
   if (read_requested_ && !read_in_progress_) {
     read_in_progress_ = true;
     socket_.async_read_some(boost::asio::null_buffers(),
-                            boost::bind(&RedisAsioClient::handle_read, this,
-                                        boost::asio::placeholders::error));
+                            boost::bind(&RedisAsioClient::handle_io, this,
+                                        boost::asio::placeholders::error, false));
   }
 
   if (write_requested_ && !write_in_progress_) {
     write_in_progress_ = true;
     socket_.async_write_some(boost::asio::null_buffers(),
-                             boost::bind(&RedisAsioClient::handle_write, this,
-                                         boost::asio::placeholders::error));
+                             boost::bind(&RedisAsioClient::handle_io, this,
+                                         boost::asio::placeholders::error, true));
   }
 }
 
-void RedisAsioClient::handle_read(boost::system::error_code error_code) {
+void RedisAsioClient::handle_io(boost::system::error_code error_code, bool write) {
   RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
-            error_code == boost::asio::error::connection_reset);
-  read_in_progress_ = false;
-  redis_async_context_.RedisAsyncHandleRead();
+            error_code == boost::asio::error::connection_reset ||
+            error_code == boost::asio::error::operation_aborted)
+      << "handle_io(error_code = " << error_code << ")";
+  (write ? write_in_progress_ : read_in_progress_) = false;
+  if (error_code != boost::asio::error::operation_aborted) {
+    if (!redis_async_context_.GetRawRedisAsyncContext()) {
+      RAY_LOG(FATAL) << "redis_async_context_ must not be NULL";
+    }
+    write ? redis_async_context_.RedisAsyncHandleWrite()
+          : redis_async_context_.RedisAsyncHandleRead();
+  }
 
   if (error_code == boost::asio::error::would_block) {
     operate();
   }
 }
 
-void RedisAsioClient::handle_write(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
-            error_code == boost::asio::error::connection_reset);
-  write_in_progress_ = false;
-  redis_async_context_.RedisAsyncHandleWrite();
-
-  if (error_code == boost::asio::error::would_block) {
-    operate();
-  }
-}
-
-void RedisAsioClient::add_read() {
+void RedisAsioClient::add_io(bool write) {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
-  io_service_.dispatch([this]() {
-    read_requested_ = true;
+  io_service_.dispatch([this, write]() {
+    (write ? write_requested_ : read_requested_) = true;
     operate();
   });
 }
 
-void RedisAsioClient::del_read() { read_requested_ = false; }
-
-void RedisAsioClient::add_write() {
-  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
-  io_service_.dispatch([this]() {
-    write_requested_ = true;
-    operate();
-  });
+void RedisAsioClient::del_io(bool write) {
+  (write ? write_requested_ : read_requested_) = false;
 }
-
-void RedisAsioClient::del_write() { write_requested_ = false; }
 
 void RedisAsioClient::cleanup() {}
 
@@ -127,19 +116,19 @@ static inline RedisAsioClient *cast_to_client(void *private_data) {
 }
 
 extern "C" void call_C_addRead(void *private_data) {
-  cast_to_client(private_data)->add_read();
+  cast_to_client(private_data)->add_io(false);
 }
 
 extern "C" void call_C_delRead(void *private_data) {
-  cast_to_client(private_data)->del_read();
+  cast_to_client(private_data)->del_io(false);
 }
 
 extern "C" void call_C_addWrite(void *private_data) {
-  cast_to_client(private_data)->add_write();
+  cast_to_client(private_data)->add_io(true);
 }
 
 extern "C" void call_C_delWrite(void *private_data) {
-  cast_to_client(private_data)->del_write();
+  cast_to_client(private_data)->del_io(true);
 }
 
 extern "C" void call_C_cleanup(void *private_data) {

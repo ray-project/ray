@@ -1,0 +1,20 @@
+# This configuration can expect to reach -160 reward in 10k-20k timesteps
+pendulum-td3:
+    env: Pendulum-v0
+    run: TD3
+    stop:
+        episode_reward_mean: -900
+        timesteps_total: 100000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        # === Model ===
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        # === Exploration ===
+        learning_starts: 5000
+        exploration_config:
+            random_timesteps: 5000
+        # === Evaluation ===
+        evaluation_interval: 1
+        evaluation_num_episodes: 5

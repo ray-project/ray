@@ -10,16 +10,22 @@ import time
 import numpy as np
 import pytest
 
-import ray
 import ray.cluster_utils
 import ray.test_utils
 
+from ray.test_utils import client_test_enabled
 from ray.test_utils import RayTestTimeoutException
+
+if client_test_enabled():
+    from ray.util.client import ray
+else:
+    import ray
 
 logger = logging.getLogger(__name__)
 
 
 # issue https://github.com/ray-project/ray/issues/7105
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_internal_free(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -33,11 +39,12 @@ def test_internal_free(shutdown_only):
 
     sampler = Sampler.remote()
 
-    # Free does not delete from in-memory store.
-    obj_id = sampler.sample.remote()
-    ray.get(obj_id)
-    ray.internal.free(obj_id)
-    assert ray.get(obj_id) == [1, 2, 3, 4, 5]
+    # Free deletes from in-memory store.
+    obj_ref = sampler.sample.remote()
+    ray.get(obj_ref)
+    ray.internal.free(obj_ref)
+    with pytest.raises(Exception):
+        ray.get(obj_ref)
 
     # Free deletes big objects from plasma store.
     big_id = sampler.sample_big.remote()
@@ -46,27 +53,6 @@ def test_internal_free(shutdown_only):
     time.sleep(1)  # wait for delete RPC to propagate
     with pytest.raises(Exception):
         ray.get(big_id)
-
-
-def test_wait_iterables(ray_start_regular):
-    @ray.remote
-    def f(delay):
-        time.sleep(delay)
-        return 1
-
-    objectids = (f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5))
-    ready_ids, remaining_ids = ray.experimental.wait(objectids)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
-
-    objectids = np.array(
-        [f.remote(1.0),
-         f.remote(0.5),
-         f.remote(0.5),
-         f.remote(0.5)])
-    ready_ids, remaining_ids = ray.experimental.wait(objectids)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
 
 
 def test_multiple_waits_and_gets(shutdown_only):
@@ -80,26 +66,27 @@ def test_multiple_waits_and_gets(shutdown_only):
         return 1
 
     @ray.remote
-    def g(l):
-        # The argument l should be a list containing one object ID.
-        ray.wait([l[0]])
+    def g(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.wait([input_list[0]])
 
     @ray.remote
-    def h(l):
-        # The argument l should be a list containing one object ID.
-        ray.get(l[0])
+    def h(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.get(input_list[0])
 
-    # Make sure that multiple wait requests involving the same object ID
+    # Make sure that multiple wait requests involving the same object ref
     # all return.
     x = f.remote(1)
     ray.get([g.remote([x]), g.remote([x])])
 
-    # Make sure that multiple get requests involving the same object ID all
+    # Make sure that multiple get requests involving the same object ref all
     # return.
     x = f.remote(1)
     ray.get([h.remote([x]), h.remote([x])])
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_caching_functions_to_run(shutdown_only):
     # Test that we export functions to run on all workers before the driver
     # is connected.
@@ -145,6 +132,7 @@ def test_caching_functions_to_run(shutdown_only):
     ray.worker.global_worker.run_function_on_all_workers(f)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_running_function_on_all_workers(ray_start_regular):
     def f(worker_info):
         sys.path.append("fake_directory")
@@ -172,6 +160,7 @@ def test_running_function_on_all_workers(ray_start_regular):
     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="ray.timeline")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
@@ -179,9 +168,9 @@ def test_profiling_api(ray_start_2_cpus):
             pass
 
     ray.put(1)
-    object_id = f.remote()
-    ray.wait([object_id])
-    ray.get(object_id)
+    object_ref = f.remote()
+    ray.wait([object_ref])
+    ray.get(object_ref)
 
     # Wait until all of the profiling information appears in the profile
     # table.
@@ -201,7 +190,8 @@ def test_profiling_api(ray_start_2_cpus):
             "ray.wait",
             "submit_task",
             "fetch_and_run_function",
-            "register_remote_function",
+            # TODO (Alex) :https://github.com/ray-project/ray/pull/9346
+            # "register_remote_function",
             "custom_event",  # This is the custom one from ray.profile.
         ]
 
@@ -259,14 +249,14 @@ def test_object_transfer_dump(ray_start_cluster):
         return
 
     # These objects will live on different nodes.
-    object_ids = [
+    object_refs = [
         f._remote(args=[1], resources={str(i): 1}) for i in range(num_nodes)
     ]
 
     # Broadcast each object from each machine to each other machine.
-    for object_id in object_ids:
+    for object_ref in object_refs:
         ray.get([
-            f._remote(args=[object_id], resources={str(i): 1})
+            f._remote(args=[object_ref], resources={str(i): 1})
             for i in range(num_nodes)
         ])
 
@@ -334,19 +324,19 @@ def test_identical_function_names(ray_start_regular):
         return 1
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 2
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 3
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 4
 
     @ray.remote  # noqa: F811
-    def g():
+    def g():  # noqa: F811
         return 5
 
     result_values = ray.get([g.remote() for _ in range(num_calls)])
@@ -355,7 +345,7 @@ def test_identical_function_names(ray_start_regular):
 
 def test_illegal_api_calls(ray_start_regular):
 
-    # Verify that we cannot call put on an ObjectID.
+    # Verify that we cannot call put on an ObjectRef.
     x = ray.put(1)
     with pytest.raises(Exception):
         ray.put(x)
@@ -364,6 +354,8 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="grpc interaction with releasing resources")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
@@ -501,6 +493,7 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="message size")
 def test_wait_makes_object_local(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)

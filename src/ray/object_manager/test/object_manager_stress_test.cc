@@ -12,28 +12,46 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <unistd.h>
-
 #include <chrono>
 #include <iostream>
 #include <random>
 #include <thread>
 
 #include "gtest/gtest.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/status.h"
+#include "ray/common/test_util.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/util/filesystem.h"
+#include "src/ray/protobuf/common.pb.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
 using rpc::GcsNodeInfo;
 
-std::string store_executable;
-
-static inline void flushall_redis(void) {
+static inline bool flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
+  if (context == nullptr || context->err) {
+    return false;
+  }
   freeReplyObject(redisCommand(context, "FLUSHALL"));
+  freeReplyObject(redisCommand(context, "SET NumRedisShards 1"));
+  freeReplyObject(redisCommand(context, "LPUSH RedisShards 127.0.0.1:6380"));
   redisFree(context);
+
+  redisContext *shard_context = redisConnect("127.0.0.1", 6380);
+  if (shard_context == nullptr || shard_context->err) {
+    return false;
+  }
+  freeReplyObject(redisCommand(shard_context, "FLUSHALL"));
+  redisFree(shard_context);
+
+  return true;
 }
 
 int64_t current_time_ms() {
@@ -48,11 +66,12 @@ class MockServer {
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::GcsClient> gcs_client)
-      : node_id_(ClientID::FromRandom()),
+      : node_id_(NodeID::FromRandom()),
         config_(object_manager_config),
         gcs_client_(gcs_client),
         object_manager_(main_service, node_id_, object_manager_config,
-                        std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
+                        std::make_shared<ObjectDirectory>(main_service, gcs_client_),
+                        nullptr) {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
@@ -67,13 +86,14 @@ class MockServer {
     node_info.set_node_manager_port(object_manager_port);
     node_info.set_object_manager_port(object_manager_port);
 
-    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info);
+    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info, nullptr);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
     return status;
   }
 
   friend class StressTestObjectManager;
 
-  ClientID node_id_;
+  NodeID node_id_;
   ObjectManagerConfig config_;
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   ObjectManager object_manager_;
@@ -81,52 +101,25 @@ class MockServer {
 
 class TestObjectManagerBase : public ::testing::Test {
  public:
-  TestObjectManagerBase() {
-#ifdef _WIN32
-    RAY_CHECK(false) << "port system() calls to Windows before running this test";
-#endif
-  }
-
-  std::string StartStore(const std::string &id) {
-    std::string store_id = ray::JoinPaths(ray::GetUserTempDir(), "store");
-    store_id = store_id + id;
-    std::string store_pid = store_id + ".pid";
-    std::string plasma_command = store_executable + " -m 1000000000 -s " + store_id +
-                                 " 1> /dev/null 2> /dev/null &" + " echo $! > " +
-                                 store_pid;
-
-    RAY_LOG(DEBUG) << plasma_command;
-    int ec = system(plasma_command.c_str());
-    RAY_CHECK(ec == 0);
-    sleep(1);
-    return store_id;
-  }
-
-  void StopStore(const std::string &store_id) {
-    std::string store_pid = store_id + ".pid";
-    std::string kill_1 = "kill -9 `cat " + store_pid + "`";
-    int s = system(kill_1.c_str());
-    ASSERT_TRUE(!s);
-  }
-
   void SetUp() {
-    flushall_redis();
+    WaitForCondition(flushall_redis, 7000);
 
     // start store
-    store_id_1 = StartStore(UniqueID::FromRandom().Hex());
-    store_id_2 = StartStore(UniqueID::FromRandom().Hex());
+    socket_name_1 = TestSetupUtil::StartObjectStore();
+    socket_name_2 = TestSetupUtil::StartObjectStore();
 
     unsigned int pull_timeout_ms = 1000;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     int push_timeout_ms = 10000;
 
     // start first server
+    gcs_server_socket_name_ = TestSetupUtil::StartGcsServer("127.0.0.1");
     gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "",
-                                         /*is_test_client=*/true);
-    gcs_client_1 = std::make_shared<gcs::RedisGcsClient>(client_options);
+                                         /*is_test_client=*/false);
+    gcs_client_1 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_1->Connect(main_service));
     ObjectManagerConfig om_config_1;
-    om_config_1.store_socket_name = store_id_1;
+    om_config_1.store_socket_name = socket_name_1;
     om_config_1.pull_timeout_ms = pull_timeout_ms;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
@@ -135,10 +128,10 @@ class TestObjectManagerBase : public ::testing::Test {
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::make_shared<gcs::RedisGcsClient>(client_options);
+    gcs_client_2 = std::make_shared<gcs::ServiceBasedGcsClient>(client_options);
     RAY_CHECK_OK(gcs_client_2->Connect(main_service));
     ObjectManagerConfig om_config_2;
-    om_config_2.store_socket_name = store_id_2;
+    om_config_2.store_socket_name = socket_name_2;
     om_config_2.pull_timeout_ms = pull_timeout_ms;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
@@ -147,13 +140,13 @@ class TestObjectManagerBase : public ::testing::Test {
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
     // connect to stores.
-    RAY_ARROW_CHECK_OK(client1.Connect(store_id_1));
-    RAY_ARROW_CHECK_OK(client2.Connect(store_id_2));
+    RAY_CHECK_OK(client1.Connect(socket_name_1));
+    RAY_CHECK_OK(client2.Connect(socket_name_2));
   }
 
   void TearDown() {
-    arrow::Status client1_status = client1.Disconnect();
-    arrow::Status client2_status = client2.Disconnect();
+    Status client1_status = client1.Disconnect();
+    Status client2_status = client2.Disconnect();
     ASSERT_TRUE(client1_status.ok() && client2_status.ok());
 
     gcs_client_1->Disconnect();
@@ -162,8 +155,12 @@ class TestObjectManagerBase : public ::testing::Test {
     this->server1.reset();
     this->server2.reset();
 
-    StopStore(store_id_1);
-    StopStore(store_id_2);
+    TestSetupUtil::StopObjectStore(socket_name_1);
+    TestSetupUtil::StopObjectStore(socket_name_2);
+
+    if (!gcs_server_socket_name_.empty()) {
+      TestSetupUtil::StopGcsServer(gcs_server_socket_name_);
+    }
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
@@ -171,10 +168,12 @@ class TestObjectManagerBase : public ::testing::Test {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
+    uint64_t retry_with_request_id = 0;
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(
-        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
+    RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata,
+                               metadata_size, &retry_with_request_id, &data));
+    RAY_CHECK(retry_with_request_id == 0);
+    RAY_CHECK_OK(client.Seal(object_id));
     return object_id;
   }
 
@@ -195,8 +194,9 @@ class TestObjectManagerBase : public ::testing::Test {
   std::vector<ObjectID> v1;
   std::vector<ObjectID> v2;
 
-  std::string store_id_1;
-  std::string store_id_2;
+  std::string gcs_server_socket_name_;
+  std::string socket_name_1;
+  std::string socket_name_2;
 };
 
 class StressTestObjectManager : public TestObjectManagerBase {
@@ -225,8 +225,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   int num_connected_clients = 0;
 
-  ClientID node_id_1;
-  ClientID node_id_2;
+  NodeID node_id_1;
+  NodeID node_id_2;
 
   int64_t start_time;
 
@@ -234,7 +234,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_CHECK_OK(gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const NodeID &node_id, const GcsNodeInfo &data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -244,7 +244,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
         },
         nullptr));
     RAY_CHECK_OK(gcs_client_2->Nodes().AsyncSubscribeToNodeChange(
-        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+        [this](const NodeID &node_id, const GcsNodeInfo &data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
@@ -293,38 +293,21 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   plasma::ObjectBuffer GetObject(plasma::PlasmaClient &client, ObjectID &object_id) {
     plasma::ObjectBuffer object_buffer;
-    plasma::ObjectID plasma_id = object_id.ToPlasmaId();
-    RAY_ARROW_CHECK_OK(client.Get(&plasma_id, 1, 0, &object_buffer));
+    RAY_CHECK_OK(client.Get(&object_id, 1, 0, &object_buffer));
     return object_buffer;
-  }
-
-  static unsigned char *GetDigest(plasma::PlasmaClient &client, ObjectID &object_id) {
-    const int64_t size = sizeof(uint64_t);
-    static unsigned char digest_1[size];
-    RAY_ARROW_CHECK_OK(client.Hash(object_id.ToPlasmaId(), &digest_1[0]));
-    return digest_1;
   }
 
   void CompareObjects(ObjectID &object_id_1, ObjectID &object_id_2) {
     plasma::ObjectBuffer object_buffer_1 = GetObject(client1, object_id_1);
     plasma::ObjectBuffer object_buffer_2 = GetObject(client2, object_id_2);
-    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->data());
-    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->data());
-    ASSERT_EQ(object_buffer_1.data->size(), object_buffer_2.data->size());
-    ASSERT_EQ(object_buffer_1.metadata->size(), object_buffer_2.metadata->size());
-    int64_t total_size = object_buffer_1.data->size() + object_buffer_1.metadata->size();
+    uint8_t *data_1 = const_cast<uint8_t *>(object_buffer_1.data->Data());
+    uint8_t *data_2 = const_cast<uint8_t *>(object_buffer_2.data->Data());
+    ASSERT_EQ(object_buffer_1.data->Size(), object_buffer_2.data->Size());
+    ASSERT_EQ(object_buffer_1.metadata->Size(), object_buffer_2.metadata->Size());
+    int64_t total_size = object_buffer_1.data->Size() + object_buffer_1.metadata->Size();
     RAY_LOG(DEBUG) << "total_size " << total_size;
     for (int i = -1; ++i < total_size;) {
       ASSERT_TRUE(data_1[i] == data_2[i]);
-    }
-  }
-
-  void CompareHashes(ObjectID &object_id_1, ObjectID &object_id_2) {
-    const int64_t size = sizeof(uint64_t);
-    static unsigned char *digest_1 = GetDigest(client1, object_id_1);
-    static unsigned char *digest_2 = GetDigest(client2, object_id_2);
-    for (int i = -1; ++i < size;) {
-      ASSERT_TRUE(digest_1[i] == digest_2[i]);
     }
   }
 
@@ -343,7 +326,6 @@ class StressTestObjectManager : public TestObjectManagerBase {
       ObjectID object_id_2 = v2[i];
       ObjectID object_id_1 =
           v1[std::distance(v1.begin(), std::find(v1.begin(), v1.end(), v2[i]))];
-      CompareHashes(object_id_1, object_id_2);
       CompareObjects(object_id_1, object_id_2);
     }
 
@@ -354,10 +336,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void TransferTestExecute(int num_trials, int64_t data_size,
                            TransferPattern transfer_pattern) {
-    ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
-    ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
-
-    ray::Status status = ray::Status::OK();
+    NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
 
     if (transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PUSH ||
@@ -393,21 +373,25 @@ class StressTestObjectManager : public TestObjectManagerBase {
     case TransferPattern::PULL_A_B: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1);
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
       }
     } break;
     case TransferPattern::PULL_B_A: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2);
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL: {
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size);
-        status = server2->object_manager_.Pull(oid1);
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
         ObjectID oid2 = WriteDataToClient(client2, data_size);
-        status = server1->object_manager_.Pull(oid2);
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     case TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE: {
@@ -416,9 +400,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
       std::uniform_int_distribution<> dis(1, 50);
       for (int i = -1; ++i < num_trials;) {
         ObjectID oid1 = WriteDataToClient(client1, data_size + dis(gen));
-        status = server2->object_manager_.Pull(oid1);
+        static_cast<void>(
+            server2->object_manager_.Pull({ObjectIdToRef(oid1, rpc::Address())}));
         ObjectID oid2 = WriteDataToClient(client2, data_size + dis(gen));
-        status = server1->object_manager_.Pull(oid2);
+        static_cast<void>(
+            server1->object_manager_.Pull({ObjectIdToRef(oid2, rpc::Address())}));
       }
     } break;
     default: {
@@ -432,8 +418,8 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server node ids:"
                    << "\n";
-    ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
-    ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    NodeID node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    NodeID node_id_2 = gcs_client_2->Nodes().GetSelfId();
     RAY_LOG(DEBUG) << "Server 1: " << node_id_1 << "\n"
                    << "Server 2: " << node_id_2;
 
@@ -441,11 +427,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
                    << "All connected nodes:"
                    << "\n";
     auto data = gcs_client_1->Nodes().Get(node_id_1);
-    RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data->node_id()) << "\n"
+    RAY_LOG(DEBUG) << "NodeID=" << NodeID::FromBinary(data->node_id()) << "\n"
                    << "NodeIp=" << data->node_manager_address() << "\n"
                    << "NodePort=" << data->node_manager_port();
     auto data2 = gcs_client_1->Nodes().Get(node_id_2);
-    RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data2->node_id()) << "\n"
+    RAY_LOG(DEBUG) << "NodeID=" << NodeID::FromBinary(data2->node_id()) << "\n"
                    << "NodeIp=" << data2->node_manager_address() << "\n"
                    << "NodePort=" << data2->node_manager_port();
   }
@@ -461,6 +447,7 @@ TEST_F(StressTestObjectManager, StartStressTestObjectManager) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  ray::store_executable = std::string(argv[1]);
+  ray::TEST_STORE_EXEC_PATH = std::string(argv[1]);
+  ray::TEST_GCS_SERVER_EXEC_PATH = std::string(argv[2]);
   return RUN_ALL_TESTS();
 }

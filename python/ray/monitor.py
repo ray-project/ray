@@ -1,19 +1,74 @@
+"""Autoscaler monitoring loop daemon."""
+
 import argparse
 import logging
+import logging.handlers
 import os
 import time
 import traceback
 import json
 
 import ray
-from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
+from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.commands import teardown_cluster
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.load_metrics import LoadMetrics
+from ray.autoscaler._private.constants import \
+    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.utils import binary_to_hex, setup_logger
-from ray.autoscaler.commands import teardown_cluster
+from ray.ray_logging import setup_component_logger
+from ray._raylet import GlobalStateAccessor
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
+
+import redis
 
 logger = logging.getLogger(__name__)
+
+
+def parse_resource_demands(resource_load_by_shape):
+    """Handle the message.resource_load_by_shape protobuf for the demand
+    based autoscaling. Catch and log all exceptions so this doesn't
+    interfere with the utilization based autoscaler until we're confident
+    this is stable. Worker queue backlogs are added to the appropriate
+    resource demand vector.
+
+    Args:
+        resource_load_by_shape (pb2.gcs.ResourceLoad): The resource demands
+            in protobuf form or None.
+
+    Returns:
+        List[ResourceDict]: Waiting bundles (ready and feasible).
+        List[ResourceDict]: Infeasible bundles.
+    """
+    waiting_bundles, infeasible_bundles = [], []
+    try:
+        for resource_demand_pb in list(
+                resource_load_by_shape.resource_demands):
+            request_shape = dict(resource_demand_pb.shape)
+            for _ in range(resource_demand_pb.num_ready_requests_queued):
+                waiting_bundles.append(request_shape)
+            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
+                infeasible_bundles.append(request_shape)
+
+            # Infeasible and ready states for tasks are (logically)
+            # mutually exclusive.
+            if resource_demand_pb.num_infeasible_requests_queued > 0:
+                backlog_queue = infeasible_bundles
+            else:
+                backlog_queue = waiting_bundles
+            for _ in range(resource_demand_pb.backlog_size):
+                backlog_queue.append(request_shape)
+            if len(waiting_bundles+infeasible_bundles) > \
+                    AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE:
+                break
+    except Exception:
+        logger.exception("Failed to parse resource demands.")
+
+    return waiting_bundles, infeasible_bundles
 
 
 class Monitor:
@@ -29,22 +84,36 @@ class Monitor:
             This is used to receive notifications about failed components.
     """
 
-    def __init__(self, redis_address, autoscaling_config, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 autoscaling_config,
+                 redis_password=None,
+                 prefix_cluster_info=False):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
-        self.redis = ray.services.create_redis_client(
+        self.redis = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
+        self.global_state_accessor = GlobalStateAccessor(
+            redis_address, redis_password, False)
+        self.global_state_accessor.connect()
+        # Set the redis client and mode so _internal_kv works for autoscaler.
+        worker = ray.worker.global_worker
+        worker.redis_client = self.redis
+        worker.mode = 0
         # Setup subscriptions to the primary Redis server and the Redis shards.
         self.primary_subscribe_client = self.redis.pubsub(
             ignore_subscribe_messages=True)
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
-        self.load_metrics = LoadMetrics()
+        head_node_ip = redis_address.split(":")[0]
+        self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
-            self.autoscaler = StandardAutoscaler(autoscaling_config,
-                                                 self.load_metrics)
+            self.autoscaler = StandardAutoscaler(
+                autoscaling_config,
+                self.load_metrics,
+                prefix_cluster_info=prefix_cluster_info)
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
@@ -53,7 +122,15 @@ class Monitor:
     def __del__(self):
         """Destruct the monitor object."""
         # We close the pubsub client to avoid leaking file descriptors.
-        self.primary_subscribe_client.close()
+        try:
+            primary_subscribe_client = self.primary_subscribe_client
+        except AttributeError:
+            primary_subscribe_client = None
+        if primary_subscribe_client is not None:
+            primary_subscribe_client.close()
+        if self.global_state_accessor is not None:
+            self.global_state_accessor.disconnect()
+            self.global_state_accessor = None
 
     def subscribe(self, channel):
         """Subscribe to the given channel on the primary Redis shard.
@@ -66,70 +143,48 @@ class Monitor:
         """
         self.primary_subscribe_client.subscribe(channel)
 
-    def xray_heartbeat_batch_handler(self, unused_channel, data):
-        """Handle an xray heartbeat batch message from Redis."""
+    def update_load_metrics(self):
+        """Fetches resource usage data from GCS and updates load metrics."""
 
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        heartbeat_data = gcs_entries.entries[0]
+        all_resources = self.global_state_accessor.get_all_resource_usage()
+        resources_batch_data = \
+            ray.gcs_utils.ResourceUsageBatchData.FromString(all_resources)
+        for resource_message in resources_batch_data.batch:
+            resource_load = dict(resource_message.resource_load)
+            total_resources = dict(resource_message.resources_total)
+            available_resources = dict(resource_message.resources_available)
 
-        message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
-            heartbeat_data)
-        for heartbeat_message in message.batch:
-            resource_load = dict(
-                zip(heartbeat_message.resource_load_label,
-                    heartbeat_message.resource_load_capacity))
-            total_resources = dict(
-                zip(heartbeat_message.resources_total_label,
-                    heartbeat_message.resources_total_capacity))
-            available_resources = dict(
-                zip(heartbeat_message.resources_available_label,
-                    heartbeat_message.resources_available_capacity))
-            for resource in total_resources:
-                available_resources.setdefault(resource, 0.0)
+            waiting_bundles, infeasible_bundles = parse_resource_demands(
+                resources_batch_data.resource_load_by_shape)
+
+            pending_placement_groups = list(
+                resources_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
-            client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
-            ip = self.raylet_id_to_ip_map.get(client_id)
+            node_id = ray.utils.binary_to_hex(resource_message.node_id)
+            ip = self.raylet_id_to_ip_map.get(node_id)
             if ip:
                 self.load_metrics.update(ip, total_resources,
-                                         available_resources, resource_load)
+                                         available_resources, resource_load,
+                                         waiting_bundles, infeasible_bundles,
+                                         pending_placement_groups)
             else:
                 logger.warning(
-                    "Monitor: "
-                    "could not find ip for client {}".format(client_id))
-
-    def xray_job_notification_handler(self, unused_channel, data):
-        """Handle a notification that a job has been added or removed.
-
-        Args:
-            unused_channel: The message channel.
-            data: The message data.
-        """
-        gcs_entries = ray.gcs_utils.GcsEntry.FromString(data)
-        job_data = gcs_entries.entries[0]
-        message = ray.gcs_utils.JobTableData.FromString(job_data)
-        job_id = message.job_id
-        if message.is_dead:
-            logger.info("Monitor: "
-                        "XRay Driver {} has been removed.".format(
-                            binary_to_hex(job_id)))
+                    f"Monitor: could not find ip for node {node_id}")
 
     def autoscaler_resource_request_handler(self, _, data):
         """Handle a notification of a resource request for the autoscaler.
+
+        This channel and method are only used by the manual
+        `ray.autoscaler.sdk.request_resources` api.
 
         Args:
             channel: unused
             data: a resource request as JSON, e.g. {"CPU": 1}
         """
 
-        if not self.autoscaler:
-            return
-
-        try:
-            self.autoscaler.request_resources(json.loads(data))
-        except Exception:
-            # We don't want this to kill the monitor.
-            traceback.print_exc()
+        resource_request = json.loads(data)
+        self.load_metrics.set_resource_requests(resource_request)
 
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
@@ -144,7 +199,11 @@ class Monitor:
         subscribe_clients = [self.primary_subscribe_client]
         for subscribe_client in subscribe_clients:
             for _ in range(max_messages):
-                message = subscribe_client.get_message()
+                message = None
+                try:
+                    message = subscribe_client.get_message()
+                except redis.exceptions.ConnectionError:
+                    pass
                 if message is None:
                     # Continue on to the next subscribe client.
                     break
@@ -153,15 +212,8 @@ class Monitor:
                 channel = message["channel"]
                 data = message["data"]
 
-                # Determine the appropriate message handler.
-                if channel == ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL:
-                    # Similar functionality as raylet info channel
-                    message_handler = self.xray_heartbeat_batch_handler
-                elif channel == ray.gcs_utils.XRAY_JOB_CHANNEL:
-                    # Handles driver death.
-                    message_handler = self.xray_job_notification_handler
-                elif (channel ==
-                      ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
+                if (channel ==
+                        ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
                     message_handler = self.autoscaler_resource_request_handler
                 else:
                     assert False, "This code should be unreachable."
@@ -193,34 +245,35 @@ class Monitor:
         This function loops forever, checking for messages about dead database
         clients and cleaning up state accordingly.
         """
-        # Initialize the subscription channel.
-        self.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
-        self.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)
 
-        if self.autoscaler:
-            self.subscribe(
-                ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
-
-        # TODO(rkn): If there were any dead clients at startup, we should clean
-        # up the associated state in the state tables.
+        self.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
 
         # Handle messages from the subscription channels.
         while True:
-            # Update the mapping from raylet client ID to IP address.
-            # This is only used to update the load metrics for the autoscaler.
             self.update_raylet_map()
+            self.update_load_metrics()
+            status = {
+                "load_metrics_report": self.load_metrics.summary()._asdict()
+            }
 
             # Process autoscaling actions
             if self.autoscaler:
+                # Only used to update the load metrics for the autoscaler.
                 self.autoscaler.update()
+                status[
+                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
+
+            as_json = json.dumps(status)
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
 
             # Process a round of messages.
             self.process_messages()
 
-            # Wait for a heartbeat interval before processing the next round of
-            # messages.
-            time.sleep(
-                ray._config.raylet_heartbeat_timeout_milliseconds() * 1e-3)
+            # Wait for a autoscaler update interval before processing the next
+            # round of messages.
+            time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
     def destroy_autoscaler_workers(self):
         """Cleanup the autoscaler, in case of an exception in the run() method.
@@ -298,8 +351,43 @@ if __name__ == "__main__":
         type=str,
         default=ray_constants.LOGGER_FORMAT,
         help=ray_constants.LOGGER_FORMAT_HELP)
+    parser.add_argument(
+        "--logging-filename",
+        required=False,
+        type=str,
+        default=ray_constants.MONITOR_LOG_FILE_NAME,
+        help="Specify the name of log file, "
+        "log to stdout if set empty, default is "
+        f"\"{ray_constants.MONITOR_LOG_FILE_NAME}\"")
+    parser.add_argument(
+        "--logs-dir",
+        required=True,
+        type=str,
+        help="Specify the path of the temporary directory used by Ray "
+        "processes.")
+    parser.add_argument(
+        "--logging-rotate-bytes",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BYTES,
+        help="Specify the max bytes for rotating "
+        "log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BYTES} bytes.")
+    parser.add_argument(
+        "--logging-rotate-backup-count",
+        required=False,
+        type=int,
+        default=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
+        help="Specify the backup count of rotated log file, default is "
+        f"{ray_constants.LOGGING_ROTATE_BACKUP_COUNT}.")
     args = parser.parse_args()
-    setup_logger(args.logging_level, args.logging_format)
+    setup_component_logger(
+        logging_level=args.logging_level,
+        logging_format=args.logging_format,
+        log_dir=args.logs_dir,
+        filename=args.logging_filename,
+        max_bytes=args.logging_rotate_bytes,
+        backup_count=args.logging_rotate_backup_count)
 
     if args.autoscaling_config:
         autoscaling_config = os.path.expanduser(args.autoscaling_config)
@@ -318,11 +406,11 @@ if __name__ == "__main__":
         monitor.destroy_autoscaler_workers()
 
         # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
+        redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = "The monitor failed with the following error:\n{}".format(
-            traceback_str)
+        message = ("The monitor failed with the "
+                   f"following error:\n{traceback_str}")
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.MONITOR_DIED_ERROR, message)
         raise e

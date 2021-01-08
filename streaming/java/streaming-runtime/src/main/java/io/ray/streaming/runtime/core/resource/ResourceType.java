@@ -1,23 +1,15 @@
 package io.ray.streaming.runtime.core.resource;
 
-/**
- * Key for different type of resources.
- */
+/** Key for different type of resources. */
 public enum ResourceType {
 
-  /**
-   *Cpu resource key.
-   */
+  /** Cpu resource key. */
   CPU("CPU"),
 
-  /**
-   *Gpu resource key.
-   */
+  /** Gpu resource key. */
   GPU("GPU"),
 
-  /**
-   * Memory resource key.
-   */
+  /** Memory resource key. */
   MEM("MEM");
 
   private String value;
@@ -29,5 +21,4 @@ public enum ResourceType {
   public String getValue() {
     return value;
   }
-
 }

@@ -1,5 +1,4 @@
 #include "gtest/gtest.h"
-
 #include "util/streaming_util.h"
 
 using namespace ray;

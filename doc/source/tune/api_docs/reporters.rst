@@ -1,3 +1,5 @@
+.. _tune-reporter-doc:
+
 Console Output (Reporters)
 ==========================
 
@@ -56,7 +58,7 @@ Extending ``CLIReporter`` lets you control reporting frequency. For example:
 
     tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
 
-The default reporting style can also be overriden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
+The default reporting style can also be overridden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
 
 .. code-block:: python
 
@@ -73,20 +75,22 @@ The default reporting style can also be overriden more broadly by extending the 
 
     tune.run(my_trainable, progress_reporter=CustomReporter())
 
-ProgressReporter
-----------------
-
-.. autoclass:: ray.tune.ProgressReporter
-    :members:
 
 CLIReporter
 -----------
 
 .. autoclass:: ray.tune.CLIReporter
+    :members: add_metric_column
 
 JupyterNotebookReporter
 -----------------------
 
 .. autoclass:: ray.tune.JupyterNotebookReporter
+    :members: add_metric_column
 
 
+ProgressReporter
+----------------
+
+.. autoclass:: ray.tune.ProgressReporter
+    :members:

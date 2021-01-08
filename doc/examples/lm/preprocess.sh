@@ -1,3 +1,7 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
 cd ~/efs/lm
 
 # download the dataset

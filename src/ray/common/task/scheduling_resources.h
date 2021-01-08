@@ -1,11 +1,11 @@
-#ifndef RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
-#define RAY_COMMON_TASK_SCHEDULING_RESOURCES_H
+#pragma once
 
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 
 namespace ray {
@@ -67,6 +67,11 @@ class FractionalResourceQuantity {
 /// GPUs, and custom labels.
 class ResourceSet {
  public:
+  static std::shared_ptr<ResourceSet> Nil() {
+    static auto nil = std::make_shared<ResourceSet>();
+    return nil;
+  }
+
   /// \brief empty ResourceSet constructor.
   ResourceSet();
 
@@ -131,8 +136,7 @@ class ResourceSet {
   ///
   /// \param other: The other resource set to add.
   /// \param total_resources: Total resource set which sets upper limits on capacity for
-  /// each label. \return True if the resource set was added successfully. False
-  /// otherwise.
+  /// each label.
   void AddResourcesCapacityConstrained(const ResourceSet &other,
                                        const ResourceSet &total_resources);
 
@@ -473,18 +477,27 @@ class SchedulingResources {
   /// \return Void.
   void SetAvailableResources(ResourceSet &&newset);
 
+  /// \brief Request the total resources capacity.
+  ///
+  /// \return Immutable set of resources with currently total capacity.
   const ResourceSet &GetTotalResources() const;
+
+  /// \brief Overwrite total resource capacity with the specified resource set.
+  ///
+  /// \param newset: The set of resources that replaces total resource capacity.
+  /// \return Void.
+  void SetTotalResources(ResourceSet &&newset);
+
+  /// \brief Request the resource load information.
+  ///
+  /// \return Immutable set of resources describing the load information.
+  const ResourceSet &GetLoadResources() const;
 
   /// \brief Overwrite information about resource load with new resource load set.
   ///
   /// \param newset: The set of resources that replaces resource load information.
   /// \return Void.
   void SetLoadResources(ResourceSet &&newset);
-
-  /// \brief Request the resource load information.
-  ///
-  /// \return Immutable set of resources describing the load information.
-  const ResourceSet &GetLoadResources() const;
 
   /// \brief Release the amount of resources specified.
   ///
@@ -497,6 +510,12 @@ class SchedulingResources {
   /// \param resources: the amount of resources to be acquired.
   /// \return Void.
   void Acquire(const ResourceSet &resources);
+
+  /// \brief Add a new resource to available resource.
+  ///
+  /// \param resources: the amount of resources to be added.
+  /// \return Void.
+  void AddResource(const ResourceSet &resources);
 
   /// Returns debug string for class.
   ///
@@ -541,5 +560,3 @@ struct hash<ray::ResourceSet> {
   }
 };
 }  // namespace std
-
-#endif  // RAY_COMMON_TASK_SCHEDULING_RESOURCES_H

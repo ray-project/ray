@@ -5,15 +5,15 @@ import numpy as np
 
 
 class Optimizer:
-    def __init__(self, pi):
-        self.pi = pi
-        self.dim = pi.num_params
+    def __init__(self, policy):
+        self.policy = policy
+        self.dim = policy.num_params
         self.t = 0
 
     def update(self, globalg):
         self.t += 1
         step = self._compute_step(globalg)
-        theta = self.pi.get_weights()
+        theta = self.policy.get_flat_weights()
         ratio = np.linalg.norm(step) / np.linalg.norm(theta)
         return theta + step, ratio
 
@@ -22,8 +22,8 @@ class Optimizer:
 
 
 class SGD(Optimizer):
-    def __init__(self, pi, stepsize, momentum=0.9):
-        Optimizer.__init__(self, pi)
+    def __init__(self, policy, stepsize, momentum=0.0):
+        Optimizer.__init__(self, policy)
         self.v = np.zeros(self.dim, dtype=np.float32)
         self.stepsize, self.momentum = stepsize, momentum
 
@@ -34,8 +34,9 @@ class SGD(Optimizer):
 
 
 class Adam(Optimizer):
-    def __init__(self, pi, stepsize, beta1=0.9, beta2=0.999, epsilon=1e-08):
-        Optimizer.__init__(self, pi)
+    def __init__(self, policy, stepsize, beta1=0.9, beta2=0.999,
+                 epsilon=1e-08):
+        Optimizer.__init__(self, policy)
         self.stepsize = stepsize
         self.beta1 = beta1
         self.beta2 = beta2

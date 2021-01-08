@@ -7,11 +7,10 @@
 #endif
 
 #include <algorithm>
+#include <boost/asio/generic/stream_protocol.hpp>
 #include <sstream>
 #include <string>
 #include <vector>
-
-#include <boost/asio/generic/stream_protocol.hpp>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
 #endif
@@ -188,6 +187,11 @@ static std::vector<std::string> ParsePosixCommandLine(const std::string &s) {
 /// Python analog: None (would be shlex.split(s, posix=False), but it doesn't unquote)
 static std::vector<std::string> ParseWindowsCommandLine(const std::string &s) {
   RAY_CHECK(s.find('\0') >= s.size()) << "Invalid null character in command line";
+  // The if statement below may be incorrect. See:
+  // https://github.com/ray-project/ray/pull/10131#discussion_r473871563
+  if (s.empty()) {
+    return {};
+  }
   std::vector<std::string> result;
   std::string arg, c_str = s + '\0';
   std::string::const_iterator i = c_str.begin(), j = c_str.end() - 1;
@@ -321,5 +325,40 @@ std::string CreateCommandLine(const std::vector<std::string> &args,
     RAY_LOG(FATAL) << "invalid command line syntax";
     break;
   }
+  return result;
+}
+
+std::shared_ptr<std::unordered_map<std::string, std::string>> ParseURL(std::string url) {
+  auto result = std::make_shared<std::unordered_map<std::string, std::string>>();
+  std::string delimiter = "?";
+  size_t pos = 0;
+  pos = url.find(delimiter);
+  if (pos == std::string::npos) {
+    return result;
+  }
+
+  const std::string base_url = url.substr(0, pos);
+  result->emplace("url", base_url);
+  url.erase(0, pos + delimiter.length());
+  const std::string query_delimeter = "&";
+
+  auto parse_key_value_with_equal_delimter = [](std::string key_value) {
+    // Parse the query key value pair.
+    const std::string key_value_delimter = "=";
+    size_t key_value_pos = 0;
+    key_value_pos = key_value.find(key_value_delimter);
+    const std::string key = key_value.substr(0, key_value_pos);
+    return std::make_pair(key, key_value.substr(key.size() + 1));
+  };
+
+  while ((pos = url.find(query_delimeter)) != std::string::npos) {
+    std::string token = url.substr(0, pos);
+    auto key_value_pair = parse_key_value_with_equal_delimter(token);
+    result->emplace(key_value_pair.first, key_value_pair.second);
+    url.erase(0, pos + delimiter.length());
+  }
+  std::string token = url.substr(0, pos);
+  auto key_value_pair = parse_key_value_with_equal_delimter(token);
+  result->emplace(key_value_pair.first, key_value_pair.second);
   return result;
 }

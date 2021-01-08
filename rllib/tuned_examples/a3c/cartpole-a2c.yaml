@@ -1,0 +1,11 @@
+cartpole-a2c:
+    env: CartPole-v0
+    run: A2C
+    stop:
+        episode_reward_mean: 150
+        timesteps_total: 500000
+    config:
+        # Works for both torch and tf.
+        framework: tf
+        num_workers: 0
+        lr: 0.001

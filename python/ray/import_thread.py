@@ -18,10 +18,6 @@ logger = logging.getLogger(__name__)
 class ImportThread:
     """A thread used to import exports from the driver or other workers.
 
-    Note: The driver also has an import thread, which is used only to import
-    custom class definitions from calls to _register_custom_serializer that
-    happen under the hood on workers.
-
     Attributes:
         worker: the worker object in this process.
         mode: worker mode
@@ -90,7 +86,7 @@ class ImportThread:
                     key = self.redis_client.lindex("Exports", i)
                     self._process_key(key)
         except (OSError, redis.exceptions.ConnectionError) as e:
-            logger.error("ImportThread: {}".format(e))
+            logger.error(f"ImportThread: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()
@@ -136,9 +132,13 @@ class ImportThread:
                         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
 
         if key.startswith(b"RemoteFunction"):
-            with profiling.profile("register_remote_function"):
-                (self.worker.function_actor_manager.
-                 fetch_and_register_remote_function(key))
+            # TODO (Alex): There's a race condition here if the worker is
+            # shutdown before the function finished registering (because core
+            # worker's global worker is unset before shutdown and is needed
+            # for profiling).
+            # with profiling.profile("register_remote_function"):
+            (self.worker.function_actor_manager.
+             fetch_and_register_remote_function(key))
         elif key.startswith(b"FunctionsToRun"):
             with profiling.profile("fetch_and_run_function"):
                 self.fetch_and_execute_function_to_run(key)

@@ -7,10 +7,13 @@ import ray
 import wikipedia
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num-mappers",
-                    help="number of mapper actors used", default=3, type=int)
-parser.add_argument("--num-reducers",
-                    help="number of reducer actors used", default=4, type=int)
+parser.add_argument(
+    "--num-mappers", help="number of mapper actors used", default=3, type=int)
+parser.add_argument(
+    "--num-reducers",
+    help="number of reducer actors used",
+    default=4,
+    type=int)
 
 
 @ray.remote
@@ -47,8 +50,10 @@ class Reducer(object):
         word_count_sum = defaultdict(lambda: 0)
         # Get the word counts for this Reducer's keys from all of the Mappers
         # and aggregate the results.
-        count_ids = [mapper.get_range.remote(article_index, self.keys)
-                     for mapper in self.mappers]
+        count_ids = [
+            mapper.get_range.remote(article_index, self.keys)
+            for mapper in self.mappers
+        ]
         # TODO(rkn): We should process these out of order using ray.wait.
         for count_id in count_ids:
             for k, v in ray.get(count_id):
@@ -78,8 +83,9 @@ if __name__ == "__main__":
             streams.append(Stream([line.strip() for line in f.readlines()]))
 
     # Partition the keys among the reducers.
-    chunks = np.array_split([chr(i) for i in range(ord("a"), ord("z") + 1)],
-                            args.num_reducers)
+    chunks = np.array_split([chr(i)
+                             for i in range(ord("a"),
+                                            ord("z") + 1)], args.num_reducers)
     keys = [[chunk[0], chunk[-1]] for chunk in chunks]
 
     # Create a number of mappers.
@@ -93,12 +99,14 @@ if __name__ == "__main__":
     while True:
         print("article index = {}".format(article_index))
         wordcounts = {}
-        counts = ray.get([reducer.next_reduce_result.remote(article_index)
-                          for reducer in reducers])
+        counts = ray.get([
+            reducer.next_reduce_result.remote(article_index)
+            for reducer in reducers
+        ])
         for count in counts:
             wordcounts.update(count)
-        most_frequent_words = heapq.nlargest(10, wordcounts,
-                                             key=wordcounts.get)
+        most_frequent_words = heapq.nlargest(
+            10, wordcounts, key=wordcounts.get)
         for word in most_frequent_words:
             print("  ", word, wordcounts[word])
         article_index += 1

@@ -34,7 +34,7 @@ parser.add_argument(
 # yapf: disable
 # __trainable_example_begin__
 class TrainMNIST(tune.Trainable):
-    def _setup(self, config):
+    def setup(self, config):
         use_cuda = config.get("use_gpu") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.train_loader, self.test_loader = get_data_loaders()
@@ -44,18 +44,18 @@ class TrainMNIST(tune.Trainable):
             lr=config.get("lr", 0.01),
             momentum=config.get("momentum", 0.9))
 
-    def _train(self):
+    def step(self):
         train(
             self.model, self.optimizer, self.train_loader, device=self.device)
         acc = test(self.model, self.test_loader, self.device)
         return {"mean_accuracy": acc}
 
-    def _save(self, checkpoint_dir):
+    def save_checkpoint(self, checkpoint_dir):
         checkpoint_path = os.path.join(checkpoint_dir, "model.pth")
         torch.save(self.model.state_dict(), checkpoint_path)
         return checkpoint_path
 
-    def _restore(self, checkpoint_path):
+    def load_checkpoint(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
 
 
@@ -65,9 +65,11 @@ class TrainMNIST(tune.Trainable):
 if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(address=args.ray_address, num_cpus=6 if args.smoke_test else None)
-    sched = ASHAScheduler(metric="mean_accuracy")
+    sched = ASHAScheduler()
     analysis = tune.run(
         TrainMNIST,
+        metric="mean_accuracy",
+        mode="max",
         scheduler=sched,
         stop={
             "mean_accuracy": 0.95,
@@ -86,4 +88,4 @@ if __name__ == "__main__":
             "momentum": tune.uniform(0.1, 0.9),
         })
 
-    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))
+    print("Best config is:", analysis.best_config)

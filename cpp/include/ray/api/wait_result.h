@@ -2,6 +2,7 @@
 #pragma once
 
 #include <vector>
+
 #include "ray/core.h"
 
 namespace ray {

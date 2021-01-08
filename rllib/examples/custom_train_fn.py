@@ -5,10 +5,15 @@ This example shows:
 
 You can visualize experiment results in ~/ray_results using TensorBoard.
 """
+import argparse
+import os
 
 import ray
 from ray import tune
 from ray.rllib.agents.ppo import PPOTrainer
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--torch", action="store_true")
 
 
 def my_train_fn(config, reporter):
@@ -36,9 +41,13 @@ def my_train_fn(config, reporter):
 
 if __name__ == "__main__":
     ray.init()
+    args = parser.parse_args()
     config = {
         "lr": 0.01,
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
+        "framework": "torch" if args.torch else "tf",
     }
     resources = PPOTrainer.default_resource_request(config).to_json()
     tune.run(my_train_fn, resources_per_trial=resources, config=config)

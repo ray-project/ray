@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_ENTRY_CHANGE_NOTIFICATION_H
-#define RAY_GCS_ENTRY_CHANGE_NOTIFICATION_H
+#pragma once
 
-#include <ray/protobuf/gcs.pb.h>
 #include <vector>
+
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -76,5 +76,3 @@ typedef MapNotification<std::string, rpc::ResourceTableData> ResourceChangeNotif
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_ENTRY_CHANGE_NOTIFICATION_H

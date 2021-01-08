@@ -1,7 +1,5 @@
 import ray
 
-_local = {}  # dict for local mode
-
 
 def _internal_kv_initialized():
     worker = ray.worker.global_worker
@@ -11,9 +9,7 @@ def _internal_kv_initialized():
 def _internal_kv_get(key):
     """Fetch the value of a binary key."""
 
-    worker = ray.worker.global_worker
-
-    return worker.redis_client.hget(key, "value")
+    return ray.worker.global_worker.redis_client.hget(key, "value")
 
 
 def _internal_kv_put(key, value, overwrite=False):
@@ -32,3 +28,16 @@ def _internal_kv_put(key, value, overwrite=False):
     else:
         updated = worker.redis_client.hsetnx(key, "value", value)
     return updated == 0  # already exists
+
+
+def _internal_kv_del(key):
+    return ray.worker.global_worker.redis_client.delete(key)
+
+
+def _internal_kv_list(prefix):
+    """List all keys in the internal KV store that start with the prefix."""
+    if isinstance(prefix, bytes):
+        pattern = prefix + b"*"
+    else:
+        pattern = prefix + "*"
+    return ray.worker.global_worker.redis_client.keys(pattern=pattern)

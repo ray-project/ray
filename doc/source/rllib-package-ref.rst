@@ -19,16 +19,16 @@ ray.rllib.evaluation
 .. automodule:: ray.rllib.evaluation
     :members:
 
+ray.rllib.execution
+--------------------
+
+.. automodule:: ray.rllib.execution
+    :members:
+
 ray.rllib.models
 ----------------
 
 .. automodule:: ray.rllib.models
-    :members:
-
-ray.rllib.optimizers
---------------------
-
-.. automodule:: ray.rllib.optimizers
     :members:
 
 ray.rllib.utils

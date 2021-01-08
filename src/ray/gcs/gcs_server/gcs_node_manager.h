@@ -12,31 +12,61 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_NODE_MANAGER_H
-#define RAY_GCS_NODE_MANAGER_H
+#pragma once
 
-#include <ray/common/id.h>
-#include <ray/gcs/accessor.h>
-#include <ray/protobuf/gcs.pb.h>
-#include <ray/rpc/client_call.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/common/id.h"
+#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
+#include "ray/rpc/client_call.h"
+#include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
-/// GcsNodeManager is responsible for managing and monitoring nodes.
+
+/// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
+/// node and resource related rpc requests.
 /// This class is not thread-safe.
-class GcsNodeManager {
+class GcsNodeManager : public rpc::NodeInfoHandler {
  public:
   /// Create a GcsNodeManager.
   ///
-  /// \param io_service The event loop to run the monitor on.
-  /// \param node_info_accessor The node info accessor.
-  /// \param error_info_accessor The error info accessor, which is used to report error
-  /// when detecting the death of nodes.
-  explicit GcsNodeManager(boost::asio::io_service &io_service,
-                          gcs::NodeInfoAccessor &node_info_accessor,
-                          gcs::ErrorInfoAccessor &error_info_accessor);
+  /// \param gcs_pub_sub GCS message publisher.
+  /// \param gcs_table_storage GCS table external storage accessor.
+  explicit GcsNodeManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage);
+
+  /// Handle register rpc request come from raylet.
+  void HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+                          rpc::RegisterNodeReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle unregister rpc request come from raylet.
+  void HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
+                            rpc::UnregisterNodeReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get all node info rpc request.
+  void HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+                            rpc::GetAllNodeInfoReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle set internal config.
+  void HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
+                               rpc::SetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get internal config.
+  void HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                               rpc::GetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
+  void OnNodeFailure(const NodeID &node_id);
 
   /// Add an alive node.
   ///
@@ -46,19 +76,25 @@ class GcsNodeManager {
   /// Remove from alive nodes.
   ///
   /// \param node_id The ID of the node to be removed.
-  void RemoveNode(const ClientID &node_id);
+  /// \param is_intended False if this is triggered by `node_failure_detector_`, else
+  /// True.
+  std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
+                                               bool is_intended = false);
 
   /// Get alive node by ID.
   ///
   /// \param node_id The id of the node.
-  /// \return the node if it is alive else return nullptr.
-  std::shared_ptr<rpc::GcsNodeInfo> GetNode(const ClientID &node_id) const;
+  /// \return the node if it is alive. Optional empty value if it is not alive.
+  absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
+      const NodeID &node_id) const;
 
   /// Get all alive nodes.
   ///
   /// \return all alive nodes.
-  const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-      &GetAllAliveNodes() const;
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
+      const {
+    return alive_nodes_;
+  }
 
   /// Add listener to monitor the remove action of nodes.
   ///
@@ -78,60 +114,50 @@ class GcsNodeManager {
     node_added_listeners_.emplace_back(std::move(listener));
   }
 
-  /// Handle a heartbeat from a Raylet.
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param node_id The client ID of the Raylet that sent the heartbeat.
-  /// \param heartbeat_data The heartbeat sent by the client.
-  void HandleHeartbeat(const ClientID &node_id,
-                       const rpc::HeartbeatTableData &heartbeat_data);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
 
- protected:
-  /// Listen for heartbeats from Raylets and mark Raylets
-  /// that do not send a heartbeat within a given period as dead.
-  void Start();
-
-  /// A periodic timer that fires on every heartbeat period. Raylets that have
-  /// not sent a heartbeat within the last num_heartbeats_timeout ticks will be
-  /// marked as dead in the client table.
-  void Tick();
-
-  /// Check that if any raylet is inactive due to no heartbeat for a period of time.
-  /// If found any, mark it as dead.
-  void DetectDeadNodes();
-
-  /// Send any buffered heartbeats as a single publish.
-  void SendBatchedHeartbeat();
-
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
+  std::string DebugString() const;
 
  private:
+  /// Add the dead node to the cache. If the cache is full, the earliest dead node is
+  /// evicted.
+  ///
+  /// \param node The node which is dead.
+  void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
+
   /// Alive nodes.
-  absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
-  /// Node info accessor.
-  gcs::NodeInfoAccessor &node_info_accessor_;
-  /// Error info accessor.
-  gcs::ErrorInfoAccessor &error_info_accessor_;
-  /// The number of heartbeats that can be missed before a node is removed.
-  int64_t num_heartbeats_timeout_;
-  /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer heartbeat_timer_;
-  /// For each Raylet that we receive a heartbeat from, the number of ticks
-  /// that may pass before the Raylet will be declared dead.
-  absl::flat_hash_map<ClientID, int64_t> heartbeats_;
-  /// The Raylets that have been marked as dead in gcs.
-  absl::flat_hash_set<ClientID> dead_nodes_;
-  /// A buffer containing heartbeats received from node managers in the last tick.
-  absl::flat_hash_map<ClientID, rpc::HeartbeatTableData> heartbeat_buffer_;
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  /// Dead nodes.
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
+  /// The nodes are sorted according to the timestamp, and the oldest is at the head of
+  /// the list.
+  std::list<std::pair<NodeID, int64_t>> sorted_dead_node_list_;
   /// Listeners which monitors the addition of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_added_listeners_;
   /// Listeners which monitors the removal of nodes.
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
+  /// A publisher for publishing gcs messages.
+  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  /// Storage for GCS tables.
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+
+  // Debug info.
+  enum CountType {
+    REGISTER_NODE_REQUEST = 0,
+    UNREGISTER_NODE_REQUEST = 1,
+    GET_ALL_NODE_INFO_REQUEST = 2,
+    SET_INTERNAL_CONFIG_REQUEST = 3,
+    GET_INTERNAL_CONFIG_REQUEST = 4,
+    CountType_MAX = 5,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs
 }  // namespace ray
-
-#endif  // RAY_GCS_NODE_MANAGER_H

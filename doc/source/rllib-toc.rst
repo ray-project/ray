@@ -60,7 +60,6 @@ Training APIs
 Environments
 ------------
 *  `RLlib Environments Overview <rllib-env.html>`__
-*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 *  `OpenAI Gym <rllib-env.html#openai-gym>`__
 *  `Vectorized <rllib-env.html#vectorized>`__
 *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
@@ -79,6 +78,7 @@ Models, Preprocessors, and Action Distributions
 *  `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 *  `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
 *  `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
+*  `Variable-length / Complex Observation Spaces <rllib-models.html#variable-length-complex-observation-spaces>`__
 *  `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 *  `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
@@ -89,19 +89,17 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
 
-   -  |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+   -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
-   -  |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
+   -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
    -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
-
-   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
 *  Gradient-based
 
    -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
 
-   -  |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
+   -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
 
    -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
 
@@ -109,27 +107,47 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
-   -  |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
+   -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
 *  Derivative-free
 
-   -  |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
+   -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
-   -  |tensorflow| :ref:`Evolution Strategies <es>`
+   -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Multi-agent specific
+*  Model-based / Meta-learning
+
+   -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
+
+   -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
+
+   -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
+
+   -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+*  Multi-agent
 
    -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
    -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <maddpg>`
 
 *  Offline
 
-   -  |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+   -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 *  Contextual bandits
 
    -  |pytorch| :ref:`Linear Upper Confidence Bound (contrib/LinUCB) <linucb>`
    -  |pytorch| :ref:`Linear Thompson Sampling (contrib/LinTS) <lints>`
+
+*  Exploration-based plug-ins (can be combined with any algo)
+
+   -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+Sample Collection
+-----------------
+*  `The SampleCollector Class is Used to Store and Retrieve Temporary Data <rllib-sample-collection.html#the-samplecollector-class-is-used-to-store-and-retrieve-temporary-data>`__
+*  `Trajectory View API <rllib-sample-collection.html#trajectory-view-api>`__
+
 
 Offline Datasets
 ----------------
@@ -153,7 +171,7 @@ Concepts and Custom Algorithms
    -  `Extending Existing Policies <rllib-concepts.html#extending-existing-policies>`__
 
 *  `Policy Evaluation <rllib-concepts.html#policy-evaluation>`__
-*  `Policy Optimization <rllib-concepts.html#policy-optimization>`__
+*  `Execution Plans <rllib-concepts.html#execution-plans>`__
 *  `Trainers <rllib-concepts.html#trainers>`__
 
 Examples
@@ -180,8 +198,8 @@ Package Reference
 *  `ray.rllib.agents <rllib-package-ref.html#module-ray.rllib.agents>`__
 *  `ray.rllib.env <rllib-package-ref.html#module-ray.rllib.env>`__
 *  `ray.rllib.evaluation <rllib-package-ref.html#module-ray.rllib.evaluation>`__
+*  `ray.rllib.execution <rllib-package-ref.html#module-ray.rllib.execution>`__
 *  `ray.rllib.models <rllib-package-ref.html#module-ray.rllib.models>`__
-*  `ray.rllib.optimizers <rllib-package-ref.html#module-ray.rllib.optimizers>`__
 *  `ray.rllib.utils <rllib-package-ref.html#module-ray.rllib.utils>`__
 
 Troubleshooting
@@ -191,8 +209,6 @@ If you encounter errors like
 `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
 try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
 `ulimit -a` for other resource limit errors.
-
-If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and ``object_store_memory`` in ``ray.init()`` to reduce memory usage.
 
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
@@ -205,7 +221,9 @@ TensorFlow 2.0
 RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 16
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 16

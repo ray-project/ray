@@ -7,23 +7,27 @@ RAY_HEAD_IP=$4
 TYPE=$5
 
 echo "Installing wheel..."
-sudo -u $USERNAME -i /bin/bash -l -c "conda init bash"
-sudo -u $USERNAME -i /bin/bash -l -c "conda activate $CONDA_ENV; pip install $WHEEL"
+sudo -u "$USERNAME" -i /bin/bash -l -c "conda init bash"
+sudo -u "$USERNAME" -i /bin/bash -l -c "conda activate $CONDA_ENV; pip install $WHEEL"
 
 echo "Setting up service scripts..."
-cat > /home/$USERNAME/ray-head.sh << EOM
+cat > /home/"$USERNAME"/ray-head.sh << EOM
 #!/bin/bash
+
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 
 NUM_GPUS=\`nvidia-smi -L | wc -l\`
 
 ray stop
 ulimit -n 65536
-ray start --head --redis-port=6379 --object-manager-port=8076 --num-gpus=\$NUM_GPUS --block --webui-host 0.0.0.0
+ray start --head --port=6379 --object-manager-port=8076 --num-gpus=\$NUM_GPUS --block --dashboard-host 0.0.0.0
 EOM
 
-cat > /home/$USERNAME/ray-worker.sh << EOM
+cat > /home/"$USERNAME"/ray-worker.sh << EOM
 #!/bin/bash
+
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 
 NUM_GPUS=\`nvidia-smi -L | wc -l\`
@@ -39,18 +43,19 @@ do
 done
 EOM
 
-cat > /home/$USERNAME/tensorboard.sh << EOM
+cat > /home/"$USERNAME"/tensorboard.sh << EOM
 #!/bin/bash
 
+eval "$(conda shell.bash hook)"
 conda activate $CONDA_ENV
 mkdir -p /home/$USERNAME/ray_results
 
 tensorboard --bind_all --logdir=/home/$USERNAME/ray_results
 EOM
 
-chmod +x /home/$USERNAME/ray-head.sh
-chmod +x /home/$USERNAME/ray-worker.sh
-chmod +x /home/$USERNAME/tensorboard.sh
+chmod +x /home/"$USERNAME"/ray-head.sh
+chmod +x /home/"$USERNAME"/ray-worker.sh
+chmod +x /home/"$USERNAME"/tensorboard.sh
 
 cat > /lib/systemd/system/ray.service << EOM
 [Unit]
@@ -84,6 +89,7 @@ systemctl enable ray
 echo "Starting ray..."
 systemctl start ray
 
+# shellcheck disable=SC2154
 if [ "$type" = "head" ]; then
    echo "Configure TensorBoard to start at boot..."
    systemctl enable tensorboard

@@ -1,9 +1,10 @@
-#ifndef RAY_STREAMING_JNI_COMMON_H
-#define RAY_STREAMING_JNI_COMMON_H
+#pragma once
 
 #include <jni.h>
+
 #include <string>
-#include "channel.h"
+
+#include "channel/channel.h"
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
 
@@ -104,4 +105,3 @@ std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
 void ParseChannelInitParameters(
     JNIEnv *env, jobject param_obj,
     std::vector<ray::streaming::ChannelCreationParameter> &parameter_vec);
-#endif  // RAY_STREAMING_JNI_COMMON_H

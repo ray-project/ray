@@ -1,18 +1,20 @@
 package io.ray.streaming.runtime.streamingqueue;
 
-import io.ray.api.BaseActor;
+import io.ray.api.ActorHandle;
+import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
-import io.ray.api.RayActor;
 import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
-import io.ray.streaming.runtime.transfer.ChannelID;
+import io.ray.streaming.runtime.config.StreamingWorkerConfig;
 import io.ray.streaming.runtime.transfer.ChannelCreationParametersBuilder;
-import io.ray.streaming.runtime.transfer.DataMessage;
 import io.ray.streaming.runtime.transfer.DataReader;
 import io.ray.streaming.runtime.transfer.DataWriter;
 import io.ray.streaming.runtime.transfer.TransferHandler;
+import io.ray.streaming.runtime.transfer.channel.ChannelId;
+import io.ray.streaming.runtime.transfer.message.DataMessage;
 import io.ray.streaming.util.Config;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
 public class Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   protected TransferHandler transferHandler = null;
@@ -48,14 +51,15 @@ public class Worker {
 }
 
 class ReaderWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(ReaderWorker.class);
 
   private String name = null;
   private List<String> inputQueueList = null;
-  Map<String, BaseActor> fromActors = new HashMap<>();
+  List<BaseActorHandle> inputActors = new ArrayList<>();
   private DataReader dataReader = null;
   private long handler = 0;
-  private RayActor<WriterWorker> peerActor = null;
+  private ActorHandle<WriterWorker> peerActor = null;
   private int msgCount = 0;
   private int totalMsg = 0;
 
@@ -77,7 +81,7 @@ class ReaderWorker extends Worker {
     return "testRayCall";
   }
 
-  public boolean init(List<String> inputQueueList, RayActor<WriterWorker> peer, int msgCount) {
+  public boolean init(List<String> inputQueueList, ActorHandle<WriterWorker> peer, int msgCount) {
 
     this.inputQueueList = inputQueueList;
     this.peerActor = peer;
@@ -87,27 +91,31 @@ class ReaderWorker extends Worker {
     LOGGER.info("java.library.path = {}", System.getProperty("java.library.path"));
 
     for (String queue : this.inputQueueList) {
-      fromActors.put(queue, this.peerActor);
+      inputActors.add(this.peerActor);
       LOGGER.info("ReaderWorker actorId: {}", this.peerActor.getId());
     }
 
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaWriterFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"));
-    dataReader = new DataReader(inputQueueList, fromActors, conf);
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataReader = new DataReader(inputQueueList, inputActors, new HashMap<>(), workerConfig);
 
     // Should not GetBundle in RayCall thread
-    Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
-      @Override
-      public void run() {
-        consume();
-      }
-    }));
+    Thread readThread =
+        new Thread(
+            Ray.wrapRunnable(
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    consume();
+                  }
+                }));
     readThread.start();
 
     LOGGER.info("ReaderWorker init done");
@@ -119,7 +127,7 @@ class ReaderWorker extends Worker {
 
     int checkPointId = 1;
     for (int i = 0; i < msgCount * inputQueueList.size(); ++i) {
-      DataMessage dataMessage = dataReader.read(100);
+      DataMessage dataMessage = (DataMessage) dataReader.read(100);
 
       if (dataMessage == null) {
         LOGGER.error("dataMessage is null");
@@ -131,8 +139,11 @@ class ReaderWorker extends Worker {
       int dataSize = dataMessage.body().getInt();
 
       // check size
-      LOGGER.info("capacity {} bufferSize {} dataSize {}",
-          dataMessage.body().capacity(), bufferSize, dataSize);
+      LOGGER.info(
+          "capacity {} bufferSize {} dataSize {}",
+          dataMessage.body().capacity(),
+          bufferSize,
+          dataSize);
       Assert.assertEquals(bufferSize, dataSize);
       if (dataMessage instanceof DataMessage) {
         if (LOGGER.isInfoEnabled()) {
@@ -153,9 +164,7 @@ class ReaderWorker extends Worker {
     LOGGER.info("ReaderWorker consume data done.");
   }
 
-  void onQueueTransfer(long handler, byte[] buffer) {
-  }
-
+  void onQueueTransfer(long handler, byte[] buffer) {}
 
   public boolean done() {
     return totalMsg == msgCount;
@@ -167,13 +176,14 @@ class ReaderWorker extends Worker {
 }
 
 class WriterWorker extends Worker {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(WriterWorker.class);
 
   private String name = null;
   private List<String> outputQueueList = null;
-  Map<String, BaseActor> toActors = new HashMap<>();
+  List<BaseActorHandle> outputActors = new ArrayList<>();
   DataWriter dataWriter = null;
-  RayActor<ReaderWorker> peerActor = null;
+  ActorHandle<ReaderWorker> peerActor = null;
   int msgCount = 0;
 
   public WriterWorker(String name) {
@@ -188,13 +198,13 @@ class WriterWorker extends Worker {
     return name;
   }
 
-  public String testCallReader(RayActor<ReaderWorker> readerActor) {
-    String name = readerActor.call(ReaderWorker::getName).get();
+  public String testCallReader(ActorHandle<ReaderWorker> readerActor) {
+    String name = readerActor.task(ReaderWorker::getName).remote().get();
     LOGGER.info("testCallReader: {}", name);
     return name;
   }
 
-  public boolean init(List<String> outputQueueList, RayActor<ReaderWorker> peer, int msgCount) {
+  public boolean init(List<String> outputQueueList, ActorHandle<ReaderWorker> peer, int msgCount) {
 
     this.outputQueueList = outputQueueList;
     this.peerActor = peer;
@@ -203,13 +213,13 @@ class WriterWorker extends Worker {
     LOGGER.info("WriterWorker init:");
 
     for (String queue : this.outputQueueList) {
-      toActors.put(queue, this.peerActor);
+      outputActors.add(this.peerActor);
       LOGGER.info("WriterWorker actorId: {}", this.peerActor.getId());
     }
 
     int count = 3;
     while (count-- != 0) {
-      peer.call(ReaderWorker::testRayCall).get();
+      peer.task(ReaderWorker::testRayCall).remote().get();
     }
 
     try {
@@ -219,19 +229,23 @@ class WriterWorker extends Worker {
     }
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_TYPE, "NATIVE_CHANNEL");
     conf.put(Config.CHANNEL_SIZE, "100000");
     conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     ChannelCreationParametersBuilder.setJavaReaderFunctionDesc(
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessageSync", "([B)[B"));
-    dataWriter = new DataWriter(this.outputQueueList, this.toActors, conf);
-    Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
-      @Override
-      public void run() {
-        produce();
-      }
-    }));
+    StreamingWorkerConfig workerConfig = new StreamingWorkerConfig(conf);
+    dataWriter = new DataWriter(outputQueueList, outputActors, new HashMap<>(), workerConfig);
+    Thread writerThread =
+        new Thread(
+            Ray.wrapRunnable(
+                new Runnable() {
+                  @Override
+                  public void run() {
+                    produce();
+                  }
+                }));
     writerThread.start();
 
     LOGGER.info("WriterWorker init done");
@@ -257,7 +271,7 @@ class WriterWorker extends Worker {
         }
 
         bb.clear();
-        ChannelID qid = ChannelID.from(outputQueueList.get(j));
+        ChannelId qid = ChannelId.from(outputQueueList.get(j));
         dataWriter.write(qid, bb);
       }
     }

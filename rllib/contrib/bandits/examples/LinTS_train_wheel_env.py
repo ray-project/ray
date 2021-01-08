@@ -10,7 +10,7 @@ from ray.rllib.contrib.bandits.envs import WheelBanditEnv
 
 def plot_model_weights(means, covs):
     fmts = ["bo", "ro", "yx", "k+", "gx"]
-    labels = [f"arm{i}" for i in range(5)]
+    labels = ["arm{}".format(i) for i in range(5)]
 
     fig, ax = plt.subplots(figsize=(6, 4))
 

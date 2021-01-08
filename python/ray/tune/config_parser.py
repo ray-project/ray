@@ -8,7 +8,7 @@ from six import string_types
 from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.resources import json_to_resources
-from ray.tune.logger import _SafeFallbackEncoder
+from ray.tune.utils.util import SafeFallbackEncoder
 
 
 def make_parser(parser_creator=None, **kwargs):
@@ -73,13 +73,13 @@ def make_parser(parser_creator=None, **kwargs):
         help="Whether to checkpoint at the end of the experiment. "
         "Default is False.")
     parser.add_argument(
-        "--no-sync-on-checkpoint",
+        "--sync-on-checkpoint",
         action="store_true",
-        help="Disable sync-down of trial checkpoint, which is enabled by "
-        "default to guarantee recoverability. If set, checkpoint syncing from "
-        "worker to driver is asynchronous. Set this only if synchronous "
-        "checkpointing is too slow and trial restoration failures can be "
-        "tolerated")
+        help="Enable sync-down of trial checkpoint to guarantee "
+        "recoverability. If unset, checkpoint syncing from worker "
+        "to driver is asynchronous, so unset this only if synchronous "
+        "checkpointing is too slow and trial restoration failures "
+        "can be tolerated.")
     parser.add_argument(
         "--keep-checkpoints-num",
         default=None,
@@ -143,7 +143,7 @@ def to_argv(config):
         elif isinstance(v, bool):
             pass
         else:
-            argv.append(json.dumps(v, cls=_SafeFallbackEncoder))
+            argv.append(json.dumps(v, cls=SafeFallbackEncoder))
     return argv
 
 
@@ -182,15 +182,15 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         remote_checkpoint_dir=spec.get("remote_checkpoint_dir"),
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
-        sync_on_checkpoint=not args.no_sync_on_checkpoint,
+        sync_on_checkpoint=args.sync_on_checkpoint,
         keep_checkpoints_num=args.keep_checkpoints_num,
         checkpoint_score_attr=args.checkpoint_score_attr,
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
         trial_name_creator=spec.get("trial_name_creator"),
-        loggers=spec.get("loggers"),
+        trial_dirname_creator=spec.get("trial_dirname_creator"),
+        log_to_file=spec.get("log_to_file"),
         # str(None) doesn't create None
-        sync_to_driver_fn=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)

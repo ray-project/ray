@@ -1,9 +1,23 @@
-import ray
-from ray import serve
-from ray.serve.context import TaskContext
-from ray.serve.exceptions import RayServeException
-from ray.serve.constants import DEFAULT_HTTP_ADDRESS
-from ray.serve.request_params import RequestMetadata
+import asyncio
+import concurrent.futures
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Union
+from enum import Enum
+
+
+@dataclass(frozen=True)
+class HandleOptions:
+    """Options for each ServeHandle instances. These fields are immutable."""
+    method_name: str = "__call__"
+    shard_key: Optional[str] = None
+    http_method: str = "GET"
+    http_headers: Dict[str, str] = field(default_factory=dict)
+
+
+# Use a global singleton enum to emulate default options. We cannot use None
+# for those option because None is a valid new value.
+class DEFAULT(Enum):
+    VALUE = 1
 
 
 class RayServeHandle:
@@ -13,142 +27,97 @@ class RayServeHandle:
     an HTTP endpoint.
 
     Example:
-       >>> handle = serve.get_handle("my_endpoint")
+       >>> handle = serve_client.get_handle("my_endpoint")
        >>> handle
-       RayServeHandle(
-            Endpoint="my_endpoint",
-            URL="...",
-            Traffic=...
-       )
-       >>> handle.remote(my_request_content)
-       ObjectID(...)
-       >>> ray.get(handle.remote(...))
+       RayServeHandle(endpoint="my_endpoint")
+       >>> await handle.remote(my_request_content)
+       ObjectRef(...)
+       >>> ray.get(await handle.remote(...))
        # result
-       >>> ray.get(handle.remote(let_it_crash_request))
+       >>> ray.get(await handle.remote(let_it_crash_request))
        # raises RayTaskError Exception
     """
 
-    def __init__(
-            self,
-            router_handle,
-            endpoint_name,
-            relative_slo_ms=None,
-            absolute_slo_ms=None,
-            method_name=None,
-    ):
-        self.router_handle = router_handle
+    def __init__(self,
+                 router,
+                 endpoint_name,
+                 handle_options: Optional[HandleOptions] = None):
+        self.router = router
         self.endpoint_name = endpoint_name
-        assert relative_slo_ms is None or absolute_slo_ms is None, (
-            "Can't specify both "
-            "relative and absolute "
-            "slo's together!")
-        self.relative_slo_ms = self._check_slo_ms(relative_slo_ms)
-        self.absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
-        self.method_name = method_name
-
-    def _check_slo_ms(self, slo_value):
-        if slo_value is not None:
-            try:
-                slo_value = float(slo_value)
-                if slo_value < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            slo_value))
-                return slo_value
-            except ValueError as e:
-                raise RayServeException(str(e))
-        return None
-
-    def remote(self, *args, **kwargs):
-        if len(args) != 0:
-            raise RayServeException(
-                "handle.remote must be invoked with keyword arguments.")
-
-        method_name = self.method_name
-        if method_name is None:
-            method_name = "__call__"
-
-        # create RequestMetadata instance
-        request_in_object = RequestMetadata(
-            self.endpoint_name,
-            TaskContext.Python,
-            self.relative_slo_ms,
-            self.absolute_slo_ms,
-            call_method=method_name,
-        )
-        return self.router_handle.enqueue_request.remote(
-            request_in_object, **kwargs)
+        self.handle_options = handle_options or HandleOptions()
 
     def options(self,
-                method_name=None,
-                relative_slo_ms=None,
-                absolute_slo_ms=None):
-        # If both the slo's are None then then we use a high default
-        # value so other queries can be prioritize and put in front of these
-        # queries.
-        assert not all([absolute_slo_ms, relative_slo_ms
-                        ]), ("Can't specify both "
-                             "relative and absolute "
-                             "slo's together!")
+                *,
+                method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+                shard_key: Union[str, DEFAULT] = DEFAULT.VALUE,
+                http_method: Union[str, DEFAULT] = DEFAULT.VALUE,
+                http_headers: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE):
+        """Set options for this handle.
 
-        # Don't override existing method
-        if method_name is None and self.method_name is not None:
-            method_name = self.method_name
+        Args:
+            method_name(str): The method to invoke on the backend.
+            http_method(str): The HTTP method to use for the request.
+            shard_key(str): A string to use to deterministically map this
+                request to a backend if there are multiple for this endpoint.
+        """
+        new_options_dict = self.handle_options.__dict__.copy()
+        user_modified_options_dict = {
+            key: value
+            for key, value in
+            zip(["method_name", "shard_key", "http_method", "http_headers"],
+                [method_name, shard_key, http_method, http_headers])
+            if value != DEFAULT.VALUE
+        }
+        new_options_dict.update(user_modified_options_dict)
+        new_options = HandleOptions(**new_options_dict)
 
-        return RayServeHandle(
-            self.router_handle,
-            self.endpoint_name,
-            relative_slo_ms,
-            absolute_slo_ms,
-            method_name=method_name,
-        )
+        return self.__class__(self.router, self.endpoint_name, new_options)
 
-    def get_http_endpoint(self):
-        return DEFAULT_HTTP_ADDRESS
+    async def remote(self,
+                     request_data: Optional[Union[Dict, Any]] = None,
+                     **kwargs):
+        """Issue an asynchrounous request to the endpoint.
 
-    def get_traffic_policy(self):
-        master_actor = serve.api._get_master_actor()
-        return ray.get(
-            master_actor.get_traffic_policy.remote(self.endpoint_name))
+        Returns a Ray ObjectRef whose results can be waited for or retrieved
+        using ray.wait or ray.get (or ``await object_ref``), respectively.
 
-    def _ensure_backend_unique(self, backend_tag=None):
-        traffic_policy = self.get_traffic_policy()
-        if backend_tag is None:
-            assert len(traffic_policy) == 1, (
-                "Multiple backends detected. "
-                "Please pass in backend_tag=... argument to specify backend.")
-            backends = set(traffic_policy.keys())
-            return backends.pop()
-        else:
-            assert (backend_tag in traffic_policy
-                    ), "Backend {} not found in avaiable backends: {}.".format(
-                        backend_tag, list(traffic_policy.keys()))
-            return backend_tag
-
-    def scale(self, new_num_replicas, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.num_replicas = new_num_replicas
-        serve.set_backend_config(backend_tag, config)
-
-    def set_max_batch_size(self, new_max_batch_size, backend_tag=None):
-        backend_tag = self._ensure_backend_unique(backend_tag)
-        config = serve.get_backend_config(backend_tag)
-        config.max_batch_size = new_max_batch_size
-        serve.set_backend_config(backend_tag, config)
+        Returns:
+            ray.ObjectRef
+        Args:
+            request_data(dict, Any): If it's a dictionary, the data will be
+                available in ``request.json()`` or ``request.form()``.
+                Otherwise, it will be available in ``request.body()``.
+            ``**kwargs``: All keyword arguments will be available in
+                ``request.query_params``.
+        """
+        return await self.router._remote(
+            self.endpoint_name, self.handle_options, request_data, kwargs)
 
     def __repr__(self):
-        return """
-RayServeHandle(
-    Endpoint="{endpoint_name}",
-    URL="{http_endpoint}/{endpoint_name}",
-    Traffic={traffic_policy}
-)
-""".format(
-            endpoint_name=self.endpoint_name,
-            http_endpoint=self.get_http_endpoint(),
-            traffic_policy=self.get_traffic_policy(),
-        )
+        return f"{self.__class__.__name__}(endpoint='{self.endpoint_name}')"
 
-    # TODO(simon): a convenience function that dumps equivalent requests
-    # code for a given call.
+
+class RayServeSyncHandle(RayServeHandle):
+    def remote(self, request_data: Optional[Union[Dict, Any]] = None,
+               **kwargs):
+        """Issue an asynchronous request to the endpoint.
+
+        Returns a Ray ObjectRef whose results can be waited for or retrieved
+        using ray.wait or ray.get (or ``await object_ref``), respectively.
+
+        Returns:
+            ray.ObjectRef
+        Args:
+            request_data(dict, Any): If it's a dictionary, the data will be
+                available in ``request.json()`` or ``request.form()``.
+                If it's a Starlette Request object, it will be passed in to the
+                backend directly, unmodified. Otherwise, the data will be
+                available in ``request.data``.
+            ``**kwargs``: All keyword arguments will be available in
+                ``request.args``.
+        """
+        coro = self.router._remote(self.endpoint_name, self.handle_options,
+                                   request_data, kwargs)
+        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
+            coro, self.router.async_loop)
+        return future.result()

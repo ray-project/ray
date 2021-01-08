@@ -1,15 +1,16 @@
 import logging
 
 import ray
+from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ddpg.ddpg_tf_policy import build_ddpg_models, \
-    get_distribution_inputs_and_class
+    get_distribution_inputs_and_class, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.models.torch.torch_action_dist import TorchDeterministic
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, minimize_and_clip, l2_loss
+from ray.rllib.utils.torch_ops import huber_loss, l2_loss
 
 torch, nn = try_import_torch()
 
@@ -49,10 +50,10 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     target_model_out_tp1, _ = policy.target_model(input_dict_next, [], None)
 
     # Policy network evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
     policy_t = model.get_policy_output(model_out_t)
     # policy_batchnorm_update_ops = list(
-    #    set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #    set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     policy_tp1 = \
         policy.target_model.get_policy_output(target_model_out_tp1)
@@ -63,29 +64,39 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
         clipped_normal_sample = torch.clamp(
             torch.normal(
                 mean=torch.zeros(policy_tp1.size()),
-                std=policy.config["target_noise"]), -target_noise_clip,
-            target_noise_clip)
-        policy_tp1_smoothed = torch.clamp(
-            policy_tp1 + clipped_normal_sample,
-            policy.action_space.low * torch.ones_like(policy_tp1),
-            policy.action_space.high * torch.ones_like(policy_tp1))
+                std=policy.config["target_noise"]).to(policy_tp1.device),
+            -target_noise_clip, target_noise_clip)
+
+        policy_tp1_smoothed = torch.min(
+            torch.max(
+                policy_tp1 + clipped_normal_sample,
+                torch.tensor(
+                    policy.action_space.low,
+                    dtype=torch.float32,
+                    device=policy_tp1.device)),
+            torch.tensor(
+                policy.action_space.high,
+                dtype=torch.float32,
+                device=policy_tp1.device))
     else:
         # No smoothing, just use deterministic actions.
         policy_tp1_smoothed = policy_tp1
 
     # Q-net(s) evaluation.
-    # prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+    # prev_update_ops = set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS))
     # Q-values for given actions & observations in given current
     q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
 
     # Q-values for current policy (no noise) in given current state
     q_t_det_policy = model.get_q_values(model_out_t, policy_t)
 
+    actor_loss = -torch.mean(q_t_det_policy)
+
     if twin_q:
         twin_q_t = model.get_twin_q_values(model_out_t,
                                            train_batch[SampleBatch.ACTIONS])
     # q_batchnorm_update_ops = list(
-    #     set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
+    #     set(tf1.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
     # Target q-net(s) evaluation.
     q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
@@ -113,7 +124,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) \
                 + huber_loss(twin_td_error, huber_threshold)
@@ -128,7 +138,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
             errors = 0.5 * torch.pow(td_error, 2.0)
 
     critic_loss = torch.mean(train_batch[PRIO_WEIGHTS] * errors)
-    actor_loss = -torch.mean(q_t_det_policy)
 
     # Add l2-regularization if required.
     if l2_reg is not None:
@@ -155,17 +164,23 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     policy.td_error = td_error
     policy.q_t = q_t
 
-    # Return one loss value (even though we treat them separately in our
-    # 2 optimizers: actor and critic).
+    # Return two loss terms (corresponding to the two optimizers, we create).
     return policy.actor_loss, policy.critic_loss
 
 
 def make_ddpg_optimizers(policy, config):
-    # Create separate optimizers for actor & critic losses.
+    """Create separate optimizers for actor & critic losses."""
+
+    # Set epsilons to match tf.keras.optimizers.Adam's epsilon default.
     policy._actor_optimizer = torch.optim.Adam(
-        params=policy.model.policy_variables(), lr=config["actor_lr"])
+        params=policy.model.policy_variables(),
+        lr=config["actor_lr"],
+        eps=1e-7)
+
     policy._critic_optimizer = torch.optim.Adam(
-        params=policy.model.q_variables(), lr=config["critic_lr"])
+        params=policy.model.q_variables(), lr=config["critic_lr"], eps=1e-7)
+
+    # Return them in the same order as the respective loss terms are returned.
     return policy._actor_optimizer, policy._critic_optimizer
 
 
@@ -181,12 +196,6 @@ def apply_gradients_fn(policy):
     policy.global_step += 1
 
 
-def gradients_fn(policy, optimizer, loss):
-    if policy.config["grad_norm_clipping"] is not None:
-        minimize_and_clip(optimizer, policy.config["grad_norm_clipping"])
-    return {}
-
-
 def build_ddpg_stats(policy, batch):
     stats = {
         "actor_loss": policy.actor_loss,
@@ -194,7 +203,8 @@ def build_ddpg_stats(policy, batch):
         "mean_q": torch.mean(policy.q_t),
         "max_q": torch.max(policy.q_t),
         "min_q": torch.min(policy.q_t),
-        "td_error": policy.td_error
+        "mean_td_error": torch.mean(policy.td_error),
+        "td_error": policy.td_error,
     }
     return stats
 
@@ -254,16 +264,18 @@ def setup_late_mixins(policy, obs_space, action_space, config):
     TargetNetworkMixin.__init__(policy)
 
 
-DDPGTorchPolicy = build_torch_policy(
+DDPGTorchPolicy = build_policy_class(
     name="DDPGTorchPolicy",
+    framework="torch",
     loss_fn=ddpg_actor_critic_loss,
     get_default_config=lambda: ray.rllib.agents.ddpg.ddpg.DEFAULT_CONFIG,
     stats_fn=build_ddpg_stats,
     postprocess_fn=postprocess_nstep_and_prio,
-    extra_grad_process_fn=gradients_fn,
+    extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=make_ddpg_optimizers,
+    validate_spaces=validate_spaces,
     before_init=before_init_fn,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     action_distribution_fn=get_distribution_inputs_and_class,
     make_model_and_action_dist=build_ddpg_models_and_action_dist,
     apply_gradients_fn=apply_gradients_fn,

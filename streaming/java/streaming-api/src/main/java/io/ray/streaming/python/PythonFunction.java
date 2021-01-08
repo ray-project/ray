@@ -1,24 +1,28 @@
 package io.ray.streaming.python;
 
+import com.google.common.base.Preconditions;
 import io.ray.streaming.api.function.Function;
+import java.util.StringJoiner;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Represents a user defined python function.
  *
- * <p>Python worker can use information in this class to create a function object.</p>
+ * <p>Python worker can use information in this class to create a function object.
  *
- * <p>If this object is constructed from serialized python function,
- * python worker can deserialize it to create python function directly.
- * If this object is constructed from moduleName and className/functionName,
- * python worker will use `importlib` to load python function.</p>
+ * <p>If this object is constructed from serialized python function, python worker can deserialize
+ * it to create python function directly. If this object is constructed from moduleName and
+ * className/functionName, python worker will use `importlib` to load python function.
  *
- * <p>If the python data stream api is invoked from python, `function` will be not null.</p>
- * <p>If the python data stream api is invoked from java, `moduleName` and
- * `className`/`functionName` will be not null.</p>
+ * <p>If the python data stream api is invoked from python, `function` will be not null.
+ *
+ * <p>If the python data stream api is invoked from java, `moduleName` and `functionName` will be
+ * not null.
+ *
  * <p>
- * TODO serialize to bytes using protobuf
  */
 public class PythonFunction implements Function {
+
   public enum FunctionInterface {
     SOURCE_FUNCTION("SourceFunction"),
     MAP_FUNCTION("MapFunction"),
@@ -30,31 +34,48 @@ public class PythonFunction implements Function {
 
     private String functionInterface;
 
-    /**
-     * @param functionInterface function class name in `ray.streaming.function` module.
-     */
+    /** @param functionInterface function class name in `ray.streaming.function` module. */
     FunctionInterface(String functionInterface) {
       this.functionInterface = functionInterface;
     }
   }
 
-  private byte[] function;
-  private String moduleName;
-  private String className;
-  private String functionName;
+  // null if this function is constructed from moduleName/functionName.
+  private final byte[] function;
+  // null if this function is constructed from serialized python function.
+  private final String moduleName;
+  // null if this function is constructed from serialized python function.
+  private final String functionName;
   /**
-   * FunctionInterface can be used to validate python function,
-   * and look up operator class from FunctionInterface.
+   * FunctionInterface can be used to validate python function, and look up operator class from
+   * FunctionInterface.
    */
   private String functionInterface;
 
-  private PythonFunction(byte[] function,
-                         String moduleName,
-                         String className,
-                         String functionName) {
+  /**
+   * Create a {@link PythonFunction} from a serialized streaming python function.
+   *
+   * @param function serialized streaming python function from python driver.
+   */
+  public PythonFunction(byte[] function) {
+    Preconditions.checkNotNull(function);
     this.function = function;
+    this.moduleName = null;
+    this.functionName = null;
+  }
+
+  /**
+   * Create a {@link PythonFunction} from a moduleName and streaming function name.
+   *
+   * @param moduleName module name of streaming function.
+   * @param functionName function name of streaming function. {@code functionName} is the name of a
+   *     python function, or class name of subclass of `ray.streaming.function.`
+   */
+  public PythonFunction(String moduleName, String functionName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(moduleName));
+    Preconditions.checkArgument(StringUtils.isNotBlank(functionName));
+    this.function = null;
     this.moduleName = moduleName;
-    this.className = className;
     this.functionName = functionName;
   }
 
@@ -70,10 +91,6 @@ public class PythonFunction implements Function {
     return moduleName;
   }
 
-  public String getClassName() {
-    return className;
-  }
-
   public String getFunctionName() {
     return functionName;
   }
@@ -82,34 +99,26 @@ public class PythonFunction implements Function {
     return functionInterface;
   }
 
-  /**
-   * Create a {@link PythonFunction} using python serialized function
-   *
-   * @param function serialized python function sent from python driver
-   */
-  public static PythonFunction fromFunction(byte[] function) {
-    return new PythonFunction(function, null, null, null);
+  public String toSimpleString() {
+    if (function != null) {
+      return "binary function";
+    } else {
+      return String.format("%s-%s.%s", functionInterface, moduleName, functionName);
+    }
   }
 
-  /**
-   * Create a {@link PythonFunction} using <code>moduleName</code> and
-   * <code>className</code>.
-   *
-   * @param moduleName python module name
-   * @param className  python class name
-   */
-  public static PythonFunction fromClassName(String moduleName, String className) {
-    return new PythonFunction(null, moduleName, className, null);
-  }
-
-  /**
-   * Create a {@link PythonFunction} using <code>moduleName</code> and
-   * <code>functionName</code>.
-   *
-   * @param moduleName   python module name
-   * @param functionName python function name
-   */
-  public static PythonFunction fromFunctionName(String moduleName, String functionName) {
-    return new PythonFunction(null, moduleName, null, functionName);
+  @Override
+  public String toString() {
+    StringJoiner stringJoiner =
+        new StringJoiner(", ", PythonFunction.class.getSimpleName() + "[", "]");
+    if (function != null) {
+      stringJoiner.add("function=binary function");
+    } else {
+      stringJoiner
+          .add("moduleName='" + moduleName + "'")
+          .add("functionName='" + functionName + "'");
+    }
+    stringJoiner.add("functionInterface='" + functionInterface + "'");
+    return stringJoiner.toString();
   }
 }

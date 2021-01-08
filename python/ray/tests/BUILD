@@ -1,416 +1,173 @@
-py_test(
-    name = "test_actor",
-    size = "medium",
-    srcs = ["test_actor.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
+load("//bazel:python.bzl", "py_test_module_list")
+
+SRCS = [] + select({
+    "@bazel_tools//src/conditions:windows": glob([
+        # TODO(mehrdadn): This should be added for all platforms once resulting errors are fixed
+        "**/conftest.py",
+    ]),
+    "//conditions:default": [],
+})
+
+py_test_module_list(
+  files = [
+#    "test_dynres.py",  # dyn res not implemented
+    "test_async.py",
+    "test_actor.py",
+    "test_actor_advanced.py",
+    "test_advanced_3.py",
+    "test_actor_failures.py",
+    "test_actor_resources.py",
+    "test_advanced.py",
+    "test_advanced_2.py",
+    "test_array.py",
+    "test_autoscaling_policy.py",
+    "test_basic.py",
+    "test_basic_2.py",
+    "test_cancel.py",
+    "test_cli.py",
+    "test_component_failures_2.py",
+    "test_component_failures_3.py",
+    "test_error_ray_not_initialized.py",
+    "test_gcs_fault_tolerance.py",
+    "test_iter.py",
+    "test_joblib.py",
+    "test_global_state.py",
+    "test_global_gc.py",
+    "test_mldataset.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_a_to_j"],
+  deps = ["//:ray_lib"],
 )
 
-py_test(
-    name = "test_actor_advanced",
-    size = "medium",
-    srcs = ["test_actor_advanced.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
+py_test_module_list(
+  files = [
+    "test_memory_limits.py",
+    "test_memory_scheduling.py",
+    "test_metrics.py",
+    "test_multi_node.py",
+    "test_multi_node_2.py",
+    "test_multi_tenancy.py",
+    "test_multinode_failures.py",
+    "test_multinode_failures_2.py",
+    "test_multiprocessing.py",
+    "test_object_manager.py",
+    "test_object_spilling.py",
+    "test_output.py",
+    "test_reconstruction.py",
+    "test_reference_counting.py",
+    "test_reference_counting_2.py",
+    "test_resource_demand_scheduler.py",
+    "test_serialization.py",
+    "test_stress.py",
+    "test_stress_sharded.py",
+    "test_tensorflow.py",
+    "test_unreconstructable_errors.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "medium_size_python_tests_k_to_z"],
+  deps = ["//:ray_lib"],
 )
 
+py_test_module_list(
+  files = [
+    "test_actor_pool.py",
+    "test_args.py",
+    "test_asyncio_cluster.py",
+    "test_asyncio.py",
+    "test_autoscaler.py",
+    "test_autoscaler_yaml.py",
+    "test_client_metadata.py",
+    "test_client.py",
+    "test_client_references.py",
+    "test_client_terminate.py",
+    "test_command_runner.py",
+    "test_component_failures.py",
+    "test_coordinator_server.py",
+    "test_dask_callback.py",
+    "test_dask_scheduler.py",
+    "test_debug_tools.py",
+    "test_job.py",
+    "test_memstat.py",
+    "test_metrics_agent.py",
+    "test_microbenchmarks.py",
+    "test_mini.py",
+    "test_monitor.py",
+    "test_node_manager.py",
+    "test_numba.py",
+    "test_queue.py",
+    "test_ray_debugger.py",
+    "test_ray_init.py",
+    "test_tempfile.py",
+  ],
+  size = "small",
+  extra_srcs = SRCS,
+  tags = ["exclusive"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_failure.py",
+    "test_stress_failure.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_placement_group.py",
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  deps = ["//:ray_lib"],
+)
+
+# TODO(barakmich): aws/ might want its own buildfile, or
+#    py_test_module_list should support subdirectories.
 py_test(
-    name = "test_actor_pool",
+    name = "test_autoscaler_aws",
     size = "small",
-    srcs = ["test_actor_pool.py"],
-    tags = ["exclusive"],
+    srcs = SRCS + ["aws/test_autoscaler_aws.py"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
-    name = "test_memstat",
+    name = "test_aws_batch_tag_update",
     size = "small",
-    srcs = ["test_memstat.py"],
-    tags = ["exclusive"],
+    srcs = SRCS + ["aws/test_aws_batch_tag_update.py"],
     deps = ["//:ray_lib"],
 )
 
+# Note(simon): typing tests are not included in module list
+#    because they requires globs and it might be refactored in the future.
 py_test(
-    name = "test_iter",
-    size = "medium",
-    srcs = ["test_iter.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_actor_resources",
-    size = "medium",
-    srcs = ["test_actor_resources.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_actor_failures",
-    size = "medium",
-    srcs = ["test_actor_failures.py"],
-    # TODO(ekl) enable this once we support actor reconstruction again
-    tags = ["exclusive", "manual"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_basic",
-    size = "medium",
-    srcs = ["test_basic.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_advanced",
-    size = "medium",
-    srcs = ["test_advanced.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_advanced_2",
-    size = "medium",
-    srcs = ["test_advanced_2.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_advanced_3",
-    size = "medium",
-    srcs = ["test_advanced_3.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_component_failures",
+    name = "test_typing",
     size = "small",
-    srcs = ["test_component_failures.py"],
+    srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
-py_test(
-    name = "test_component_failures_2",
-    size = "medium",
-    srcs = ["test_component_failures_2.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
 
-py_test(
-    name = "test_component_failures_3",
-    size = "medium",
-    srcs = ["test_component_failures_3.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_multinode_failures",
-    size = "medium",
-    srcs = ["test_multinode_failures.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_multinode_failures_2",
-    size = "medium",
-    srcs = ["test_multinode_failures_2.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_stress",
-    size = "medium",
-    srcs = ["test_stress.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_stress_sharded",
-    size = "medium",
-    srcs = ["test_stress_sharded.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_stress_failure",
-    size = "large",
-    srcs = ["test_stress_failure.py"],
-    # TODO(ekl) enable again once we support direct call reconstruction
-    tags = ["exclusive", "manual"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_array",
-    size = "medium",
-    srcs = ["test_array.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_autoscaler",
-    size = "small",
-    srcs = ["test_autoscaler.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_autoscaler_yaml",
-    size = "small",
-    srcs = ["test_autoscaler_yaml.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_cython",
-    size = "small",
-    srcs = ["test_cython.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_debug_tools",
-    size = "small",
-    srcs = ["test_debug_tools.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_dynres",
-    size = "medium",
-    srcs = ["test_dynres.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_failure",
-    size = "medium",
-    srcs = ["test_failure.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_reconstruction",
-    size = "medium",
-    srcs = ["test_reconstruction.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_reference_counting",
-    size = "medium",
-    srcs = ["test_reference_counting.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_reference_counting_2",
-    size = "medium",
-    srcs = ["test_reference_counting_2.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_global_gc",
-    size = "medium",
-    srcs = ["test_global_gc.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_global_state",
-    size = "small",
-    srcs = ["test_global_state.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_memory_limits",
-    size = "medium",
-    srcs = ["test_memory_limits.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_memory_scheduling",
-    size = "medium",
-    srcs = ["test_memory_scheduling.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_metrics",
-    size = "small",
-    srcs = ["test_metrics.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_metrics_export",
-    size = "small",
-    srcs = ["test_metrics_export.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_microbenchmarks",
-    size = "small",
-    srcs = ["test_microbenchmarks.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_mini",
-    size = "small",
-    srcs = ["test_mini.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_multiprocessing",
-    size = "medium",
-    srcs = ["test_multiprocessing.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_joblib",
-    size = "medium",
-    srcs = ["test_joblib.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_multi_node_2",
-    size = "medium",
-    srcs = ["test_multi_node_2.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_multi_node",
-    size = "medium",
-    srcs = ["test_multi_node.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_node_manager",
-    size = "small",
-    srcs = ["test_node_manager.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_object_manager",
-    size = "medium",
-    srcs = ["test_object_manager.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_projects",
-    size = "small",
-    srcs = ["test_projects.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_queue",
-    size = "small",
-    srcs = ["test_queue.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_ray_init",
-    size = "small",
-    srcs = ["test_ray_init.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_tempfile",
-    size = "small",
-    srcs = ["test_tempfile.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_tensorflow",
-    size = "small",
-    srcs = ["test_tensorflow.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_unreconstructable_errors",
-    size = "medium",
-    srcs = ["test_unreconstructable_errors.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_webui",
-    size = "small",
-    srcs = ["test_webui.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_args",
-    size = "small",
-    srcs = ["test_args.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_asyncio",
-    size = "small",
-    srcs = ["test_asyncio.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_numba",
-    size = "small",
-    srcs = ["test_numba.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
+py_test_module_list(
+  files = [
+    "test_actor.py",
+    "test_advanced.py",
+    "test_basic.py",
+    "test_basic_2.py",
+  ],
+  size = "medium",
+  extra_srcs = SRCS,
+  name_suffix = "_client_mode",
+  # TODO(barakmich): py_test will support env in Bazel 4.0.0... 
+  # Until then, we can use tags.
+  #env = {"RAY_CLIENT_MODE": "1"},
+  tags = ["exclusive", "client_tests"],
+  deps = ["//:ray_lib"],
 )

@@ -1,8 +1,8 @@
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -13,11 +13,13 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
-    policy.entropy = dist.entropy().mean()
+    policy.entropy = dist.entropy().sum()
     policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
         log_probs.reshape(-1))
-    policy.value_err = nn.functional.mse_loss(
-        values.reshape(-1), train_batch[Postprocessing.VALUE_TARGETS])
+    policy.value_err = torch.sum(
+        torch.pow(
+            values.reshape(-1) - train_batch[Postprocessing.VALUE_TARGETS],
+            2.0))
     overall_err = sum([
         policy.pi_err,
         policy.config["vf_loss_coeff"] * policy.value_err,
@@ -59,8 +61,16 @@ def apply_grad_clipping(policy, optimizer, loss):
     info = {}
     if policy.config["grad_clip"]:
         for param_group in optimizer.param_groups:
-            info["grad_gnorm"] = nn.utils.clip_grad_norm_(
-                param_group["params"], policy.config["grad_clip"])
+            # Make sure we only pass params with grad != None into torch
+            # clip_grad_norm_. Would fail otherwise.
+            params = list(
+                filter(lambda p: p.grad is not None, param_group["params"]))
+            if params:
+                grad_gnorm = nn.utils.clip_grad_norm_(
+                    params, policy.config["grad_clip"])
+                if isinstance(grad_gnorm, torch.Tensor):
+                    grad_gnorm = grad_gnorm.cpu().numpy()
+                info["grad_gnorm"] = grad_gnorm
     return info
 
 
@@ -74,8 +84,9 @@ class ValueNetworkMixin:
         return self.model.value_function()[0]
 
 
-A3CTorchPolicy = build_torch_policy(
+A3CTorchPolicy = build_policy_class(
     name="A3CTorchPolicy",
+    framework="torch",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,
@@ -83,4 +94,5 @@ A3CTorchPolicy = build_torch_policy(
     extra_action_out_fn=model_value_predictions,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
-    mixins=[ValueNetworkMixin])
+    mixins=[ValueNetworkMixin],
+)

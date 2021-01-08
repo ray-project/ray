@@ -1,4 +1,5 @@
 #include "io_ray_streaming_runtime_transfer_TransferHandler.h"
+
 #include "queue/queue_client.h"
 #include "streaming_jni_common.h"
 
@@ -24,6 +25,13 @@ Java_io_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative(
     JNIEnv *env, jobject this_obj) {
   auto *reader_client = new ReaderClient();
   return reinterpret_cast<jlong>(reader_client);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
+    JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
+  auto *writer_client = reinterpret_cast<WriterClient *>(ptr);
+  writer_client->OnWriterMessage(JByteArrayToBuffer(env, bytes));
 }
 
 JNIEXPORT jbyteArray JNICALL

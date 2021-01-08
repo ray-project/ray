@@ -11,9 +11,7 @@ import ray.rllib.agents.impala as impala
 import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
-from ray.rllib.utils import check, framework_iterator, try_import_tf
-
-tf = try_import_tf()
+from ray.rllib.utils import check, framework_iterator
 
 
 def do_test_explorations(run,
@@ -29,15 +27,7 @@ def do_test_explorations(run,
         core_config["num_workers"] = 0
 
     # Test all frameworks.
-    for fw in framework_iterator(core_config):
-        if fw == "torch" and \
-                run in [impala.ImpalaTrainer, sac.SACTrainer]:
-            continue
-        elif fw == "eager" and run in [
-                ddpg.DDPGTrainer, sac.SACTrainer, td3.TD3Trainer
-        ]:
-            continue
-
+    for _ in framework_iterator(core_config):
         print("Agent={}".format(run))
 
         # Test for both the default Agent's exploration AND the `Random`
@@ -92,7 +82,7 @@ class TestExplorations(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(ignore_reinit_error=True)
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls):
@@ -115,10 +105,14 @@ class TestExplorations(unittest.TestCase):
             prev_a=np.array(1))
 
     def test_ddpg(self):
+        # Switch off random timesteps at beginning. We want to test actual
+        # GaussianNoise right away.
+        config = ddpg.DEFAULT_CONFIG.copy()
+        config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             ddpg.DDPGTrainer,
             "Pendulum-v0",
-            ddpg.DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
 
@@ -173,10 +167,14 @@ class TestExplorations(unittest.TestCase):
             expected_mean_action=0.0)
 
     def test_td3(self):
+        config = td3.TD3_DEFAULT_CONFIG.copy()
+        # Switch off random timesteps at beginning. We want to test actual
+        # GaussianNoise right away.
+        config["exploration_config"]["random_timesteps"] = 0
         do_test_explorations(
             td3.TD3Trainer,
             "Pendulum-v0",
-            td3.TD3_DEFAULT_CONFIG,
+            config,
             np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0)
 

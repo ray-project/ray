@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_REDIS_CONTEXT_H
-#define RAY_GCS_REDIS_CONTEXT_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
@@ -24,15 +23,9 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/logging.h"
-
 #include "ray/gcs/redis_async_context.h"
-#include "ray/protobuf/gcs.pb.h"
-
-extern "C" {
-#include "hiredis/async.h"
-#include "hiredis/hiredis.h"
-}
+#include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 struct redisContext;
 struct redisAsyncContext;
@@ -76,6 +69,8 @@ class CallbackReply {
   /// \return size_t The next cursor for scan.
   size_t ReadAsScanArray(std::vector<std::string> *array) const;
 
+  bool IsSubscribeCallback() const { return is_subscribe_callback_; }
+
   bool IsUnsubscribeCallback() const { return is_unsubscribe_callback_; }
 
  private:
@@ -101,6 +96,7 @@ class CallbackReply {
   /// Represent the reply of StringArray or ScanArray.
   std::vector<std::string> string_array_reply_;
 
+  bool is_subscribe_callback_ = false;
   bool is_unsubscribe_callback_ = false;
 
   /// Represent the reply of SCanArray, means the next scan cursor for scan request.
@@ -143,20 +139,25 @@ class RedisCallbackManager {
     boost::asio::io_service *io_service_;
   };
 
-  int64_t add(const RedisCallback &function, bool is_subscription,
-              boost::asio::io_service &io_service);
+  /// Allocate an index at which we can add a callback later on.
+  int64_t AllocateCallbackIndex();
 
-  std::shared_ptr<CallbackItem> get(int64_t callback_index);
+  /// Add a callback at an optionally specified index.
+  int64_t AddCallback(const RedisCallback &function, bool is_subscription,
+                      boost::asio::io_service &io_service, int64_t callback_index = -1);
 
   /// Remove a callback.
-  void remove(int64_t callback_index);
+  void RemoveCallback(int64_t callback_index);
+
+  /// Get a callback.
+  std::shared_ptr<CallbackItem> GetCallback(int64_t callback_index) const;
 
  private:
   RedisCallbackManager() : num_callbacks_(0){};
 
   ~RedisCallbackManager() {}
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
@@ -168,6 +169,13 @@ class RedisContext {
       : io_service_(io_service), context_(nullptr) {}
 
   ~RedisContext();
+
+  /// Test whether the address and port has a reachable Redis service.
+  ///
+  /// \param address IP address to test.
+  /// \param port port number to test.
+  /// \return The Status that we would get if we Connected.
+  Status PingPort(const std::string &address, int port);
 
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
@@ -230,22 +238,41 @@ class RedisContext {
 
   /// Subscribe to a specific Pub-Sub channel.
   ///
-  /// \param client_id The client ID that subscribe this message.
+  /// \param node_id The node ID that subscribe this message.
   /// \param pubsub_channel The Pub-Sub channel to subscribe to.
   /// \param redisCallback The callback function that the notification calls.
   /// \param out_callback_index The output pointer to callback index.
   /// \return Status.
-  Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
+  Status SubscribeAsync(const NodeID &node_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
+
+  /// Subscribes the client to the given channel.
+  ///
+  /// \param channel The subscription channel.
+  /// \param redisCallback The callback function that the notification calls.
+  /// \param callback_index The index at which to add the callback. This index
+  /// must already be allocated in the callback manager via
+  /// RedisCallbackManager::AllocateCallbackIndex.
+  /// \return Status.
+  Status SubscribeAsync(const std::string &channel, const RedisCallback &redisCallback,
+                        int64_t callback_index);
+
+  /// Unsubscribes the client from the given channel.
+  ///
+  /// \param channel The unsubscription channel.
+  /// \return Status.
+  Status UnsubscribeAsync(const std::string &channel);
 
   /// Subscribes the client to the given pattern.
   ///
   /// \param pattern The pattern of subscription channel.
   /// \param redisCallback The callback function that the notification calls.
-  /// \param out_callback_index The output pointer to callback index.
+  /// \param callback_index The index at which to add the callback. This index
+  /// must already be allocated in the callback manager via
+  /// RedisCallbackManager::AllocateCallbackIndex.
   /// \return Status.
   Status PSubscribeAsync(const std::string &pattern, const RedisCallback &redisCallback,
-                         int64_t *out_callback_index);
+                         int64_t callback_index);
 
   /// Unsubscribes the client from the given pattern.
   ///
@@ -280,6 +307,10 @@ class RedisContext {
   boost::asio::io_service &io_service() { return io_service_; }
 
  private:
+  // These functions avoid problems with dependence on hiredis headers with clang-cl.
+  static int GetRedisError(redisContext *context);
+  static void FreeRedisReply(void *reply);
+
   boost::asio::io_service &io_service_;
   redisContext *context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
@@ -293,7 +324,7 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               RedisCallback redisCallback, int log_length) {
   RAY_CHECK(redis_async_context_);
   int64_t callback_index =
-      RedisCallbackManager::instance().add(redisCallback, false, io_service_);
+      RedisCallbackManager::instance().AddCallback(redisCallback, false, io_service_);
   Status status = Status::OK();
   if (length > 0) {
     if (log_length >= 0) {
@@ -343,12 +374,12 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
                                id.Data(), id.Size());
   }
   if (redis_reply == nullptr) {
-    RAY_LOG(INFO) << "Run redis command failed , err is " << context_->err;
+    RAY_LOG(INFO) << "Run redis command failed , err is " << GetRedisError(context_);
     return nullptr;
   } else {
     std::shared_ptr<CallbackReply> callback_reply =
         std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
-    freeReplyObject(redis_reply);
+    FreeRedisReply(redis_reply);
     return callback_reply;
   }
 }
@@ -356,5 +387,3 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_REDIS_CONTEXT_H

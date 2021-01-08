@@ -9,7 +9,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.test_utils import check, framework_iterator
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -70,7 +70,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
         abs_path = script_dir.absolute()
 
         for fw, sess in framework_iterator(session=True):
-            fw_ = fw if fw != "eager" else "tf"
+            fw_ = fw if fw != "tfe" else "tf"
             # Try to create from an abstract class w/o default constructor.
             # Expect None.
             test = from_config({
@@ -136,7 +136,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             # Test recognizing default package path.
             scope = None
             if sess:
-                scope = tf.variable_scope("exploration_object")
+                scope = tf1.variable_scope("exploration_object")
                 scope.__enter__()
             component = from_config(
                 Exploration, {
@@ -164,6 +164,14 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
             if sess:
                 value = sess.run(value)
             check(value, np.array([-6.6]))  # prop_b == -1.5
+
+    def test_unregistered_envs(self):
+        """Tests, whether an Env can be specified simply by its absolute class.
+        """
+        env_cls = "ray.rllib.examples.env.stateless_cartpole.StatelessCartPole"
+        env = from_config(env_cls, {"config": 42.0})
+        state = env.reset()
+        self.assertTrue(state.shape == (2, ))
 
 
 if __name__ == "__main__":

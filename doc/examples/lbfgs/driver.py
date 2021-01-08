@@ -123,7 +123,7 @@ if __name__ == "__main__":
     # Similarly, full_grad is a function which takes some parameters theta, and
     # computes the gradient of the loss. Internally, these functions use Ray to
     # distribute the computation of the loss and the gradient over the data
-    # that is represented by the remote object IDs x_batches and y_batches and
+    # that is represented by the remote object refs x_batches and y_batches and
     # which is potentially distributed over a cluster. However, these details
     # are hidden from scipy.optimize.fmin_l_bfgs_b, which simply uses it to run
     # the L-BFGS algorithm.

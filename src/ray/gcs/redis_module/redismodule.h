@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef REDISMODULE_H
-#define REDISMODULE_H
+#pragma once
 
 #include <stdint.h>
 #include <stdio.h>
@@ -296,9 +295,8 @@ int REDISMODULE_API_FUNC(RedisModule_AbortBlock)(RedisModuleBlockedClient *bc);
 long long REDISMODULE_API_FUNC(RedisModule_Milliseconds)(void);
 
 /* This is included inline inside each Redis module. */
-static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int apiver)
-    __attribute__((unused));
-static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int apiver) {
+static inline int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver,
+                                   int apiver) {
   void *getapifuncptr = ((void **)ctx)[0];
   RedisModule_GetApi = (int (*)(const char *, void *))getapifuncptr;
   REDISMODULE_GET_API(Alloc);
@@ -415,4 +413,3 @@ static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int 
 #define RedisModuleString robj
 
 #endif /* REDISMODULE_CORE */
-#endif /* REDISMOUDLE_H */

@@ -1,43 +1,41 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
-
-tf = try_import_tf()
 
 
 class TestParameterNoise(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer,
-            ddpg.DEFAULT_CONFIG,
-            "Pendulum-v0", {},
-            np.array([1.0, 0.0, -1.0]),
-            fws="tf")
+            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v0", {},
+            np.array([1.0, 0.0, -1.0]))
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer,
-            dqn.DEFAULT_CONFIG,
-            "FrozenLake-v0", {
+            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v0", {
                 "is_slippery": False,
                 "map_name": "4x4"
-            },
-            np.array(0),
-            fws=("tf", "eager"))
+            }, np.array(0))
 
     def do_test_parameter_noise_exploration(self, trainer_cls, config, env,
-                                            env_config, obs, fws):
+                                            env_config, obs):
         """Tests, whether an Agent works with ParameterNoise."""
         core_config = config.copy()
         core_config["num_workers"] = 0  # Run locally.
         core_config["env_config"] = env_config
 
-        for fw in framework_iterator(core_config, fws):
-
+        for fw in framework_iterator(core_config):
             config = core_config.copy()
 
             # Algo with ParameterNoise exploration (config["explore"]=True).
@@ -47,13 +45,19 @@ class TestParameterNoise(unittest.TestCase):
 
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
+            pol_sess = getattr(policy, "_sess", None)
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
+
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
             check(noise_before, 0.0)
             initial_weights = self._get_current_weight(policy, fw)
 
             # Pseudo-start an episode and compare the weights before and after.
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_after_ep_start = self._get_current_noise(policy, fw)
             weights_after_ep_start = self._get_current_weight(policy, fw)
@@ -94,7 +98,7 @@ class TestParameterNoise(unittest.TestCase):
 
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones.
-            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
 
@@ -105,6 +109,12 @@ class TestParameterNoise(unittest.TestCase):
             config["explore"] = False
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
+            pol_sess = getattr(policy, "_sess", None)
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
+
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
 
@@ -114,7 +124,7 @@ class TestParameterNoise(unittest.TestCase):
 
             # Pseudo-start an episode and compare the weights before and after
             # (they should be the same).
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
 
             # Should be the same, as we don't do anything at the beginning of
@@ -139,7 +149,7 @@ class TestParameterNoise(unittest.TestCase):
             # Pseudo-end the episode and compare weights again.
             # Make sure they are the original ones (no noise permanently
             # applied throughout the episode).
-            policy.exploration.on_episode_end(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_episode_end = self._get_current_weight(policy, fw)
             check(initial_weights, weights_after_episode_end)
             # Noise should still be the same (re-sampling only happens at
@@ -173,7 +183,7 @@ class TestParameterNoise(unittest.TestCase):
             # the same action for the same input (parameter noise is
             # deterministic).
             policy = trainer.get_policy()
-            policy.exploration.on_episode_start(policy, tf_sess=policy._sess)
+            policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
             a_ = trainer.compute_action(obs)
             for _ in range(10):
                 a = trainer.compute_action(obs, explore=True)
@@ -187,13 +197,22 @@ class TestParameterNoise(unittest.TestCase):
         noise = policy.exploration.noise[0][0][0]
         if fw == "tf":
             noise = policy.get_session().run(noise)
+        elif fw == "torch":
+            noise = noise.detach().cpu().numpy()
         else:
             noise = noise.numpy()
         return noise
 
     def _get_current_weight(self, policy, fw):
         weights = policy.get_weights()
-        key = 0 if fw == "eager" else list(weights.keys())[0]
+        if fw == "torch":
+            # DQN model.
+            if "_hidden_layers.0._model.0.weight" in weights:
+                return weights["_hidden_layers.0._model.0.weight"][0][0]
+            # DDPG model.
+            else:
+                return weights["policy_model.action_0._model.0.weight"][0][0]
+        key = 0 if fw in ["tf2", "tfe"] else list(weights.keys())[0]
         return weights[key][0][0]
 
 

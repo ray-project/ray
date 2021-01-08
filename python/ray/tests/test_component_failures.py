@@ -1,19 +1,19 @@
 import os
-from signal import SIGKILL
+import signal
 import sys
 import time
+import numpy as np
 
 import pytest
 
 import ray
 from ray.test_utils import run_string_as_driver_nonblocking, SignalActor
 
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+
 
 # This test checks that when a worker dies in the middle of a get, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever(signal):
@@ -52,18 +52,16 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(1, x_id)
+    obj = np.ones(200 * 1024, dtype=np.uint8)
+    ray.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 # This test checks that when a driver dies in the middle of a get, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_driver_get(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
@@ -77,7 +75,7 @@ def test_dying_driver_get(ray_start_regular):
     driver = """
 import ray
 ray.init("{}")
-ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
+ray.get(ray.ObjectRef(ray.utils.hex_to_binary("{}")))
 """.format(address_info["redis_address"], x_id.hex())
 
     p = run_string_as_driver_nonblocking(driver)
@@ -95,18 +93,16 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(1, x_id)
+    obj = np.ones(200 * 1024, dtype=np.uint8)
+    ray.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 # This test checks that when a worker dies in the middle of a wait, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_worker_wait(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
@@ -123,8 +119,8 @@ def test_dying_worker_wait(ray_start_2_cpus):
     worker_pid = ray.get(get_pid.remote())
 
     @ray.remote
-    def block_in_wait(object_id_in_list):
-        ray.wait(object_id_in_list)
+    def block_in_wait(object_ref_in_list):
+        ray.wait(object_ref_in_list)
 
     # Have the worker wait in a wait call.
     block_in_wait.remote([x_id])
@@ -135,18 +131,16 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Create the object.
-    ray.worker.global_worker.put_object(1, x_id)
+    obj = np.ones(200 * 1024, dtype=np.uint8)
+    ray.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 # This test checks that when a driver dies in the middle of a wait, the plasma
 # store and raylet will not die.
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="Not working with new GCS API.")
 def test_dying_driver_wait(ray_start_regular):
     # Start the Ray processes.
     address_info = ray_start_regular
@@ -160,7 +154,7 @@ def test_dying_driver_wait(ray_start_regular):
     driver = """
 import ray
 ray.init("{}")
-ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
+ray.wait([ray.ObjectRef(ray.utils.hex_to_binary("{}"))])
 """.format(address_info["redis_address"], x_id.hex())
 
     p = run_string_as_driver_nonblocking(driver)
@@ -178,13 +172,13 @@ ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # wait can return.
-    ray.worker.global_worker.put_object(1, x_id)
+    obj = np.ones(200 * 1024, dtype=np.uint8)
+    ray.worker.global_worker.put_object(obj, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
-    assert ray.services.remaining_processes_alive()
+    assert ray._private.services.remaining_processes_alive()
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

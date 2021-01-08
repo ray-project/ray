@@ -4,6 +4,7 @@ import unittest
 import ray
 from ray.rllib import _register_all
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import register_env
 
 
@@ -28,7 +29,7 @@ class IgnoresWorkerFailure(unittest.TestCase):
     def do_test(self, alg, config, fn=None):
         fn = fn or self._do_test_fault_recover
         try:
-            ray.init(num_cpus=6)
+            ray.init(num_cpus=6, ignore_reinit_error=True)
             fn(alg, config)
         finally:
             ray.shutdown()
@@ -42,22 +43,24 @@ class IgnoresWorkerFailure(unittest.TestCase):
         config["num_workers"] = 2
         config["ignore_worker_failures"] = True
         config["env_config"] = {"bad_indices": [1]}
-        a = agent_cls(config=config, env="fault_env")
-        result = a.train()
-        self.assertTrue(result["num_healthy_workers"], 1)
-        a.stop()
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            a = agent_cls(config=config, env="fault_env")
+            result = a.train()
+            self.assertTrue(result["num_healthy_workers"], 1)
+            a.stop()
 
     def _do_test_fault_fatal(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
         agent_cls = get_agent_class(alg)
-
         # Test raises real error when out of workers
         config["num_workers"] = 2
         config["ignore_worker_failures"] = True
         config["env_config"] = {"bad_indices": [1, 2]}
-        a = agent_cls(config=config, env="fault_env")
-        self.assertRaises(Exception, lambda: a.train())
-        a.stop()
+
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            a = agent_cls(config=config, env="fault_env")
+            self.assertRaises(Exception, lambda: a.train())
+            a.stop()
 
     def test_fatal(self):
         # test the case where all workers fail

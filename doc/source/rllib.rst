@@ -1,3 +1,5 @@
+.. _rllib-index:
+
 RLlib: Scalable Reinforcement Learning
 ======================================
 
@@ -7,7 +9,7 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
-.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
+.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray/RLlib!
 
 RLlib in 60 seconds
 -------------------
@@ -21,7 +23,7 @@ RLlib has extra dependencies on top of ``ray``. First, you'll need to install ei
 
 .. code-block:: bash
 
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install 'ray[rllib]'
 
 Then, you can try out training in the following equivalent ways:
 
@@ -36,8 +38,8 @@ Then, you can try out training in the following equivalent ways:
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
   tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
-                                                       # "eager": True for eager execution,
-                                                       # "torch": True for PyTorch
+                                                       # "framework": "tfe"/"tf2" for eager,
+                                                       # "framework": "torch" for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
@@ -90,9 +92,9 @@ Policies each define a ``learn_on_batch()`` method that improves the policy give
 
 - Simple `policy gradient loss <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_tf_policy.py>`__
 - Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
-- Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_policy.py>`__
+- Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_torch_policy.py>`__
 
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging `policy optimizers <rllib-concepts.html#policy-optimization>`__ that implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
+RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging Ray `parallel iterators <iter.html>`__ to implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: a2c-arch.svg
 
@@ -108,14 +110,21 @@ Beyond environments defined in Python, RLlib supports batch training on `offline
 Customization
 ~~~~~~~~~~~~~
 
-RLlib provides ways to customize almost all aspects of training, including the `environment <rllib-env.html#configuring-environments>`__, `neural network model <rllib-models.html#tensorflow-models>`__, `action distribution <rllib-models.html#custom-action-distributions>`__, and `policy definitions <rllib-concepts.html#policies>`__:
+RLlib provides ways to customize almost all aspects of training, including
+`neural network models <rllib-models.html#tensorflow-models>`__,
+`action distributions <rllib-models.html#custom-action-distributions>`__,
+`policy definitions <rllib-concepts.html#policies>`__:
+the `environment <rllib-env.html#configuring-environments>`__,
+and the `sample collection process <rllib-sample-collection.html>`__
 
 .. image:: rllib-components.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 
 .. |tensorflow| image:: tensorflow.png
+    :class: inline-figure
     :width: 24
 
 .. |pytorch| image:: pytorch.png
+    :class: inline-figure
     :width: 24

@@ -1,8 +1,31 @@
-import logging
+"""
+Simple Q-Learning
+=================
 
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
+This module provides a basic implementation of the DQN algorithm without any
+optimizations.
+
+This file defines the distributed Trainer class for the Simple Q algorithm.
+See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
+"""
+
+import logging
+from typing import Optional, Type
+
 from ray.rllib.agents.dqn.dqn import DQNTrainer
+from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
+from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
+from ray.rllib.agents.trainer import with_common_config
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.execution.concurrency_ops import Concurrently
+from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
+from ray.rllib.execution.rollout_ops import ParallelRollouts
+from ray.rllib.execution.train_ops import TrainOneStep, UpdateTargetNetwork
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
 
@@ -72,16 +95,61 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config):
-    if config["use_pytorch"]:
-        from ray.rllib.agents.dqn.simple_q_torch_policy import \
-            SimpleQTorchPolicy
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with SimpleQTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
+    if config["framework"] == "torch":
         return SimpleQTorchPolicy
-    else:
-        return SimpleQTFPolicy
+
+
+def execution_plan(workers: WorkerSet,
+                   config: TrainerConfigDict) -> LocalIterator[dict]:
+    """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
+    local_replay_buffer = LocalReplayBuffer(
+        num_shards=1,
+        learning_starts=config["learning_starts"],
+        buffer_size=config["buffer_size"],
+        replay_batch_size=config["train_batch_size"],
+        replay_mode=config["multiagent"]["replay_mode"],
+        replay_sequence_length=config["replay_sequence_length"])
+
+    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+
+    # (1) Generate rollouts and store them in our local replay buffer.
+    store_op = rollouts.for_each(
+        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+
+    # (2) Read and train on experiences from the replay buffer.
+    replay_op = Replay(local_buffer=local_replay_buffer) \
+        .for_each(TrainOneStep(workers)) \
+        .for_each(UpdateTargetNetwork(
+            workers, config["target_network_update_freq"]))
+
+    # Alternate deterministically between (1) and (2).
+    train_op = Concurrently(
+        [store_op, replay_op], mode="round_robin", output_indexes=[1])
+
+    return StandardMetricsReporting(train_op, workers, config)
 
 
 SimpleQTrainer = DQNTrainer.with_updates(
     default_policy=SimpleQTFPolicy,
     get_policy_class=get_policy_class,
+    execution_plan=execution_plan,
     default_config=DEFAULT_CONFIG)

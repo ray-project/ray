@@ -14,9 +14,12 @@
 
 #include "ray/gcs/redis_client.h"
 
-#include <unistd.h>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
@@ -37,7 +40,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
@@ -63,7 +67,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     // Sleep for a little, and try again if not all Redis shard addresses have
     // been added yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
+    std::this_thread::sleep_for(std::chrono::milliseconds(
+        RayConfig::instance().redis_db_connect_wait_milliseconds()));
     num_attempts++;
   }
   RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
@@ -81,6 +86,8 @@ static void GetRedisShards(redisContext *context, std::vector<std::string> *addr
     int port;
     ss >> port;
     ports->emplace_back(port);
+    RAY_LOG(DEBUG) << "Received Redis shard address " << addr << ":" << port
+                   << " from head GCS.";
   }
   freeReplyObject(reply);
 }
@@ -138,7 +145,7 @@ Status RedisClient::Connect(std::vector<boost::asio::io_service *> io_services) 
   Attach();
 
   is_connected_ = true;
-  RAY_LOG(INFO) << "RedisClient connected.";
+  RAY_LOG(DEBUG) << "RedisClient connected.";
 
   return Status::OK();
 }
@@ -164,7 +171,7 @@ void RedisClient::Attach() {
 void RedisClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
-  RAY_LOG(INFO) << "RedisClient disconnected.";
+  RAY_LOG(DEBUG) << "RedisClient disconnected.";
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &shard_key) {

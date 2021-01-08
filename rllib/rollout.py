@@ -3,22 +3,24 @@
 import argparse
 import collections
 import copy
+import gym
+from gym import wrappers as gym_wrappers
 import json
 import os
 from pathlib import Path
-import pickle
 import shelve
 
-import gym
 import ray
+import ray.cloudpickle as cloudpickle
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
-from ray.rllib.evaluation.episode import _flatten_action
+from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.tune.utils import merge_dicts
-from ray.tune.registry import get_trainable_cls
+from ray.tune.registry import get_trainable_cls, _global_registry, ENV_CREATOR
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
@@ -32,8 +34,12 @@ Example Usage via executable:
 
 # Note: if you use any custom models or envs, register them here first, e.g.:
 #
+# from ray.rllib.examples.env.parametric_actions_cartpole import \
+#     ParametricActionsCartPole
+# from ray.rllib.examples.model.parametric_actions_model import \
+#     ParametricActionsModel
 # ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
-# register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
+# register_env("pa_cartpole", lambda _: ParametricActionsCartPole(10))
 
 
 class RolloutSaver:
@@ -113,7 +119,7 @@ class RolloutSaver:
             self._shelf.close()
         elif self._outfile and not self._use_shelve:
             # Dump everything as one big pickle:
-            pickle.dump(self._rollouts, open(self._outfile, "wb"))
+            cloudpickle.dump(self._rollouts, open(self._outfile, "wb"))
         if self._update_file:
             # Remove the temp progress file:
             self._get_tmp_progress_filename().unlink()
@@ -237,7 +243,6 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    config = {}
     # Load configuration from checkpoint file.
     config_dir = os.path.dirname(args.checkpoint)
     config_path = os.path.join(config_dir, "params.pkl")
@@ -251,20 +256,29 @@ def run(args, parser):
             raise ValueError(
                 "Could not find params.pkl in either the checkpoint dir or "
                 "its parent directory AND no config given on command line!")
+        else:
+            config = args.config
 
     # Load the config from pickled.
     else:
         with open(config_path, "rb") as f:
-            config = pickle.load(f)
+            config = cloudpickle.load(f)
 
     # Set num_workers to be at least 2.
     if "num_workers" in config:
         config["num_workers"] = min(2, config["num_workers"])
 
-    # Merge with `evaluation_config`.
-    evaluation_config = copy.deepcopy(config.get("evaluation_config", {}))
+    # Make sure worker 0 has an Env.
+    config["create_env_on_driver"] = True
+
+    # Merge with `evaluation_config` (first try from command line, then from
+    # pkl file).
+    evaluation_config = copy.deepcopy(
+        args.config.get("evaluation_config", config.get(
+            "evaluation_config", {})))
     config = merge_dicts(config, evaluation_config)
-    # Merge with command line `--config` settings.
+    # Merge with command line `--config` settings (if not already the same
+    # anyways).
     config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):
@@ -302,6 +316,7 @@ def run(args, parser):
             save_info=args.save_info) as saver:
         rollout(agent, args.env, num_steps, num_episodes, saver,
                 args.no_render, video_dir)
+    agent.stop()
 
 
 class DefaultMapping(collections.defaultdict):
@@ -351,7 +366,17 @@ def rollout(agent,
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
     else:
-        env = gym.make(env_name)
+        from gym import envs
+        if envs.registry.env_specs.get(agent.config["env"]):
+            # if environment is gym environment, load from gym
+            env = gym.make(agent.config["env"])
+        else:
+            # if environment registered ray environment, load from ray
+            env_creator = _global_registry.get(ENV_CREATOR,
+                                               agent.config["env"])
+            env_context = EnvContext(
+                agent.config["env_config"] or {}, worker_index=0)
+            env = env_creator(env_context)
         multiagent = False
         try:
             policy_map = {DEFAULT_POLICY_ID: agent.policy}
@@ -362,14 +387,14 @@ def rollout(agent,
         use_lstm = {DEFAULT_POLICY_ID: False}
 
     action_init = {
-        p: _flatten_action(m.action_space.sample())
+        p: flatten_to_single_ndarray(m.action_space.sample())
         for p, m in policy_map.items()
     }
 
     # If monitoring has been requested, manually wrap our environment with a
     # gym monitor, which is set to record every episode.
     if video_dir:
-        env = gym.wrappers.Monitor(
+        env = gym_wrappers.Monitor(
             env=env,
             directory=video_dir,
             video_callable=lambda x: True,
@@ -411,7 +436,7 @@ def rollout(agent,
                             prev_action=prev_actions[agent_id],
                             prev_reward=prev_rewards[agent_id],
                             policy_id=policy_id)
-                    a_action = _flatten_action(a_action)  # tuple actions
+                    a_action = flatten_to_single_ndarray(a_action)
                     action_dict[agent_id] = a_action
                     prev_actions[agent_id] = a_action
             action = action_dict
@@ -426,7 +451,8 @@ def rollout(agent,
 
             if multiagent:
                 done = done["__all__"]
-                reward_total += sum(reward.values())
+                reward_total += sum(
+                    r for r in reward.values() if r is not None)
             else:
                 reward_total += reward
             if not no_render:

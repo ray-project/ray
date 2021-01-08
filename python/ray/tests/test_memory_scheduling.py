@@ -34,7 +34,7 @@ def train_oom(config, reporter):
 class TestMemoryScheduling(unittest.TestCase):
     def testMemoryRequest(self):
         try:
-            ray.init(num_cpus=1, memory=200 * MB)
+            ray.init(num_cpus=1, _memory=200 * MB)
             # fits first 2
             a = Actor.remote()
             b = Actor.remote()
@@ -68,26 +68,13 @@ class TestMemoryScheduling(unittest.TestCase):
         finally:
             ray.shutdown()
 
-    def testTuneDriverHeapLimit(self):
-        try:
-            _register_all()
-            result = tune.run(
-                "PG",
-                stop={"timesteps_total": 10000},
-                config={
-                    "env": "CartPole-v0",
-                    "memory": 100 * 1024 * 1024,  # too little
-                },
-                raise_on_failed_trial=False)
-            self.assertEqual(result.trials[0].status, "ERROR")
-            self.assertTrue(
-                "RayOutOfMemoryError: Heap memory usage for ray_PG_" in
-                result.trials[0].error_msg)
-        finally:
-            ray.shutdown()
-
     def testTuneDriverStoreLimit(self):
         try:
+            ray.init(
+                num_cpus=4,
+                _memory=100 * MB,
+                object_store_memory=100 * MB,
+            )
             _register_all()
             self.assertRaisesRegexp(
                 ray.tune.error.TuneError,
@@ -99,31 +86,18 @@ class TestMemoryScheduling(unittest.TestCase):
                         "env": "CartPole-v0",
                         # too large
                         "object_store_memory": 10000 * 1024 * 1024,
+                        "framework": "tf",
                     }))
-        finally:
-            ray.shutdown()
-
-    def testTuneWorkerHeapLimit(self):
-        try:
-            _register_all()
-            result = tune.run(
-                "PG",
-                stop={"timesteps_total": 10000},
-                config={
-                    "env": "CartPole-v0",
-                    "num_workers": 1,
-                    "memory_per_worker": 100 * 1024 * 1024,  # too little
-                },
-                raise_on_failed_trial=False)
-            self.assertEqual(result.trials[0].status, "ERROR")
-            self.assertTrue(
-                "RayOutOfMemoryError: Heap memory usage for ray_Rollout" in
-                result.trials[0].error_msg)
         finally:
             ray.shutdown()
 
     def testTuneWorkerStoreLimit(self):
         try:
+            ray.init(
+                num_cpus=4,
+                _memory=100 * MB,
+                object_store_memory=100 * MB,
+            )
             _register_all()
             self.assertRaisesRegexp(
                 ray.tune.error.TuneError,
@@ -134,12 +108,14 @@ class TestMemoryScheduling(unittest.TestCase):
                     "num_workers": 1,
                     # too large
                     "object_store_memory_per_worker": 10000 * 1024 * 1024,
+                    "framework": "tf",
                 }))
         finally:
             ray.shutdown()
 
     def testTuneObjectLimitApplied(self):
         try:
+            ray.init(num_cpus=2, object_store_memory=500 * MB)
             result = tune.run(
                 train_oom,
                 resources_per_trial={"object_store_memory": 150 * 1024 * 1024},

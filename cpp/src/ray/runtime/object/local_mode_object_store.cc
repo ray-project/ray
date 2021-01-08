@@ -1,12 +1,14 @@
 
+#include "local_mode_object_store.h"
+
+#include <ray/api/ray_exception.h>
+
 #include <algorithm>
 #include <chrono>
 #include <list>
 #include <thread>
 
-#include <ray/api/ray_exception.h>
 #include "../abstract_ray_runtime.h"
-#include "local_mode_object_store.h"
 
 namespace ray {
 namespace api {
@@ -16,8 +18,13 @@ LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_t
       std::unique_ptr<::ray::CoreWorkerMemoryStore>(new ::ray::CoreWorkerMemoryStore());
 }
 
-void LocalModeObjectStore::PutRaw(const ObjectID &object_id,
-                                  std::shared_ptr<msgpack::sbuffer> data) {
+void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
+                                  ObjectID *object_id) {
+  PutRaw(data, (const ObjectID)(*object_id));
+}
+
+void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,
+                                  const ObjectID &object_id) {
   auto buffer = std::make_shared<::ray::LocalMemoryBuffer>(
       reinterpret_cast<uint8_t *>(data->data()), data->size(), true);
   auto status = memory_store_->Put(

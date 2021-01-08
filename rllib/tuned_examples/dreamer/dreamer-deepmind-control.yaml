@@ -1,0 +1,26 @@
+dmc-dreamer:
+    run: DREAMER
+    env:
+        grid_search:
+            - ray.rllib.examples.env.dm_control_suite.walker_walk
+            - ray.rllib.examples.env.dm_control_suite.cheetah_run
+            - ray.rllib.examples.env.dm_control_suite.hopper_hop
+    stop:
+      timesteps_total: 1000000
+    config:
+        framework: torch
+        td_model_lr: 0.0006
+        actor_lr: 0.00008
+        critic_lr: 0.00008
+        discount: 0.99
+        lambda: 0.95
+        dreamer_train_iters: 100
+        horizon: 1000
+        batch_size: 50
+        batch_length: 50
+        imagine_horizon: 15
+        free_nats: 3.0
+        batch_mode: complete_episodes
+        num_gpus: 1
+        num_workers: 0
+        clip_actions: False

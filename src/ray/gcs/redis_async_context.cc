@@ -50,7 +50,11 @@ void RedisAsyncContext::RedisAsyncHandleRead() {
   // This function will execute the callbacks which are registered by
   // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
   std::lock_guard<std::mutex> lock(mutex_);
-
+  // TODO(mehrdadn): Remove this when the bug is resolved.
+  // Somewhat consistently reproducible via
+  // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
+  // with -c opt on Windows.
+  RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
   redisAsyncHandleRead(redis_async_context_);
 }
 
@@ -71,7 +75,7 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
     // `redisvAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
     if (!redis_async_context_) {
-      return Status::NotImplemented("...");
+      return Status::Disconnected("Redis is disconnected");
     }
     ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
   }
@@ -93,6 +97,9 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privd
     // `redisAsyncCommandArgv` will mutate `redis_async_context_`, use a lock to protect
     // it.
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!redis_async_context_) {
+      return Status::Disconnected("Redis is disconnected");
+    }
     ret_code =
         redisAsyncCommandArgv(redis_async_context_, fn, privdata, argc, argv, argvlen);
   }

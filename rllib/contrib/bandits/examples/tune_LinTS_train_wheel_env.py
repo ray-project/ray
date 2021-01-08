@@ -15,7 +15,7 @@ from ray.rllib.contrib.bandits.envs import WheelBanditEnv
 
 def plot_model_weights(means, covs, ax):
     fmts = ["bo", "ro", "yx", "k+", "gx"]
-    labels = [f"arm{i}" for i in range(5)]
+    labels = ["arm{}".format(i) for i in range(5)]
 
     ax.set_title("Weights distributions of arms")
 

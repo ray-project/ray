@@ -2,7 +2,8 @@ import numpy as np
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch, get_activation_fn
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -45,15 +46,26 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of DDPGTorchModel.
         """
-        TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
-                              model_config, name)
         nn.Module.__init__(self)
+        super(DDPGTorchModel, self).__init__(obs_space, action_space,
+                                             num_outputs, model_config, name)
 
-        self.action_dim = np.product(action_space.shape)
+        self.bounded = np.logical_and(self.action_space.bounded_above,
+                                      self.action_space.bounded_below).any()
+        low_action = nn.Parameter(
+            torch.from_numpy(self.action_space.low).float())
+        low_action.requires_grad = False
+        self.register_parameter("low_action", low_action)
+        action_range = nn.Parameter(
+            torch.from_numpy(self.action_space.high -
+                             self.action_space.low).float())
+        action_range.requires_grad = False
+        self.register_parameter("action_range", action_range)
+        self.action_dim = np.product(self.action_space.shape)
 
         # Build the policy network.
         self.policy_model = nn.Sequential()
-        ins = obs_space.shape[-1]
+        ins = num_outputs
         self.obs_ins = ins
         activation = get_activation_fn(
             actor_hidden_activation, framework="torch")
@@ -78,6 +90,19 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
                 self.action_dim,
                 initializer=torch.nn.init.xavier_uniform_,
                 activation_fn=None))
+
+        # Use sigmoid to scale to [0,1], but also double magnitude of input to
+        # emulate behaviour of tanh activation used in DDPG and TD3 papers.
+        # After sigmoid squashing, re-scale to env action space bounds.
+        class _Lambda(nn.Module):
+            def forward(self_, x):
+                sigmoid_out = nn.Sigmoid()(2.0 * x)
+                squashed = self.action_range * sigmoid_out + self.low_action
+                return squashed
+
+        # Only squash if we have bounded actions.
+        if self.bounded:
+            self.policy_model.add_module("action_out_squashed", _Lambda())
 
         # Build the Q-net(s), including target Q-net(s).
         def build_q_net(name_):
@@ -117,7 +142,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         This implements Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Tensor): Actions to return the Q-values for.
@@ -133,7 +158,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         This implements the twin Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Optional[Tensor]): Actions to return the Q-values for.
@@ -150,7 +175,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         This outputs the support for pi(s). For continuous action spaces, this
         is the action directly. For discrete, is is the mean / std dev.
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
 

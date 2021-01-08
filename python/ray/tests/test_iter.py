@@ -6,6 +6,33 @@ import pytest
 import ray
 from ray.util.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker, LocalIterator
+from ray.test_utils import Semaphore
+
+
+def test_select_shards(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], num_shards=4)
+    it1 = it.select_shards([0, 2])
+    it2 = it.select_shards([1, 3])
+    assert it1.take(4) == [1, 3]
+    assert it2.take(4) == [2, 4]
+
+
+def test_transform(ray_start_regular_shared):
+    def f(it):
+        for item in it:
+            yield item * 2
+
+    def g(it):
+        for item in it:
+            if item >= 2:
+                yield item
+
+    it = from_range(4).transform(f)
+    assert repr(it) == "ParallelIterator[from_range[4, shards=2].transform()]"
+    assert list(it.gather_sync()) == [0, 4, 2, 6]
+
+    it = from_range(4)
+    assert list(it.gather_sync().transform(g)) == [2, 3]
 
 
 def test_metrics(ray_start_regular_shared):
@@ -20,17 +47,9 @@ def test_metrics(ray_start_regular_shared):
     it = it.gather_sync().for_each(f)
     it2 = it2.gather_sync().for_each(f)
 
-    # Context cannot be accessed outside the iterator.
-    with pytest.raises(ValueError):
-        LocalIterator.get_metrics()
-
     # Tests iterators have isolated contexts.
     assert it.take(4) == [1, 3, 6, 10]
     assert it2.take(4) == [1, 3, 6, 10]
-
-    # Context cannot be accessed outside the iterator.
-    with pytest.raises(ValueError):
-        LocalIterator.get_metrics()
 
 
 def test_zip_with_source_actor(ray_start_regular_shared):
@@ -156,6 +175,84 @@ def test_for_each(ray_start_regular_shared):
     it = from_range(4).for_each(lambda x: x * 2)
     assert repr(it) == "ParallelIterator[from_range[4, shards=2].for_each()]"
     assert list(it.gather_sync()) == [0, 4, 2, 6]
+
+
+def test_for_each_concur_async(ray_start_regular_shared):
+    main_wait = Semaphore.remote(value=0)
+    test_wait = Semaphore.remote(value=0)
+
+    def task(x):
+        i, main_wait, test_wait = x
+        ray.get(main_wait.release.remote())
+        ray.get(test_wait.acquire.remote())
+        return i + 10
+
+    @ray.remote(num_cpus=0.01)
+    def to_list(it):
+        return list(it)
+
+    it = from_items(
+        [(i, main_wait, test_wait) for i in range(8)], num_shards=2)
+    it = it.for_each(task, max_concurrency=2, resources={"num_cpus": 0.01})
+
+    list_promise = to_list.remote(it.gather_async())
+
+    for i in range(4):
+        assert i in [0, 1, 2, 3]
+        ray.get(main_wait.acquire.remote())
+
+    # There should be exactly 4 tasks executing at this point.
+    assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
+
+    # When we finish one task, exactly one more should start.
+    ray.get(test_wait.release.remote())
+    ray.get(main_wait.acquire.remote())
+    assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
+
+    # Finish everything and make sure the output matches a regular iterator.
+    for i in range(7):
+        ray.get(test_wait.release.remote())
+
+    assert repr(
+        it) == "ParallelIterator[from_items[tuple, 8, shards=2].for_each()]"
+    result_list = ray.get(list_promise)
+    assert set(result_list) == set(range(10, 18))
+
+
+def test_for_each_concur_sync(ray_start_regular_shared):
+    main_wait = Semaphore.remote(value=0)
+    test_wait = Semaphore.remote(value=0)
+
+    def task(x):
+        i, main_wait, test_wait = x
+        ray.get(main_wait.release.remote())
+        ray.get(test_wait.acquire.remote())
+        return i + 10
+
+    @ray.remote(num_cpus=0.01)
+    def to_list(it):
+        return list(it)
+
+    it = from_items(
+        [(i, main_wait, test_wait) for i in range(8)], num_shards=2)
+    it = it.for_each(task, max_concurrency=2, resources={"num_cpus": 0.01})
+
+    list_promise = to_list.remote(it.gather_sync())
+
+    for i in range(4):
+        assert i in [0, 1, 2, 3]
+        ray.get(main_wait.acquire.remote())
+
+    # There should be exactly 4 tasks executing at this point.
+    assert ray.get(main_wait.locked.remote()) is True, "Too much parallelism"
+
+    for i in range(8):
+        ray.get(test_wait.release.remote())
+
+    assert repr(
+        it) == "ParallelIterator[from_items[tuple, 8, shards=2].for_each()]"
+    result_list = ray.get(list_promise)
+    assert set(result_list) == set(range(10, 18))
 
 
 def test_combine(ray_start_regular_shared):
@@ -290,10 +387,56 @@ def test_gather_async(ray_start_regular_shared):
     assert sorted(it) == [0, 1, 2, 3]
 
 
-def test_gather_async_queue(ray_start_regular_shared):
+def test_gather_async_optimized(ray_start_regular_shared):
     it = from_range(100)
-    it = it.gather_async(async_queue_depth=4)
+    it = it.gather_async(batch_ms=100, num_async=4)
     assert sorted(it) == list(range(100))
+
+
+def test_get_shard_optimized(ray_start_regular_shared):
+    it = from_range(6, num_shards=3)
+    shard1 = it.get_shard(shard_index=0, batch_ms=25, num_async=2)
+    shard2 = it.get_shard(shard_index=1, batch_ms=15, num_async=3)
+    shard3 = it.get_shard(shard_index=2, batch_ms=5, num_async=4)
+    assert list(shard1) == [0, 1]
+    assert list(shard2) == [2, 3]
+    assert list(shard3) == [4, 5]
+
+
+# Tested on 5/13/20
+# Run on 2019 Macbook Pro with 8 cores, 16 threads
+# 14.52 sec
+# 14.64 sec
+# 0.935 sec
+# 0.515 sec
+"""
+def test_gather_async_optimized_benchmark(ray_start_regular_shared):
+    import numpy as np
+    import tensorflow as tf
+    train, _ = tf.keras.datasets.fashion_mnist.load_data()
+    images, labels = train
+    num_bytes = images.nbytes / 1e6
+    items = list(images)
+    it = from_items(items, num_shards=4)
+    it = it.for_each(lambda img: img/255)
+    #local_it = it.gather_async(batch_ms=0, num_async=1)
+    #local_it = it.gather_async(batch_ms=0, num_async=3)
+    #local_it = it.gather_async(batch_ms=10, num_async=1)
+    #local_it = it.gather_async(batch_ms=10, num_async=3)
+
+    # dummy iterations
+    for i in range(20):
+        record = next(local_it)
+
+    start_time = time.time()
+    #print(start_time)
+    count = 0
+    for record in local_it:
+        count += 1
+    assert count == len(items) - 20
+    end_time = time.time() - start_time
+    print(end_time)
+"""
 
 
 def test_batch_across_shards(ray_start_regular_shared):

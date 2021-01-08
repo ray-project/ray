@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_COMMON_RAY_OBJECT_H
-#define RAY_COMMON_RAY_OBJECT_H
+#pragma once
 
 #include "absl/types/optional.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -102,5 +101,3 @@ class RayObject {
 };
 
 }  // namespace ray
-
-#endif  // RAY_COMMON_RAY_OBJECT_H

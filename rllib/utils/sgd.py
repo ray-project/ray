@@ -13,12 +13,12 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 logger = logging.getLogger(__name__)
 
 
-def averaged(kv):
+def averaged(kv, axis=None):
     """Average the value lists of a dictionary.
 
     For non-scalar values, we simply pick the first value.
 
-    Arguments:
+    Args:
         kv (dict): dictionary with values that are lists of floats.
 
     Returns:
@@ -27,7 +27,7 @@ def averaged(kv):
     out = {}
     for k, v in kv.items():
         if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v)
+            out[k] = np.mean(v, axis=axis)
         else:
             out[k] = v[0]
     return out
@@ -36,7 +36,7 @@ def averaged(kv):
 def standardized(array):
     """Normalize the values in an array.
 
-    Arguments:
+    Args:
         array (np.ndarray): Array of values to normalize.
 
     Returns:
@@ -48,7 +48,7 @@ def standardized(array):
 def minibatches(samples, sgd_minibatch_size):
     """Return a generator yielding minibatches from a sample batch.
 
-    Arguments:
+    Args:
         samples (SampleBatch): batch of samples to split up.
         sgd_minibatch_size (int): size of minibatches to return.
 
@@ -63,17 +63,36 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    if "state_in_0" in samples.data:
+    # Replace with `if samples.seq_lens` check.
+    if "state_in_0" in samples.data or "state_out_0" in samples.data:
         if log_once("not_shuffling_rnn_data_in_simple_mode"):
-            logger.warning("Not shuffling RNN data for SGD in simple mode")
+            logger.warning("Not time-shuffling RNN data for SGD.")
     else:
         samples.shuffle()
 
     i = 0
     slices = []
-    while i < samples.count:
-        slices.append((i, i + sgd_minibatch_size))
-        i += sgd_minibatch_size
+    if samples.seq_lens is not None and len(samples.seq_lens) > 0:
+        start_pos = 0
+        minibatch_size = 0
+        idx = 0
+        while idx < len(samples.seq_lens):
+            seq_len = samples.seq_lens[idx]
+            minibatch_size += seq_len
+            # Complete minibatch -> Append to slices.
+            if minibatch_size >= sgd_minibatch_size:
+                slices.append((start_pos, start_pos + sgd_minibatch_size))
+                start_pos += sgd_minibatch_size
+                if minibatch_size > sgd_minibatch_size:
+                    overhead = minibatch_size - sgd_minibatch_size
+                    start_pos -= (seq_len - overhead)
+                    idx -= 1
+                minibatch_size = 0
+            idx += 1
+    else:
+        while i < samples.count:
+            slices.append((i, i + sgd_minibatch_size))
+            i += sgd_minibatch_size
     random.shuffle(slices)
 
     for i, j in slices:
@@ -84,7 +103,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                      sgd_minibatch_size, standardize_fields):
     """Execute minibatch SGD.
 
-    Arguments:
+    Args:
         samples (SampleBatch): batch of samples to optimize.
         policies (dict): dictionary of policies to optimize.
         local_worker (RolloutWorker): master rollout worker instance.
@@ -100,7 +119,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
     fetches = {}
-    for policy_id, policy in policies.items():
+    for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
 

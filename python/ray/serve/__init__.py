@@ -1,11 +1,27 @@
-from ray.serve.backend_config import BackendConfig
-from ray.serve.policy import RoutePolicy
 from ray.serve.api import (
-    init, create_backend, create_endpoint, link, split, get_handle, stat,
-    set_backend_config, get_backend_config, accept_batch, route)  # noqa: E402
+    accept_batch,
+    Client,
+    connect,
+    get_current_backend_tag,
+    get_current_replica_tag,
+    start,
+)
+from ray.serve.config import BackendConfig, HTTPOptions
+from ray.serve.env import CondaEnv
+
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
+import ray.worker
+ray.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
-    "init", "create_backend", "create_endpoint", "link", "split", "get_handle",
-    "stat", "set_backend_config", "get_backend_config", "BackendConfig",
-    "RoutePolicy", "accept_batch", "route"
+    "accept_batch",
+    "BackendConfig",
+    "CondaEnv",
+    "connect",
+    "Client",
+    "get_current_backend_tag",
+    "get_current_replica_tag",
+    "start",
+    "HTTPOptions",
 ]

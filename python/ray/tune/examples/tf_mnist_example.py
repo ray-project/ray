@@ -40,7 +40,7 @@ class MyModel(Model):
 
 
 class MNISTTrainable(tune.Trainable):
-    def _setup(self, config):
+    def setup(self, config):
         # IMPORTANT: See the above note.
         import tensorflow as tf
         (x_train, y_train), (x_test, y_test) = load_data()
@@ -90,7 +90,7 @@ class MNISTTrainable(tune.Trainable):
         self.tf_train_step = train_step
         self.tf_test_step = test_step
 
-    def _train(self):
+    def step(self):
         self.train_loss.reset_states()
         self.train_accuracy.reset_states()
         self.test_loss.reset_states()
@@ -116,8 +116,12 @@ class MNISTTrainable(tune.Trainable):
 
 if __name__ == "__main__":
     load_data()  # we download data on the driver to avoid race conditions.
-    tune.run(
+    analysis = tune.run(
         MNISTTrainable,
+        metric="test_loss",
+        mode="min",
         stop={"training_iteration": 5 if args.smoke_test else 50},
         verbose=1,
         config={"hiddens": tune.grid_search([32, 64, 128])})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

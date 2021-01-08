@@ -1,189 +1,31 @@
 import gym
+import numpy as np
 import random
 import unittest
 
 import ray
-from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
-from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
-                                  AsyncGradientsOptimizer)
-from ray.rllib.tests.test_rollout_worker import (MockEnv, MockEnv2, MockPolicy)
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.policy.tests.test_policy import TestPolicy
-from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.tune.registry import register_env
-
-
-def one_hot(i, n):
-    out = [0.0] * n
-    out[i] = 1.0
-    return out
-
-
-class BasicMultiAgent(MultiAgentEnv):
-    """Env of N independent agents, each of which exits after 25 steps."""
-
-    def __init__(self, num):
-        self.agents = [MockEnv(25) for _ in range(num)]
-        self.dones = set()
-        self.observation_space = gym.spaces.Discrete(2)
-        self.action_space = gym.spaces.Discrete(2)
-        self.resetted = False
-
-    def reset(self):
-        self.resetted = True
-        self.dones = set()
-        return {i: a.reset() for i, a in enumerate(self.agents)}
-
-    def step(self, action_dict):
-        obs, rew, done, info = {}, {}, {}, {}
-        for i, action in action_dict.items():
-            obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-            if done[i]:
-                self.dones.add(i)
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
-
-
-class EarlyDoneMultiAgent(MultiAgentEnv):
-    """Env for testing when the env terminates (after agent 0 does)."""
-
-    def __init__(self):
-        self.agents = [MockEnv(3), MockEnv(5)]
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        self.observation_space = gym.spaces.Discrete(10)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self):
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        for i, a in enumerate(self.agents):
-            self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
-            self.last_done[i] = False
-            self.last_info[i] = {}
-        obs_dict = {self.i: self.last_obs[self.i]}
-        self.i = (self.i + 1) % len(self.agents)
-        return obs_dict
-
-    def step(self, action_dict):
-        assert len(self.dones) != len(self.agents)
-        for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
-        obs = {self.i: self.last_obs[self.i]}
-        rew = {self.i: self.last_rew[self.i]}
-        done = {self.i: self.last_done[self.i]}
-        info = {self.i: self.last_info[self.i]}
-        if done[self.i]:
-            rew[self.i] = 0
-            self.dones.add(self.i)
-        self.i = (self.i + 1) % len(self.agents)
-        done["__all__"] = len(self.dones) == len(self.agents) - 1
-        return obs, rew, done, info
-
-
-class RoundRobinMultiAgent(MultiAgentEnv):
-    """Env of N independent agents, each of which exits after 5 steps.
-
-    On each step() of the env, only one agent takes an action."""
-
-    def __init__(self, num, increment_obs=False):
-        if increment_obs:
-            # Observations are 0, 1, 2, 3... etc. as time advances
-            self.agents = [MockEnv2(5) for _ in range(num)]
-        else:
-            # Observations are all zeros
-            self.agents = [MockEnv(5) for _ in range(num)]
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        self.num = num
-        self.observation_space = gym.spaces.Discrete(10)
-        self.action_space = gym.spaces.Discrete(2)
-
-    def reset(self):
-        self.dones = set()
-        self.last_obs = {}
-        self.last_rew = {}
-        self.last_done = {}
-        self.last_info = {}
-        self.i = 0
-        for i, a in enumerate(self.agents):
-            self.last_obs[i] = a.reset()
-            self.last_rew[i] = None
-            self.last_done[i] = False
-            self.last_info[i] = {}
-        obs_dict = {self.i: self.last_obs[self.i]}
-        self.i = (self.i + 1) % self.num
-        return obs_dict
-
-    def step(self, action_dict):
-        assert len(self.dones) != len(self.agents)
-        for i, action in action_dict.items():
-            (self.last_obs[i], self.last_rew[i], self.last_done[i],
-             self.last_info[i]) = self.agents[i].step(action)
-        obs = {self.i: self.last_obs[self.i]}
-        rew = {self.i: self.last_rew[self.i]}
-        done = {self.i: self.last_done[self.i]}
-        info = {self.i: self.last_info[self.i]}
-        if done[self.i]:
-            rew[self.i] = 0
-            self.dones.add(self.i)
-        self.i = (self.i + 1) % self.num
-        done["__all__"] = len(self.dones) == len(self.agents)
-        return obs, rew, done, info
-
-
-def make_multiagent(env_name):
-    class MultiEnv(MultiAgentEnv):
-        def __init__(self, num):
-            self.agents = [gym.make(env_name) for _ in range(num)]
-            self.dones = set()
-            self.observation_space = self.agents[0].observation_space
-            self.action_space = self.agents[0].action_space
-
-        def reset(self):
-            self.dones = set()
-            return {i: a.reset() for i, a in enumerate(self.agents)}
-
-        def step(self, action_dict):
-            obs, rew, done, info = {}, {}, {}, {}
-            for i, action in action_dict.items():
-                obs[i], rew[i], done[i], info[i] = self.agents[i].step(action)
-                if done[i]:
-                    self.dones.add(i)
-            done["__all__"] = len(self.dones) == len(self.agents)
-            return obs, rew, done, info
-
-    return MultiEnv
-
-
-MultiCartpole = make_multiagent("CartPole-v0")
-MultiMountainCar = make_multiagent("MountainCarContinuous-v0")
+from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
+from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.rollout_worker import get_global_worker
+from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
+    BasicMultiAgent, EarlyDoneMultiAgent, RoundRobinMultiAgent
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
+from ray.rllib.env.base_env import _MultiAgentEnvToBaseEnv
+from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.test_utils import check
 
 
 class TestMultiAgentEnv(unittest.TestCase):
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         ray.init(num_cpus=4)
 
-    def tearDown(self) -> None:
+    @classmethod
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     def test_basic_mock(self):
@@ -331,7 +173,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -351,7 +193,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -370,7 +212,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -386,7 +228,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: BasicMultiAgent(5),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -401,7 +243,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(2)
         ev = RolloutWorker(
             env_creator=lambda _: EarlyDoneMultiAgent(),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
                 "p1": (MockPolicy, obs_space, act_space, {}),
             },
@@ -417,7 +259,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = gym.spaces.Discrete(10)
         ev = RolloutWorker(
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
-            policy={
+            policy_spec={
                 "p0": (MockPolicy, obs_space, act_space, {}),
             },
             policy_mapping_fn=lambda agent_id: "p0",
@@ -427,20 +269,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         # since we round robin introduce agents into the env, some of the env
         # steps don't count as proper transitions
         self.assertEqual(batch.policy_batches["p0"].count, 42)
-        self.assertEqual(batch.policy_batches["p0"]["obs"].tolist()[:10], [
-            one_hot(0, 10),
-            one_hot(1, 10),
-            one_hot(2, 10),
-            one_hot(3, 10),
-            one_hot(4, 10),
-        ] * 2)
-        self.assertEqual(batch.policy_batches["p0"]["new_obs"].tolist()[:10], [
-            one_hot(1, 10),
-            one_hot(2, 10),
-            one_hot(3, 10),
-            one_hot(4, 10),
-            one_hot(5, 10),
-        ] * 2)
+        check(batch.policy_batches["p0"]["obs"][:10],
+              one_hot(np.array([0, 1, 2, 3, 4] * 2), 10))
+        check(batch.policy_batches["p0"]["new_obs"][:10],
+              one_hot(np.array([1, 2, 3, 4, 5] * 2), 10))
         self.assertEqual(batch.policy_batches["p0"]["rewards"].tolist()[:10],
                          [100, 100, 100, 100, 0] * 2)
         self.assertEqual(batch.policy_batches["p0"]["dones"].tolist()[:10],
@@ -451,7 +283,7 @@ class TestMultiAgentEnv(unittest.TestCase):
     def test_custom_rnn_state_values(self):
         h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
 
-        class StatefulPolicy(TestPolicy):
+        class StatefulPolicy(RandomPolicy):
             def compute_actions(self,
                                 obs_batch,
                                 state_batches=None,
@@ -468,7 +300,7 @@ class TestMultiAgentEnv(unittest.TestCase):
 
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
-            policy=StatefulPolicy,
+            policy_spec=StatefulPolicy,
             rollout_fragment_length=5)
         batch = ev.sample()
         self.assertEqual(batch.count, 5)
@@ -478,32 +310,45 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch["state_out_0"][1], h)
 
     def test_returning_model_based_rollouts_data(self):
-        class ModelBasedPolicy(PGTFPolicy):
-            def compute_actions(self,
-                                obs_batch,
-                                state_batches,
-                                prev_action_batch=None,
-                                prev_reward_batch=None,
-                                episodes=None,
-                                **kwargs):
-                # Pretend we did a model-based rollout and want to return
-                # the extra trajectory.
-                builder = episodes[0].new_batch_builder()
-                rollout_id = random.randint(0, 10000)
-                for t in range(5):
-                    builder.add_values(
-                        agent_id="extra_0",
-                        policy_id="p1",  # use p1 so we can easily check it
-                        t=t,
-                        eps_id=rollout_id,  # new id for each rollout
-                        obs=obs_batch[0],
-                        actions=0,
-                        rewards=0,
-                        dones=t == 4,
-                        infos={},
-                        new_obs=obs_batch[0])
-                batch = builder.build_and_reset(episode=None)
-                episodes[0].add_extra_batch(batch)
+        class ModelBasedPolicy(DQNTFPolicy):
+            def compute_actions_from_input_dict(self,
+                                                input_dict,
+                                                explore=None,
+                                                timestep=None,
+                                                episodes=None,
+                                                **kwargs):
+                obs_batch = input_dict["obs"]
+                # In policy loss initialization phase, no episodes are passed
+                # in.
+                if episodes is not None:
+                    # Pretend we did a model-based rollout and want to return
+                    # the extra trajectory.
+                    env_id = episodes[0].env_id
+                    fake_eps = MultiAgentEpisode(
+                        episodes[0]._policies, episodes[0]._policy_mapping_fn,
+                        lambda: None, lambda x: None, env_id)
+                    builder = get_global_worker().sampler.sample_collector
+                    agent_id = "extra_0"
+                    policy_id = "p1"  # use p1 so we can easily check it
+                    builder.add_init_obs(fake_eps, agent_id, env_id, policy_id,
+                                         -1, obs_batch[0])
+                    for t in range(4):
+                        builder.add_action_reward_next_obs(
+                            episode_id=fake_eps.episode_id,
+                            agent_id=agent_id,
+                            env_id=env_id,
+                            policy_id=policy_id,
+                            agent_done=t == 3,
+                            values=dict(
+                                t=t,
+                                actions=0,
+                                rewards=0,
+                                dones=t == 3,
+                                infos={},
+                                new_obs=obs_batch[0]))
+                    batch = builder.postprocess_episode(
+                        episode=fake_eps, build=True)
+                    episodes[0].add_extra_batch(batch)
 
                 # Just return zeros for actions
                 return [0] * len(obs_batch), [], {}
@@ -512,23 +357,34 @@ class TestMultiAgentEnv(unittest.TestCase):
         obs_space = single_env.observation_space
         act_space = single_env.action_space
         ev = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(2),
-            policy={
+            env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
+            policy_spec={
                 "p0": (ModelBasedPolicy, obs_space, act_space, {}),
                 "p1": (ModelBasedPolicy, obs_space, act_space, {}),
             },
+            policy_config={"_use_trajectory_view_api": True},
             policy_mapping_fn=lambda agent_id: "p0",
             rollout_fragment_length=5)
         batch = ev.sample()
+        # 5 environment steps (rollout_fragment_length).
         self.assertEqual(batch.count, 5)
+        # 10 agent steps for p0: 2 agents, both using p0 as their policy.
         self.assertEqual(batch.policy_batches["p0"].count, 10)
-        self.assertEqual(batch.policy_batches["p1"].count, 25)
+        # 20 agent steps for p1: Each time both(!) agents takes 1 step,
+        # p1 takes 4: 5 (rollout-fragment length) * 4 = 20
+        self.assertEqual(batch.policy_batches["p1"].count, 20)
 
-    def test_train_multi_cartpole_single_policy(self):
+    def test_train_multi_agent_cartpole_single_policy(self):
         n = 10
-        register_env("multi_cartpole", lambda _: MultiCartpole(n))
-        pg = PGTrainer(env="multi_cartpole", config={"num_workers": 0})
-        for i in range(100):
+        register_env("multi_agent_cartpole",
+                     lambda _: MultiAgentCartPole({"num_agents": n}))
+        pg = PGTrainer(
+            env="multi_agent_cartpole",
+            config={
+                "num_workers": 0,
+                "framework": "tf",
+            })
+        for i in range(50):
             result = pg.train()
             print("Iteration {}, reward {}, timesteps {}".format(
                 i, result["episode_reward_mean"], result["timesteps_total"]))
@@ -536,9 +392,10 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def test_train_multi_cartpole_multi_policy(self):
+    def test_train_multi_agent_cartpole_multi_policy(self):
         n = 10
-        register_env("multi_cartpole", lambda _: MultiCartpole(n))
+        register_env("multi_agent_cartpole",
+                     lambda _: MultiAgentCartPole({"num_agents": n}))
         single_env = gym.make("CartPole-v0")
 
         def gen_policy():
@@ -551,7 +408,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             return (None, obs_space, act_space, config)
 
         pg = PGTrainer(
-            env="multi_cartpole",
+            env="multi_agent_cartpole",
             config={
                 "num_workers": 0,
                 "multiagent": {
@@ -561,6 +418,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                     },
                     "policy_mapping_fn": lambda agent_id: "policy_1",
                 },
+                "framework": "tf",
             })
 
         # Just check that it runs without crashing
@@ -575,102 +433,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertRaises(
             KeyError,
             lambda: pg.compute_action([0, 0, 0, 0], policy_id="policy_3"))
-
-    def _test_with_optimizer(self, optimizer_cls):
-        n = 3
-        env = gym.make("CartPole-v0")
-        act_space = env.action_space
-        obs_space = env.observation_space
-        dqn_config = {"gamma": 0.95, "n_step": 3}
-        if optimizer_cls == SyncReplayOptimizer:
-            # TODO: support replay with non-DQN graphs. Currently this can't
-            # happen since the replay buffer doesn't encode extra fields like
-            # "advantages" that PG uses.
-            policies = {
-                "p1": (DQNTFPolicy, obs_space, act_space, dqn_config),
-                "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
-            }
-        else:
-            policies = {
-                "p1": (PGTFPolicy, obs_space, act_space, {}),
-                "p2": (DQNTFPolicy, obs_space, act_space, dqn_config),
-            }
-        worker = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
-            policy=policies,
-            policy_mapping_fn=lambda agent_id: ["p1", "p2"][agent_id % 2],
-            rollout_fragment_length=50)
-        if optimizer_cls == AsyncGradientsOptimizer:
-
-            def policy_mapper(agent_id):
-                return ["p1", "p2"][agent_id % 2]
-
-            remote_workers = [
-                RolloutWorker.as_remote().remote(
-                    env_creator=lambda _: MultiCartpole(n),
-                    policy=policies,
-                    policy_mapping_fn=policy_mapper,
-                    rollout_fragment_length=50)
-            ]
-        else:
-            remote_workers = []
-        workers = WorkerSet._from_existing(worker, remote_workers)
-        optimizer = optimizer_cls(workers)
-        for i in range(200):
-            optimizer.step()
-            result = collect_metrics(worker, remote_workers)
-            if i % 20 == 0:
-
-                def do_update(p):
-                    if isinstance(p, DQNTFPolicy):
-                        p.update_target()
-
-                worker.foreach_policy(lambda p, _: do_update(p))
-                print("Iter {}, rew {}".format(i,
-                                               result["policy_reward_mean"]))
-                print("Total reward", result["episode_reward_mean"])
-            if result["episode_reward_mean"] >= 25 * n:
-                return
-        print(result)
-        raise Exception("failed to improve reward")
-
-    def test_multi_agent_sync_optimizer(self):
-        self._test_with_optimizer(SyncSamplesOptimizer)
-
-    def test_multi_agent_async_gradients_optimizer(self):
-        # Allow to be run via Unittest.
-        ray.init(num_cpus=4, ignore_reinit_error=True)
-        self._test_with_optimizer(AsyncGradientsOptimizer)
-
-    def test_multi_agent_replay_optimizer(self):
-        self._test_with_optimizer(SyncReplayOptimizer)
-
-    def test_train_multi_cartpole_many_policies(self):
-        n = 20
-        env = gym.make("CartPole-v0")
-        act_space = env.action_space
-        obs_space = env.observation_space
-        policies = {}
-        for i in range(20):
-            policies["pg_{}".format(i)] = (PGTFPolicy, obs_space, act_space,
-                                           {})
-        policy_ids = list(policies.keys())
-        worker = RolloutWorker(
-            env_creator=lambda _: MultiCartpole(n),
-            policy=policies,
-            policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
-            rollout_fragment_length=100)
-        workers = WorkerSet._from_existing(worker, [])
-        optimizer = SyncSamplesOptimizer(workers)
-        for i in range(100):
-            optimizer.step()
-            result = collect_metrics(worker)
-            print("Iteration {}, rew {}".format(i,
-                                                result["policy_reward_mean"]))
-            print("Total reward", result["episode_reward_mean"])
-            if result["episode_reward_mean"] >= 25 * n:
-                return
-        raise Exception("failed to improve reward")
 
 
 if __name__ == "__main__":

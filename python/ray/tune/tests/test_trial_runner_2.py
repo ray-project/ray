@@ -36,6 +36,9 @@ def create_mock_components():
 
 
 class TrialRunnerTest2(unittest.TestCase):
+    def setUp(self):
+        os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -215,6 +218,30 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()  # Error
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertRaises(TuneError, lambda: runner.step())
+
+    def testFailFastRaise(self):
+        ray.init(num_cpus=1, num_gpus=1)
+        runner = TrialRunner(fail_fast=TrialRunner.RAISE)
+        kwargs = {
+            "resources": Resources(cpu=1, gpu=1),
+            "checkpoint_freq": 1,
+            "max_failures": 0,
+            "config": {
+                "mock_error": True,
+                "persistent_error": True,
+            },
+        }
+        runner.add_trial(Trial("__fake", **kwargs))
+        runner.add_trial(Trial("__fake", **kwargs))
+        trials = runner.get_trials()
+
+        runner.step()  # Start trial
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process result, dispatch save
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
+        with self.assertRaises(Exception):
+            runner.step()  # Error
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)

@@ -12,12 +12,16 @@ except ImportError:
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch, \
-    DEFAULT_POLICY_ID
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
+    SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
+from ray.rllib.utils.typing import FileType, SampleBatchType
+from typing import List
 
 logger = logging.getLogger(__name__)
+
+WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 
 
 @PublicAPI
@@ -27,10 +31,10 @@ class JsonReader(InputReader):
     The input files will be read from in an random order."""
 
     @PublicAPI
-    def __init__(self, inputs, ioctx=None):
+    def __init__(self, inputs: List[str], ioctx: IOContext = None):
         """Initialize a JsonReader.
 
-        Arguments:
+        Args:
             inputs (str|list): either a glob expression for files, e.g.,
                 "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
@@ -38,6 +42,10 @@ class JsonReader(InputReader):
         """
 
         self.ioctx = ioctx or IOContext()
+        self.default_policy = None
+        if self.ioctx.worker is not None:
+            self.default_policy = \
+                self.ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))
             if os.path.isdir(inputs):
@@ -45,7 +53,7 @@ class JsonReader(InputReader):
                 logger.warning(
                     "Treating input directory as glob pattern: {}".format(
                         inputs))
-            if urlparse(inputs).scheme:
+            if urlparse(inputs).scheme not in [""] + WINDOWS_DRIVES:
                 raise ValueError(
                     "Don't know how to glob over `{}`, ".format(inputs) +
                     "please specify a list of files to read instead.")
@@ -63,7 +71,7 @@ class JsonReader(InputReader):
         self.cur_file = None
 
     @override(InputReader)
-    def next(self):
+    def next(self) -> SampleBatchType:
         batch = self._try_parse(self._next_line())
         tries = 0
         while not batch and tries < 100:
@@ -76,23 +84,24 @@ class JsonReader(InputReader):
                     self.cur_file))
         return self._postprocess_if_needed(batch)
 
-    def _postprocess_if_needed(self, batch):
+    def _postprocess_if_needed(self,
+                               batch: SampleBatchType) -> SampleBatchType:
         if not self.ioctx.config.get("postprocess_inputs"):
             return batch
 
         if isinstance(batch, SampleBatch):
             out = []
             for sub_batch in batch.split_by_episode():
-                out.append(self.ioctx.worker.policy_map[DEFAULT_POLICY_ID]
-                           .postprocess_trajectory(sub_batch))
+                out.append(
+                    self.default_policy.postprocess_trajectory(sub_batch))
             return SampleBatch.concat_samples(out)
         else:
             # TODO(ekl) this is trickier since the alignments between agent
-            # trajectories in the episode are not available any more.
+            #  trajectories in the episode are not available any more.
             raise NotImplementedError(
                 "Postprocessing of multi-agent data not implemented yet.")
 
-    def _try_parse(self, line):
+    def _try_parse(self, line: str) -> SampleBatchType:
         line = line.strip()
         if not line:
             return None
@@ -103,7 +112,7 @@ class JsonReader(InputReader):
                 self.cur_file, line))
             return None
 
-    def _next_line(self):
+    def _next_line(self) -> str:
         if not self.cur_file:
             self.cur_file = self._next_file()
         line = self.cur_file.readline()
@@ -121,9 +130,9 @@ class JsonReader(InputReader):
                 self.files))
         return line
 
-    def _next_file(self):
+    def _next_file(self) -> FileType:
         path = random.choice(self.files)
-        if urlparse(path).scheme:
+        if urlparse(path).scheme not in [""] + WINDOWS_DRIVES:
             if smart_open is None:
                 raise ValueError(
                     "You must install the `smart_open` module to read "
@@ -133,7 +142,7 @@ class JsonReader(InputReader):
             return open(path, "r")
 
 
-def _from_json(batch):
+def _from_json(batch: str) -> SampleBatchType:
     if isinstance(batch, bytes):  # smart_open S3 doesn't respect "r"
         batch = batch.decode("utf-8")
     data = json.loads(batch)

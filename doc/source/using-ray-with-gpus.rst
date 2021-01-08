@@ -34,7 +34,7 @@ remote decorator.
       print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
 
 Inside of the remote function, a call to ``ray.get_gpu_ids()`` will return a
-list of integers indicating which GPUs the remote function is allowed to use.
+list of strings indicating which GPUs the remote function is allowed to use.
 Typically, it is not necessary to call ``ray.get_gpu_ids()`` because Ray will
 automatically set the ``CUDA_VISIBLE_DEVICES`` environment variable.
 

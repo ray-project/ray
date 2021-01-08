@@ -1,0 +1,7 @@
+diff --git core/src/histogram.cc core/src/histogram.cc
+--- core/src/histogram.cc
++++ core/src/histogram.cc
+@@ -6,1 +6,2 @@
+ #include <numeric>
++#include <stdexcept>
+-- 

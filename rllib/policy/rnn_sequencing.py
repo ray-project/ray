@@ -13,25 +13,30 @@ current algorithms: https://github.com/ray-project/ray/issues/2992
 
 import logging
 import numpy as np
+from typing import List, Optional
 
-from ray.util import log_once
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
+from ray.util import log_once
 
-tf = try_import_tf()
+tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-def pad_batch_to_sequences_of_same_size(batch,
-                                        max_seq_len,
-                                        shuffle=False,
-                                        batch_divisibility_req=1,
-                                        feature_keys=None):
+def pad_batch_to_sequences_of_same_size(
+        batch: SampleBatch,
+        max_seq_len: int,
+        shuffle: bool = False,
+        batch_divisibility_req: int = 1,
+        feature_keys: Optional[List[str]] = None,
+        view_requirements: Optional[ViewRequirementsDict] = None,
+):
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
     Shuffles `batch` (if desired), makes sure divisibility requirement is met,
@@ -51,6 +56,9 @@ def pad_batch_to_sequences_of_same_size(batch,
         feature_keys (Optional[List[str]]): An optional list of keys to apply
             sequence-chopping to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
+        view_requirements (Optional[ViewRequirementsDict]): An optional
+            Policy ViewRequirements dict to be able to infer whether
+            e.g. dynamic max'ing should be applied over the seq_lens.
     """
     if batch_divisibility_req > 1:
         meets_divisibility_reqs = (
@@ -60,46 +68,65 @@ def pad_batch_to_sequences_of_same_size(batch,
     else:
         meets_divisibility_reqs = True
 
-    # RNN-case.
-    if "state_in_0" in batch:
-        dynamic_max = True
+    states_already_reduced_to_init = False
+
+    # RNN/attention net case. Figure out whether we should apply dynamic
+    # max'ing over the list of sequence lengths.
+    if "state_in_0" in batch or "state_out_0" in batch:
+        # Check, whether the state inputs have already been reduced to their
+        # init values at the beginning of each max_seq_len chunk.
+        if batch.seq_lens is not None and \
+                len(batch["state_in_0"]) == len(batch.seq_lens):
+            states_already_reduced_to_init = True
+
+        # RNN (or single timestep state-in): Set the max dynamically.
+        if view_requirements["state_in_0"].shift_from is None:
+            dynamic_max = True
+        # Attention Nets (state inputs are over some range): No dynamic maxing
+        # possible.
+        else:
+            dynamic_max = False
     # Multi-agent case.
     elif not meets_divisibility_reqs:
         max_seq_len = batch_divisibility_req
         dynamic_max = False
-    # Simple case: not RNN nor do we need to pad.
+    # Simple case: No RNN/attention net, nor do we need to pad.
     else:
         if shuffle:
             batch.shuffle()
         return
 
-    # RNN or multi-agent case.
+    # RNN, attention net, or multi-agent case.
     state_keys = []
     feature_keys_ = feature_keys or []
-    for k in batch.keys():
-        if "state_in_" in k:
+    for k, v in batch.items():
+        if k.startswith("state_in_"):
             state_keys.append(k)
-        elif not feature_keys and "state_out_" not in k and k != "infos":
+        elif not feature_keys and not k.startswith("state_out_") and \
+                k not in ["infos", "seq_lens"] and isinstance(v, np.ndarray):
             feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \
         chop_into_sequences(
-            batch[SampleBatch.EPS_ID],
-            batch[SampleBatch.UNROLL_ID],
-            batch[SampleBatch.AGENT_INDEX],
-            [batch[k] for k in feature_keys_],
-            [batch[k] for k in state_keys],
-            max_seq_len,
+            feature_columns=[batch[k] for k in feature_keys_],
+            state_columns=[batch[k] for k in state_keys],
+            episode_ids=batch.get(SampleBatch.EPS_ID),
+            unroll_ids=batch.get(SampleBatch.UNROLL_ID),
+            agent_indices=batch.get(SampleBatch.AGENT_INDEX),
+            seq_lens=getattr(batch, "seq_lens", batch.get("seq_lens")),
+            max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
+            states_already_reduced_to_init=states_already_reduced_to_init,
             shuffle=shuffle)
+
     for i, k in enumerate(feature_keys_):
         batch[k] = feature_sequences[i]
     for i, k in enumerate(state_keys):
         batch[k] = initial_states[i]
-    batch["seq_lens"] = seq_lens
+    batch["seq_lens"] = np.array(seq_lens)
 
     if log_once("rnn_ma_feed_dict"):
-        logger.info("Padded input for RNN:\n\n{}\n".format(
+        logger.info("Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(
             summarize({
                 "features": feature_sequences,
                 "initial_states": initial_states,
@@ -109,27 +136,32 @@ def pad_batch_to_sequences_of_same_size(batch,
 
 
 @DeveloperAPI
-def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
+def add_time_dimension(padded_inputs: TensorType,
+                       *,
+                       max_seq_len: int,
+                       framework: str = "tf",
+                       time_major: bool = False):
     """Adds a time dimension to padded inputs.
 
-    Arguments:
-        padded_inputs (Tensor): a padded batch of sequences. That is,
+    Args:
+        padded_inputs (TensorType): a padded batch of sequences. That is,
             for seq_lens=[1, 2, 2], then inputs=[A, *, B, B, C, C], where
             A, B, C are sequence elements and * denotes padding.
-        seq_lens (Tensor): the sequence lengths within the input batch,
-            suitable for passing to tf.nn.dynamic_rnn().
+        max_seq_len (int): The max. sequence length in padded_inputs.
+        framework (str): The framework string ("tf2", "tf", "tfe", "torch").
+        time_major (bool): Whether data should be returned in time-major (TxB)
+            format or not (BxT).
 
     Returns:
-        Reshaped tensor of shape [NUM_SEQUENCES, MAX_SEQ_LEN, ...].
+        TensorType: Reshaped tensor of shape [B, T, ...] or [T, B, ...].
     """
 
     # Sequence lengths have to be specified for LSTM batch inputs. The
     # input batch must be padded to the max seq length given here. That is,
     # batch_size == len(seq_lens) * max(seq_lens)
-    if framework == "tf":
+    if framework in ["tf2", "tf", "tfe"]:
+        assert time_major is False, "time-major not supported yet for tf!"
         padded_batch_size = tf.shape(padded_inputs)[0]
-        max_seq_len = padded_batch_size // tf.shape(seq_lens)[0]
-
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
         new_shape = ([new_batch_size, max_seq_len] +
@@ -138,32 +170,37 @@ def add_time_dimension(padded_inputs, seq_lens, framework="tf"):
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
         padded_batch_size = padded_inputs.shape[0]
-        max_seq_len = padded_batch_size // seq_lens.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = padded_batch_size // max_seq_len
-        new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
+        if time_major:
+            new_shape = (max_seq_len, new_batch_size) + padded_inputs.shape[1:]
+        else:
+            new_shape = (new_batch_size, max_seq_len) + padded_inputs.shape[1:]
         return torch.reshape(padded_inputs, new_shape)
 
 
 @DeveloperAPI
-def chop_into_sequences(episode_ids,
-                        unroll_ids,
-                        agent_indices,
+def chop_into_sequences(*,
                         feature_columns,
                         state_columns,
                         max_seq_len,
+                        episode_ids=None,
+                        unroll_ids=None,
+                        agent_indices=None,
                         dynamic_max=True,
                         shuffle=False,
+                        seq_lens=None,
+                        states_already_reduced_to_init=False,
                         _extra_padding=0):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
-        episode_ids (list): List of episode ids for each step.
-        unroll_ids (list): List of identifiers for the sample batch. This is
-            used to make sure sequences are cut between sample batches.
-        agent_indices (list): List of agent ids for each step. Note that this
-            has to be combined with episode_ids for uniqueness.
+        episode_ids (List[EpisodeID]): List of episode ids for each step.
+        unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
+            This is used to make sure sequences are cut between sample batches.
+        agent_indices (List[AgentID]): List of agent ids for each step. Note
+            that this has to be combined with episode_ids for uniqueness.
         feature_columns (list): List of arrays containing features.
         state_columns (list): List of arrays containing LSTM state values.
         max_seq_len (int): Max length of sequences before truncation.
@@ -198,23 +235,24 @@ def chop_into_sequences(episode_ids,
         [2, 3, 1]
     """
 
-    prev_id = None
-    seq_lens = []
-    seq_len = 0
-    unique_ids = np.add(
-        np.add(episode_ids, agent_indices),
-        np.array(unroll_ids) << 32)
-    for uid in unique_ids:
-        if (prev_id is not None and uid != prev_id) or \
-                seq_len >= max_seq_len:
+    if seq_lens is None or len(seq_lens) == 0:
+        prev_id = None
+        seq_lens = []
+        seq_len = 0
+        unique_ids = np.add(
+            np.add(episode_ids, agent_indices),
+            np.array(unroll_ids, dtype=np.int64) << 32)
+        for uid in unique_ids:
+            if (prev_id is not None and uid != prev_id) or \
+                    seq_len >= max_seq_len:
+                seq_lens.append(seq_len)
+                seq_len = 0
+            seq_len += 1
+            prev_id = uid
+        if seq_len:
             seq_lens.append(seq_len)
-            seq_len = 0
-        seq_len += 1
-        prev_id = uid
-    if seq_len:
-        seq_lens.append(seq_len)
-    assert sum(seq_lens) == len(unique_ids)
-    seq_lens = np.array(seq_lens)
+        seq_lens = np.array(seq_lens, dtype=np.int32)
+    assert sum(seq_lens) == len(feature_columns[0])
 
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
@@ -222,27 +260,39 @@ def chop_into_sequences(episode_ids,
 
     feature_sequences = []
     for f in feature_columns:
-        f = np.array(f)
-        f_pad = np.zeros((len(seq_lens) * max_seq_len, ) + np.shape(f)[1:])
+        # Save unnecessary copy.
+        if not isinstance(f, np.ndarray):
+            f = np.array(f)
+        length = len(seq_lens) * max_seq_len
+        if f.dtype == np.object or f.dtype.type is np.str_:
+            f_pad = [None] * length
+        else:
+            # Make sure type doesn't change.
+            f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
         seq_base = 0
         i = 0
-        for l in seq_lens:
-            for seq_offset in range(l):
+        for len_ in seq_lens:
+            for seq_offset in range(len_):
                 f_pad[seq_base + seq_offset] = f[i]
                 i += 1
             seq_base += max_seq_len
-        assert i == len(unique_ids), f
+        assert i == len(f), f
         feature_sequences.append(f_pad)
 
-    initial_states = []
-    for s in state_columns:
-        s = np.array(s)
-        s_init = []
-        i = 0
-        for l in seq_lens:
-            s_init.append(s[i])
-            i += l
-        initial_states.append(np.array(s_init))
+    if states_already_reduced_to_init:
+        initial_states = state_columns
+    else:
+        initial_states = []
+        for s in state_columns:
+            # Skip unnecessary copy.
+            if not isinstance(s, np.ndarray):
+                s = np.array(s)
+            s_init = []
+            i = 0
+            for len_ in seq_lens:
+                s_init.append(s[i])
+                i += len_
+            initial_states.append(np.array(s_init))
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))

@@ -1,32 +1,41 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.test_utils import check, framework_iterator
-
-tf = try_import_tf()
+from ray.rllib.utils.test_utils import check, check_compute_single_action, \
+    framework_iterator
 
 
 class TestDQN(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_dqn_compilation(self):
         """Test whether a DQNTrainer can be built on all frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
-        num_iterations = 2
+        config["num_workers"] = 2
+        num_iterations = 1
 
-        for fw in framework_iterator(config):
-            # double-dueling DQN.
+        for _ in framework_iterator(config):
+            # Double-dueling DQN.
+            print("Double-dueling")
             plain_config = config.copy()
             trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
 
+            check_compute_single_action(trainer)
+            trainer.stop()
+
             # Rainbow.
-            # TODO(sven): Add torch once DQN-torch supports distributional-Q.
-            if fw == "torch":
-                continue
+            print("Rainbow")
             rainbow_config = config.copy()
             rainbow_config["num_atoms"] = 10
             rainbow_config["noisy"] = True
@@ -37,6 +46,9 @@ class TestDQN(unittest.TestCase):
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
+
+            check_compute_single_action(trainer)
+            trainer.stop()
 
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
@@ -59,6 +71,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
             # Low softmax temperature. Behaves like argmax
             # (but no epsilon exploration).
@@ -72,6 +85,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(50):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, decimals=3)
+            trainer.stop()
 
             # Higher softmax temperature.
             config["exploration_config"]["temperature"] = 1.0
@@ -90,6 +104,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(300):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
             # With Random exploration.
             config["exploration_config"] = {"type": "Random"}
@@ -99,6 +114,7 @@ class TestDQN(unittest.TestCase):
             for _ in range(300):
                 actions.append(trainer.compute_action(obs))
             check(np.std(actions), 0.0, false=True)
+            trainer.stop()
 
 
 if __name__ == "__main__":

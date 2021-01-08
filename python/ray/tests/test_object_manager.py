@@ -1,5 +1,4 @@
 from collections import defaultdict
-import json
 import multiprocessing
 import numpy as np
 import pytest
@@ -8,6 +7,7 @@ import warnings
 
 import ray
 from ray.cluster_utils import Cluster
+from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
         or ray.utils.get_system_memory() < 50 * 10**9):
@@ -34,6 +34,29 @@ def ray_start_cluster_with_resource():
     cluster.shutdown()
 
 
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 0,
+        "object_store_memory": 75 * 1024 * 1024,
+    }],
+    indirect=True)
+def test_object_transfer_during_oom(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(object_store_memory=75 * 1024 * 1024)
+
+    @ray.remote
+    def put():
+        return np.random.rand(5 * 1024 * 1024)  # 40 MB data
+
+    local_ref = ray.put(np.random.rand(5 * 1024 * 1024))
+    remote_ref = put.remote()
+
+    with pytest.raises(GetTimeoutError):
+        ray.get(remote_ref, timeout=1)
+    del local_ref
+    ray.get(remote_ref)
+
+
 # This test is here to make sure that when we broadcast an object to a bunch of
 # machines, we don't have too many excess object transfers.
 @pytest.mark.skip(reason="TODO(ekl)")
@@ -50,12 +73,12 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def create_object():
         return np.zeros(1024 * 1024, dtype=np.uint8)
 
-    object_ids = []
+    object_refs = []
 
     for _ in range(3):
         # Broadcast an object to all machines.
         x_id = ray.put(x)
-        object_ids.append(x_id)
+        object_refs.append(x_id)
         ray.get([
             f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
@@ -64,7 +87,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     for _ in range(3):
         # Broadcast an object to all machines.
         x_id = create_object.remote()
-        object_ids.append(x_id)
+        object_refs.append(x_id)
         ray.get([
             f._remote(args=[x_id], resources={str(i % num_nodes): 1})
             for i in range(10 * num_nodes)
@@ -75,7 +98,7 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     transfer_events = ray.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
-    for x_id in object_ids:
+    for x_id in object_refs:
         relevant_events = [
             event for event in transfer_events
             if event["cat"] == "transfer_send"
@@ -141,12 +164,12 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     # Wait for the actors to start up.
     ray.get([a.ready.remote() for a in actors])
 
-    object_ids = []
+    object_refs = []
 
     # Broadcast a large object to all actors.
     for _ in range(5):
         x_id = ray.put(np.zeros(1024 * 1024, dtype=np.uint8))
-        object_ids.append(x_id)
+        object_refs.append(x_id)
         # Pass the object into a method for every actor.
         ray.get([a.set_weights.remote(x_id) for a in actors])
 
@@ -155,11 +178,10 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     transfer_events = ray.object_transfer_timeline()
 
     # Make sure that each object was transferred a reasonable number of times.
-    for x_id in object_ids:
+    for x_id in object_refs:
         relevant_events = [
-            event for event in transfer_events
-            if event["cat"] == "transfer_send"
-            and event["args"][0] == x_id.hex() and event["args"][2] == 1
+            event for event in transfer_events if
+            event["cat"] == "transfer_send" and event["args"][0] == x_id.hex()
         ]
 
         # NOTE: Each event currently appears twice because we duplicate the
@@ -193,93 +215,6 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
             # receiver.
             send_counts[(event["pid"], event["tid"])] += 1
         assert all(value == 1 for value in send_counts.values())
-
-
-# The purpose of this test is to make sure that an object that was already been
-# transferred to a node can be transferred again.
-def test_object_transfer_retry(ray_start_cluster):
-    cluster = ray_start_cluster
-
-    repeated_push_delay = 4
-
-    # Force the sending object manager to allow duplicate pushes again sooner.
-    # Also, force the receiving object manager to retry the Pull sooner. We
-    # make the chunk size smaller in order to make it easier to test objects
-    # with multiple chunks.
-    config = json.dumps({
-        "object_manager_repeated_push_delay_ms": repeated_push_delay * 1000,
-        "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
-        "object_manager_default_chunk_size": 1000
-    })
-    object_store_memory = 150 * 1024 * 1024
-    cluster.add_node(
-        object_store_memory=object_store_memory, _internal_config=config)
-    cluster.add_node(
-        num_gpus=1,
-        object_store_memory=object_store_memory,
-        _internal_config=config)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_gpus=1)
-    def f(size):
-        return np.zeros(size, dtype=np.uint8)
-
-    # Transfer an object to warm up the object manager.
-    ray.get(f.remote(10**6))
-
-    x_ids = [f.remote(10**i) for i in [6]]
-    assert not any(
-        ray.worker.global_worker.core_worker.object_exists(x_id)
-        for x_id in x_ids)
-
-    # Get the objects locally to cause them to be transferred. This is the
-    # first time the objects are getting transferred, so it should happen
-    # quickly.
-    start_time = time.time()
-    xs = ray.get(x_ids)
-    end_time = time.time()
-    if end_time - start_time > repeated_push_delay:
-        warnings.warn("The initial transfer took longer than the repeated "
-                      "push delay, so this test may not be testing the thing "
-                      "it's supposed to test.")
-
-    # Cause all objects to be flushed.
-    del xs
-    x = np.zeros(object_store_memory // 10, dtype=np.uint8)
-    for _ in range(15):
-        ray.put(x)
-    assert not any(
-        ray.worker.global_worker.core_worker.object_exists(x_id)
-        for x_id in x_ids)
-
-    end_time = time.time()
-    # Make sure that the first time the objects get transferred, it happens
-    # quickly.
-    assert end_time - start_time < repeated_push_delay
-
-    # Get the objects again and make sure they get transferred.
-    xs = ray.get(x_ids)
-    end_transfer_time = time.time()
-    # We should have had to wait for the repeated push delay.
-    assert end_transfer_time - start_time >= repeated_push_delay
-
-    # Flush the objects again and wait longer than the repeated push delay and
-    # make sure that the objects are transferred again.
-    del xs
-    for _ in range(15):
-        ray.put(x)
-    assert not any(
-        ray.worker.global_worker.core_worker.object_exists(x_id)
-        for x_id in x_ids)
-
-    time.sleep(repeated_push_delay)
-
-    # Get the objects locally to cause them to be transferred. This should
-    # happen quickly.
-    start_time = time.time()
-    ray.get(x_ids)
-    end_time = time.time()
-    assert end_time - start_time < repeated_push_delay
 
 
 # The purpose of this test is to make sure we can transfer many objects. In the
@@ -317,6 +252,48 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
     do_transfers()
     do_transfers()
+
+
+# This is a basic test to ensure that the pull request retry timer is
+# integrated properly. To test it, we create a 2 node cluster then do the
+# following:
+# (1) Fill up the driver's object store.
+# (2) Fill up the remote node's object store.
+# (3) Try to get the remote object. This should fail due to an OOM error caused
+#     by step 1.
+# (4) Allow the local object to be evicted.
+# (5) Try to get the object again. Now the retry timer should kick in and
+#     successfuly pull the remote object.
+@pytest.mark.timeout(30)
+def test_pull_request_retry(shutdown_only):
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2**20)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def put():
+        return np.zeros(64 * 2**20, dtype=np.int8)
+
+    @ray.remote(num_cpus=0, num_gpus=1)
+    def driver():
+        local_ref = ray.put(np.zeros(64 * 2**20, dtype=np.int8))
+
+        remote_ref = put.remote()
+
+        ready, _ = ray.wait([remote_ref], timeout=1)
+        assert len(ready) == 0
+
+        del local_ref
+
+        # This should always complete within 10 seconds.
+        ready, _ = ray.wait([remote_ref], timeout=20)
+        assert len(ready) > 0
+
+    # Pretend the GPU node is the driver. We do this to force the placement of
+    # the driver and `put` task on different nodes.
+    ray.get(driver.remote())
 
 
 if __name__ == "__main__":

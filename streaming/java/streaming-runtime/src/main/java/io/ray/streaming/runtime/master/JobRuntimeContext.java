@@ -53,5 +53,4 @@ public class JobRuntimeContext implements Serializable {
         .add("conf", conf.getMap())
         .toString();
   }
-
 }

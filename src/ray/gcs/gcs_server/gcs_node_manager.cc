@@ -12,167 +12,223 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_node_manager.h"
-#include <ray/common/ray_config.h>
-#include <ray/gcs/pb_util.h>
-#include <ray/protobuf/gcs.pb.h>
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+
+#include "ray/common/ray_config.h"
+#include "ray/gcs/pb_util.h"
+#include "ray/stats/stats.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
-GcsNodeManager::GcsNodeManager(boost::asio::io_service &io_service,
-                               gcs::NodeInfoAccessor &node_info_accessor,
-                               gcs::ErrorInfoAccessor &error_info_accessor)
-    : node_info_accessor_(node_info_accessor),
-      error_info_accessor_(error_info_accessor),
-      num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      heartbeat_timer_(io_service) {
-  Start();
+
+//////////////////////////////////////////////////////////////////////////////////////////
+GcsNodeManager::GcsNodeManager(std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
+    : gcs_pub_sub_(gcs_pub_sub), gcs_table_storage_(gcs_table_storage) {}
+
+void GcsNodeManager::HandleRegisterNode(const rpc::RegisterNodeRequest &request,
+                                        rpc::RegisterNodeReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
+  RAY_LOG(INFO) << "Registering node info, node id = " << node_id
+                << ", address = " << request.node_info().node_manager_address();
+  auto on_done = [this, node_id, request, reply,
+                  send_reply_callback](const Status &status) {
+    RAY_CHECK_OK(status);
+    RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
+                  << ", address = " << request.node_info().node_manager_address();
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                       request.node_info().SerializeAsString(), nullptr));
+    AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(
+      gcs_table_storage_->NodeTable().Put(node_id, request.node_info(), on_done));
+  ++counts_[CountType::REGISTER_NODE_REQUEST];
 }
 
-void GcsNodeManager::HandleHeartbeat(const ClientID &node_id,
-                                     const rpc::HeartbeatTableData &heartbeat_data) {
-  heartbeats_[node_id] = num_heartbeats_timeout_;
-  heartbeat_buffer_[node_id] = heartbeat_data;
-}
+void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &request,
+                                          rpc::UnregisterNodeReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  NodeID node_id = NodeID::FromBinary(request.node_id());
+  RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
+  if (auto node = RemoveNode(node_id, /* is_intended = */ true)) {
+    node->set_state(rpc::GcsNodeInfo::DEAD);
+    node->set_timestamp(current_sys_time_ms());
+    AddDeadNodeToCache(node);
 
-void GcsNodeManager::Start() {
-  RAY_LOG(INFO) << "Starting gcs node manager.";
-  const auto lookup_callback =
-      [this](Status status, const std::vector<rpc::GcsNodeInfo> &node_info_list) {
-        for (const auto &node_info : node_info_list) {
-          if (node_info.state() != rpc::GcsNodeInfo::DEAD) {
-            // If there're any existing alive clients in client table, add them to
-            // our `heartbeats_` cache. Thus, if they died before monitor starts,
-            // we can also detect their death.
-            // Use `emplace` instead of `operator []` because we just want to add this
-            // client to `heartbeats_` only if it has not yet received heartbeat event.
-            // Besides, it is not necessary to add an empty `HeartbeatTableData`
-            // to `heartbeat_buffer_` as it doesn't make sense to broadcast an empty
-            // message to the cluster and it's ok to add it when actually receive
-            // its heartbeat event.
-            heartbeats_.emplace(ClientID::FromBinary(node_info.node_id()),
-                                num_heartbeats_timeout_);
-          }
-        }
-        Tick();
+    auto on_done = [this, node_id, node, reply,
+                    send_reply_callback](const Status &status) {
+      auto on_done = [this, node_id, node, reply,
+                      send_reply_callback](const Status &status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                           node->SerializeAsString(), nullptr));
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+        RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
       };
-  RAY_CHECK_OK(node_info_accessor_.AsyncGetAll(lookup_callback));
-}
-
-/// A periodic timer that checks for timed out clients.
-void GcsNodeManager::Tick() {
-  DetectDeadNodes();
-  SendBatchedHeartbeat();
-  ScheduleTick();
-}
-
-void GcsNodeManager::DetectDeadNodes() {
-  for (auto it = heartbeats_.begin(); it != heartbeats_.end();) {
-    auto current = it++;
-    current->second = current->second - 1;
-    if (current->second == 0) {
-      if (dead_nodes_.count(current->first) == 0) {
-        auto node_id = current->first;
-        RAY_LOG(WARNING) << "Node timed out: " << node_id;
-        auto lookup_callback = [this, node_id](
-                                   Status status,
-                                   const std::vector<rpc::GcsNodeInfo> &all_node) {
-          RAY_CHECK_OK(status);
-          bool marked = false;
-          for (const auto &node : all_node) {
-            if (node_id.Binary() == node.node_id() &&
-                node.state() == rpc::GcsNodeInfo::DEAD) {
-              // The node has been marked dead by itself.
-              marked = true;
-              break;
-            }
-          }
-          if (!marked) {
-            RemoveNode(node_id);
-            RAY_CHECK_OK(node_info_accessor_.AsyncUnregister(node_id, nullptr));
-            // Broadcast a warning to all of the drivers indicating that the node
-            // has been marked as dead.
-            // TODO(rkn): Define this constant somewhere else.
-            std::string type = "node_removed";
-            std::ostringstream error_message;
-            error_message << "The node with node id " << node_id
-                          << " has been marked dead because the monitor"
-                          << " has missed too many heartbeats from it.";
-            auto error_data_ptr =
-                gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
-            RAY_CHECK_OK(
-                error_info_accessor_.AsyncReportJobError(error_data_ptr, nullptr));
-          }
-        };
-        RAY_CHECK_OK(node_info_accessor_.AsyncGetAll(lookup_callback));
-        dead_nodes_.insert(node_id);
-      }
-      heartbeats_.erase(current);
-    }
+      RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
+    };
+    // Update node state to DEAD instead of deleting it.
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
   }
+  ++counts_[CountType::UNREGISTER_NODE_REQUEST];
 }
 
-void GcsNodeManager::SendBatchedHeartbeat() {
-  if (!heartbeat_buffer_.empty()) {
-    auto batch = std::make_shared<rpc::HeartbeatBatchTableData>();
-    for (const auto &heartbeat : heartbeat_buffer_) {
-      batch->add_batch()->CopyFrom(heartbeat.second);
-    }
-    RAY_CHECK_OK(node_info_accessor_.AsyncReportBatchHeartbeat(batch, nullptr));
-    heartbeat_buffer_.clear();
+void GcsNodeManager::HandleGetAllNodeInfo(const rpc::GetAllNodeInfoRequest &request,
+                                          rpc::GetAllNodeInfoReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  for (const auto &entry : alive_nodes_) {
+    reply->add_node_info_list()->CopyFrom(*entry.second);
   }
+  for (const auto &entry : dead_nodes_) {
+    reply->add_node_info_list()->CopyFrom(*entry.second);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::ScheduleTick() {
-  auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
-  heartbeat_timer_.expires_from_now(heartbeat_period);
-  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
-      // `operation_canceled` is set when `heartbeat_timer_` is canceled or destroyed.
-      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
-      return;
+void GcsNodeManager::HandleSetInternalConfig(const rpc::SetInternalConfigRequest &request,
+                                             rpc::SetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto on_done = [reply, send_reply_callback, request](const Status &status) {
+    RAY_LOG(DEBUG) << "Set internal config: " << request.config().DebugString();
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(UniqueID::Nil(),
+                                                             request.config(), on_done));
+  ++counts_[CountType::SET_INTERNAL_CONFIG_REQUEST];
+}
+
+void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest &request,
+                                             rpc::GetInternalConfigReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  auto get_system_config = [reply, send_reply_callback](
+                               const ray::Status &status,
+                               const boost::optional<rpc::StoredConfig> &config) {
+    if (config.has_value()) {
+      reply->mutable_config()->CopyFrom(config.get());
     }
-    RAY_CHECK(!error) << "Checking heartbeat failed with error: " << error.message();
-    Tick();
-  });
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  RAY_CHECK_OK(
+      gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
+  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
 }
 
-std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::GetNode(
-    const ray::ClientID &node_id) const {
+absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
+    const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    return nullptr;
+    return {};
   }
 
   return iter->second;
 }
 
-const absl::flat_hash_map<ClientID, std::shared_ptr<rpc::GcsNodeInfo>>
-    &GcsNodeManager::GetAllAliveNodes() const {
-  return alive_nodes_;
-}
-
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
-  auto node_id = ClientID::FromBinary(node->node_id());
+  auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
+
+    // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
       listener(node);
     }
   }
 }
 
-void GcsNodeManager::RemoveNode(const ray::ClientID &node_id) {
+std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
+    const ray::NodeID &node_id, bool is_intended /*= false*/) {
+  RAY_LOG(INFO) << "Removing node, node id = " << node_id;
+  std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
-    auto node = std::move(iter->second);
+    removed_node = std::move(iter->second);
+    // Record stats that there's a new removed node.
+    stats::NodeFailureTotal.Record(1);
+    // Remove from alive nodes.
     alive_nodes_.erase(iter);
+    if (!is_intended) {
+      // Broadcast a warning to all of the drivers indicating that the node
+      // has been marked as dead.
+      // TODO(rkn): Define this constant somewhere else.
+      std::string type = "node_removed";
+      std::ostringstream error_message;
+      error_message << "The node with node id " << node_id
+                    << " has been marked dead because the detector"
+                    << " has missed too many heartbeats from it. This can happen when a "
+                       "raylet crashes unexpectedly or has lagging heartbeats.";
+      auto error_data_ptr =
+          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, node_id.Hex(),
+                                         error_data_ptr->SerializeAsString(), nullptr));
+    }
+
+    // Notify all listeners.
     for (auto &listener : node_removed_listeners_) {
-      listener(node);
+      listener(removed_node);
     }
   }
+  return removed_node;
+}
+
+void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
+  if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
+    node->set_state(rpc::GcsNodeInfo::DEAD);
+    node->set_timestamp(current_sys_time_ms());
+    AddDeadNodeToCache(node);
+    auto on_done = [this, node_id, node](const Status &status) {
+      auto on_done = [this, node_id, node](const Status &status) {
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_CHANNEL, node_id.Hex(),
+                                           node->SerializeAsString(), nullptr));
+      };
+      RAY_CHECK_OK(gcs_table_storage_->NodeResourceTable().Delete(node_id, on_done));
+    };
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
+  }
+}
+
+void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
+  for (const auto &item : gcs_init_data.Nodes()) {
+    if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      AddNode(std::make_shared<rpc::GcsNodeInfo>(item.second));
+    } else if (item.second.state() == rpc::GcsNodeInfo::DEAD) {
+      dead_nodes_.emplace(item.first, std::make_shared<rpc::GcsNodeInfo>(item.second));
+      sorted_dead_node_list_.emplace_back(item.first, item.second.timestamp());
+    }
+  }
+  sorted_dead_node_list_.sort(
+      [](const std::pair<NodeID, int64_t> &left,
+         const std::pair<NodeID, int64_t> &right) { return left.second < right.second; });
+}
+
+void GcsNodeManager::AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node) {
+  if (dead_nodes_.size() >= RayConfig::instance().maximum_gcs_dead_node_cached_count()) {
+    const auto &node_id = sorted_dead_node_list_.begin()->first;
+    RAY_CHECK_OK(gcs_table_storage_->NodeTable().Delete(node_id, nullptr));
+    dead_nodes_.erase(sorted_dead_node_list_.begin()->first);
+    sorted_dead_node_list_.erase(sorted_dead_node_list_.begin());
+  }
+  auto node_id = NodeID::FromBinary(node->node_id());
+  dead_nodes_.emplace(node_id, node);
+  sorted_dead_node_list_.emplace_back(node_id, node->timestamp());
+}
+
+std::string GcsNodeManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsNodeManager: {RegisterNode request count: "
+         << counts_[CountType::REGISTER_NODE_REQUEST]
+         << ", UnregisterNode request count: "
+         << counts_[CountType::UNREGISTER_NODE_REQUEST]
+         << ", GetAllNodeInfo request count: "
+         << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
+         << ", SetInternalConfig request count: "
+         << counts_[CountType::SET_INTERNAL_CONFIG_REQUEST]
+         << ", GetInternalConfig request count: "
+         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST] << "}";
+  return stream.str();
 }
 
 }  // namespace gcs

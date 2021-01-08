@@ -4,6 +4,7 @@ import time
 
 import torch
 import torch.utils.data
+from filelock import FileLock
 from torch import nn
 import torchvision
 
@@ -50,28 +51,6 @@ def get_dataset(name,
     return ds, num_classes
 
 
-def data_creator(config):
-    # Within a machine, this code runs synchronously.
-    dataset, num_classes = get_dataset(
-        args.dataset, "train", get_transform(train=True))
-    config["num_classes"] = num_classes
-    dataset_test, _ = get_dataset(
-        args.dataset, "val", get_transform(train=False))
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        num_workers=args.data_workers,
-        collate_fn=utils.collate_fn,
-        drop_last=True)
-
-    data_loader_test = torch.utils.data.DataLoader(
-        dataset_test,
-        batch_size=1,
-        num_workers=args.data_workers,
-        collate_fn=utils.collate_fn)
-    return data_loader, data_loader_test
-
-
 def get_transform(train):
     base_size = 520
     crop_size = 480
@@ -101,7 +80,75 @@ def criterion(inputs, target):
     return losses["out"] + 0.5 * losses["aux"]
 
 
+def get_optimizer(model, aux_loss):
+    params_to_optimize = [
+        {
+            "params": [
+                p for p in model.backbone.parameters() if p.requires_grad
+            ]
+        },
+        {
+            "params": [
+                p for p in model.classifier.parameters() if p.requires_grad
+            ]
+        },
+    ]
+    if aux_loss:
+        params = [
+            p for p in model.aux_classifier.parameters() if p.requires_grad
+        ]
+        params_to_optimize.append({"params": params, "lr": args.lr * 10})
+    optimizer = torch.optim.SGD(
+        params_to_optimize,
+        lr=args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay)
+    return optimizer
+
+
 class SegOperator(TrainingOperator):
+    def setup(self, config):
+        args = config["args"]
+        # Create Data Loaders.
+        with FileLock(".ray.lock"):
+            # Within a machine, this code runs synchronously.
+            dataset, num_classes = get_dataset(
+                args.dataset, "train", get_transform(train=True))
+            config["num_classes"] = num_classes
+            dataset_test, _ = get_dataset(
+                args.dataset, "val", get_transform(train=False))
+
+        data_loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            num_workers=args.data_workers,
+            collate_fn=utils.collate_fn,
+            drop_last=True)
+
+        data_loader_test = torch.utils.data.DataLoader(
+            dataset_test,
+            batch_size=1,
+            num_workers=args.data_workers,
+            collate_fn=utils.collate_fn)
+
+        # Create model.
+        model = torchvision.models.segmentation.__dict__[args.model](
+            num_classes=config["num_classes"],
+            aux_loss=args.aux_loss,
+            pretrained=args.pretrained)
+        if config["num_workers"] > 1:
+            model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+
+        # Create optimizer.
+        optimizer = get_optimizer(model, aux_loss=args.aux_loss)
+
+        # Register components.
+        self.model, self.optimizer = self.register(
+            models=model,
+            optimizers=optimizer,
+            train_loader=data_loader,
+            validation_loader=data_loader_test)
+
     def train_batch(self, batch, batch_info):
         image, target = batch
         image, target = image.to(self.device), target.to(self.device)
@@ -132,43 +179,6 @@ class SegOperator(TrainingOperator):
         return confmat
 
 
-def optimizer_creator(model, config):
-    args = config["args"]
-    params_to_optimize = [
-        {
-            "params": [
-                p for p in model.backbone.parameters() if p.requires_grad
-            ]
-        },
-        {
-            "params": [
-                p for p in model.classifier.parameters() if p.requires_grad
-            ]
-        },
-    ]
-    if args.aux_loss:
-        params = [
-            p for p in model.aux_classifier.parameters() if p.requires_grad
-        ]
-        params_to_optimize.append({"params": params, "lr": args.lr * 10})
-    return torch.optim.SGD(
-        params_to_optimize,
-        lr=args.lr,
-        momentum=args.momentum,
-        weight_decay=args.weight_decay)
-
-
-def model_creator(config):
-    args = config["args"]
-    model = torchvision.models.segmentation.__dict__[args.model](
-        num_classes=config["num_classes"],
-        aux_loss=args.aux_loss,
-        pretrained=args.pretrained)
-    if config["num_workers"] > 1:
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-    return model
-
-
 def main(args):
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -176,9 +186,6 @@ def main(args):
     start_time = time.time()
     config = {"args": args, "num_workers": args.num_workers}
     trainer = TorchTrainer(
-        model_creator=model_creator,
-        data_creator=data_creator,
-        optimizer_creator=optimizer_creator,
         training_operator_cls=SegOperator,
         use_tqdm=True,
         use_fp16=True,
@@ -193,11 +200,11 @@ def main(args):
         state_dict = trainer.state_dict()
         state_dict.update(epoch=epoch, args=args)
         torch.save(state_dict,
-                   os.path.join(args.output_dir, "model_{}.pth".format(epoch)))
+                   os.path.join(args.output_dir, f"model_{epoch}.pth"))
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print("Training time {}".format(total_time_str))
+    print(f"Training time {total_time_str}")
 
 
 def parse_args():

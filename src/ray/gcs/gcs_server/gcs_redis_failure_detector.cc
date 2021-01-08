@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+
 #include "ray/common/ray_config.h"
 
 namespace ray {
@@ -31,13 +32,18 @@ void GcsRedisFailureDetector::Start() {
 }
 
 void GcsRedisFailureDetector::DetectRedis() {
-  auto *reply = reinterpret_cast<redisReply *>(
-      redisCommand(redis_context_->sync_context(), "PING"));
-  if (reply == nullptr || reply->type == REDIS_REPLY_NIL) {
-    RAY_LOG(ERROR) << "Redis is inactive.";
+  auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
+    if (reply->IsNil()) {
+      RAY_LOG(ERROR) << "Redis is inactive.";
+      callback_();
+    }
+  };
+
+  Status status = redis_context_->RunArgvAsync({"PING"}, redis_callback);
+
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Redis is disconnected.";
     callback_();
-  } else {
-    freeReplyObject(reply);
   }
 }
 
@@ -52,7 +58,7 @@ void GcsRedisFailureDetector::ScheduleTick() {
       RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds());
   detect_timer_.expires_from_now(detect_period);
   detect_timer_.async_wait([this](const boost::system::error_code &error) {
-    if (error == boost::system::errc::operation_canceled) {
+    if (error == boost::asio::error::operation_aborted) {
       return;
     }
     RAY_CHECK(!error) << "Detecting redis failed with error: " << error.message();

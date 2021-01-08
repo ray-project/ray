@@ -32,7 +32,7 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 
 /// The duration that a single handler on the event loop can take before a
 /// warning is logged that the handler is taking too long.
-RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
+RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 
 /// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
@@ -44,6 +44,9 @@ RAY_CONFIG(int64_t, num_heartbeats_timeout, 300)
 /// heartbeat periods ago, then a warning will be logged that the heartbeat
 /// handler is drifting.
 RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
+
+/// The duration between reporting resources sent by the raylets.
+RAY_CONFIG(int64_t, raylet_report_resources_period_milliseconds, 100)
 
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
@@ -104,9 +107,11 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Whether to enable the new scheduler. The new scheduler is designed
-/// only to work with  direct calls. Once direct calls afre becoming
+/// only to work with direct calls. Once direct calls are becoming
 /// the default, this scheduler will also become the default.
-RAY_CONFIG(bool, new_scheduler_enabled, false)
+RAY_CONFIG(bool, new_scheduler_enabled,
+           getenv("RAY_ENABLE_NEW_SCHEDULER") == nullptr ||
+               getenv("RAY_ENABLE_NEW_SCHEDULER") == std::string("1"))
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -116,15 +121,23 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // limit in Ray to avoid crashing with many small inlined task arguments.
 RAY_CONFIG(int64_t, max_grpc_message_size, 100 * 1024 * 1024)
 
+// Number of times to retry creating a gRPC server.
+RAY_CONFIG(int64_t, grpc_server_num_retries, 1)
+
+// Retry timeout for trying to create a gRPC server. Only applies if the number
+// of retries is non zero.
+RAY_CONFIG(int64_t, grpc_server_retry_timeout_milliseconds, 1000)
+
 // The min number of retries for direct actor creation tasks. The actual number
-// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+// of creation retries will be MAX(actor_creation_min_retries, max_restarts).
 RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
-/// The initial period for a task execution lease. The lease will expire this
-/// many milliseconds after the first acquisition of the lease. Nodes that
-/// require an object will not try to reconstruct the task until at least
-/// this many milliseconds.
-RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
+/// When trying to resolve an object, the initial period that the raylet will
+/// wait before contacting the object's owner to check if the object is still
+/// available. This is a lower bound on the time to report the loss of an
+/// object stored in the distributed object store in the case that the worker
+/// that created the original ObjectRef dies.
+RAY_CONFIG(int64_t, object_timeout_milliseconds, 100)
 
 /// The maximum duration that workers can hold on to another worker's lease
 /// for direct task submission until it must be returned to the raylet.
@@ -140,75 +153,30 @@ RAY_CONFIG(int64_t, get_timeout_milliseconds, 1000)
 RAY_CONFIG(int64_t, worker_get_request_size, 10000)
 RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 
-/// This is used to bound the size of the Raylet's lineage cache. This is
-/// the maximum uncommitted lineage size that any remote task in the cache
-/// can have before eviction will be attempted.
-RAY_CONFIG(uint64_t, max_lineage_size, 100)
-
-/// This is a temporary constant used by actors to determine how many dummy
-/// objects to store.
-RAY_CONFIG(int64_t, actor_max_dummy_objects, 1000)
-
-/// Number of times we try connecting to a socket.
-RAY_CONFIG(int64_t, num_connect_attempts, 5)
-RAY_CONFIG(int64_t, connect_timeout_milliseconds, 500)
+/// Number of times raylet client tries connecting to a raylet.
+RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
+RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
 /// The duration that the raylet will wait before reinitiating a
 /// fetch request for a missing task dependency. This time may adapt based on
 /// the number of missing task dependencies.
 RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
 
-/// The duration that the raylet will wait between initiating
-/// reconstruction calls for missing task dependencies. If there are many
-/// missing task dependencies, we will only iniate reconstruction calls for
-/// some of them each time.
-RAY_CONFIG(int64_t, raylet_reconstruction_timeout_milliseconds, 1000)
-
-/// The maximum number of objects that the raylet will issue
-/// reconstruct calls for in a single pass through the reconstruct object
-/// timeout handler.
-RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000)
-
-/// The maximum number of objects to include in a single fetch request in the
-/// regular raylet fetch timeout handler.
-RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000)
-
-/// The maximum number of active object IDs to report in a heartbeat.
-/// # NOTE: currently disabled by default.
-RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
-
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 
-/// This is a timeout used to cause failures in the plasma manager and raylet
-/// when certain event loop handlers take too long.
-RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
-
-/// This is used to cause failures when a certain loop in redis.cc which
-/// synchronously looks up object manager addresses in redis is slow.
-RAY_CONFIG(int64_t, max_time_for_loop, 1000)
+/// The duration that we wait after the worker is launched before the
+/// starting_worker_timeout_callback() is called.
+RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
 /// Allow up to 5 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
-/// TODO(rkn): These constants are currently unused.
-RAY_CONFIG(int64_t, plasma_default_release_delay, 64)
-RAY_CONFIG(int64_t, L3_cache_size_bytes, 100000000)
-
-/// Constants for the spillback scheduling policy.
-RAY_CONFIG(int64_t, max_tasks_to_spillback, 10)
-
-/// Every time an actor creation task has been spilled back a number of times
-/// that is a multiple of this quantity, a warning will be pushed to the
-/// corresponding driver. Since spillback currently occurs on a 100ms timer,
-/// a value of 100 corresponds to a warning every 10 seconds.
-RAY_CONFIG(int64_t, actor_creation_num_spillbacks_warning, 100)
-
-/// If a node manager attempts to forward a task to another node manager and
-/// the forward fails, then it will resubmit the task after this duration.
-RAY_CONFIG(int64_t, node_manager_forward_task_retry_timeout_milliseconds, 1000)
+/// Timeout, in milliseconds, to wait before retrying a failed pull in the
+/// ObjectManager.
+RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 
 /// Timeout, in milliseconds, to wait before retrying a failed pull in the
 /// ObjectManager.
@@ -220,33 +188,25 @@ RAY_CONFIG(int, object_manager_pull_timeout_ms, 10000)
 /// 0: giving up retrying immediately.
 RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
-/// The period of time that an object manager will wait before pushing the
-/// same object again to a specific object manager.
-RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
-
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
 /// data than what is specified by the chunk size unless the number of object
 /// chunks exceeds the number of available sending threads.
-RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
+/// NOTE(ekl): this has been raised to lower broadcast overheads.
+RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
-/// Number of workers per Python worker process
-RAY_CONFIG(int, num_workers_per_process_python, 1)
-
-/// Number of workers per Java worker process
-RAY_CONFIG(int, num_workers_per_process_java, 10)
-
-/// Maximum timeout in milliseconds within which a task lease must be renewed.
-RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)
-
-/// Maximum number of checkpoints to keep in GCS for an actor.
-/// Note: this number should be set to at least 2. Because saving a application
-/// checkpoint isn't atomic with saving the backend checkpoint, and it will break
-/// if this number is set to 1 and users save application checkpoints in place.
-RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
+/// The maximum number of outbound bytes to allow to be outstanding. This avoids
+/// excessive memory usage during object broadcast to many receivers.
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
+
+/// Maximum number of items in one batch to scan/get/delete from GCS storage.
+RAY_CONFIG(uint32_t, maximum_gcs_storage_operation_batch_size, 1000)
+
+/// Maximum number of rows in GCS profile table.
+RAY_CONFIG(int32_t, maximum_profile_table_rows_count, 10 * 1000)
 
 /// When getting objects from object store, print a warning every this number of attempts.
 RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
@@ -255,6 +215,8 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -267,22 +229,139 @@ RAY_CONFIG(int64_t, gcs_redis_heartbeat_interval_milliseconds, 100)
 RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
+/// Duration to wait between retries for creating placement group in gcs server.
+RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_interval_ms, 200)
+/// Maximum number of destroyed actors in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead nodes in GCS server memory cache.
+RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
+/// The interval at which the gcs server will print debug info.
+RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 
 /// Maximum number of times to retry putting an object when the plasma store is full.
 /// Can be set to -1 to enable unlimited retries.
-RAY_CONFIG(int32_t, object_store_full_max_retries, 5)
+RAY_CONFIG(int32_t, object_store_full_max_retries, 1000)
 /// Duration to sleep after failing to put an object in plasma because it is full.
-/// This will be exponentially increased for each retry.
-RAY_CONFIG(uint32_t, object_store_full_initial_delay_ms, 1000)
+RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
+
+/// The amount of time to wait between logging plasma space usage debug messages.
+RAY_CONFIG(uint64_t, object_store_usage_log_interval_s, 10 * 60)
+
+/// The amount of time between automatic local Python GC triggers.
+RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+
+/// The min amount of time between local GCs (whether auto or mem pressure triggered).
+RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
 
 /// Duration to wait between retries for failed tasks.
 RAY_CONFIG(uint32_t, task_retry_delay_ms, 5000)
 
-/// Whether to enable gcs service.
-/// RAY_GCS_SERVICE_ENABLED is an env variable which only set in ci job.
-/// If the value of RAY_GCS_SERVICE_ENABLED is false, we will disable gcs service,
-/// otherwise gcs service is enabled.
-/// TODO(ffbin): Once we entirely migrate to service-based GCS, we should remove it.
-RAY_CONFIG(bool, gcs_service_enabled,
-           getenv("RAY_GCS_SERVICE_ENABLED") == nullptr ||
-               getenv("RAY_GCS_SERVICE_ENABLED") == std::string("true"))
+/// Duration to wait between retrying to kill a task.
+RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
+
+/// The interval at which the gcs rpc client will check if gcs rpc server is ready.
+RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
+
+/// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 1)
+
+/// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
+RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, plasma_store_as_thread, false)
+
+/// Whether to release worker CPUs during plasma fetches.
+/// See https://github.com/ray-project/ray/issues/12912 for further discussion.
+RAY_CONFIG(bool, release_resources_during_plasma_fetch, false)
+
+/// The interval at which the gcs client will check if the address of gcs service has
+/// changed. When the address changed, we will resubscribe again.
+RAY_CONFIG(int64_t, gcs_service_address_check_interval_milliseconds, 1000)
+
+/// The batch size for metrics export.
+RAY_CONFIG(int64_t, metrics_report_batch_size, 100)
+
+/// Whether or not we enable metrics collection.
+RAY_CONFIG(int64_t, enable_metrics_collection, true)
+
+/// Whether put small objects in the local memory store.
+RAY_CONFIG(bool, put_small_object_in_memory_store, false)
+
+/// Maximum number of tasks that can be in flight between an owner and a worker for which
+/// the owner has been granted a lease. A value >1 is used when we want to enable
+/// pipelining task submission.
+RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
+
+/// Interval to restart dashboard agent after the process exit.
+RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
+
+/// Wait timeout for dashboard agent register.
+RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
+
+/// The maximum number of resource shapes included in the resource
+/// load reported by each raylet.
+RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
+
+/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
+/// data.
+RAY_CONFIG(bool, report_worker_backlog, true)
+
+/// The timeout for synchronous GCS requests in seconds.
+RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 5)
+
+/// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
+RAY_CONFIG(bool, enable_worker_prestart,
+           getenv("RAY_ENABLE_WORKER_PRESTART") == nullptr ||
+               getenv("RAY_ENABLE_WORKER_PRESTART") == std::string("1"))
+
+/// The interval of periodic idle worker killing. A negative value means worker capping is
+/// disabled.
+RAY_CONFIG(int64_t, kill_idle_workers_interval_ms, 200)
+
+/// The idle time threshold for an idle worker to be killed.
+RAY_CONFIG(int64_t, idle_worker_killing_time_threshold_ms, 1000)
+
+/// Whether start the Plasma Store as a Raylet thread.
+RAY_CONFIG(bool, ownership_based_object_directory_enabled, false)
+
+// The interval where metrics are exported in milliseconds.
+RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
+
+/// Enable the task timeline. If this is enabled, certain events such as task
+/// execution are profiled and sent to the GCS.
+RAY_CONFIG(bool, enable_timeline, true)
+
+/// The maximum number of pending placement group entries that are reported to monitor to
+/// autoscale the cluster.
+RAY_CONFIG(int64_t, max_placement_group_load_report_size, 100)
+
+/* Configuration parameters for object spilling. */
+/// JSON configuration that describes the external storage. This is passed to
+/// Python IO workers to determine how to store/restore an object to/from
+/// external storage.
+RAY_CONFIG(std::string, object_spilling_config, "")
+
+/// Whether to enable automatic object spilling. If enabled, then
+/// Ray will choose objects to spill when the object store is out of
+/// memory.
+RAY_CONFIG(bool, automatic_object_spilling_enabled, true)
+
+/// The maximum number of I/O worker that raylet starts.
+RAY_CONFIG(int, max_io_workers, 1)
+
+/// Ray's object spilling fuses small objects into a single file before flushing them
+/// to optimize the performance.
+/// The minimum object size that can be spilled by each spill operation. 100 MB by
+/// default. This value is not recommended to set beyond --object-store-memory.
+RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
+
+/// Whether to enable automatic object deletion when refs are gone out of scope.
+/// When it is true, manual (force) spilling is not available.
+/// TODO(sang): Fix it.
+RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
+
+/* Configuration parameters for locality-aware scheduling. */
+/// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
+/// dependency locality when choosing a worker for leasing.
+RAY_CONFIG(bool, locality_aware_leasing_enabled, true)

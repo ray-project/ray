@@ -1,7 +1,6 @@
 # Original Code here:
 # https://github.com/pytorch/examples/blob/master/mnist/main.py
 import os
-import numpy as np
 import argparse
 from filelock import FileLock
 import torch
@@ -12,7 +11,6 @@ from torchvision import datasets, transforms
 
 import ray
 from ray import tune
-from ray.tune import track
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 # Change these values if you want the training to run quicker or slower.
@@ -33,7 +31,8 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device=torch.device("cpu")):
+def train(model, optimizer, train_loader, device=None):
+    device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > EPOCH_SIZE:
@@ -46,7 +45,8 @@ def train(model, optimizer, train_loader, device=torch.device("cpu")):
         optimizer.step()
 
 
-def test(model, data_loader, device=torch.device("cpu")):
+def test(model, data_loader, device=None):
+    device = device or torch.device("cpu")
     model.eval()
     correct = 0
     total = 0
@@ -88,7 +88,7 @@ def get_data_loaders():
 
 
 def train_mnist(config):
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     train_loader, test_loader = get_data_loaders()
     model = ConvNet().to(device)
@@ -99,7 +99,8 @@ def train_mnist(config):
     while True:
         train(model, optimizer, train_loader, device)
         acc = test(model, test_loader, device)
-        track.log(mean_accuracy=acc)
+        # Set this to run Tune.
+        tune.report(mean_accuracy=acc)
 
 
 if __name__ == "__main__":
@@ -119,10 +120,14 @@ if __name__ == "__main__":
         ray.init(address=args.ray_address)
     else:
         ray.init(num_cpus=2 if args.smoke_test else None)
-    sched = AsyncHyperBandScheduler(
-        time_attr="training_iteration", metric="mean_accuracy")
+
+    # for early stopping
+    sched = AsyncHyperBandScheduler()
+
     analysis = tune.run(
         train_mnist,
+        metric="mean_accuracy",
+        mode="max",
         name="exp",
         scheduler=sched,
         stop={
@@ -131,13 +136,12 @@ if __name__ == "__main__":
         },
         resources_per_trial={
             "cpu": 2,
-            "gpu": int(args.cuda)
+            "gpu": int(args.cuda)  # set this for GPUs
         },
         num_samples=1 if args.smoke_test else 50,
         config={
-            "lr": tune.sample_from(lambda spec: 10**(-10 * np.random.rand())),
+            "lr": tune.loguniform(1e-4, 1e-2),
             "momentum": tune.uniform(0.1, 0.9),
-            "use_gpu": int(args.cuda)
         })
 
-    print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))
+    print("Best config is:", analysis.best_config)

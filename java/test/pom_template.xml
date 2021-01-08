@@ -6,7 +6,7 @@
   <parent>
     <groupId>io.ray</groupId>
     <artifactId>ray-superpom</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>1.1.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -15,6 +15,10 @@
   <description>java test cases for ray</description>
 
   <packaging>jar</packaging>
+
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
 
   <dependencies>
     <dependency>
@@ -36,6 +40,9 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>2.21.0</version>
         <configuration>
+          <suiteXmlFiles>
+            <suiteXmlFile>../testng.xml</suiteXmlFile>
+          </suiteXmlFiles>
           <trimStackTrace>false</trimStackTrace>
           <testSourceDirectory>${basedir}/src/main/java/</testSourceDirectory>
           <testClassesDirectory>${project.build.directory}/classes/</testClassesDirectory>

@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_LOGGING_H
-#define RAY_UTIL_LOGGING_H
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -33,9 +32,31 @@
 enum { ERROR = 0 };
 #endif
 #endif
-namespace ray {
 
-enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
+#if defined(DEBUG) && DEBUG == 1
+// Bazel defines the DEBUG macro for historical reasons:
+// https://github.com/bazelbuild/bazel/issues/3513#issuecomment-323829248
+// Undefine the DEBUG macro to prevent conflicts with our usage below
+#undef DEBUG
+// Redefine DEBUG as itself to allow any '#ifdef DEBUG' to keep working regardless
+#define DEBUG DEBUG
+#endif
+
+namespace ray {
+/// In order to use the get stacktrace method in other non-glog scenarios, we
+/// have added a patch to allow glog to return the current call stack information
+/// through the internal interface. This function `GetCallTrace` is a wrapper
+/// providing a new detection function for debug or something like that.
+std::string GetCallTrace();
+
+enum class RayLogLevel {
+  TRACE = -2,
+  DEBUG = -1,
+  INFO = 0,
+  WARNING = 1,
+  ERROR = 2,
+  FATAL = 3
+};
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
 
@@ -127,7 +148,15 @@ class RayLog : public RayLogBase {
   /// If glog is not installed, this function won't do anything.
   static void InstallFailureSignalHandler();
   // Get the log level from environment variable.
+
+  // To check failure signal handler enabled or not.
+  static bool IsFailureSignalHandlerEnabled();
+
   static RayLogLevel GetLogLevelFromEnv();
+
+  static std::string GetLogFormatPattern();
+
+  static std::string GetLoggerName();
 
  private:
   // Hide the implementation of log provider by void *.
@@ -145,6 +174,14 @@ class RayLog : public RayLogBase {
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
+  // Log format content.
+  static std::string log_format_pattern_;
+  // Log rotation file size limitation.
+  static long log_rotation_max_size_;
+  // Log rotation file number.
+  static long log_rotation_file_num_;
+  // Ray default logger name.
+  static std::string logger_name_;
 
  protected:
   virtual std::ostream &Stream();
@@ -161,5 +198,3 @@ class Voidify {
 };
 
 }  // namespace ray
-
-#endif  // RAY_UTIL_LOGGING_H

@@ -1,38 +1,152 @@
 .. _trainable-docs:
 
-Training (tune.Trainable, tune.track)
-=====================================
+Training (tune.Trainable, tune.report)
+======================================
 
-Training can be done with either a **Class API** (``tune.Trainable``) < or **function-based API** (``track.log``).
+Training can be done with either a **Class API** (``tune.Trainable``) or **function API** (``tune.report``).
 
-You can use the **function-based API** for fast prototyping. On the other hand, the ``tune.Trainable`` interface supports checkpoint/restore functionality and provides more control for advanced algorithms.
+For the sake of example, let's maximize this objective function:
 
-Function-based API
-------------------
+.. code-block:: python
+
+    def objective(x, a, b):
+        return a * (x ** 0.5) + b
+
+.. _tune-function-api:
+
+Function API
+------------
+
+With the Function API, you can report intermediate metrics by simply calling ``tune.report`` within the provided function.
 
 .. code-block:: python
 
     def trainable(config):
-        """
-        Args:
-            config (dict): Parameters provided from the search algorithm
-                or variant generation.
-        """
+        # config (dict): A dict of hyperparameters.
 
-        while True:
-            # ...
-            tune.track.log(**kwargs)
+        for x in range(20):
+            intermediate_score = objective(x, config["a"], config["b"])
 
-.. tip:: Do not use ``tune.track.log`` within a ``Trainable`` class.
+            tune.report(score=intermediate_score)  # This sends the score to Tune.
 
-Tune will run this function on a separate thread in a Ray actor process. Note that this API is not checkpointable, since the thread will never return control back to its caller.
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
 
-.. note:: If you have a lambda function that you want to train, you will need to first register the function: ``tune.register_trainable("lambda_id", lambda x: ...)``. You can then use ``lambda_id`` in place of ``my_trainable``.
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
 
-Trainable API
--------------
+.. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
-.. caution:: Do not use ``tune.track.log`` within a ``Trainable`` class.
+Tune will run this function on a separate thread in a Ray actor process.
+
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
+
+.. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:`PyTorch <tune-pytorch-cifar>` user guide and Tune's :ref:`distributed pytorch integrations <tune-integration-torch>`.
+
+Function API return and yield values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Instead of using ``tune.report()``, you can also use Python's ``yield``
+statement to report metrics to Ray Tune:
+
+
+.. code-block:: python
+
+    def trainable(config):
+        # config (dict): A dict of hyperparameters.
+
+        for x in range(20):
+            intermediate_score = objective(x, config["a"], config["b"])
+
+            yield {"score": intermediate_score}  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+
+If you yield a dictionary object, this will work just as ``tune.report()``.
+If you yield a number, if will be reported to Ray Tune with the key ``_metric``, i.e.
+as if you had called ``tune.report(_metric=value)``.
+
+Ray Tune supports the same functionality for return values if you only
+report metrics at the end of each run:
+
+.. code-block:: python
+
+    def trainable(config):
+        # config (dict): A dict of hyperparameters.
+
+        final_score = 0
+        for x in range(20):
+            final_score = objective(x, config["a"], config["b"])
+
+        return {"score": final_score}  # This sends the score to Tune.
+
+    analysis = tune.run(
+        trainable,
+        config={"a": 2, "b": 4}
+    )
+
+    print("best config: ", analysis.get_best_config(metric="score", mode="max"))
+
+
+.. _tune-function-checkpointing:
+
+Function API Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Many Tune features rely on checkpointing, including the usage of certain Trial Schedulers and fault tolerance. To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir`` :
+
+.. code-block:: python
+
+        import time
+        from ray import tune
+
+        def train_func(config, checkpoint_dir=None):
+            start = 0
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+                    state = json.loads(f.read())
+                    start = state["step"] + 1
+
+            for iter in range(start, 100):
+                time.sleep(1)
+
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
+                    path = os.path.join(checkpoint_dir, "checkpoint")
+                    with open(path, "w") as f:
+                        f.write(json.dumps({"step": start}))
+
+                tune.report(hello="world", ray="tune")
+
+        tune.run(train_func)
+
+.. note:: ``checkpoint_freq`` and ``checkpoint_at_end`` will not work with Function API checkpointing.
+
+In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``:
+
+.. code-block:: python
+
+        analysis = tune.run(
+            train,
+            config={
+                "max_iter": 5
+            },
+        ).trials
+        last_ckpt = trial.checkpoint.value
+        analysis = tune.run(train, config={"max_iter": 10}, restore=last_ckpt)
+
+Tune also may copy or move checkpoints during the course of tuning. For this purpose, it is important not to depend on absolute paths in the implementation of ``save``.
+
+.. _tune-class-api:
+
+Trainable Class API
+-------------------
+
+.. caution:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 The Trainable **class API** will require users to subclass ``ray.tune.Trainable``. Here's a naive example of this API:
 
@@ -40,66 +154,98 @@ The Trainable **class API** will require users to subclass ``ray.tune.Trainable`
 
     from ray import tune
 
-    class Guesser(tune.Trainable):
-        """Randomly picks 10 number from [1, 10000) to find the password."""
+    class Trainable(tune.Trainable):
+        def setup(self, config):
+            # config (dict): A dict of hyperparameters
+            self.x = 0
+            self.a = config["a"]
+            self.b = config["b"]
 
-        def _setup(self, config):
-            self.config = config
-            self.password = 1024
-
-        def _train(self):
-            """Execute one step of 'training'."""
-            result_dict = {"diff": abs(self.config['guess'] - self.password)}
-            return result_dict
-
-        def _stop(self):
-            # perform any cleanup necessary.
-            pass
+        def step(self):  # This is called iteratively.
+            score = objective(self.x, self.a, self.b)
+            self.x += 1
+            return {"score": score}
 
     analysis = tune.run(
-        Guesser,
-        stop={
-            "training_iteration": 1,
-        },
-        num_samples=10,
+        Trainable,
+        stop={"training_iteration": 20},
         config={
-            "guess": tune.randint(1, 10000)
+            "a": 2,
+            "b": 4
         })
 
-    print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
+    print('best config: ', analysis.get_best_config(metric="score", mode="max"))
 
-As a subclass of ``tune.Trainable``, Tune will create a ``Guesser`` object on a separate process (using the Ray Actor API).
+As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on a separate process (using the :ref:`Ray Actor API <actor-guide>`).
 
-  1. ``_setup`` function is invoked once training starts.
-  2. ``_train`` is invoked **multiple times**. Each time, the Guesser object executes one logical iteration of training in the tuning process, which may include one or more iterations of actual training.
-  3. ``_stop`` is invoked when training is finished.
+  1. ``setup`` function is invoked once training starts.
+  2. ``step`` is invoked **multiple times**. Each time, the Trainable object executes one logical iteration of training in the tuning process, which may include one or more iterations of actual training.
+  3. ``cleanup`` is invoked when training is finished.
 
-.. tip:: As a rule of thumb, the execution time of ``_train`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
+.. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
 
-In this example, we only implemented the ``_setup`` and ``_train`` methods for simplification. Next, we'll implement ``_save`` and ``_restore`` for checkpoint and fault tolerance.
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
-Save and Restore
-~~~~~~~~~~~~~~~~
+.. _tune-trainable-save-restore:
 
-Many Tune features rely on ``_save``, and ``_restore``, including the usage of certain Trial Schedulers, fault tolerance, and checkpointing.
+Class API Checkpointing
+~~~~~~~~~~~~~~~~~~~~~~~
+
+You can also implement checkpoint/restore using the Trainable Class API:
 
 .. code-block:: python
 
     class MyTrainableClass(Trainable):
-        def _save(self, tmp_checkpoint_dir):
+        def save_checkpoint(self, tmp_checkpoint_dir):
             checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             torch.save(self.model.state_dict(), checkpoint_path)
             return tmp_checkpoint_dir
 
-        def _restore(self, tmp_checkpoint_dir):
+        def load_checkpoint(self, tmp_checkpoint_dir):
             checkpoint_path = os.path.join(tmp_checkpoint_dir, "model.pth")
             self.model.load_state_dict(torch.load(checkpoint_path))
 
-Checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<iter>``. You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)``.
+    tune.run(MyTrainableClass, checkpoint_freq=2)
 
-Tune also generates temporary checkpoints for pausing and switching between trials. For this purpose, it is important not to depend on absolute paths in the implementation of ``save``.
+You can checkpoint with three different mechanisms: manually, periodically, and at termination.
 
-Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors before execution.
+**Manual Checkpointing**: A custom Trainable can manually trigger checkpointing by returning ``should_checkpoint: True`` (or ``tune.result.SHOULD_CHECKPOINT: True``) in the result dictionary of `step`. This can be especially helpful in spot instances:
+
+.. code-block:: python
+
+    def step(self):
+        # training code
+        result = {"mean_accuracy": accuracy}
+        if detect_instance_preemption():
+            result.update(should_checkpoint=True)
+        return result
+
+
+**Periodic Checkpointing**: periodic checkpointing can be used to provide fault-tolerance for experiments. This can be enabled by setting ``checkpoint_freq=<int>`` and ``max_failures=<int>`` to checkpoint trials every *N* iterations and recover from up to *M* crashes per trial, e.g.:
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        max_failures=5,
+    )
+
+**Checkpointing at Termination**: The checkpoint_freq may not coincide with the exact end of an experiment. If you want a checkpoint to be created at the end
+of a trial, you can additionally set the ``checkpoint_at_end=True``:
+
+.. code-block:: python
+   :emphasize-lines: 5
+
+    tune.run(
+        my_trainable,
+        checkpoint_freq=10,
+        checkpoint_at_end=True,
+        max_failures=5,
+    )
+
+
+Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` errors before execution.
 
 .. code-block:: python
 
@@ -112,6 +258,8 @@ Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors before exec
 Advanced: Reusing Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. note:: This feature is only for the Trainable Class API.
+
 Your Trainable can often take a long time to start. To avoid this, you can do ``tune.run(reuse_actors=True)`` to reuse the same Trainable Python process and object for multiple hyperparameters.
 
 This requires you to implement ``Trainable.reset_config``, which provides a new set of hyperparameters. It is up to the user to correctly update the hyperparameters of your trainable.
@@ -121,7 +269,7 @@ This requires you to implement ``Trainable.reset_config``, which provides a new 
     class PytorchTrainble(tune.Trainable):
         """Train a Pytorch ConvNet."""
 
-        def _setup(self, config):
+        def setup(self, config):
             self.train_loader, self.test_loader = get_data_loaders()
             self.model = ConvNet()
             self.optimizer = optim.SGD(
@@ -141,8 +289,45 @@ This requires you to implement ``Trainable.reset_config``, which provides a new 
             return True
 
 
-tune.Trainable
---------------
+Advanced Resource Allocation
+----------------------------
+
+Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will want to set ``extra_cpu`` or ``extra_gpu`` inside ``tune.run`` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU, then you should set ``"gpu": 1, "extra_gpu": 4``.
+
+.. code-block:: python
+   :emphasize-lines: 4-8
+
+    tune.run(
+        my_trainable,
+        name="my_trainable",
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 1,
+            "extra_gpu": 4
+        }
+    )
+
+The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically declare the ``resources_per_trial`` based on the given configuration.
+
+
+
+.. _tune-function-docstring:
+
+tune.report / tune.checkpoint (Function API)
+--------------------------------------------
+
+.. autofunction:: ray.tune.report
+
+.. autofunction:: ray.tune.checkpoint_dir
+
+.. autofunction:: ray.tune.get_trial_dir
+
+.. autofunction:: ray.tune.get_trial_name
+
+.. autofunction:: ray.tune.get_trial_id
+
+tune.Trainable (Class API)
+--------------------------
 
 
 .. autoclass:: ray.tune.Trainable
@@ -150,25 +335,50 @@ tune.Trainable
     :private-members:
     :members:
 
+.. _tune-util-ref:
+
+Utilities
+---------
+
+.. autofunction:: ray.tune.utils.wait_for_gpu
+
+.. autofunction:: ray.tune.utils.diagnose_serialization
+
+.. autofunction:: ray.tune.utils.validate_save_restore
+
+
+.. _tune-ddp-doc:
+
+Distributed Torch
+-----------------
+
+Ray offers lightweight integrations to distribute your PyTorch training on Ray Tune.
+
+
+.. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
+   :noindex:
+
+.. autofunction:: ray.tune.integration.torch.distributed_checkpoint_dir
+   :noindex:
+
+.. autofunction:: ray.tune.integration.torch.is_distributed_trainable
+   :noindex:
+
+.. _tune-dist-tf-doc:
+
+Distributed TensorFlow
+----------------------
+
+Ray also offers lightweight integrations to distribute your TensorFlow training on Ray Tune.
+
+
+.. autofunction:: ray.tune.integration.tensorflow.DistributedTrainableCreator
+   :noindex:
+
 tune.DurableTrainable
 ---------------------
 
 .. autoclass:: ray.tune.DurableTrainable
-
-.. _track-docstring:
-
-tune.track
-----------
-
-.. automodule:: ray.tune.track
-    :members:
-    :exclude-members: init,
-
-KerasCallback
--------------
-
-.. automodule:: ray.tune.integration.keras
-    :members:
 
 
 StatusReporter

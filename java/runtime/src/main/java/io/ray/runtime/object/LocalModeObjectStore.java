@@ -2,7 +2,9 @@ package io.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import io.ray.api.id.ObjectId;
+import io.ray.api.id.UniqueId;
 import io.ray.runtime.context.WorkerContext;
+import io.ray.runtime.generated.Common.Address;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -12,14 +14,12 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Object store methods for local mode.
- */
+/** Object store methods for local mode. */
 public class LocalModeObjectStore extends ObjectStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalModeObjectStore.class);
 
-  private static final int GET_CHECK_INTERVAL_MS = 100;
+  private static final int GET_CHECK_INTERVAL_MS = 1;
 
   private final Map<ObjectId, NativeRayObject> pool = new ConcurrentHashMap<>();
   private final List<Consumer<ObjectId>> objectPutCallbacks = new ArrayList<>();
@@ -91,9 +91,29 @@ public class LocalModeObjectStore extends ObjectStore {
   }
 
   @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
+  public void delete(List<ObjectId> objectIds, boolean localOnly) {
     for (ObjectId objectId : objectIds) {
       pool.remove(objectId);
     }
   }
+
+  @Override
+  public void addLocalReference(UniqueId workerId, ObjectId objectId) {}
+
+  @Override
+  public void removeLocalReference(UniqueId workerId, ObjectId objectId) {}
+
+  @Override
+  public Address getOwnerAddress(ObjectId id) {
+    return Address.getDefaultInstance();
+  }
+
+  @Override
+  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
+    return new byte[0];
+  }
+
+  @Override
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {}
 }

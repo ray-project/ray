@@ -1,0 +1,11 @@
+diff --git src/logging.cc src/logging.cc
+--- src/logging.cc
++++ src/logging.cc
+@@ -1437,3 +1437,6 @@
++             << setfill(' ') << setw(5)
++             << static_cast<unsigned int>(getpid()) << setfill('0')
++             << ' '
+              << setfill(' ') << setw(5)
+              << static_cast<unsigned int>(GetTID()) << setfill('0')
+              << ' '
+-- 

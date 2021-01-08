@@ -1,5 +1,4 @@
-#ifndef RAY_CORE_WORKER_MEMORY_STORE_H
-#define RAY_CORE_WORKER_MEMORY_STORE_H
+#pragma once
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -13,6 +12,7 @@
 namespace ray {
 
 struct MemoryStoreStats {
+  int32_t num_in_plasma = 0;
   int32_t num_local_objects = 0;
   int64_t used_object_store_memory = 0;
 };
@@ -137,7 +137,7 @@ class CoreWorkerMemoryStore {
  private:
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
-  /// is an exception.
+  /// resources. is an exception.
   Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
                  int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
@@ -176,5 +176,3 @@ class CoreWorkerMemoryStore {
 };
 
 }  // namespace ray
-
-#endif  // RAY_CORE_WORKER_MEMORY_STORE_H

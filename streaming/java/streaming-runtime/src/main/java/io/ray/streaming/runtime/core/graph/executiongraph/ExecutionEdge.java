@@ -4,57 +4,55 @@ import com.google.common.base.MoreObjects;
 import io.ray.streaming.api.partition.Partition;
 import java.io.Serializable;
 
-/**
- * An edge that connects two execution vertices.
- */
+/** An edge that connects two execution vertices. */
 public class ExecutionEdge implements Serializable {
 
-  /**
-   * The source(upstream) execution vertex.
-   */
-  private final ExecutionVertex sourceVertex;
+  /** The source(upstream) execution vertex. */
+  private final ExecutionVertex sourceExecutionVertex;
 
-  /**
-   * The target(downstream) execution vertex.
-   */
-  private final ExecutionVertex targetVertex;
+  /** The target(downstream) execution vertex. */
+  private final ExecutionVertex targetExecutionVertex;
 
-  /**
-   * The partition of current execution edge's execution job edge.
-   */
+  /** The partition of current execution edge's execution job edge. */
   private final Partition partition;
 
-  /**
-   * An unique id for execution edge.
-   */
+  /** An unique id for execution edge. */
   private final String executionEdgeIndex;
 
-  public ExecutionEdge(ExecutionVertex sourceVertex, ExecutionVertex targetVertex,
+  public ExecutionEdge(
+      ExecutionVertex sourceExecutionVertex,
+      ExecutionVertex targetExecutionVertex,
       ExecutionJobEdge executionJobEdge) {
-    this.sourceVertex = sourceVertex;
-    this.targetVertex = targetVertex;
+    this.sourceExecutionVertex = sourceExecutionVertex;
+    this.targetExecutionVertex = targetExecutionVertex;
     this.partition = executionJobEdge.getPartition();
     this.executionEdgeIndex = generateExecutionEdgeIndex();
   }
 
   private String generateExecutionEdgeIndex() {
-    return sourceVertex.getId() + "—" + targetVertex.getId();
+    return sourceExecutionVertex.getExecutionVertexId()
+        + "—"
+        + targetExecutionVertex.getExecutionVertexId();
   }
 
-  public ExecutionVertex getSourceVertex() {
-    return sourceVertex;
+  public ExecutionVertex getSourceExecutionVertex() {
+    return sourceExecutionVertex;
   }
 
-  public ExecutionVertex getTargetVertex() {
-    return targetVertex;
+  public ExecutionVertex getTargetExecutionVertex() {
+    return targetExecutionVertex;
+  }
+
+  public String getTargetExecutionJobVertexName() {
+    return getTargetExecutionVertex().getExecutionJobVertexName();
   }
 
   public int getSourceVertexId() {
-    return sourceVertex.getId();
+    return sourceExecutionVertex.getExecutionVertexId();
   }
 
   public int getTargetVertexId() {
-    return targetVertex.getId();
+    return targetExecutionVertex.getExecutionVertexId();
   }
 
   public Partition getPartition() {
@@ -68,10 +66,10 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-      .add("sourceVertex", sourceVertex)
-      .add("targetVertex", targetVertex)
-      .add("partition", partition)
-      .add("executionEdgeIndex", executionEdgeIndex)
-      .toString();
+        .add("source", sourceExecutionVertex)
+        .add("target", targetExecutionVertex)
+        .add("partition", partition)
+        .add("index", executionEdgeIndex)
+        .toString();
   }
 }

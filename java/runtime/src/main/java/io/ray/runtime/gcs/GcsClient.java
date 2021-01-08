@@ -2,63 +2,63 @@ package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.api.Checkpointable.Checkpoint;
 import io.ray.api.id.ActorId;
-import io.ray.api.id.BaseId;
 import io.ray.api.id.JobId;
-import io.ray.api.id.TaskId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.runtimecontext.NodeInfo;
-import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.generated.Gcs;
-import io.ray.runtime.generated.Gcs.ActorCheckpointIdData;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.TablePrefix;
-import io.ray.runtime.util.IdUtil;
+import io.ray.runtime.placementgroup.PlacementGroupUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * An implementation of GcsClient.
- */
+/** An implementation of GcsClient. */
 public class GcsClient {
   private static Logger LOGGER = LoggerFactory.getLogger(GcsClient.class);
   private RedisClient primary;
 
-  private List<RedisClient> shards;
+  private GlobalStateAccessor globalStateAccessor;
 
   public GcsClient(String redisAddress, String redisPassword) {
     primary = new RedisClient(redisAddress, redisPassword);
-    int numShards = 0;
-    try {
-      numShards = Integer.valueOf(primary.get("NumRedisShards", null));
-      Preconditions.checkState(numShards > 0,
-          String.format("Expected at least one Redis shards, found %d.", numShards));
-    } catch (NumberFormatException e) {
-      throw new RuntimeException("Failed to get number of redis shards.", e);
-    }
+    globalStateAccessor = GlobalStateAccessor.getInstance(redisAddress, redisPassword);
+  }
 
-    List<byte[]> shardAddresses = primary.lrange("RedisShards".getBytes(), 0, -1);
-    Preconditions.checkState(shardAddresses.size() == numShards);
-    shards = shardAddresses.stream().map((byte[] address) -> {
-      return new RedisClient(new String(address), redisPassword);
-    }).collect(Collectors.toList());
+  /**
+   * Get placement group by {@link PlacementGroupId}.
+   *
+   * @param placementGroupId Id of placement group. Returns The placement group.
+   */
+  public PlacementGroup getPlacementGroupInfo(PlacementGroupId placementGroupId) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(placementGroupId);
+    return PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
+  }
+
+  /**
+   * Get all placement groups in this cluster.
+   *
+   * <p>Returns All placement groups.
+   */
+  public List<PlacementGroup> getAllPlacementGroupInfo() {
+    List<byte[]> results = globalStateAccessor.getAllPlacementGroupInfo();
+
+    List<PlacementGroup> placementGroups = new ArrayList<>();
+    for (byte[] result : results) {
+      placementGroups.add(PlacementGroupUtils.generatePlacementGroupFromByteArray(result));
+    }
+    return placementGroups;
   }
 
   public List<NodeInfo> getAllNodeInfo() {
-    final String prefix = TablePrefix.CLIENT.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), UniqueId.NIL.getBytes());
-    List<byte[]> results = primary.lrange(key, 0, -1);
-
-    if (results == null) {
-      return new ArrayList<>();
-    }
+    List<byte[]> results = globalStateAccessor.getAllNodeInfo();
 
     // This map is used for deduplication of node entries.
     Map<UniqueId, NodeInfo> nodes = new HashMap<>();
@@ -70,22 +70,21 @@ public class GcsClient {
       } catch (InvalidProtocolBufferException e) {
         throw new RuntimeException("Received invalid protobuf data from GCS.");
       }
-      final UniqueId nodeId = UniqueId
-          .fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
+      final UniqueId nodeId = UniqueId.fromByteBuffer(data.getNodeId().asReadOnlyByteBuffer());
 
-      if (data.getState() == GcsNodeInfo.GcsNodeState.ALIVE) {
-        //Code path of node insertion.
-        NodeInfo nodeInfo = new NodeInfo(
-            nodeId, data.getNodeManagerAddress(),
-            data.getNodeManagerHostname(),
-            true, new HashMap<>());
-        nodes.put(nodeId, nodeInfo);
-      } else {
-        // Code path of node deletion.
-        NodeInfo nodeInfo = new NodeInfo(nodeId, nodes.get(nodeId).nodeAddress,
-            nodes.get(nodeId).nodeHostname, false, new HashMap<>());
-        nodes.put(nodeId, nodeInfo);
-      }
+      // NOTE(lingxuan.zlx): we assume no duplicated node id in fetched node list
+      // and it's only one final state for each node in recorded table.
+      NodeInfo nodeInfo =
+          new NodeInfo(
+              nodeId,
+              data.getNodeManagerAddress(),
+              data.getNodeManagerHostname(),
+              data.getNodeManagerPort(),
+              data.getObjectStoreSocketName(),
+              data.getRayletSocketName(),
+              data.getState() == GcsNodeInfo.GcsNodeState.ALIVE,
+              new HashMap<>());
+      nodes.put(nodeId, nodeInfo);
     }
 
     // Fill resources.
@@ -98,41 +97,43 @@ public class GcsClient {
     return new ArrayList<>(nodes.values());
   }
 
+  public Map<String, String> getInternalConfig() {
+    Gcs.StoredConfig storedConfig;
+    byte[] conf = globalStateAccessor.getInternalConfig();
+    try {
+      storedConfig = Gcs.StoredConfig.parseFrom(conf);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid internal config protobuf from GCS.");
+    }
+    return storedConfig.getConfigMap();
+  }
+
   private Map<String, Double> getResourcesForClient(UniqueId clientId) {
-    final String prefix = TablePrefix.NODE_RESOURCE.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), clientId.getBytes());
-    Map<byte[], byte[]> results = primary.hgetAll(key);
-    Map<String, Double> resources = new HashMap<>();
-    for (Map.Entry<byte[], byte[]> entry : results.entrySet()) {
-      String resourceName = new String(entry.getKey());
-      Gcs.ResourceTableData resourceTableData;
-      try {
-        resourceTableData = Gcs.ResourceTableData.parseFrom(entry.getValue());
-      } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invalid protobuf data from GCS.");
-      }
-      resources.put(resourceName, resourceTableData.getResourceCapacity());
+    byte[] resourceMapBytes = globalStateAccessor.getNodeResourceInfo(clientId);
+    Gcs.ResourceMap resourceMap;
+    try {
+      resourceMap = Gcs.ResourceMap.parseFrom(resourceMapBytes);
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException("Received invalid protobuf data from GCS.");
+    }
+    HashMap<String, Double> resources = new HashMap<>();
+    for (Map.Entry<String, Gcs.ResourceTableData> entry : resourceMap.getItemsMap().entrySet()) {
+      resources.put(entry.getKey(), entry.getValue().getResourceCapacity());
     }
     return resources;
   }
 
-  /**
-   * If the actor exists in GCS.
-   */
+  /** If the actor exists in GCS. */
   public boolean actorExists(ActorId actorId) {
-    byte[] key = ArrayUtils.addAll(
-        TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-    return primary.exists(key);
+    byte[] result = globalStateAccessor.getActorInfo(actorId);
+    return result != null;
   }
 
-  public boolean wasCurrentActorReconstructed(ActorId actorId) {
+  public boolean wasCurrentActorRestarted(ActorId actorId) {
     byte[] key = ArrayUtils.addAll(TablePrefix.ACTOR.toString().getBytes(), actorId.getBytes());
-    if (!RayConfig.getInstance().gcsServiceEnabled) {
-      return primary.exists(key);
-    }
 
     // TODO(ZhuSenlin): Get the actor table data from CoreWorker later.
-    byte[] value = primary.get(key);
+    byte[] value = globalStateAccessor.getActorInfo(actorId);
     if (value == null) {
       return false;
     }
@@ -142,51 +143,7 @@ public class GcsClient {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException("Received invalid protobuf data from GCS.");
     }
-
-    long maxReconstructions = actorTableData.getMaxReconstructions();
-    long remainingReconstructions = actorTableData.getRemainingReconstructions();
-    return maxReconstructions - remainingReconstructions != 0;
-  }
-
-  /**
-   * Query whether the raylet task exists in Gcs.
-   */
-  public boolean rayletTaskExistsInGcs(TaskId taskId) {
-    byte[] key = ArrayUtils.addAll(TablePrefix.RAYLET_TASK.toString().getBytes(),
-        taskId.getBytes());
-    RedisClient client = getShardClient(taskId);
-    return client.exists(key);
-  }
-
-  /**
-   * Get the available checkpoints for the given actor ID.
-   */
-  public List<Checkpoint> getCheckpointsForActor(ActorId actorId) {
-    List<Checkpoint> checkpoints = new ArrayList<>();
-    final String prefix = TablePrefix.ACTOR_CHECKPOINT_ID.toString();
-    final byte[] key = ArrayUtils.addAll(prefix.getBytes(), actorId.getBytes());
-    RedisClient client = getShardClient(actorId);
-
-    byte[] result = client.get(key);
-    if (result != null) {
-      ActorCheckpointIdData data = null;
-      try {
-        data = ActorCheckpointIdData.parseFrom(result);
-      } catch (InvalidProtocolBufferException e) {
-        throw new RuntimeException("Received invalid protobuf data from GCS.");
-      }
-      UniqueId[] checkpointIds = new UniqueId[data.getCheckpointIdsCount()];
-      for (int i = 0; i < checkpointIds.length; i++) {
-        checkpointIds[i] = UniqueId
-            .fromByteBuffer(data.getCheckpointIds(i).asReadOnlyByteBuffer());
-      }
-
-      for (int i = 0; i < checkpointIds.length; i++) {
-        checkpoints.add(new Checkpoint(checkpointIds[i], data.getTimestamps(i)));
-      }
-    }
-    checkpoints.sort((x, y) -> Long.compare(y.timestamp, x.timestamp));
-    return checkpoints;
+    return actorTableData.getNumRestarts() != 0;
   }
 
   public JobId nextJobId() {
@@ -194,9 +151,10 @@ public class GcsClient {
     return JobId.fromInt(jobCounter);
   }
 
-  private RedisClient getShardClient(BaseId key) {
-    return shards.get((int) Long.remainderUnsigned(IdUtil.murmurHashCode(key),
-        shards.size()));
+  /** Destroy global state accessor when ray native runtime will be shutdown. */
+  public void destroy() {
+    // Only ray shutdown should call gcs client destroy.
+    LOGGER.debug("Destroying global state accessor.");
+    GlobalStateAccessor.destroyInstance();
   }
-
 }

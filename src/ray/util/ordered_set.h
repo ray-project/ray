@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_UTIL_ORDERED_SET_H
-#define RAY_UTIL_ORDERED_SET_H
+#pragma once
 
 #include <list>
 #include <unordered_map>
@@ -81,5 +80,3 @@ class ordered_set {
   elements_type elements_;
   positions_type positions_;
 };
-
-#endif  // RAY_UTIL_ORDERED_SET_H

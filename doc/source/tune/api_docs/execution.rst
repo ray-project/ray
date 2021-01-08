@@ -1,5 +1,7 @@
-Training (tune.run, tune.Experiment)
-====================================
+Execution (tune.run, tune.Experiment)
+=====================================
+
+.. _tune-run-ref:
 
 tune.run
 --------
@@ -16,9 +18,14 @@ tune.Experiment
 
 .. autofunction:: ray.tune.Experiment
 
+tune.with_parameters
+--------------------
 
-Stopper (tune.Stopper)
-----------------------
+.. autofunction:: ray.tune.with_parameters
 
-.. autoclass:: ray.tune.Stopper
-    :members: __call__, stop_all
+.. _tune-sync-config:
+
+tune.SyncConfig
+---------------
+
+.. autofunction:: ray.tune.SyncConfig

@@ -33,7 +33,7 @@ class StreamingContext:
                 self
             """
             if key is not None:
-                assert value
+                assert value is not None
                 self._options[key] = str(value)
             if conf is not None:
                 for k, v in conf.items():
@@ -151,12 +151,30 @@ class RuntimeContext(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_config(self):
+        """
+        Returns:
+            The config with which the parallel task runs.
+        """
+        pass
+
+    @abstractmethod
+    def get_job_config(self):
+        """
+        Returns:
+            The job config.
+        """
+        pass
+
 
 class RuntimeContextImpl(RuntimeContext):
-    def __init__(self, task_id, task_index, parallelism):
+    def __init__(self, task_id, task_index, parallelism, **kargs):
         self.task_id = task_id
         self.task_index = task_index
         self.parallelism = parallelism
+        self.config = kargs.get("config", {})
+        self.job_config = kargs.get("job_config", {})
 
     def get_task_id(self):
         return self.task_id
@@ -166,3 +184,9 @@ class RuntimeContextImpl(RuntimeContext):
 
     def get_parallelism(self):
         return self.parallelism
+
+    def get_config(self):
+        return self.config
+
+    def get_job_config(self):
+        return self.job_config

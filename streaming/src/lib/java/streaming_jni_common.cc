@@ -136,7 +136,7 @@ std::shared_ptr<ray::RayFunction> FunctionDescriptorToRayFunction(
       &function_descriptor_list);
   ray::FunctionDescriptor function_descriptor =
       ray::FunctionDescriptorBuilder::FromVector(language, function_descriptor_list);
-  ray::RayFunction ray_function{language, function_descriptor};
+  ray::RayFunction ray_function(language, function_descriptor);
   return std::make_shared<ray::RayFunction>(ray_function);
 }
 

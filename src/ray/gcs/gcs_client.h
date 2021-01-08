@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef RAY_GCS_GCS_CLIENT_H
-#define RAY_GCS_GCS_CLIENT_H
+#pragma once
 
 #include <boost/asio.hpp>
 #include <memory>
 #include <string>
 #include <vector>
+
 #include "ray/common/status.h"
 #include "ray/gcs/accessor.h"
 #include "ray/util/logging.h"
@@ -107,6 +107,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *node_accessor_;
   }
 
+  /// Get the sub-interface for accessing node resource information in GCS.
+  /// This function is thread safe.
+  NodeResourceInfoAccessor &NodeResources() {
+    RAY_CHECK(node_resource_accessor_ != nullptr);
+    return *node_resource_accessor_;
+  }
+
   /// Get the sub-interface for accessing task information in GCS.
   /// This function is thread safe.
   TaskInfoAccessor &Tasks() {
@@ -135,6 +142,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *worker_accessor_;
   }
 
+  /// Get the sub-interface for accessing worker information in GCS.
+  /// This function is thread safe.
+  PlacementGroupInfoAccessor &PlacementGroups() {
+    RAY_CHECK(placement_group_accessor_ != nullptr);
+    return *placement_group_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -150,14 +164,14 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<JobInfoAccessor> job_accessor_;
   std::unique_ptr<ObjectInfoAccessor> object_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
+  std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
   std::unique_ptr<ErrorInfoAccessor> error_accessor_;
   std::unique_ptr<StatsInfoAccessor> stats_accessor_;
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
+  std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
-
-#endif  // RAY_GCS_GCS_CLIENT_H
