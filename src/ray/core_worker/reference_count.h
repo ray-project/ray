@@ -369,7 +369,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
       rpc::CoreWorkerStats *stats) const LOCKS_EXCLUDED(mutex_);
 
-  /// Add a new location for the given object.
+  /// Add a new location for the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The new object location to be added.
@@ -377,7 +378,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool AddObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove a location for the given object.
+  /// Remove a location for the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to update.
   /// \param[in] node_id The object location to be removed.
@@ -385,7 +387,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool RemoveObjectLocation(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Get the locations of the given object.
+  /// Get the locations of the given object. The owner must have the object ref in
+  /// scope.
   ///
   /// \param[in] object_id The object to get locations for.
   /// \return The nodes that have the object if the reference exists, empty optional
