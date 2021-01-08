@@ -198,13 +198,17 @@ class SearchSpaceTest(unittest.TestCase):
         def train(config):
             return 0
 
-        config = {"choice": tune.sample.Categorical(list(range(100_000)))}
+        config = {
+            "integer": tune.randint(0, 100_000),
+            "choice": tune.choice(list(range(100_000)))
+        }
 
         np.random.seed(1000)
         random.seed(1000)
 
         out_1 = tune.run(train, config=config, num_samples=8, verbose=0)
 
+        integers_1 = [t.config["integer"] for t in out_1.trials]
         choices_1 = [t.config["choice"] for t in out_1.trials]
 
         np.random.seed(1000)
@@ -212,8 +216,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         out_2 = tune.run(train, config=config, num_samples=8, verbose=0)
 
+        integers_2 = [t.config["integer"] for t in out_2.trials]
         choices_2 = [t.config["choice"] for t in out_2.trials]
 
+        self.assertSequenceEqual(sorted(integers_1), sorted(integers_2))
         self.assertSequenceEqual(sorted(choices_1), sorted(choices_2))
 
     def testConvertAx(self):
