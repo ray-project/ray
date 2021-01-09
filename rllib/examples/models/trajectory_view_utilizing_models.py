@@ -7,7 +7,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
-# __sphinx_doc_model_api_begin__
+# __sphinx_doc_begin__
 
 
 class FrameStackingCartPoleModel(TFModelV2):
@@ -56,7 +56,7 @@ class FrameStackingCartPoleModel(TFModelV2):
         return tf.squeeze(self._last_value, -1)
 
 
-# __sphinx_doc_model_api_end__
+# __sphinx_doc_end__
 
 
 class TorchFrameStackingCartPoleModel(TorchModelV2, nn.Module):
