@@ -24,7 +24,7 @@ pytorch-lightning==1.0.3
 scikit-learn==0.22.2
 scikit-optimize==0.8.1
 sigopt==5.7.0
-smart_open==4.0.1
+smart_open==4.1.0
 tensorflow-probability==0.11.1
 timm==0.3.2
 
