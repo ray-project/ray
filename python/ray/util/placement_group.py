@@ -5,7 +5,7 @@ from typing import (List, Dict, Optional)
 import ray
 from ray._raylet import PlacementGroupID, ObjectRef
 
-bundle_reservation_check = None
+_bundle_reservation_check = None
 
 
 # We need to import this method to use for ready API.
@@ -13,16 +13,15 @@ bundle_reservation_check = None
 # if we define this method inside ready method, this function is
 # exported whenever ready is called, which can impact performance,
 # https://github.com/ray-project/ray/issues/6240.
-def _export_bundle_reservation_check_method_if_needed():
-    global bundle_reservation_check
-    if bundle_reservation_check:
-        return
+def _ensure_bundle_reservation_check():
+    global _bundle_reservation_check
+    if _bundle_reservation_check is None:
+        @ray.remote(num_cpus=0, max_calls=0)
+        def bundle_reservation_check_func(placement_group):
+            return placement_group
 
-    @ray.remote(num_cpus=0, max_calls=0)
-    def bundle_reservation_check_func(placement_group):
-        return placement_group
-
-    bundle_reservation_check = bundle_reservation_check_func
+        _bundle_reservation_check = bundle_reservation_check_func
+    return _bundle_reservation_check
 
 
 class PlacementGroup:
@@ -52,7 +51,7 @@ class PlacementGroup:
         """
         self._fill_bundle_cache_if_needed()
 
-        _export_bundle_reservation_check_method_if_needed()
+        reservation_check_fn = _ensure_bundle_reservation_check()
 
         assert len(self.bundle_cache) != 0, (
             "ready() cannot be called on placement group object with a "
@@ -76,7 +75,7 @@ class PlacementGroup:
         else:
             resources[resource_name] = value
 
-        return bundle_reservation_check.options(
+        return reservation_check_fn.options(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             placement_group=self,
