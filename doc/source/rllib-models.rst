@@ -391,8 +391,8 @@ or Discrete):
 
 .. literalinclude:: ../../rllib/examples/models/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_api_tf_begin__
-   :end-before: __sphinx_doc_model_api_tf_end__
+   :start-after: __sphinx_doc_model_api_1_begin__
+   :end-before: __sphinx_doc_model_api_1_end__
 
 Now, for your algorithm that needs to have this model API to work properly (e.g. DQN),
 you use this following code to construct the complete final Model using the
@@ -418,8 +418,8 @@ Let's take a look at how we would construct this API and wrap it around a custom
 
 .. literalinclude:: ../../rllib/examples/models/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_api_torch_begin__
-   :end-before: __sphinx_doc_model_api_torch_end__
+   :start-after: __sphinx_doc_model_api_2_begin__
+   :end-before: __sphinx_doc_model_api_2_end__
 
 Now, for your algorithm that needs to have this model API to work properly (e.g. SAC),
 you use this following code to construct the complete final Model using the
