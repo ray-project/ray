@@ -400,8 +400,8 @@ you use this following code to construct the complete final Model using the
 
 .. literalinclude:: ../../rllib/examples/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_construct_tf_begin__
-   :end-before: __sphinx_doc_model_construct_tf_end__
+   :start-after: __sphinx_doc_model_construct_1_begin__
+   :end-before: __sphinx_doc_model_construct_1_end__
 
 With the model object constructed above, you can get the underlying intermediate output (before the dueling head)
 by calling ``my_dueling_model`` directly (``out = my_dueling_model([input_dict])``), and then passing ``out`` into
@@ -427,8 +427,8 @@ you use this following code to construct the complete final Model using the
 
 .. literalinclude:: ../../rllib/examples/custom_model_api.py
    :language: python
-   :start-after: __sphinx_doc_model_construct_torch_begin__
-   :end-before: __sphinx_doc_model_construct_torch_end__
+   :start-after: __sphinx_doc_model_construct_2_begin__
+   :end-before: __sphinx_doc_model_construct_2_end__
 
 With the model object constructed above, you can get the underlying intermediate output (before the q-head)
 by calling ``my_cont_action_q_model`` directly (``out = my_cont_action_q_model([input_dict])``), and then passing ``out``
