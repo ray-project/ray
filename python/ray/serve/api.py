@@ -262,7 +262,7 @@ class Client:
 
         Does not delete any associated backends.
         """
-        self._get_result(self._controller.delete_endpoint.remote(endpoint))
+        ray.get(self._controller.delete_endpoint.remote(endpoint))
 
     @_ensure_connected
     def list_endpoints(self) -> Dict[str, Dict[str, Any]]:
@@ -447,7 +447,7 @@ class Client:
             traffic_policy_dictionary (dict): a dictionary maps backend names
                 to their traffic weights. The weights must sum to 1.
         """
-        self._get_result(
+        ray.get(
             self._controller.set_traffic.remote(endpoint_name,
                                                 traffic_policy_dictionary))
 
@@ -473,7 +473,7 @@ class Client:
                           (float, int)) or not 0 <= proportion <= 1:
             raise TypeError("proportion must be a float from 0 to 1.")
 
-        self._get_result(
+        ray.get(
             self._controller.shadow_traffic.remote(endpoint_name, backend_tag,
                                                    proportion))
 
