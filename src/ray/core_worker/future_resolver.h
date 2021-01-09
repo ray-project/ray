@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/rpc/worker/core_worker_client.h"
