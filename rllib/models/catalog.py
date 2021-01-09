@@ -750,3 +750,6 @@ class ModelCatalog:
         if config.get("framestack") != DEPRECATED_VALUE:
             deprecation_warning(
                 old="framestack", new="num_framestacks (int)", error=False)
+            # If old behavior is desired, disable traj. view-style
+            # framestacking.
+            config["num_framestacks"] = 0
