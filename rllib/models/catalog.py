@@ -708,7 +708,8 @@ class ModelCatalog:
                 action_space=action_space,
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
-        return dist_class
+        return dist_class, dist_class.required_model_output_shape(
+            action_space, config)
 
     @staticmethod
     def _validate_config(config: ModelConfigDict, framework: str) -> None:
