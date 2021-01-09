@@ -136,7 +136,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       light_report_resource_usage_enabled_(
           RayConfig::instance().light_report_resource_usage_enabled()),
       initial_config_(config),
-      local_available_resources_(config.resource_config),
+      local_available_resources_(RayConfig::instance().new_scheduler_enabled()
+                                     ? ResourceSet()
+                                     : config.resource_config),
       worker_pool_(io_service, config.num_workers_soft_limit,
                    config.num_initial_python_workers_for_first_job,
                    config.maximum_startup_concurrency, config.min_worker_port,

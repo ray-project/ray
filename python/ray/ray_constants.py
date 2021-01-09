@@ -7,7 +7,6 @@ import os
 from ray._raylet import Config as _Config
 _config = _Config()
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -68,13 +67,14 @@ if _config.new_scheduler_enabled:
     MAX_RESOURCE_QUANTITY = 2**63 / 10**4
 else:
     # The maximum resource quantity that is allowed. TODO(rkn): This could be
-    # relaxed, but the current implementation of the node manager will be slower
-    # for large resource quantities due to bookkeeping of specific resource IDs.
+    # relaxed, but the current implementation of the node manager will be
+    # slower for large resource quantities due to bookkeeping of specific
+    # resource IDs.
     MAX_RESOURCE_QUANTITY = 100000
 
 # Each memory "resource" counts as this many bytes of memory.
 if _config.new_scheduler_enabled:
-    MEMORY_RESOURCE_UNIT_BYTES = 2**20
+    MEMORY_RESOURCE_UNIT_BYTES = 1
 else:
     MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
 
