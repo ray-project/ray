@@ -119,6 +119,8 @@ message ActorStates {
   Address address = 3;
   // Last timestamp that the actor state was updated.
   double timestamp = 4;
+  // The process id of this actor.
+  uint32 pid = 5;
 }
 
 message ActorTableData {
@@ -148,8 +150,6 @@ message ActorTableData {
   // Resource mapping ids acquired by the leased worker. This field is only set when this
   // actor already has a leased worker.
   repeated ResourceMapEntry resource_mapping = 11;
-  // The process id of this actor.
-  uint32 pid = 12;
 }
 
 message ErrorTableData {
