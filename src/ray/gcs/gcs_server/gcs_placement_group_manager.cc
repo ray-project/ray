@@ -305,6 +305,8 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     const PlacementGroupID &placement_group_id,
     StatusCallback on_placement_group_removed) {
   RAY_CHECK(on_placement_group_removed);
+  RAY_LOG(INFO) << "Removing placement group " << placement_group_id;
+
   // If the placement group has been already removed, don't do anything.
   auto placement_group_it = registered_placement_groups_.find(placement_group_id);
   if (placement_group_it == registered_placement_groups_.end()) {
@@ -496,6 +498,10 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     }
     placement_group->MarkCreatorJobDead();
     if (placement_group->IsPlacementGroupRemovable()) {
+      RAY_LOG(INFO) << "Actor " << placement_group->GetCreatorActorId()
+                    << " is dead and job " << job_id
+                    << " is finished, we will remove the placement group "
+                    << placement_group->GetPlacementGroupID();
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }
@@ -510,6 +516,10 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     }
     placement_group->MarkCreatorActorDead();
     if (placement_group->IsPlacementGroupRemovable()) {
+      RAY_LOG(INFO) << "Actor " << actor_id << " is dead and job "
+                    << placement_group->GetCreatorJobId()
+                    << " is finished, we will remove the placement group "
+                    << placement_group->GetPlacementGroupID();
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
   }

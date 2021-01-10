@@ -714,8 +714,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   int64_t max_restarts = mutable_actor_table_data->max_restarts();
   uint64_t num_restarts = mutable_actor_table_data->num_restarts();
   int64_t remaining_restarts;
-  // Destroy placement group owned by this actor.
-  destroy_owned_placement_group_if_needed_(actor_id);
+
   if (!need_reschedule) {
     remaining_restarts = 0;
   } else if (max_restarts == -1) {
@@ -770,6 +769,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
               mutable_actor_table_data->SerializeAsString(), nullptr));
+
+          // Destroy placement group owned by this actor.
+          destroy_owned_placement_group_if_needed_(actor_id);
         }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor

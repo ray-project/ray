@@ -215,7 +215,7 @@ class LeaseStatusTracker {
                                  const std::shared_ptr<BundleSpecification> bundle,
                                  const Status &status);
 
-  /// Used to know if all commit requests are returend.
+  /// Used to know if all commit requests are returned.
   ///
   /// \return True if all commit requests are returned. False otherwise.
   bool AllCommitRequestReturned() const;

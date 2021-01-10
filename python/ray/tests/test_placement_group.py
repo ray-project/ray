@@ -1109,6 +1109,8 @@ def create_pg():
 
 @ray.remote(num_cpus=0, max_restarts=1)
 class A:
+    def is_alive(self):
+        return True
     def create_pg(self):
         create_pg()
     def create_child_pg(self):
@@ -1156,15 +1158,17 @@ ray.shutdown()
     # ray.get(a.kill_child_actor.remote())
     # assert assert_num_cpus(num_nodes)
 
-    # Make sure placement groups are cleaned when detached actors are killed.
+    # Make sure the placement group is not removed when the detached actor
+    # is killed for the first time.
     ray.kill(a, no_restart=False)
-    wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
-    # The detached actor a should've been restarted.
-    # Recreate a placement group.
-    ray.get(a.create_pg.remote())
     wait_for_condition(lambda: assert_num_cpus(num_nodes))
-    # Kill it again and make sure the placement group
-    # that is created is deleted again.
+
+    # The detached actor `a` should've been restarted.
+    ready, _ = ray.wait([a.is_alive.remote()], timeout=5)
+    assert len(ready) == 1
+    wait_for_condition(lambda: assert_num_cpus(num_nodes))
+
+    # Kill it again and make sure the placement group is removed.
     ray.kill(a, no_restart=False)
     wait_for_condition(lambda: assert_num_cpus(num_nodes * num_cpu_per_node))
 

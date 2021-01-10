@@ -121,7 +121,7 @@ class GcsPlacementGroup {
 /// The placementGroup will be added into queue and set the status as pending first and
 /// use SchedulePendingPlacementGroups(). The SchedulePendingPlacementGroups() will get
 /// the head of the queue and schedule it. If schedule success, using the
-/// SchedulePendingPlacementGroups() Immediately. else wait for a short time beforw using
+/// SchedulePendingPlacementGroups() Immediately. Else wait for a short time before using
 /// SchedulePendingPlacementGroups() next time.
 class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
  public:
@@ -305,7 +305,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
 
   /// The placement group id that is in progress of scheduling bundles.
   /// TODO(sang): Currently, only one placement group can be scheduled at a time.
-  /// We should probably support concurrenet creation (or batching).
+  /// We should probably support concurrent creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
   /// Reference of GcsResourceManager.

@@ -399,7 +399,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::ClientFactoryFn worker_client_factory_;
-  /// A callback that is used to destroy placemenet group owned by the actor.
+  /// A callback that is used to destroy placement group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
   std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed_;
