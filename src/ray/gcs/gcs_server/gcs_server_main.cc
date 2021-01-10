@@ -83,11 +83,12 @@ int main(int argc, char *argv[]) {
       promise->set_value(config);
       service.stop();
     };
-    RAY_CHECK_OK(store->InternalConfigTable().Put(ray::UniqueID::Nil(), request.config(),
-                                                  on_done));
+    RAY_CHECK_OK(storage->InternalConfigTable().Put(ray::UniqueID::Nil(),
+                                                    request.config(), on_done));
     boost::asio::io_service::work work(service);
     service.run();
-  }).detach();
+  })
+      .detach();
   auto config = promise->get_future().get();
 
   RayConfig::instance().initialize(config);
