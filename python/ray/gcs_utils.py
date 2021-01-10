@@ -1,5 +1,6 @@
 from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated.gcs_pb2 import (
+    ActorStates,
     ActorTableData,
     GcsNodeInfo,
     AvailableResources,
@@ -25,6 +26,7 @@ from ray.core.generated.gcs_pb2 import (
 )
 
 __all__ = [
+    "ActorStates",
     "ActorTableData",
     "GcsNodeInfo",
     "AvailableResources",

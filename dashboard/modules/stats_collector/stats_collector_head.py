@@ -41,6 +41,12 @@ def node_stats_to_dict(message):
     finally:
         message.core_workers_stats.extend(core_workers_stats)
 
+def actor_states_data_to_dict(message):
+    return dashboard_utils.message_to_dict(
+        message, {
+            "rayletId"
+        },
+        including_default_value_fields=True)
 
 def actor_table_data_to_dict(message):
     return dashboard_utils.message_to_dict(
@@ -220,18 +226,19 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         # Receive actors from channel.
         async for sender, msg in receiver.iter():
             try:
-                _, actor_table_data = msg
+                actor_id, actor_states = msg
                 pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
-                    actor_table_data)
-                message = ray.gcs_utils.ActorTableData.FromString(
+                    actor_states)
+                message = ray.gcs_utils.ActorStates.FromString(
                     pubsub_message.data)
-                actor_table_data = actor_table_data_to_dict(message)
-                _process_actor_table_data(actor_table_data)
-                actor_id = actor_table_data["actorId"]
-                job_id = actor_table_data["jobId"]
-                node_id = actor_table_data["address"]["rayletId"]
+                actor_states = actor_states_data_to_dict(message)
+                logger.info("actor id before decode {}".format(actor_id))
+                actor_id = actor_id.decode("UTF-8") # wangtao
+                logger.info("actor id after decode {}".format(actor_id))
+                job_id = actor_table_data["jobId"] # wangtao
+                node_id = actor_states["address"]["rayletId"]
                 # Update actors.
-                DataSource.actors[actor_id] = actor_table_data
+                DataSource.actors[actor_id] = actor_table_data  # only update states
                 # Update node actors.
                 node_actors = dict(DataSource.node_actors.get(node_id, {}))
                 node_actors[actor_id] = actor_table_data
