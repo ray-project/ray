@@ -39,11 +39,15 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # a n x (1,1) Conv2D).
         self.last_layer_is_flattened = False
         self._logits = None
+        self.traj_view_framestacking = False
 
         layers = []
-        if model_config.get("num_framestacks") > 1:
+        # Perform Atari framestacking via traj. view API.
+        if model_config.get("num_framestacks") != "auto" and \
+                model_config.get("num_framestacks", 0) > 1:
             (w, h) = obs_space.shape
-            in_channels = model_config.get("num_framestacks")
+            in_channels = model_config["num_framestacks"]
+            self.traj_view_framestacking = True
         else:
             (w, h, in_channels) = obs_space.shape
 
@@ -119,9 +123,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 activation_fn=None)
         else:
             vf_layers = []
-            if model_config.get("num_framestacks") > 1:
+            if self.traj_view_framestacking:
                 (w, h) = obs_space.shape
-                in_channels = model_config.get("num_framestacks")
+                in_channels = model_config["num_framestacks"]
             else:
                 (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
@@ -163,8 +167,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
         self._features = None
 
         # Optional: framestacking obs/new_obs for Atari.
-        from_ = model_config["num_framestacks"] - 1
-        if from_ > 0:
+        if self.traj_view_framestacking:
+            from_ = model_config["num_framestacks"] - 1
             self.view_requirements[SampleBatch.OBS].shift = \
                 "-{}:0".format(from_)
             self.view_requirements[SampleBatch.OBS].shift_from = -from_
@@ -175,7 +179,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float()
-        if not self.model_config["num_framestacks"] > 1:
+        # No framestacking:
+        if not self.traj_view_framestacking:
             self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.

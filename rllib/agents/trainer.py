@@ -1093,13 +1093,19 @@ class Trainer(Trainable):
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict):
+        model_config = config.get("model")
+        if model_config is None:
+            config["model"] = model_config = {}
+
         if not config.get("_use_trajectory_view_api"):
-            if config.get("model", {}).get("_time_major"):
+            traj_view_framestacks = model_config.get("num_framestacks", "auto")
+            if model_config.get("_time_major"):
                 raise ValueError("`model._time_major` only supported "
                                  "iff `_use_trajectory_view_api` is True!")
-            elif config.get("model", {}).get("num_framestacks", 0) > 1:
+            elif traj_view_framestacks != "auto":
                 raise ValueError("`model.num_framestacks` only supported "
                                  "iff `_use_trajectory_view_api` is True!")
+            model_config["num_framestacks"] = 0
 
         if isinstance(config["input_evaluation"], tuple):
             config["input_evaluation"] = list(config["input_evaluation"])
@@ -1109,15 +1115,15 @@ class Trainer(Trainable):
                     config["input_evaluation"]))
 
         # Check model config.
-        prev_a_r = config.get("model", {}).get("lstm_use_prev_action_reward",
-                                               DEPRECATED_VALUE)
+        prev_a_r = model_config.get("lstm_use_prev_action_reward",
+                                    DEPRECATED_VALUE)
         if prev_a_r != DEPRECATED_VALUE:
             deprecation_warning(
                 "model.lstm_use_prev_action_reward",
                 "model.lstm_use_prev_action and model.lstm_use_prev_reward",
                 error=False)
-            config["model"]["lstm_use_prev_action"] = prev_a_r
-            config["model"]["lstm_use_prev_reward"] = prev_a_r
+            model_config["lstm_use_prev_action"] = prev_a_r
+            model_config["lstm_use_prev_reward"] = prev_a_r
 
         # Check batching/sample collection settings.
         if config["batch_mode"] not in [

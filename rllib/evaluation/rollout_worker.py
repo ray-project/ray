@@ -379,7 +379,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 validate_env(self.env, self.env_context)
 
             if isinstance(self.env, (BaseEnv, MultiAgentEnv)):
-                model_config["num_framestacks"] = 0
 
                 def wrap(env):
                     return env  # we can't auto-wrap these env types
@@ -396,11 +395,17 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
+                # framestacking via trajectory view API is enabled.
+                num_framestacks = model_config.get("num_framestacks", 0)
+                if not policy_config["_use_trajectory_view_api"]:
+                    model_config["num_framestacks"] = num_framestacks = 0
+                elif num_framestacks == "auto":
+                    model_config["num_framestacks"] = num_framestacks = 4
+                framestack_traj_view = num_framestacks > 1
+                # Deprecated way of framestacking is used.
+                framestack = model_config.get("framestack") is True
+
                 def wrap(env):
-                    framestack_traj_view = \
-                        model_config.get("num_framestacks", 0) > 1 and \
-                        policy_config["_use_trajectory_view_api"]
-                    framestack = model_config.get("framestack") is True
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
@@ -411,7 +416,6 @@ class RolloutWorker(ParallelIteratorWorker):
                         env = wrappers.Monitor(env, monitor_path, resume=True)
                     return env
             else:
-                model_config["num_framestacks"] = 0
 
                 def wrap(env):
                     if monitor_path:

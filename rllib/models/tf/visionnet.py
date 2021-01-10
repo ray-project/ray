@@ -30,10 +30,14 @@ class VisionNetwork(TFModelV2):
             "Must provide at least 1 entry in `conv_filters`!"
         no_final_linear = self.model_config.get("no_final_linear")
         vf_share_layers = self.model_config.get("vf_share_layers")
+        self.traj_view_framestacking = False
 
-        if model_config.get("num_framestacks") > 1:
+        # Perform Atari framestacking via traj. view API.
+        if model_config.get("num_framestacks") != "auto" and \
+                model_config.get("num_framestacks", 0) > 1:
             input_shape = obs_space.shape + (model_config["num_framestacks"], )
             self.data_format = "channels_first"
+            self.traj_view_framestacking = True
         else:
             input_shape = obs_space.shape
             self.data_format = "channels_last"
@@ -150,8 +154,8 @@ class VisionNetwork(TFModelV2):
         self.register_variables(self.base_model.variables)
 
         # Optional: framestacking obs/new_obs for Atari.
-        from_ = model_config["num_framestacks"] - 1
-        if from_ > 0:
+        if self.traj_view_framestacking:
+            from_ = model_config["num_framestacks"] - 1
             self.view_requirements[SampleBatch.OBS].shift = \
                 "-{}:0".format(from_)
             self.view_requirements[SampleBatch.OBS].shift_from = -from_

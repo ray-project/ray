@@ -108,15 +108,17 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
-    # What framestacking size to use for Atari envs.
-    # If > 1, uses the trajectory view API in the default VisionNets (tf and
-    # torch) to request the last n observations (single, grayscaled 84x84 image
-    # frames) as inputs. The time axis in the so provided observation tensors
-    # will come right after the batch axis (channels first format),
-    # e.g. BxTx84x84, where T=num_framestacks.
+    # Which framestacking size to use for Atari envs.
+    # "auto": Use a value of 4, but only if the env is an Atari env.
+    # > 1: Use the trajectory view API in the default VisionNets to request the
+    #      last n observations (single, grayscaled 84x84 image frames) as
+    #      inputs. The time axis in the so provided observation tensors
+    #      will come right after the batch axis (channels first format),
+    #      e.g. BxTx84x84, where T=num_framestacks.
+    # 0 or 1: No framestacking used.
     # Use the deprecated `framestack=True`, to disable the above behavor and to
     # enable legacy stacking behavior (w/o trajectory view API) instead.
-    "num_framestacks": 4,
+    "num_framestacks": "auto",
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
@@ -691,10 +693,11 @@ class ModelCatalog:
 
         # Discrete/1D obs-spaces or 2D obs space but traj. view framestacking
         # disabled.
+        num_framestacks = model_config.get("num_framestacks", "auto")
         if isinstance(input_space, (Discrete, MultiDiscrete)) or \
                 len(input_space.shape) == 1 or (
-                len(input_space.shape) == 2 and model_config[
-                "num_framestacks"] <= 1):
+                len(input_space.shape) == 2 and (
+                num_framestacks == "auto" or num_framestacks <= 1)):
             return FCNet
         # Default Conv2D net.
         else:
