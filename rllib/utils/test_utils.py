@@ -322,7 +322,9 @@ def check_compute_single_action(trainer,
 
                 obs = obs_space.sample()
                 # Framestacking w/ traj. view API.
-                if pol.config["model"].get("num_framestacks") > 1:
+                framestacks = pol.config["model"].get("num_framestacks",
+                                                      "auto")
+                if isinstance(framestacks, int) and framestacks > 1:
                     obs = np.stack(
                         [obs] * pol.config["model"]["num_framestacks"])
                 if isinstance(obs_space, gym.spaces.Box):
