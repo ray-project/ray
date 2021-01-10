@@ -21,7 +21,7 @@ def _all_actors_dead(ray):
     import ray as real_ray
 
     def _all_actors_dead_internal():
-        return all(actor["State"] == real_ray.gcs_utils.ActorTableData.DEAD
+        return all(actor["State"] == real_ray.gcs_utils.ActorStates.DEAD
                    for actor in list(real_ray.actors().values()))
 
     return _all_actors_dead_internal

@@ -101,7 +101,7 @@ def test_global_state_actor_table(ray_start_regular):
     def get_state():
         return list(ray.actors().values())[0]["State"]
 
-    dead_state = ray.gcs_utils.ActorTableData.DEAD
+    dead_state = ray.gcs_utils.ActorStates.DEAD
     for _ in range(10):
         if get_state() == dead_state:
             break
@@ -136,10 +136,10 @@ def test_global_state_actor_entry(ray_start_regular):
     b_actor_id = b._actor_id.hex()
     assert ray.actors(actor_id=a_actor_id)["ActorID"] == a_actor_id
     assert ray.actors(
-        actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        actor_id=a_actor_id)["State"] == ray.gcs_utils.ActorStates.ALIVE
     assert ray.actors(actor_id=b_actor_id)["ActorID"] == b_actor_id
     assert ray.actors(
-        actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorTableData.ALIVE
+        actor_id=b_actor_id)["State"] == ray.gcs_utils.ActorStates.ALIVE
 
 
 @pytest.mark.parametrize("max_shapes", [0, 2, -1])

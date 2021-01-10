@@ -73,7 +73,7 @@ ray.get(_.value.remote())
 
     p = run_string_as_driver_nonblocking(driver)
     # Wait for actor to be created
-    wait_for_num_actors(1, ray.gcs_utils.ActorTableData.ALIVE)
+    wait_for_num_actors(1, ray.gcs_utils.ActorStates.ALIVE)
 
     actor_table = ray.actors()
     assert len(actor_table) == 1

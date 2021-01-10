@@ -217,6 +217,11 @@ def compute_job_id_from_driver(driver_id):
     return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
 
 
+def compute_job_id_from_actor(actor_id):  # wangtao
+    assert isinstance(actor_id, ray.ActorID)
+    return ray.JobID(actor_id.binary()[0:ray.JobID.size()])
+
+
 def compute_driver_id_from_job(job_id):
     assert isinstance(job_id, ray.JobID)
     rest_length = ray_constants.ID_SIZE - job_id.size()

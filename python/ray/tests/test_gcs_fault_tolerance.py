@@ -150,7 +150,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
 
     def condition():
         actor_status = ray.actors(actor_id=actor_id)
-        if actor_status["State"] == ray.gcs_utils.ActorTableData.DEAD:
+        if actor_status["State"] == ray.gcs_utils.ActorStates.DEAD:
             return True
         else:
             return False

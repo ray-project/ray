@@ -1,7 +1,7 @@
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.test_utils import wait_for_condition
 import ray as real_ray
-from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.gcs_pb2 import ActorStates
 from ray.util.client.server.server import _get_current_servicer
 
 
@@ -101,7 +101,7 @@ def test_delete_actor_on_disconnect(ray_start_regular):
         def test_cond():
             alive_actors = [
                 v for v in real_ray.actors().values()
-                if v["State"] != ActorTableData.DEAD
+                if v["State"] != ActorStates.DEAD
             ]
             return len(alive_actors) == 0
 

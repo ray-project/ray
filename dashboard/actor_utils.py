@@ -46,12 +46,13 @@ def _get_actor_group_stats(group):
     sum_timestamps = 0
     now = time.time() * 1000  # convert S -> MS
     for actor in group:
-        state_to_count[actor["state"]] += 1
-        if "timestamp" in actor:
-            if not min_timestamp or actor["timestamp"] < min_timestamp:
-                min_timestamp = actor["timestamp"]
+        state_to_count[actor["states"]["state"]] += 1
+        if "timestamp" in actor["states"]:
+            if not min_timestamp \
+                    or actor["states"]["timestamp"] < min_timestamp:
+                min_timestamp = actor["states"]["timestamp"]
             num_timestamps += 1
-            sum_timestamps += now - actor["timestamp"]
+            sum_timestamps += now - actor["states"]["timestamp"]
         if "numExecutedTasks" in actor:
             executed_tasks += actor["numExecutedTasks"]
     if num_timestamps > 0:

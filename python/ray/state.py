@@ -255,9 +255,10 @@ class GlobalState:
             "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
-                "IPAddress": actor_table_data.address.ip_address,
-                "Port": actor_table_data.address.port,
-                "NodeID": binary_to_hex(actor_table_data.address.raylet_id),
+                "IPAddress": actor_table_data.states.address.ip_address,
+                "Port": actor_table_data.states.address.port,
+                "NodeID": binary_to_hex(
+                    actor_table_data.states.address.raylet_id),
             },
             "OwnerAddress": {
                 "IPAddress": actor_table_data.owner_address.ip_address,
@@ -265,9 +266,9 @@ class GlobalState:
                 "NodeID": binary_to_hex(
                     actor_table_data.owner_address.raylet_id),
             },
-            "State": actor_table_data.state,
-            "NumRestarts": actor_table_data.num_restarts,
-            "Timestamp": actor_table_data.timestamp,
+            "State": actor_table_data.states.state,
+            "NumRestarts": actor_table_data.states.num_restarts,
+            "Timestamp": actor_table_data.states.timestamp,
         }
         return actor_info
 

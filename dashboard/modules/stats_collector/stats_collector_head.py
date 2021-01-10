@@ -41,12 +41,11 @@ def node_stats_to_dict(message):
     finally:
         message.core_workers_stats.extend(core_workers_stats)
 
+
 def actor_states_data_to_dict(message):
     return dashboard_utils.message_to_dict(
-        message, {
-            "rayletId"
-        },
-        including_default_value_fields=True)
+        message, {"rayletId"}, including_default_value_fields=True)
+
 
 def actor_table_data_to_dict(message):
     return dashboard_utils.message_to_dict(
@@ -205,7 +204,8 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                     node_actors = {}
                     for actor_id, actor_table_data in actors.items():
                         job_id = actor_table_data["jobId"]
-                        node_id = actor_table_data["address"]["rayletId"]
+                        node_id = actor_table_data["states"]["address"][
+                            "rayletId"]
                         job_actors.setdefault(job_id,
                                               {})[actor_id] = actor_table_data
                         node_actors.setdefault(node_id,
@@ -232,13 +232,33 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 message = ray.gcs_utils.ActorStates.FromString(
                     pubsub_message.data)
                 actor_states = actor_states_data_to_dict(message)
-                logger.info("actor id before decode {}".format(actor_id))
-                actor_id = actor_id.decode("UTF-8") # wangtao
-                logger.info("actor id after decode {}".format(actor_id))
-                job_id = actor_table_data["jobId"] # wangtao
+                actor_id = actor_id.decode("UTF-8")[len("ACTOR:"):]
+                actor_id_binary = ray.utils.hex_to_binary(actor_id)
+                actor_id_obj = ray.ActorID(actor_id_binary)
+                job_id = ray.utils.compute_job_id_from_actor(
+                    actor_id_obj).hex()
                 node_id = actor_states["address"]["rayletId"]
+                actor_table_data = {}
+                if actor_id in DataSource.actors:
+                    # Update actor states.
+                    actor_table_data = DataSource.actors[actor_id]
+                    setattr(actor_table_data, "states", actor_states)
+                else:
+                    # Received actor message first time, we should get whole
+                    # info from gcs.
+                    request = gcs_service_pb2.GetActorInfoRequest(
+                        actor_id=actor_id_binary)
+                    reply = await self._gcs_actor_info_stub.GetActorInfo(
+                        request, timeout=5)
+                    if reply.status.code == 0:
+                        actor_table_data = actor_table_data_to_dict(
+                            reply.actor_table_data)
+                        _process_actor_table_data(actor_table_data)
+                    else:
+                        raise Exception(
+                            f"Failed to GetActorInfo: {reply.status.message}")
                 # Update actors.
-                DataSource.actors[actor_id] = actor_table_data  # only update states
+                DataSource.actors[actor_id] = actor_table_data
                 # Update node actors.
                 node_actors = dict(DataSource.node_actors.get(node_id, {}))
                 node_actors[actor_id] = actor_table_data

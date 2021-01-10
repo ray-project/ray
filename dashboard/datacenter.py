@@ -229,7 +229,7 @@ class DataOrganizer:
     @staticmethod
     async def _get_actor(actor):
         actor = dict(actor)
-        worker_id = actor["address"]["workerId"]
+        worker_id = actor["states"]["address"]["workerId"]
         core_worker_stats = DataSource.core_worker_stats.get(worker_id, {})
         actor_constructor = core_worker_stats.get("actorTitle",
                                                   "Unknown actor constructor")
@@ -238,7 +238,7 @@ class DataOrganizer:
 
         # TODO(fyrestone): remove this, give a link from actor
         # info to worker info in front-end.
-        node_id = actor["address"]["rayletId"]
+        node_id = actor["states"]["address"]["rayletId"]
         pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
@@ -268,7 +268,7 @@ class DataOrganizer:
         for task in infeasible_tasks:
             task = dict(task)
             task["actorClass"] = actor_classname_from_task_spec(task)
-            task["state"] = "INFEASIBLE"
+            task["states"] = {"state": "INFEASIBLE"}
             new_infeasible_tasks.append(task)
 
         resource_pending_tasks = sum(
@@ -278,7 +278,7 @@ class DataOrganizer:
         for task in resource_pending_tasks:
             task = dict(task)
             task["actorClass"] = actor_classname_from_task_spec(task)
-            task["state"] = "PENDING_RESOURCES"
+            task["states"] = {"state": "PENDING_RESOURCES"}
             new_resource_pending_tasks.append(task)
 
         results = {
