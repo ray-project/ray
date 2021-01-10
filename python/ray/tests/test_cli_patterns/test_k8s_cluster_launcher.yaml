@@ -1,72 +1,5 @@
-import os
-import subprocess
-import time
-import unittest
-
-import pytest
-
-from ray.autoscaler._private.kubernetes import core_api
-
-
-class KubernetesTest(unittest.TestCase):
-    def test_up_and_down(self):
-        """(1) Runs 'ray up' with a Kubernetes config that specifies
-        min_workers=1.
-        (2) Runs 'ray exec' to read monitor logs and confirm that worker and
-        head are connected.
-        (3) Runs 'ray down' and confirms that the cluster is gone."""
-        with open("k8s_test.yaml", "w") as f:
-            f.write(test_yaml)
-
-        # ray up
-        os.system(
-            "minikube start; ray up k8s_test.yaml --yes --no-config-cache")
-
-        # Check for two pods (worker and head).
-        while True:
-            pod_list = core_api().list_namespaced_pod(namespace="ray")
-            if len(pod_list.items) == 2:
-                print("Head and worker pods started.")
-                break
-            else:
-                print("Waiting for worker pod to start.")
-                time.sleep(1)
-
-        # Read logs with ray exec and check that worker and head are connected.
-        # (Since the config yaml is legacy-style, we check for
-        # ray-legacy-*-node_type.)
-        while True:
-            monitor_output = subprocess.check_output([
-                "ray", "exec", "k8s_test.yaml",
-                "tail -n 100 /tmp/ray/session_latest/logs/monitor*"
-            ]).decode()
-            output_ok = ("ray-legacy-head-node-type" in monitor_output
-                         and "ray-legacy-worker-node-type" in monitor_output)
-            if output_ok:
-                print("Worker node connected. Monitoring ok.")
-                break
-            else:
-                print("Waiting for worker to connect.")
-                time.sleep(1)
-
-        # ray down.
-        os.system("ray down k8s_test.yaml --yes")
-
-        # Check that there are no pods left in namespace ray to confirm that
-        # the cluster is gone.
-        while True:
-            pod_list = core_api().list_namespaced_pod(namespace="ray")
-            if len(pod_list.items) == 0:
-                print("Cluster shut down succesfully.")
-                break
-            else:
-                print("Waiting for cluster to shut down.")
-
-        os.remove("k8s_test.yaml")
-
-test_yaml = """
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: default
+cluster_name: test
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -97,7 +30,7 @@ provider:
     use_internal_ips: true
 
     # Namespace to use for all resources created.
-    namespace: ray
+    namespace: ray-cluster-launcher-unit-test
 
     # ServiceAccount created by the autoscaler for the head node pod that it
     # runs in. If this field isn't provided, the head pod config below must
@@ -203,13 +136,13 @@ head_node:
 
         containers:
         - name: ray-node
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
           #   - screen (used for `ray attach`)
           #   - kubectl (used by the autoscaler to manage worker pods)
-          image: rayproject/ray-test
+          image: rayproject/ray:nightly
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -278,11 +211,11 @@ worker_nodes:
 
         containers:
         - name: ray-node
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           # You are free (and encouraged) to use your own container image,
           # but it should have the following installed:
           #   - rsync (used for `ray rsync` commands and file mounts)
-          image: rayproject/ray-test
+          image: rayproject/ray:nightly
           # Do not change this command - it keeps the pod alive until it is
           # explicitly killed.
           command: ["/bin/bash", "-c", "--"]
@@ -365,8 +298,3 @@ head_start_ray_commands:
 worker_start_ray_commands:
     - ray stop
     - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
-""" # noqa
-
-if __name__ == "__main__":
-    import sys
-    sys.exit(pytest.main(["-v", __file__]))
