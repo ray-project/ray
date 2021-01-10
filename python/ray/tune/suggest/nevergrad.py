@@ -2,6 +2,14 @@ import logging
 import pickle
 import io
 import builtins
+
+safe_builtins = {
+    'range',
+    'complex',
+    'set',
+    'frozenset',
+    'slice',
+}
 from typing import Dict, Optional, Union, List, Sequence
 
 from ray.tune.result import DEFAULT_METRIC
