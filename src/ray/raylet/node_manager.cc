@@ -349,7 +349,10 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources
   // before actual resources are returned. Subsequent disconnect request that comes
   // due to worker dead will be ignored.
-  ProcessDisconnectClientMessage(worker->Connection(), /* intentional exit */ true);
+  // NOTE: If `intentional_disconnect` is true, the actor corresponding to the
+  // worker will not be restarted, so `intentional_disconnect` must be set to false.
+  ProcessDisconnectClientMessage(worker->Connection(),
+                                 /* intentional_disconnect= */ false);
   worker->MarkDead();
   KillWorker(worker);
 }
