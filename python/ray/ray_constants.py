@@ -160,6 +160,7 @@ LOGGING_ROTATE_BACKUP_COUNT = 50  # backupCount
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
+PROCESS_TYPE_RAY_CLIENT_SERVER = "ray_client_server"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
 # TODO(sang): Delete it.
 PROCESS_TYPE_REPORTER = "reporter"

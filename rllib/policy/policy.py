@@ -289,7 +289,7 @@ class Policy(metaclass=ABCMeta):
             state_batches,
             prev_action_batch=input_dict.get(SampleBatch.PREV_ACTIONS),
             prev_reward_batch=input_dict.get(SampleBatch.PREV_REWARDS),
-            info_batch=None,
+            info_batch=input_dict.get(SampleBatch.INFOS),
             explore=explore,
             timestep=timestep,
             episodes=episodes,

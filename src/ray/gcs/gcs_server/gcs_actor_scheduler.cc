@@ -29,6 +29,7 @@ GcsActorScheduler::GcsActorScheduler(
     std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    std::shared_ptr<GcsActorScheduleStrategyInterface> actor_schedule_strategy,
     rpc::ClientFactoryFn client_factory)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
@@ -38,6 +39,7 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_success_handler_(std::move(schedule_success_handler)),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       raylet_client_pool_(raylet_client_pool),
+      actor_schedule_strategy_(actor_schedule_strategy),
       core_worker_clients_(client_factory) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
@@ -46,17 +48,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   RAY_CHECK(actor->GetNodeID().IsNil() && actor->GetWorkerID().IsNil());
 
   // Select a node to lease worker for the actor.
-  std::shared_ptr<rpc::GcsNodeInfo> node;
-
-  // If an actor has resource requirements, we will try to schedule it on the same node as
-  // the owner if possible.
-  const auto &task_spec = actor->GetCreationTaskSpecification();
-  if (!task_spec.GetRequiredResources().IsEmpty()) {
-    auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
-    node = maybe_node.has_value() ? maybe_node.value() : SelectNodeRandomly();
-  } else {
-    node = SelectNodeRandomly();
-  }
+  const auto &node = actor_schedule_strategy_->Schedule(actor);
 
   if (node == nullptr) {
     // There are no available nodes to schedule the actor, so just trigger the failed

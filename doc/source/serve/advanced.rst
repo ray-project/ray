@@ -405,3 +405,21 @@ backend based on a class that is installed in the Python environment that
 the workers will run in. Example:
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
+
+Configuring HTTP Server Locations
+=================================
+
+By default, Ray Serve starts only one HTTP on the head node of the Ray cluster.
+You can configure this behavior using the ``http_options={"location": ...}`` flag
+in :mod:`serve.start <ray.serve.start>`:
+
+- "HeadOnly": start one HTTP server on the head node. Serve
+  assumes the head node is the node you executed serve.start
+  on. This is the default.
+- "EveryNode": start one HTTP server per node.
+- "NoServer" or ``None``: disable HTTP server.
+
+.. note::
+   Using the "EveryNode" option, you can point a cloud load balancer to the
+   instance group of Ray cluster to achieve high availability of Serve's HTTP
+   proxies.

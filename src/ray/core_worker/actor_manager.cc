@@ -35,8 +35,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
   return actor_id;
 }
 
-const std::unique_ptr<ActorHandle> &ActorManager::GetActorHandle(
-    const ActorID &actor_id) {
+std::shared_ptr<ActorHandle> ActorManager::GetActorHandle(const ActorID &actor_id) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end())
