@@ -166,6 +166,8 @@ class _AgentCollector:
             #  resulting data=[[-3, -2, -1], [7, 8, 9]]
             #  Range of 3 consecutive items repeats every 10 timesteps.
             if view_req.shift_from is not None:
+                # Batch repeat value > 1: Only repeat the shift_from/to range
+                # every n timesteps.
                 if view_req.batch_repeat_value > 1:
                     count = int(
                         math.ceil((len(np_data[data_col]) - self.shift_before)
@@ -179,11 +181,20 @@ class _AgentCollector:
                                           view_req.shift_to + 1 + obs_shift]
                         for i in range(count)
                     ])
+                # Batch repeat value = 1: Repeat the shift_from/to range at
+                # each timestep.
                 else:
-                    data = np_data[data_col][self.shift_before +
-                                             view_req.shift_from +
-                                             obs_shift:self.shift_before +
-                                             view_req.shift_to + 1 + obs_shift]
+                    d = np_data[data_col]
+                    # TODO: For now, assume simple 1D data (B x x).
+                    #  Will expand this for Atari examples.
+                    assert len(d.shape) == 2
+                    shift_win = view_req.shift_to - view_req.shift_from + 1
+                    data_size = d.itemsize * int(np.product(d.shape[1:]))
+
+                    data = np.lib.stride_tricks.as_strided(
+                        d[self.shift_before - shift_win:],
+                        [self.agent_steps, shift_win, d.shape[1]],
+                        [data_size, data_size, d.itemsize])
             # Set of (probably non-consecutive) indices.
             # Example:
             #  shift=[-3, 0]
