@@ -12,7 +12,7 @@ tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
-# __sphinx_doc_model_api_tf_begin__
+# __sphinx_doc_model_api_1_begin__
 class DuelingQModel(TFModelV2):  # or: TorchModelV2
     """A simple, hard-coded dueling head model."""
 
@@ -50,6 +50,9 @@ class DuelingQModel(TFModelV2):  # or: TorchModelV2
         return v + advantages_centered  # q-values
 
 
+# __sphinx_doc_model_api_1_end__
+
+
 class TorchDuelingQModel(TorchModelV2):
     """A simple, hard-coded dueling head model."""
 
@@ -81,9 +84,6 @@ class TorchDuelingQModel(TorchModelV2):
         advantages_mean = torch.mean(a, 1)
         advantages_centered = a - torch.unsqueeze(advantages_mean, 1)
         return v + advantages_centered  # q-values
-
-
-# __sphinx_doc_model_api_tf_end__
 
 
 class ContActionQModel(TFModelV2):
@@ -127,7 +127,9 @@ class ContActionQModel(TFModelV2):
         return q_values
 
 
-# __sphinx_doc_model_api_torch_start__
+# __sphinx_doc_model_api_2_begin__
+
+
 class TorchContActionQModel(TorchModelV2):
     """A simple, q-value-from-cont-action model (for e.g. SAC type algos)."""
 
@@ -170,4 +172,4 @@ class TorchContActionQModel(TorchModelV2):
         return q_values
 
 
-# __sphinx_doc_model_api_torch_end__
+# __sphinx_doc_model_api_2_end__
