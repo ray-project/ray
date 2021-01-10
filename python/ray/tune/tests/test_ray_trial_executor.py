@@ -117,8 +117,11 @@ class RayTrialExecutorTest(unittest.TestCase):
 
     def _testPauseUnpause(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
-        with patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH",
-                   result_buffer_length):
+        with patch(
+                "ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH",
+                result_buffer_length
+        ), patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S",
+                 1):
             base = max(result_buffer_length, 1)
 
             trial = Trial("__fake")
