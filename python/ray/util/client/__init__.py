@@ -52,7 +52,7 @@ class RayAPIStub:
             self.client_worker = Worker(
                 conn_str, secure=secure, metadata=metadata)
             self.api.worker = self.client_worker
-            return client_worker.connection_info()
+            return self.client_worker.connection_info()
         except Exception:
             self.disconnect()
             raise
