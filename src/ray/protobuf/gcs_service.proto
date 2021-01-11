@@ -69,7 +69,6 @@ message GetActorStatesReply {
   ActorStates actor_states_data = 2;
 }
 
-
 message GetActorInfoRequest {
   // ID of this actor. If actor_id is set, name will not be set.
   bytes actor_id = 1;
