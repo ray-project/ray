@@ -365,7 +365,15 @@ class TrialRunner:
         self._stop_experiment_if_needed()
 
         try:
-            with warn_if_slow("experiment_checkpoint"):
+            with warn_if_slow(
+                    "experiment_checkpoint",
+                    message="Checkpointing the experiment state took "
+                    "{duration:.3f} s, which may be a performance "
+                    "bottleneck. Please ensure the "
+                    "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
+                    "something significantly higher than this time "
+                    "to ensure compute time is mostly spent on the main "
+                    "training loop."):
                 self.checkpoint()
         except Exception as e:
             logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
@@ -531,13 +539,18 @@ class TrialRunner:
         """
         try:
             results = self.trial_executor.fetch_result(trial)
-            for result in results:
-                with warn_if_slow("process_trial_result"):
-                    decision = self._process_trial_result(trial, result)
-                if decision == TrialScheduler.STOP:
-                    # If the decision is to stop the trial, ignore all results
-                    # that came after that.
-                    break
+            with warn_if_slow(
+                    "process_trial_results",
+                    message="Processing trial results took {duration:.3f} s, "
+                    "which may be a performance bottleneck. Please consider "
+                    "reporting results less frequently to Ray Tune."):
+                for result in results:
+                    with warn_if_slow("process_trial_result"):
+                        decision = self._process_trial_result(trial, result)
+                    if decision == TrialScheduler.STOP:
+                        # If the decision is to stop the trial,
+                        # ignore all results that came after that.
+                        break
         except Exception:
             error_msg = "Trial %s: Error processing event." % trial
             if self._fail_fast == TrialRunner.RAISE:
