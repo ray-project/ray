@@ -35,7 +35,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
 
     /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
-
   }
 
   TaskExecutor(RayRuntimeInternal runtime) {

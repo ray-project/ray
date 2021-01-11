@@ -148,7 +148,8 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
         // Check whether the exception is `IntentionalSystemExit`.
         jthrowable throwable = env->ExceptionOccurred();
         if (throwable) {
-          bool is_intentional_exception = env->IsInstanceOf(throwable, java_ray_intentional_system_exit_exception_class);
+          bool is_intentional_exception = env->IsInstanceOf(
+              throwable, java_ray_intentional_system_exit_exception_class);
           env->ExceptionClear();
           if (is_intentional_exception) {
             return ray::Status::IntentionalSystemExit();

@@ -512,7 +512,6 @@ cdef execute_task(
             if "RAY_PDB" in os.environ:
                 ray.util.pdb.post_mortem()
 
-
             backtrace = ray.utils.format_error_message(
                 traceback.format_exc(), task_exception=task_exception)
             if isinstance(error, RayTaskError):
@@ -532,8 +531,9 @@ cdef execute_task(
                 ray_constants.TASK_PUSH_ERROR,
                 str(failure_object),
                 job_id=worker.current_job_id)
-            
-            # if error raised in creation task, eixt this actor to make it restarted
+
+            # if error raised in creation task,
+            # eixt this actor to make it restarted
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 error = SystemExit(0)
                 raise error

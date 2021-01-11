@@ -291,10 +291,12 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.TASK_PUSH_ERROR
     assert error_message1 in errors[0].error_message
 
+
 def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
     p = error_pubsub
     error_message1 = "actor constructor failed"
-    error_flag_file_name = "/tmp/TEST_ERROR_FLAG_" + str(random.randint(0, 99999))
+    error_flag_file_name = "/tmp/TEST_ERROR_FLAG_" + str(
+        random.randint(0, 99999))
 
     @ray.remote(max_restarts=2)
     class FailedActor:
@@ -302,7 +304,7 @@ def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
             # This actor will raise error at first time.
             # Then after restarting, it will be created successfully
             if not os.path.isfile(error_flag_file_name):
-                open(error_flag_file_name, 'w').close()
+                open(error_flag_file_name, "w").close()
                 print("flag not exits, raise error")
                 raise Exception(error_message1)
 
@@ -321,7 +323,7 @@ def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
     def wait_until_ok():
         try:
             return ray.get(a.ok.remote()) == "OK"
-        except Exception as e:
+        except Exception:
             return False
 
     wait_for_condition(wait_until_ok)

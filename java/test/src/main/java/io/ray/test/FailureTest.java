@@ -84,14 +84,13 @@ public class FailureTest extends BaseTest {
 
   public static class ActorFailedAtFirstTime {
     /**
-     * This actor will raise error at first time.
-     * Then after restarting, it will be created successfully
+     * This actor will raise error at first time. Then after restarting, it will be created
+     * successfully
      */
     public ActorFailedAtFirstTime(String flagFileName) {
       File flagFile = new File(flagFileName);
       if (!flagFile.exists()) {
-        LOGGER.info("flag file not exists, throw exception!, fileName={}",
-          flagFile.toString());
+        LOGGER.info("flag file not exists, throw exception!, fileName={}", flagFile.toString());
         try {
           flagFile.createNewFile();
         } catch (IOException e) {
@@ -131,19 +130,22 @@ public class FailureTest extends BaseTest {
 
   public void testActorCreationFailedAndRestarted() {
     String flagFileName = "/tmp/TEST_ERROR_FLAG_" + new Random().nextInt(9999);
-    ActorHandle<ActorFailedAtFirstTime> actor = Ray.actor(
-      ActorFailedAtFirstTime::new, flagFileName).setMaxRestarts(2).remote();
+    ActorHandle<ActorFailedAtFirstTime> actor =
+        Ray.actor(ActorFailedAtFirstTime::new, flagFileName).setMaxRestarts(2).remote();
     // At first, actor will throw exceptions and restarted.
     // Finally after restarted, actor will be created successfully.
-    boolean ok = TestUtils.waitForCondition(() -> {
-      try {
-        Assert.assertEquals(actor.task(ActorFailedAtFirstTime::ok).remote().get(), "OK");
-        return true;
-      } catch (Exception e) {
-        // ignore it
-      }
-      return false;
-    }, 10000);
+    boolean ok =
+        TestUtils.waitForCondition(
+            () -> {
+              try {
+                Assert.assertEquals(actor.task(ActorFailedAtFirstTime::ok).remote().get(), "OK");
+                return true;
+              } catch (Exception e) {
+                // ignore it
+              }
+              return false;
+            },
+            10000);
     Assert.assertTrue(ok);
   }
 
