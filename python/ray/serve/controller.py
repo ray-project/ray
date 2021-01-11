@@ -125,17 +125,6 @@ class ServeController:
         """Returns a dictionary of backend tag to backend config."""
         return self.endpoint_state.get_endpoints()
 
-    def _set_traffic(self, endpoint_name: str,
-                     traffic_dict: Dict[str, float]) -> None:
-        for backend in traffic_dict:
-            if self.backend_state.get_backend(backend) is None:
-                raise ValueError(
-                    "Attempted to assign traffic to a backend '{}' that "
-                    "is not registered.".format(backend))
-
-        self.endpoint_state.set_traffic_policy(endpoint_name,
-                                               TrafficPolicy(traffic_dict))
-
     def _validate_traffic_dict(self, traffic_dict: Dict[str, float]):
         for backend in traffic_dict:
             if self.backend_state.get_backend(backend) is None:
@@ -143,12 +132,17 @@ class ServeController:
                     "Attempted to assign traffic to a backend '{}' that "
                     "is not registered.".format(backend))
 
-    async def set_traffic(self, endpoint_name: str,
+    async def set_traffic(self, endpoint: str,
                           traffic_dict: Dict[str, float]) -> None:
         """Sets the traffic policy for the specified endpoint."""
         async with self.write_lock:
             self._validate_traffic_dict(traffic_dict)
-            self._set_traffic(endpoint_name, traffic_dict)
+
+            logger.info("Setting traffic for endpoint "
+                        f"'{endpoint}' to '{traffic_dict}'.")
+
+            self.endpoint_state.set_traffic_policy(endpoint,
+                                                   TrafficPolicy(traffic_dict))
 
     async def shadow_traffic(self, endpoint_name: str, backend_tag: BackendTag,
                              proportion: float) -> None:
