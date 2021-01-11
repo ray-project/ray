@@ -425,8 +425,8 @@ class ModelCatalog:
                             "model's weights. This is no longer required, but "
                             "if you are still calling this method at least "
                             "once, you must make sure to register all created "
-                            "variables properly. The missing variables are {}, "
-                            "and you only registered {}."
+                            "variables properly. The missing variables are {},"
+                            " and you only registered {}. "
                             "Did you forget to call `register_variables()` on "
                             "some of the variables in question?".format(
                                 instance, not_registered, registered))

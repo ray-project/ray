@@ -1,5 +1,6 @@
 import contextlib
 import gym
+import re
 from typing import List
 
 from ray.util import log_once
@@ -13,7 +14,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 @PublicAPI
-class TFModelV2(ModelV2):#, tf.keras.models.Model if tf else object):
+class TFModelV2(ModelV2):
     """TF version of ModelV2, which is always also a keras Model.
 
     Note that this class by itself is not a valid model unless you
@@ -35,9 +36,7 @@ class TFModelV2(ModelV2):#, tf.keras.models.Model if tf else object):
                 value_layer = tf.keras.layers.Dense(...)(hidden_layer)
                 self.base_model = tf.keras.Model(
                     input_layer, [output_layer, value_layer])
-                #self.register_variables(self.base_model.variables)
         """
-        #tf.keras.models.Model.__init__(self, name=name)
         super().__init__(
             obs_space,
             action_space,
@@ -80,9 +79,30 @@ class TFModelV2(ModelV2):#, tf.keras.models.Model if tf else object):
             # Old way using `register_variables`.
             if self.var_list:
                 return {v.name: v for v in self.var_list}
+            # New way: Automatically determine the var tree.
             else:
-                pass
-        return list(self.var_list)
+                ret = {}
+                for prop, value in self.__dict__.items():
+                    # Keras Model: key=k + "." + var-name (replace '/' by '.').
+                    if isinstance(value, tf.keras.models.Model):
+                        for var in value.variables:
+                            key = prop + "." + re.sub("/", ".", var.name)
+                            ret[key] = var
+                    # Other TFModelV2: Include its vars into ours.
+                    elif isinstance(value, TFModelV2):
+                        for key, var in value.variables(as_dict=True).items():
+                            ret[prop + "." + key] = var
+                    # tf.Variable
+                    elif isinstance(value, tf.Variable):
+                        ret[prop] = value
+                return ret
+
+        # Old way using `register_variables`.
+        if self.var_list:
+            return list(self.var_list)
+        # New way: Automatically determine the var tree.
+        else:
+            return list(self.variables(as_dict=True).values())
 
     @override(ModelV2)
     def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:
@@ -92,7 +112,3 @@ class TFModelV2(ModelV2):#, tf.keras.models.Model if tf else object):
                 for k, v in self.variables(as_dict=True).items() if v.trainable
             }
         return [v for v in self.variables() if v.trainable]
-
-    #@override(tf.keras.models.Model)
-    #def call(self, *args, **kwargs):
-    #    return self.__call__(*args, **kwargs)
