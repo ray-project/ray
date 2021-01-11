@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # Run in eager mode for value checking and debugging.
     tf1.enable_eager_execution()
 
-    # __sphinx_doc_model_construct_begin__
+    # __sphinx_doc_model_construct_1_begin__
     my_dueling_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         if args.framework != "torch" else TorchDuelingQModel,
         name="dueling_q_model",
     )
-    # __sphinx_doc_model_construct_end__
+    # __sphinx_doc_model_construct_1_end__
 
     batch_size = 10
     input_ = np.array([obs_space.sample() for _ in range(batch_size)])
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     obs_space = Box(-1.0, 1.0, (3, ))
     action_space = Box(-1.0, -1.0, (2, ))
 
-    # __sphinx_doc_model_construct_begin__
+    # __sphinx_doc_model_construct_2_begin__
     my_cont_action_q_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         if args.framework != "torch" else TorchContActionQModel,
         name="cont_action_q_model",
     )
-    # __sphinx_doc_model_construct_end__
+    # __sphinx_doc_model_construct_2_end__
 
     batch_size = 10
     input_ = np.array([obs_space.sample() for _ in range(batch_size)])

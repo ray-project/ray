@@ -189,7 +189,6 @@ def test_spill_objects_automatically(object_spilling_config, shutdown_only):
             replay_buffer.append(ref)
             solution_buffer.append(arr)
 
-    print("-----------------------------------")
     # randomly sample objects
     for _ in range(1000):
         index = random.choice(list(range(buffer_length)))

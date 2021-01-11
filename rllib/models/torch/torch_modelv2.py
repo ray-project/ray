@@ -11,7 +11,7 @@ _, nn = try_import_torch()
 
 @PublicAPI
 class TorchModelV2(ModelV2):
-    """Torch version of ModelV2.
+    """Torch version of ModelV2, which is also always a torch.nn.Module.
 
     Note that this class by itself is not a valid model unless you
     inherit from nn.Module and implement forward() in a subclass."""
