@@ -378,7 +378,9 @@ class ModelCatalog:
                         if model_config.get("use_lstm") else AttentionWrapper)
                     model_cls._wrapped_forward = forward
 
-                # Track and warn if vars were created but not registered.
+                # Obsolete: Track and warn if vars were created but not
+                # registered. Only still do this, if users do register their
+                # variables. If not (which they shouldn't), don't check here.
                 created = set()
 
                 def track_var_creation(next_creator, **kw):
@@ -407,19 +409,27 @@ class ModelCatalog:
                         # Other error -> re-raise.
                         else:
                             raise e
-                registered = set(instance.variables())
-                not_registered = set()
-                for var in created:
-                    if var not in registered:
-                        not_registered.add(var)
-                if not_registered:
-                    raise ValueError(
-                        "It looks like variables {} were created as part "
-                        "of {} but does not appear in model.variables() "
-                        "({}). Did you forget to call "
-                        "model.register_variables() on the variables in "
-                        "question?".format(not_registered, instance,
-                                           registered))
+
+                # User still registered TFModelV2's variables: Check, whether
+                # ok.
+                registered = set(instance.var_list)
+                if len(registered) > 0:
+                    not_registered = set()
+                    for var in created:
+                        if var not in registered:
+                            not_registered.add(var)
+                    if not_registered:
+                        raise ValueError(
+                            "It looks like you are still using "
+                            "`{}.register_variables()` to register your "
+                            "model's weights. This is no longer required, but "
+                            "if you are still calling this method at least "
+                            "once, you must make sure to register all created "
+                            "variables properly. The missing variables are {},"
+                            " and you only registered {}. "
+                            "Did you forget to call `register_variables()` on "
+                            "some of the variables in question?".format(
+                                instance, not_registered, registered))
             elif framework == "torch":
                 # Try wrapping custom model with LSTM/attention, if required.
                 if model_config.get("use_lstm") or \
