@@ -548,7 +548,8 @@ class Policy(metaclass=ABCMeta):
             model=getattr(self, "model", None),
             num_workers=self.config.get("num_workers", 0),
             worker_index=self.config.get("worker_index", 0),
-            framework=getattr(self, "framework", "tf"))
+            framework=getattr(self, "framework",
+                              self.config.get("framework", "tf")))
         return exploration
 
     def _get_default_view_requirements(self):
