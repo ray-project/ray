@@ -2,6 +2,7 @@ import time
 
 import ray
 from ray import tune
+from ray.tune.cluster_info import is_ray_cluster
 
 
 def my_naive_trainable(config):
@@ -11,17 +12,21 @@ def my_naive_trainable(config):
 
 
 def main():
-    # ray.init(address="auto")
-    ray.init()
+    ray.init(address="auto")
 
-    num_samples = 1_000
+    num_samples = 1000
 
     sleep_time = 0.1
-    num_iters = 3_00
+    num_iters = 300
 
     expected_run_time = num_iters * sleep_time
-    # Allow minimum of 10 % overhead (or 10 seconds for short runs)
-    expected_run_time += max(expected_run_time * 0.1, 10.)
+
+    # Allow minimum of 20 % overhead (or 10 seconds for short runs)
+    expected_run_time += max(expected_run_time * 0.2, 10.)
+
+    if is_ray_cluster():
+        # Add constant overhead for SSH connection
+        expected_run_time += 0.3 * num_samples
 
     start_time = time.time()
     tune.run(
@@ -36,7 +41,13 @@ def main():
         num_samples=num_samples)
     time_taken = time.time() - start_time
 
-    assert time_taken < expected_run_time, "This took too long."
+    assert time_taken < expected_run_time, \
+        f"The buffering test took {time_taken:.2f} seconds, but should not " \
+        f"have exceeded {expected_run_time:.2f} seconds. Test failed."
+
+    print(f"The buffering test took {time_taken:.2f} seconds, which "
+          f"is below the budget of {expected_run_time:.2f} seconds. "
+          f"Test successful.")
 
 
 if __name__ == "__main__":

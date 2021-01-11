@@ -611,6 +611,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
         shutil.rmtree(tmpdir)
 
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 1)
     @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
     def testUserCheckpointBuffered(self):
         def num_checkpoints(trial):
