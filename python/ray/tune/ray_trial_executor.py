@@ -378,7 +378,7 @@ class RayTrialExecutor(TrialExecutor):
                             trial,
                             actor=trial.runner,
                             placement_group=self._committed_placement_groups.
-                            get(trial)[0])
+                            get(trial, [None])[0])
                     if trial in self._committed_placement_groups:
                         del self._committed_placement_groups[trial]
         except Exception:
