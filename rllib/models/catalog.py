@@ -283,7 +283,7 @@ class ModelCatalog:
                     size += np.product(flat_action_space[i].shape)
             size = int(size)
             return dl_lib.int64 if all_discrete else dl_lib.float32, \
-                   (None, size)
+                (None, size)
         else:
             raise NotImplementedError(
                 "Action space {} not supported".format(action_space))
