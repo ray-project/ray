@@ -13,7 +13,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 @PublicAPI
-class TFModelV2(ModelV2, tf.keras.models.Model if tf else object):
+class TFModelV2(ModelV2):#, tf.keras.models.Model if tf else object):
     """TF version of ModelV2, which is always also a keras Model.
 
     Note that this class by itself is not a valid model unless you
@@ -35,11 +35,10 @@ class TFModelV2(ModelV2, tf.keras.models.Model if tf else object):
                 value_layer = tf.keras.layers.Dense(...)(hidden_layer)
                 self.base_model = tf.keras.Model(
                     input_layer, [output_layer, value_layer])
-                self.register_variables(self.base_model.variables)
+                #self.register_variables(self.base_model.variables)
         """
-        tf.keras.models.Model.__init__(self, name=name)
-        ModelV2.__init__(
-            self,
+        #tf.keras.models.Model.__init__(self, name=name)
+        super().__init__(
             obs_space,
             action_space,
             num_outputs,
@@ -47,9 +46,7 @@ class TFModelV2(ModelV2, tf.keras.models.Model if tf else object):
             name,
             framework="tf")
 
-        # Deprecated: Since TFModelV2 are now keras Models, var_list is no
-        # longer needed. Keras Models keep track automatically of their
-        # inner Models' and layers' variables/trainable variables.
+        # Deprecated: TFModelV2 now automatically track their variables.
         self.var_list = []
 
         if tf1.executing_eagerly():
@@ -79,9 +76,12 @@ class TFModelV2(ModelV2, tf.keras.models.Model if tf else object):
 
     @override(ModelV2)
     def variables(self, as_dict: bool = False) -> List[TensorType]:
-        #TODO: fix these.
         if as_dict:
-            return {v.name: v for v in self.var_list}
+            # Old way using `register_variables`.
+            if self.var_list:
+                return {v.name: v for v in self.var_list}
+            else:
+                pass
         return list(self.var_list)
 
     @override(ModelV2)
@@ -93,6 +93,6 @@ class TFModelV2(ModelV2, tf.keras.models.Model if tf else object):
             }
         return [v for v in self.variables() if v.trainable]
 
-    @override(tf.keras.models.Model)
-    def call(self, *args, **kwargs):
-        return self.__call__(*args, **kwargs)
+    #@override(tf.keras.models.Model)
+    #def call(self, *args, **kwargs):
+    #    return self.__call__(*args, **kwargs)

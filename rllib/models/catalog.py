@@ -256,6 +256,7 @@ class ModelCatalog:
 
         Args:
             action_space (Space): Action space of the target gym env.
+
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
@@ -407,8 +408,8 @@ class ModelCatalog:
 
                 # User still registered TFModelV2's variables: Check, whether
                 # ok.
-                if len(instance.var_list) > 0:
-                    registered = set(instance.var_list)
+                registered = set(instance.var_list)
+                if len(registered) > 0:
                     not_registered = set()
                     for var in created:
                         if var not in registered:

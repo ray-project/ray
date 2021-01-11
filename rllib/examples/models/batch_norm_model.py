@@ -123,7 +123,7 @@ class KerasBatchNormModel(TFModelV2):
 
         self.base_model = tf.keras.models.Model(
             inputs=[inputs, is_training], outputs=[output, value_out])
-        self.register_variables(self.base_model.variables)
+        #self.register_variables(self.base_model.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
