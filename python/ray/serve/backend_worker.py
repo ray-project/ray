@@ -268,7 +268,7 @@ class RayServeReplica:
                 await asyncio.sleep(1)
                 return {"type": None}
 
-            await response(None, mock_receive, mock_send)
+            await response(scope=None, receive=mock_receive, send=mock_send)
             content = b"".join(body_buffer)
             return starlette.responses.Response(
                 content,
@@ -346,8 +346,8 @@ class RayServeReplica:
                                  ".".format(batch_size, len(result_list)))
                 raise RayServeException(error_message)
             for i, result in enumerate(result_list):
-                result_list[i] = await self.ensure_serializable_response(result
-                                                                         )
+                result_list[i] = (await
+                                  self.ensure_serializable_response(result))
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self.error_counter.record(1)
