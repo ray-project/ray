@@ -115,12 +115,12 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert "taskSpec" in one_entry
             assert "functionDescriptor" in one_entry["taskSpec"]
             assert type(one_entry["taskSpec"]["functionDescriptor"]) is dict
-            assert "address" in one_entry
+            assert "address" in one_entry["states"]
             assert type(one_entry["address"]) is dict
-            assert "state" in one_entry
+            assert "state" in one_entry["states"]
             assert "name" in one_entry
-            assert "numRestarts" in one_entry
-            assert "pid" in one_entry
+            assert "numRestarts" in one_entry["states"]
+            assert "pid" in one_entry["states"]
             all_pids = [entry["pid"] for entry in actors.values()]
             assert 0 in all_pids  # The infeasible actor
             assert len(all_pids) > 1
