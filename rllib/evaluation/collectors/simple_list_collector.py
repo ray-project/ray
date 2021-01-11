@@ -550,6 +550,10 @@ class SimpleListCollector(SampleCollector):
 
         input_dict = {}
         for view_col, view_req in view_reqs.items():
+            # Not used for action computations.
+            if not view_req.used_for_compute_actions:
+                continue
+
             # Create the batch of data from the different buffers.
             data_col = view_req.data_col or view_col
             delta = -1 if data_col in [

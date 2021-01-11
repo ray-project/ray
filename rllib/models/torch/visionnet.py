@@ -7,6 +7,7 @@ from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -173,6 +174,10 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 "-{}:0".format(from_)
             self.view_requirements[SampleBatch.OBS].shift_from = -from_
             self.view_requirements[SampleBatch.OBS].shift_to = 0
+            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
+                data_col=SampleBatch.OBS, shift="-{}:1".format(from_ - 1),
+                space=self.view_requirements[SampleBatch.OBS].space,
+            )
 
     @override(TorchModelV2)
     def forward(self, input_dict: Dict[str, TensorType],
