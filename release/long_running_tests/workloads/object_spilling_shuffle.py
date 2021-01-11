@@ -1,16 +1,14 @@
 import time
-import typing
 import json
 import ray
 import numpy as np
 from typing import List
-import threading
 
 from ray.cluster_utils import Cluster
 
 num_nodes = 4
-object_store_size = 100 * 1024 * 1024 # 100 MB.
-partition_size = int(10e6) # 20 MB
+object_store_size = 100 * 1024 * 1024  # 100 MB.
+partition_size = int(10e6)  # 20 MB
 num_partitions = 100
 rows_per_partition = partition_size // (8 * 2)
 
@@ -22,18 +20,21 @@ c.add_node(
         "automatic_object_spilling_enabled": True,
         "max_io_workers": 2,
         "object_spilling_config": json.dumps(
-            {"type": "filesystem", "params": {"directory_path": "/tmp/spill"}},
-            separators=(",", ":")
-        )
+            {
+                "type": "filesystem",
+                "params": {
+                    "directory_path": "/tmp/spill"
+                }
+            },
+            separators=(",", ":"))
     })
 # Add fake 4 nodes cluster.
-for _ in range(num_nodes - 1): # subtract a head node.
-    c.add_node(
-        num_cpus=4,
-        object_store_memory=object_store_size)
+for _ in range(num_nodes - 1):  # subtract a head node.
+    c.add_node(num_cpus=4, object_store_memory=object_store_size)
 
 c.wait_for_nodes()
 ray.init(address=c.address)
+
 
 @ray.remote
 class Counter:
@@ -56,9 +57,11 @@ class Counter:
 # object store peak memory: O(partition size / num partitions)
 # heap memory: O(partition size / num partitions)
 @ray.remote(num_returns=num_partitions)
-def shuffle_map_streaming(i, counter_handle=None) -> List["ObjectRef[np.ndarray]"]:
+def shuffle_map_streaming(
+        i, counter_handle=None) -> List["ObjectRef[np.ndarray]"]:
     outputs = [
-        ray.put(np.ones((rows_per_partition // num_partitions, 2), dtype=np.int64))
+        ray.put(
+            np.ones((rows_per_partition // num_partitions, 2), dtype=np.int64))
         for _ in range(num_partitions)
     ]
     counter_handle.inc.remote()
@@ -82,23 +85,24 @@ def shuffle_reduce_streaming(*inputs, counter_handle=None) -> np.ndarray:
 shuffle_map = shuffle_map_streaming
 shuffle_reduce = shuffle_reduce_streaming
 
+
 def run_shuffle():
     counter = Counter.remote()
     start = time.time()
     print("start map")
     shuffle_map_out = [
         shuffle_map.remote(i, counter_handle=counter)
-        for i in range(num_partitions)]
+        for i in range(num_partitions)
+    ]
     # wait until all map is done before reduce phase.
     for out in shuffle_map_out:
         ray.get(out)
-    
+
     # Start reducing
     shuffle_reduce_out = [
         shuffle_reduce.remote(
             *[shuffle_map_out[i][j] for i in range(num_partitions)],
-            counter_handle=counter)
-        for j in range(num_partitions)
+            counter_handle=counter) for j in range(num_partitions)
     ]
 
     print("start shuffle.")
@@ -112,6 +116,7 @@ def run_shuffle():
 
     ray.get(counter.finish.remote())
     return total_rows, delta
+
 
 iteration = 1
 delta_sum = 0
@@ -128,8 +133,7 @@ while True:
     iteration += 1
 
 assert total_bytes is not None
-print(
-    f"Long running shuffle done. Please check if memory usage is steady. "
-    f"The average shuffling that shuffles {total_bytes / 1024 / 1024} MB"
-    f"took {delta_sum / iteration} "
-    f"for {iteration} number of itertaions.")
+print(f"Long running shuffle done. Please check if memory usage is steady. "
+      f"The average shuffling that shuffles {total_bytes / 1024 / 1024} MB"
+      f"took {delta_sum / iteration} "
+      f"for {iteration} number of itertaions.")
