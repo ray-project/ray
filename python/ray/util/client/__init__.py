@@ -54,8 +54,7 @@ class RayAPIStub:
             self.api.worker = self.client_worker
             return client_worker.connection_info()
         except Exception:
-            self.client_worker = None
-            self.api.worker = None
+            self.disconnect()
             raise
 
     def disconnect(self):
