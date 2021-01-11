@@ -2238,6 +2238,9 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
   reply->set_attempt_succeeded(success);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 
+  // TODO: fix race condition to avoid using this hack
+  requested_task_running = main_thread_task_id_ == task_id;
+
   // Do force kill after reply callback sent
   if (requested_task_running && request.force_kill()) {
     RAY_LOG(INFO) << "Force killing a worker running " << main_thread_task_id_;
