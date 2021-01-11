@@ -31,7 +31,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << request.data().driver_pid();
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                          request.data().SerializeAsString(), nullptr));
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << request.data().driver_pid();
@@ -57,7 +57,7 @@ void GcsJobManager::HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &req
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                          job_table_data->SerializeAsString(), nullptr));
       ClearJobInfos(job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
