@@ -341,5 +341,16 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert ray.get(new_actor.get.remote()) == 3
 
 
+def test_internal_kv(ray_start_regular_shared):
+    with ray_start_client_server() as ray:
+        assert ray._internal_kv_initialized()
+        assert not ray._internal_kv_put("apple", "b")
+        assert ray._internal_kv_put("apple", "b")
+        assert ray._internal_kv_get("apple") == b"b"
+        assert ray._internal_kv_list("a") == [b"apple"]
+        ray._internal_kv_del("apple")
+        assert ray._internal_kv_get("apple") == b""
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
