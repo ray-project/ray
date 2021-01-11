@@ -15,7 +15,8 @@ IMAGE_ENV = "KUBERNETES_CLUSTER_LAUNCHER_TEST_IMAGE"
 
 
 def fill_image_field(pod_config):
-    pod_config["spec"]["containers"][0]["image"] = os.getenv(IMAGE_ENV)
+    image = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
+    pod_config["spec"]["containers"][0]["image"] = image
 
 
 def fill_image_fields(cluster_config):
