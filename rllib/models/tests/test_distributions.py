@@ -371,13 +371,15 @@ class TestDistributions(unittest.TestCase):
 
     def test_gaussian_squashed_gaussian(self):
         for fw, sess in framework_iterator(frameworks="tf", session=True):
-            inputs1 = tf.constant([[-0.5, 0.2, np.log(0.1), np.log(0.5)],
-                                   [0.6, 0.8, np.log(0.7), np.log(0.8)],
-                                   [-10.0, 1.2, np.log(0.9), np.log(1.0)]])
+            inputs1 = tf.constant([
+                [-0.5, 0.2, np.log(0.1), np.log(0.5)],
+                [0.6, 0.8, np.log(0.7), np.log(0.8)],
+                [-10.0, 1.2, np.log(0.9), np.log(1.0)]])
 
-            inputs2 = tf.constant([[0.2, 0.3, np.log(0.2), np.log(0.4)],
-                                   [0.6, 0.8, np.log(0.7), np.log(0.8)],
-                                   [-11.0, 1.2, np.log(0.9), np.log(1.0)]])
+            inputs2 = tf.constant([
+                [0.2, 0.3, np.log(0.2), np.log(0.4)],
+                [0.6, 0.8, np.log(0.7), np.log(0.8)],
+                [-11.0, 1.2, np.log(0.9), np.log(1.0)]])
 
             gsg_dist1 = GaussianSquashedGaussian(inputs1, None)
             gsg_dist2 = GaussianSquashedGaussian(inputs2, None)
