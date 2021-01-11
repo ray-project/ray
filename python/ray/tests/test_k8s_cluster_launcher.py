@@ -79,16 +79,10 @@ class KubernetesTest(unittest.TestCase):
             test_file.write("test")
             test_file.flush()
             sdk.rsync(
-                config,
-                source=test_file.name,
-                target="~/in_pod",
-                down=False)
+                config, source=test_file.name, target="~/in_pod", down=False)
         with tempfile.NamedTemporaryFile() as test_file:
             sdk.rsync(
-                config,
-                target=test_file.name,
-                source="~/in_pod",
-                down=True)
+                config, target=test_file.name, source="~/in_pod", down=True)
             contents = open(test_file.name).read()
         assert contents == "test"
 
