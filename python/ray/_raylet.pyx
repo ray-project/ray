@@ -435,7 +435,6 @@ cdef execute_task(
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                     and function_name == "__ray_terminate__"):
-                worker.reraise_actor_init_error()
                 worker.memory_monitor.raise_if_low_memory()
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -536,8 +535,6 @@ cdef execute_task(
             
             # if error raised in creation task, eixt this actor to make it restarted
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                # worker.mark_actor_init_failed(error)
-                # raise exit
                 error = SystemExit(0)
                 raise error
 
