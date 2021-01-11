@@ -11,6 +11,27 @@ from ray.autoscaler._private.kubernetes.node_provider import \
     KubernetesNodeProvider
 from ray.autoscaler import sdk
 
+IMAGE_ENV = "KUBERNETES_CLUSTER_LAUNCHER_TEST_IMAGE"
+
+
+def fill_image_field(pod_config):
+    pod_config["spec"]["containers"][0]["image"] = os.getenv(IMAGE_ENV)
+
+
+def fill_image_fields(cluster_config):
+    for key in "worker_nodes", "head_node":
+        fill_image_field(cluster_config[key])
+
+
+def get_config():
+    here = os.path.realpath(__file__)
+    parent = os.path.dirname(here)
+    relative_path = "test_cli_patterns/test_k8s_cluster_launcher.yaml"
+    config_path = os.path.join(parent, relative_path)
+    config = yaml.safe_load(open(config_path).read())
+    fill_image_fields(config)
+    return config
+
 
 class KubernetesTest(unittest.TestCase):
     def test_up_and_down(self):
@@ -22,19 +43,15 @@ class KubernetesTest(unittest.TestCase):
         (3) Runs 'ray down' and confirms that the cluster is gone."""
 
         # get path to config
-        here = os.path.realpath(__file__)
-        parent = os.path.dirname(here)
-        relative_path = "test_cli_patterns/test_k8s_cluster_launcher.yaml"
-        config_path = os.path.join(parent, relative_path)
+        config = get_config()
 
         # get a node provider
-        config = yaml.safe_load(open(config_path).read())
         provider_config = config["provider"]
         cluster_name = config["cluster_name"]
         self.provider = KubernetesNodeProvider(provider_config, cluster_name)
 
         # ray up
-        sdk.create_or_update_cluster(config_path, no_config_cache=True)
+        sdk.create_or_update_cluster(config, no_config_cache=True)
 
         # Check for two pods (worker and head).
         while True:
@@ -50,7 +67,7 @@ class KubernetesTest(unittest.TestCase):
         log_cmd = "tail -n 100 /tmp/ray/session_latest/logs/monitor*"
         while True:
             monitor_output = sdk.run_on_cluster(
-                config_path, cmd=log_cmd, with_output=True).decode()
+                config, cmd=log_cmd, with_output=True).decode()
             if ("ray-legacy-head-node-type" in monitor_output
                     and "ray-legacy-worker-node-type" in monitor_output):
                 break
@@ -62,13 +79,13 @@ class KubernetesTest(unittest.TestCase):
             test_file.write("test")
             test_file.flush()
             sdk.rsync(
-                config_path,
+                config,
                 source=test_file.name,
                 target="~/in_pod",
                 down=False)
         with tempfile.NamedTemporaryFile() as test_file:
             sdk.rsync(
-                config_path,
+                config,
                 target=test_file.name,
                 source="~/in_pod",
                 down=True)
@@ -76,7 +93,7 @@ class KubernetesTest(unittest.TestCase):
         assert contents == "test"
 
         # ray down
-        sdk.teardown_cluster(config_path)
+        sdk.teardown_cluster(config)
 
         # Check that there are no pods left in namespace ray to confirm that
         # the cluster is gone.
