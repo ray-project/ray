@@ -782,9 +782,8 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
 
   if (node_id == self_node_id_) {
     // The resource update is on the local node, check if we can reschedule tasks.
-    TryLocalInfeasibleTaskScheduling();
+    cluster_task_manager_->ScheduleInfeasibleTasks();
   }
-  return;
 }
 
 void NodeManager::ResourceDeleted(const NodeID &node_id,

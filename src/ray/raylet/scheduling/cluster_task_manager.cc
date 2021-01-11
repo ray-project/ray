@@ -391,7 +391,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     }
     waiting_tasks_.erase(iter);
 
-    task_dependency_manager_.RemoveTaskDependencies(task_id);
     return true;
   }
 
