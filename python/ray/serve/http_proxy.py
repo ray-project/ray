@@ -137,8 +137,6 @@ class HTTPProxy:
             error_message = "Task Error. Traceback: {}.".format(result)
             await error_sender(error_message, 500)
         elif isinstance(result, starlette.responses.Response):
-            if isinstance(result, starlette.responses.StreamingResponse):
-                print("GOT HERE")
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
