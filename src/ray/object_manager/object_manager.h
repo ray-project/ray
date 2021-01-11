@@ -106,9 +106,6 @@ class ObjectManagerInterface {
 class ObjectManager : public ObjectManagerInterface,
                       public rpc::ObjectManagerServiceHandler {
  public:
-  using RestoreSpilledObjectCallback = std::function<void(
-      const ObjectID &, const std::string &, std::function<void(const ray::Status &)>)>;
-
   /// Implementation of object manager service
 
   /// Handle push request from remote object manager
@@ -194,12 +191,14 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param main_service The main asio io_service.
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
-  explicit ObjectManager(boost::asio::io_service &main_service,
-                         const NodeID &self_node_id, const ObjectManagerConfig &config,
-                         std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                         RestoreSpilledObjectCallback restore_spilled_object,
-                         SpillObjectsCallback spill_objects_callback = nullptr,
-                         std::function<void()> object_store_full_callback = nullptr);
+  explicit ObjectManager(
+      boost::asio::io_service &main_service, const NodeID &self_node_id,
+      const ObjectManagerConfig &config,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<bool(const ObjectID &)> is_object_spilled_locally = nullptr,
+      SpillObjectsCallback spill_objects_callback = nullptr,
+      std::function<void()> object_store_full_callback = nullptr);
 
   ~ObjectManager();
 
@@ -468,6 +467,8 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Pull manager retry timer .
   boost::asio::deadline_timer pull_retry_timer_;
+
+  const std::function<bool(const ObjectID &)> is_object_spilled_locally_;
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;

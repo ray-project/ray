@@ -40,6 +40,7 @@ class PullManager {
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
+      const std::function<bool(const ObjectID &)> is_object_spilled_locally,
       const std::function<double()> get_time, int pull_timeout_ms);
 
   /// Begin a new pull request for a bundle of objects.
@@ -117,6 +118,7 @@ class PullManager {
   const std::function<bool(const ObjectID &)> object_is_local_;
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
+  std::function<bool(const ObjectID &)> is_object_spilled_locally_;
   const std::function<double()> get_time_;
   uint64_t pull_timeout_ms_;
 

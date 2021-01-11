@@ -51,12 +51,14 @@ ObjectStoreRunner::~ObjectStoreRunner() {
   }
 }
 
-ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_node_id,
-                             const ObjectManagerConfig &config,
-                             std::shared_ptr<ObjectDirectoryInterface> object_directory,
-                             RestoreSpilledObjectCallback restore_spilled_object,
-                             SpillObjectsCallback spill_objects_callback,
-                             std::function<void()> object_store_full_callback)
+ObjectManager::ObjectManager(
+    asio::io_service &main_service, const NodeID &self_node_id,
+    const ObjectManagerConfig &config,
+    std::shared_ptr<ObjectDirectoryInterface> object_directory,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<bool(const ObjectID &)> is_object_spilled_locally,
+    SpillObjectsCallback spill_objects_callback,
+    std::function<void()> object_store_full_callback)
     : main_service_(&main_service),
       self_node_id_(self_node_id),
       config_(config),
@@ -70,7 +72,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
       client_call_manager_(main_service, config_.rpc_service_threads_number),
       restore_spilled_object_(restore_spilled_object),
       pull_retry_timer_(*main_service_,
-                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
+                        boost::posix_time::milliseconds(config.timer_freq_ms)),
+      is_object_spilled_locally_(is_object_spilled_locally) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
   const auto &object_is_local = [this](const ObjectID &object_id) {
@@ -82,8 +85,8 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
   };
   const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
-                                      restore_spilled_object_, get_time,
-                                      config.pull_timeout_ms));
+                                      restore_spilled_object_, is_object_spilled_locally_,
+                                      get_time, config.pull_timeout_ms));
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
@@ -181,8 +184,10 @@ void ObjectManager::NotifyDirectoryObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
-  ray::Status status =
-      object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
+  if (!is_object_spilled_locally_(object_id)) {
+    ray::Status status =
+        object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
+  }
 }
 
 ray::Status ObjectManager::SubscribeObjAdded(
@@ -343,6 +348,15 @@ void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
       if (config_.push_timeout_ms != 0) {
         nodes.emplace(node_id, std::move(timer));
       }
+    }
+    // If the object was spilled on this node, we should try pulling it.
+    // In this case, the object will be pulled from the external storage in a local node.
+    if (is_object_spilled_locally_(object_id)) {
+      std::vector<rpc::ObjectReference> refs;
+      rpc::ObjectReference ref;
+      ref.set_object_id(object_id.Binary());
+      refs.push_back(ref);
+      Pull(refs);
     }
     return;
   }

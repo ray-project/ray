@@ -148,7 +148,6 @@ def test_spill_remote_object(ray_start_cluster_head):
     ray.put(np.random.rand(5 * 1024 * 1024))  # 40 MB data
     # Remote copy should cause first remote object to get spilled.
     ray.get(put.remote())
-
     sample = ray.get(ref)
     assert np.array_equal(sample, copy)
     # Evict the spilled object.

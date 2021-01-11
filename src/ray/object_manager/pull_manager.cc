@@ -8,11 +8,13 @@ PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
+    const std::function<bool(const ObjectID &)> is_object_spilled_locally,
     const std::function<double()> get_time, int pull_timeout_ms)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       restore_spilled_object_(restore_spilled_object),
+      is_object_spilled_locally_(is_object_spilled_locally),
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
@@ -78,7 +80,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
-                 << client_ids.size();
+                 << client_ids.size() << " object id " << object_id;
 
   TryToMakeObjectLocal(object_id);
 }
@@ -96,7 +98,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  if (!request.spilled_url.empty()) {
+  if (is_object_spilled_locally_(object_id)) {
     // Try to restore the spilled object.
     restore_spilled_object_(
         object_id, request.spilled_url, [this, object_id](const ray::Status &status) {
@@ -111,6 +113,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                              << object_id;
           }
         });
+    // Succeeds to restore spilled object.
     UpdateRetryTimer(request);
   } else {
     // New object locations were found, so begin trying to pull from a
@@ -126,6 +129,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
+    RAY_LOG(ERROR) << "pull request in flight " << object_id;
     return false;
   }
 
@@ -133,6 +137,7 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
   // The timer should never fire if there are no expected client locations.
   if (node_vector.empty()) {
+    RAY_LOG(ERROR) << "no node vector. " << object_id;
     return false;
   }
 

@@ -72,11 +72,18 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                     std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
       object_manager_(
           main_service, self_node_id_, object_manager_config, object_directory_,
+          /*restore_spilled_object=*/
           [this](const ObjectID &object_id, const std::string &spilled_url,
                  std::function<void(const ray::Status &)> callback) {
             node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
                 object_id, spilled_url, callback);
           },
+          /*is_object_spilled_locally=*/
+          [this](const ObjectID &object_id) {
+            return node_manager_.GetLocalObjectManager().IsObjectSpilledLocally(
+                object_id);
+          },
+          /*spill_objects_callback=*/
           [this]() {
             // This callback is called from the plasma store thread.
             // NOTE: It means the local object manager should be thread-safe.
@@ -85,6 +92,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
             });
             return node_manager_.GetLocalObjectManager().IsSpillingInProgress();
           },
+          /*object_store_full_callback=*/
           [this]() {
             // Post on the node manager's event loop since this
             // callback is called from the plasma store thread.

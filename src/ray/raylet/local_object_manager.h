@@ -35,15 +35,16 @@ namespace raylet {
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      boost::asio::io_service &io_context, size_t free_objects_batch_size,
-      int64_t free_objects_period_ms, IOWorkerPoolInterface &io_worker_pool,
+      NodeID self_node_id, size_t free_objects_batch_size, int64_t free_objects_period_ms,
+      IOWorkerPoolInterface &io_worker_pool,
       gcs::ObjectInfoAccessor &object_info_accessor,
       rpc::CoreWorkerClientPool &owner_client_pool, bool object_pinning_enabled,
       bool automatic_object_deletion_enabled, int max_io_workers,
       int64_t min_spilling_size,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable)
-      : free_objects_period_ms_(free_objects_period_ms),
+      : self_node_id_(self_node_id),
+        free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
         object_info_accessor_(object_info_accessor),
@@ -86,6 +87,8 @@ class LocalObjectManager {
   /// there is an error.
   void SpillObjects(const std::vector<ObjectID> &objects_ids,
                     std::function<void(const ray::Status &)> callback);
+
+  bool IsObjectSpilledLocally(const ObjectID &object_id) const;
 
   /// Restore a spilled object from external storage back into local memory.
   ///
@@ -159,6 +162,9 @@ class LocalObjectManager {
   ///
   /// \param urls_to_delete List of urls to delete from external storages.
   void DeleteSpilledObjects(std::vector<std::string> &urls_to_delete);
+
+  /// Node id of the current node.
+  NodeID self_node_id_;
 
   /// The period between attempts to eagerly evict objects from plasma.
   const int64_t free_objects_period_ms_;

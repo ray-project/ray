@@ -264,8 +264,8 @@ void LocalObjectManager::AddSpilledUrls(
     // Write to object directory. Wait for the write to finish before
     // releasing the object to make sure that the spilled object can
     // be retrieved by other raylets.
-    RAY_CHECK_OK(object_info_accessor_.AsyncAddSpilledUrl(
-        object_id, object_url,
+    RAY_CHECK_OK(object_info_accessor_.AsyncAddLocation(
+        object_id, self_node_id_,
         [this, object_id, object_url, callback, num_remaining](Status status) {
           RAY_CHECK_OK(status);
           // Unpin the object.
@@ -287,6 +287,7 @@ void LocalObjectManager::AddSpilledUrls(
           } else {
             url_ref_count_[base_url_it->second] += 1;
           }
+          RAY_LOG(DEBUG) << "[Register] Object of object id " << object_id;
           spilled_objects_url_.emplace(object_id, object_url);
 
           (*num_remaining)--;
@@ -297,17 +298,25 @@ void LocalObjectManager::AddSpilledUrls(
   }
 }
 
+bool LocalObjectManager::IsObjectSpilledLocally(const ObjectID &object_id) const {
+  return spilled_objects_url_.contains(object_id) ||
+         objects_pending_spill_.contains(object_id);
+}
+
 void LocalObjectManager::AsyncRestoreSpilledObject(
     const ObjectID &object_id, const std::string &object_url,
     std::function<void(const ray::Status &)> callback) {
-  RAY_LOG(DEBUG) << "Restoring spilled object " << object_id << " from URL "
+  RAY_LOG(DEBUG) << "Try restoring spilled object " << object_id << " from URL "
                  << object_url;
-  io_worker_pool_.PopRestoreWorker([this, object_id, object_url, callback](
+  RAY_CHECK(spilled_objects_url_.contains(object_id));
+  const std::string &url = spilled_objects_url_[object_id];
+
+  io_worker_pool_.PopRestoreWorker([this, object_id, url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
     auto start_time = absl::GetCurrentTimeNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
-    request.add_spilled_objects_url(std::move(object_url));
+    request.add_spilled_objects_url(std::move(url));
     request.add_object_ids_to_restore(object_id.Binary());
     io_worker->rpc_client()->RestoreSpilledObjects(
         request,
@@ -382,7 +391,10 @@ void LocalObjectManager::ProcessSpilledObjectsDeleteQueue(uint32_t max_batch_siz
         url_ref_count_.erase(url_ref_count_it);
         object_urls_to_delete.emplace_back(object_url);
       }
+      RAY_LOG(ERROR) << "[Delete] object of object url " << object_url;
       spilled_objects_url_.erase(spilled_objects_url_it);
+      ray::Status status =
+          object_info_accessor_.AsyncRemoveLocation(object_id, self_node_id_, nullptr);
     }
     spilled_object_pending_delete_.pop();
   }
