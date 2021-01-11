@@ -198,7 +198,7 @@ def test_no_http():
         # Only controller actor should exist
         live_actors = [
             actor for actor in ray.actors().values()
-            if actor["State"] == ray.gcs_utils.ActorTableData.ALIVE
+            if actor["State"] == ray.gcs_utils.ActorStates.ALIVE
         ]
         assert len(live_actors) == 1
 

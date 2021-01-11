@@ -73,13 +73,15 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
         assert type(one_job_actor["taskSpec"]) is dict
         assert "functionDescriptor" in one_job_actor["taskSpec"]
         assert type(one_job_actor["taskSpec"]["functionDescriptor"]) is dict
-        assert "pid" in one_job_actor
-        assert one_job_actor["pid"] == actor_pid
-        check_actor_keys = [
-            "name", "timestamp", "address", "actorId", "jobId", "state"
-        ]
+        assert "states" in one_job_actor
+        assert "pid" in one_job_actor["states"]
+        assert one_job_actor["states"]["pid"] == actor_pid
+        check_actor_keys = ["name", "actorId", "jobId"]
         for k in check_actor_keys:
             assert k in one_job_actor
+        check_actor_states_keys = ["timestamp", "address", "state"]
+        for k in check_actor_states_keys:
+            assert k in one_job_actor["states"]
         assert "jobWorkers" in job_detail
         job_workers = job_detail["jobWorkers"]
         assert len(job_workers) == 1
