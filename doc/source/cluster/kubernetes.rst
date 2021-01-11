@@ -7,10 +7,23 @@ Deploying on Kubernetes
 
   This document is mainly for advanced Kubernetes usage. The easiest way to run a Ray cluster on Kubernetes is by using the built-in Cluster Launcher. Please see the :ref:`Cluster Launcher documentation <ray-launch-k8s>` for details.
 
+.. note::
+
+  Using GPUs on Kubernetes requires some setup.
+  Here's where to find the relevant documentation for `GKE`_, for `EKS`_, and for `AKS`_.
+
+  The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods. 
+  For example, the image ``rayproject/ray-ml:nightly-gpu`` is ideal for running GPU-based ML workloads with the most recent nightly build of Ray.
+  Read :ref:`here<docker-images>` for further details on Ray images. 
+
+  If you run into problems setting up GPUs for your Ray cluster on Kubernetes, please reach out to us at `<https://discuss.ray.io>`_. 
+
+  
 This document assumes that you have access to a Kubernetes cluster and have
 ``kubectl`` installed locally and configured to access the cluster. It will
 first walk you through how to deploy a Ray cluster on your existing Kubernetes
 cluster, then explore a few different ways to run programs on the Ray cluster.
+
 
 To learn about deploying an autoscaling Ray cluster using :ref:`Ray's Kubernetes operator<k8s-operator>`, read
 :ref:`here<k8s-operator>`.
@@ -303,3 +316,8 @@ Questions or Issues?
 .. _`Kubernetes Service`: https://kubernetes.io/docs/concepts/services-networking/service/
 .. _`Kubernetes Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
 .. _`Kubernetes Job`: https://kubernetes.io/docs/concepts/workloads/controllers/jobs-run-to-completion/
+
+.. _`Discussion Board`: https://discuss.ray.io/
+.. _`GKE`: https://cloud.google.com/kubernetes-engine/docs/how-to/gpus
+.. _`EKS`: https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html
+.. _`AKS`: https://docs.microsoft.com/en-us/azure/aks/gpu-cluster
