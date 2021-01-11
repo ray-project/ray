@@ -304,6 +304,7 @@ Papers
    xgboost-ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
+   ray-client.rst
 
 .. toctree::
    :hidden:

@@ -47,9 +47,6 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(int64_t, raylet_report_resources_period_milliseconds, 100)
-/// Whether to report resource usage lightly. When it is enalbed, only changed part,
-/// like should_global_gc or changed resources, will be included in the message.
-RAY_CONFIG(bool, light_report_resource_usage_enabled, true)
 
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
