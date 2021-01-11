@@ -10,6 +10,8 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 
 
 def test_num_clients(shutdown_only):
+    # Tests num clients reporting; useful if you want to build an app that
+    # load balances clients between Ray client servers.
     server = ray_client_server.serve("localhost:50051")
     try:
         api1 = RayAPIStub()
