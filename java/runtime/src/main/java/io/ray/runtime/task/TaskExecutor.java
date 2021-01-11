@@ -36,8 +36,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
     /** The current actor object, if this worker is an actor, otherwise null. */
     Object currentActor = null;
 
-    /** The exception that failed the actor creation task, if any. */
-    Throwable actorCreationException = null;
   }
 
   TaskExecutor(RayRuntimeInternal runtime) {
@@ -116,9 +114,6 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
       // Get local actor object and arguments.
       Object actor = null;
       if (taskType == TaskType.ACTOR_TASK) {
-        if (actorContext.actorCreationException != null) {
-          throw actorContext.actorCreationException;
-        }
         actor = actorContext.currentActor;
       }
       Object[] args =
@@ -164,7 +159,8 @@ public abstract class TaskExecutor<T extends TaskExecutor.ActorContext> {
                   new RayTaskException("Error executing task " + taskId, e)));
         }
       } else {
-        actorContext.actorCreationException = e;
+        LOGGER.error("Error in actor creation task " + taskId, e);
+        throw new RuntimeException(e);
       }
     } finally {
       Thread.currentThread().setContextClassLoader(oldLoader);

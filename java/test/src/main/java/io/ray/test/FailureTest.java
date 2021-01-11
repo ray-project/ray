@@ -9,10 +9,15 @@ import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
+import java.io.File;
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -20,6 +25,8 @@ import org.testng.annotations.Test;
 
 @Test(groups = {"cluster"})
 public class FailureTest extends BaseTest {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(FailureTest.class);
 
   private static final String EXCEPTION_MESSAGE = "Oops";
 
@@ -75,6 +82,30 @@ public class FailureTest extends BaseTest {
     }
   }
 
+  public static class ActorFailedAtFirstTime {
+    /**
+     * This actor will raise error at first time.
+     * Then after restarting, it will be created successfully
+     */
+    public ActorFailedAtFirstTime(String flagFileName) {
+      File flagFile = new File(flagFileName);
+      if (!flagFile.exists()) {
+        LOGGER.info("flag file not exists, throw exception!, fileName={}",
+          flagFile.toString());
+        try {
+          flagFile.createNewFile();
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+        throw new RuntimeException(EXCEPTION_MESSAGE);
+      }
+    }
+
+    public String ok() {
+      return "OK";
+    }
+  }
+
   private static void assertTaskFailedWithRayTaskException(ObjectRef<?> objectRef) {
     try {
       objectRef.get();
@@ -96,6 +127,24 @@ public class FailureTest extends BaseTest {
   public void testActorCreationFailure() {
     ActorHandle<BadActor> actor = Ray.actor(BadActor::new, true).remote();
     assertTaskFailedWithRayTaskException(actor.task(BadActor::badMethod).remote());
+  }
+
+  public void testActorCreationFailedAndRestarted() {
+    String flagFileName = "/tmp/TEST_ERROR_FLAG_" + new Random().nextInt(9999);
+    ActorHandle<ActorFailedAtFirstTime> actor = Ray.actor(
+      ActorFailedAtFirstTime::new, flagFileName).setMaxRestarts(2).remote();
+    // At first, actor will throw exceptions and restarted.
+    // Finally after restarted, actor will be created successfully.
+    boolean ok = TestUtils.waitForCondition(() -> {
+      try {
+        Assert.assertEquals(actor.task(ActorFailedAtFirstTime::ok).remote().get(), "OK");
+        return true;
+      } catch (Exception e) {
+        // ignore it
+      }
+      return false;
+    }, 10000);
+    Assert.assertTrue(ok);
   }
 
   public void testActorTaskFailure() {
