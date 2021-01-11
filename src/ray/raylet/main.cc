@@ -81,7 +81,6 @@ int main(int argc, char *argv[]) {
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
-  const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
