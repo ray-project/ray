@@ -650,11 +650,12 @@ def test_get_correct_node_ip():
 def test_load_code_from_local():
     # This case writes a driver python file to a temporary directory.
     #
-    # The driver starts a cluster with `ray.init(_load_code_from_local=True)`,
+    # The driver starts a cluster with
+    # `ray.init(ray.job_config.JobConfig(code_search_path=<path list>))`,
     # then creates a nested actor. The actor will be loaded from code in
     # worker.
     #
-    # This tests the following two cases when `load_code_from_local=True`:
+    # This tests the following two cases when :
     # 1) Load a nested class.
     # 2) Load a class defined in the `__main__` module.
     code_test = """
@@ -669,7 +670,7 @@ class A:
 
 if __name__ == "__main__":
     current_path = os.path.dirname(__file__)
-    ray.init(_load_code_from_local=True, _code_search_path=current_path)
+    ray.init(ray.job_config.JobConfig(code_search_path=[current_path]))
     b = A.B.remote()
     print(ray.get(b.get.remote()))
 """

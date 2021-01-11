@@ -34,6 +34,9 @@ class JobConfig:
         if code_search_path is None:
             self.code_search_path = []
         else:
+            # It's difficult to find the error that caused by the
+            # code_search_path is a string. So we assert here.
+            assert isinstance(code_search_path, (list, tuple))
             self.code_search_path = code_search_path
 
     def serialize(self):
