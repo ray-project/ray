@@ -260,6 +260,9 @@ class RayServeReplica:
             body_buffer = []
 
             async def mock_send(message):
+                assert message["type"] in {
+                    "http.response.start", "http.response.body"
+                }
                 if (message["type"] == "http.response.body"):
                     body_buffer.append(message["body"])
 
