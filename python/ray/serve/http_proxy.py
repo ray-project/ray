@@ -138,15 +138,7 @@ class HTTPProxy:
             await error_sender(error_message, 500)
         elif isinstance(result, starlette.responses.Response):
             if isinstance(result, starlette.responses.StreamingResponse):
-                raise TypeError("Starlette StreamingResponse returned by "
-                                f"backend for endpoint {endpoint_name}. "
-                                "StreamingResponse is unserializable and not "
-                                "supported by Ray Serve.  Consider using "
-                                "another Starlette response type such as "
-                                "Response, HTMLResponse, PlainTextResponse, "
-                                "or JSONResponse.  If support for "
-                                "StreamingResponse is desired, please let "
-                                "the Ray team know by making a Github issue!")
+                print("GOT HERE")
             await result(scope, receive, send)
         else:
             await Response(result).send(scope, receive, send)
