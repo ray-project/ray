@@ -383,18 +383,21 @@ class TestDistributions(unittest.TestCase):
             gsg_dist2 = GaussianSquashedGaussian(inputs2, None)
 
             # KL, entropy, and logp values have been verified empirically.
-            check(sess.run(gsg_dist1.kl(gsg_dist2)),
-                  np.array([6.532504, 0., 0.]))
-            check(sess.run(gsg_dist1.entropy()),
-                  np.array([-0.74827796, 0.7070056, -4.971432]))
+            check(
+                sess.run(gsg_dist1.kl(gsg_dist2)), np.array([6.532504, 0.,
+                                                             0.]))
+            check(
+                sess.run(gsg_dist1.entropy()),
+                np.array([-0.74827796, 0.7070056, -4.971432]))
             x = tf.constant([[-0.3939393939393939]])
-            check(sess.run(gsg_dist1.logp(x)),
-                  np.array([0.736003, -3.1547096, -6.5595593]))
+            check(
+                sess.run(gsg_dist1.logp(x)),
+                np.array([0.736003, -3.1547096, -6.5595593]))
 
             # This is just the squashed distribution means. Verified using
             # _unsquash (which was itself verified as part of the logp test).
-            expected = np.array([[-0.41861248, 0.1745522],
-                                 [0.49179232, 0.62231755],
+            expected = np.array([[-0.41861248,
+                                  0.1745522], [0.49179232, 0.62231755],
                                  [-0.99906087, 0.81425166]])
             check(sess.run(gsg_dist1.deterministic_sample()), expected)
 

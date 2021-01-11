@@ -329,10 +329,10 @@ class _SquashedGaussianBase(TFActionDistribution):
         log_prob_gaussian = self.distr.log_prob(unsquashed_values)
         # For safety reasons, clamp somehow, only then sum up.
         log_prob_gaussian = tf.clip_by_value(log_prob_gaussian, -100, 100)
-        log_prob_gaussian = tf.reduce_sum(log_prob_gaussian, axis=-1)
         # Get log-prob for squashed Gaussian.
-        return tf.reduce_sum(log_prob_gaussian -
-                             self._log_squash_grad(unsquashed_values), axis=1)
+        return tf.reduce_sum(
+            log_prob_gaussian - self._log_squash_grad(unsquashed_values),
+            axis=-1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -497,9 +497,11 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         other_mean = other.distr.loc
         other_std = other.distr.scale
 
-        return tf.reduce_sum((other.log_std - self.log_std +
-                             (tf.square(std) + tf.square(mean - other_mean)) /
-                             (2.0 * tf.square(other_std)) - 0.5), axis=1)
+        return tf.reduce_sum(
+            (other.log_std - self.log_std +
+             (tf.math.square(std) + tf.math.square(mean - other_mean)) /
+             (2.0 * tf.math.square(other_std)) - 0.5),
+            axis=1)
 
     def entropy(self):
         # Entropy is:
@@ -509,15 +511,17 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         mean = self.distr.loc
         std = self.distr.scale
 
-        return tf.reduce_sum(tf.log(self.high - self.low) -
-                             (tf.log(self._SCALE) - self.log_std +
-                              (tf.square(std) + tf.square(mean)) /
-                              (2.0 * tf.square(self._SCALE)) - 0.5), axis=1)
+        return tf.reduce_sum(
+            tf.math.log(self.high - self.low) -
+            (tf.math.log(self._SCALE) - self.log_std +
+             (tf.math.square(std) + tf.math.square(mean)) /
+             (2.0 * tf.math.square(self._SCALE)) - 0.5),
+            axis=1)
 
     def _log_squash_grad(self, unsquashed_values):
         squash_dist = tfp.distributions.Normal(loc=0, scale=self._SCALE)
         log_grad = squash_dist.log_prob(value=unsquashed_values)
-        log_grad += tf.log(self.high - self.low)
+        log_grad += tf.math.log(self.high - self.low)
         return log_grad
 
     def _squash(self, raw_values):
@@ -531,6 +535,13 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
     def _unsquash(self, values):
         return self._SCALE * tfp.bijectors.NormalCDF().inverse(
             (values - self.low) / (self.high - self.low))
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
+        return np.prod(action_space.shape) * 2
 
 
 class Deterministic(TFActionDistribution):

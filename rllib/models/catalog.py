@@ -218,9 +218,7 @@ class ModelCatalog:
                             action_space.bounded_above):
                     return ModelCatalog._make_bounded_dist(action_space)
                 else:
-                    dist = DiagGaussian
-                #dist_cls = TorchDiagGaussian if framework == "torch" \
-                #    else DiagGaussian
+                    dist_cls = DiagGaussian
             elif dist_type == "deterministic":
                 dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
