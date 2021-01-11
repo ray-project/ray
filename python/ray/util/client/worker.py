@@ -264,7 +264,7 @@ class Worker:
 
     def internal_kv_list(self, prefix: bytes) -> bytes:
         req = ray_client_pb2.KVListRequest(prefix=prefix)
-        return self.server.KVList(req, metadata=self.metadata)
+        return self.server.KVList(req, metadata=self.metadata).keys
 
     def is_initialized(self) -> bool:
         if self.server is not None:
