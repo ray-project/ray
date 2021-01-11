@@ -267,9 +267,11 @@ class RayServeReplica:
                     body_buffer.append(message["body"])
 
             async def mock_receive():
-                # This is called in a while loop in response(), so sleep a bit.
-                await asyncio.sleep(1)
-                return {"type": None}
+                # This is called in a tight loop in response() just to check
+                # for an http disconnect.  So rather than return immediately
+                # we should suspend execution to avoid wasting CPU cycles.
+                never_set_event = asyncio.Event()
+                await never_set_event.wait()
 
             await response(scope=None, receive=mock_receive, send=mock_send)
             content = b"".join(body_buffer)
