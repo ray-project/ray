@@ -290,9 +290,9 @@ def mlflow_mixin(func: Callable):
         raise RuntimeError("MLflow has not been installed. Please `pip "
                            "install mlflow` to use the mlflow_mixin.")
     if hasattr(func, "__mixins__"):
-        func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin,)
+        func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin, )
     else:
-        func.__mixins__ = (MLflowTrainableMixin,)
+        func.__mixins__ = (MLflowTrainableMixin, )
     return func
 
 
