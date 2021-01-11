@@ -178,6 +178,38 @@ message TerminateResponse {
   bool ok = 1;
 }
 
+message KVGetRequest {
+  bytes key = 1;
+}
+
+message KVGetResponse {
+  bytes value = 1;
+}
+
+message KVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message KVPutResponse {
+  bool already_exists = 1;
+}
+
+message KVDelRequest {
+  bytes key = 1;
+}
+
+message KVDelResponse {
+}
+
+message KVListRequest {
+  bytes prefix = 1;
+}
+
+message KVListResponse {
+  repeated bytes keys = 1;
+}
+
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
@@ -190,6 +222,14 @@ service RayletDriver {
   rpc Terminate(TerminateRequest) returns (TerminateResponse) {
   }
   rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
+  }
+  rpc KVGet(KVGetRequest) returns (KVGetResponse) {
+  }
+  rpc KVPut(KVPutRequest) returns (KVPutResponse) {
+  }
+  rpc KVDel(KVDelRequest) returns (KVDelResponse) {
+  }
+  rpc KVList(KVListRequest) returns (KVListResponse) {
   }
 }
 
