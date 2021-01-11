@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 import logging
 
@@ -24,13 +24,16 @@ class RayAPIStub:
     def connect(self,
                 conn_str: str,
                 secure: bool = False,
-                metadata: List[Tuple[str, str]] = None) -> None:
+                metadata: List[Tuple[str, str]] = None) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
 
         Args:
             conn_str: Connection string, in the form "[host]:port"
             secure: Whether to use a TLS secured gRPC channel
             metadata: gRPC metadata to send on connect
+
+        Returns:
+            Dictionary of connection info, e.g., {"num_clients": 1}.
         """
         # Delay imports until connect to avoid circular imports.
         from ray.util.client.worker import Worker
@@ -46,6 +49,9 @@ class RayAPIStub:
             ray._private.client_mode_hook._explicitly_enable_client_mode()
         self.client_worker = Worker(conn_str, secure=secure, metadata=metadata)
         self.api.worker = self.client_worker
+
+        # Return connection info from the server.
+        return self.client_worker.connection_info()
 
     def disconnect(self):
         """Disconnect the Ray Client.

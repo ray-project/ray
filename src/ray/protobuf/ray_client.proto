@@ -204,6 +204,14 @@ message ReleaseResponse {
   repeated bool ok = 2;
 }
 
+message ConnectionInfoRequest {
+}
+
+message ConnectionInfoResponse {
+  // The number of data clients connected to the server, including the caller.
+  int32 num_clients = 1;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -212,6 +220,7 @@ message DataRequest {
     GetRequest get = 2;
     PutRequest put = 3;
     ReleaseRequest release = 4;
+    ConnectionInfoRequest connection_info = 5;
   }
 }
 
@@ -222,6 +231,7 @@ message DataResponse {
     GetResponse get = 2;
     PutResponse put = 3;
     ReleaseResponse release = 4;
+    ConnectionInfoResponse connection_info = 5;
   }
 }
 

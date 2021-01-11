@@ -59,6 +59,9 @@ class Worker:
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
 
+    def connection_info(self):
+        return self.data_client.connection_info()
+
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
         single = False
