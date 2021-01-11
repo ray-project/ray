@@ -162,7 +162,8 @@ class VisionNetwork(TFModelV2):
             self.view_requirements[SampleBatch.OBS].shift_from = -from_
             self.view_requirements[SampleBatch.OBS].shift_to = 0
             self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS, shift="-{}:1".format(from_ - 1),
+                data_col=SampleBatch.OBS,
+                shift="-{}:1".format(from_ - 1),
                 space=self.view_requirements[SampleBatch.OBS].space,
                 used_for_compute_actions=False,
             )
