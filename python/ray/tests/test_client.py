@@ -3,8 +3,32 @@ import time
 import sys
 import logging
 
+import ray.util.client.server.server as ray_client_server
+from ray.util.client import RayAPIStub
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
+
+
+def test_num_clients(shutdown_only):
+    server = ray_client_server.serve("localhost:50051")
+    try:
+        api1 = RayAPIStub()
+        info1 = api1.connect("localhost:50051")
+        assert info1["num_clients"] == 1, info1
+        api2 = RayAPIStub()
+        info2 = api2.connect("localhost:50051")
+        assert info2["num_clients"] == 2, info2
+
+        # Disconnect the first two clients.
+        api1.disconnect()
+        api2.disconnect()
+        time.sleep(1)
+
+        api3 = RayAPIStub()
+        info3 = api3.connect("localhost:50051")
+        assert info3["num_clients"] == 1, info3
+    finally:
+        server.stop(0)
 
 
 def test_real_ray_fallback(ray_start_regular_shared):

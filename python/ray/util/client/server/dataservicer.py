@@ -51,7 +51,7 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     with self._clients_lock:
                         cur_num_clients = self._num_clients
                     info = ray_client_pb2.ConnectionInfoResponse(
-                        cur_num_clients)
+                        num_clients=cur_num_clients)
                     resp = ray_client_pb2.DataResponse(connection_info=info)
                 else:
                     raise Exception(f"Unreachable code: Request type "

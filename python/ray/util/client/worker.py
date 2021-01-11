@@ -60,7 +60,11 @@ class Worker:
         self.closed = False
 
     def connection_info(self):
-        return self.data_client.connection_info()
+        try:
+            data = self.data_client.ConnectionInfo()
+        except grpc.RpcError as e:
+            raise e.details()
+        return {"num_clients": data.num_clients}
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
