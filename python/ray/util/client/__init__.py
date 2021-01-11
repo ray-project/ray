@@ -47,11 +47,16 @@ class RayAPIStub:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
             ray._private.client_mode_hook._explicitly_enable_client_mode()
-        self.client_worker = Worker(conn_str, secure=secure, metadata=metadata)
-        self.api.worker = self.client_worker
 
-        # Return connection info from the server.
-        return self.client_worker.connection_info()
+        try:
+            self.client_worker = Worker(
+                conn_str, secure=secure, metadata=metadata)
+            self.api.worker = self.client_worker
+            return client_worker.connection_info()
+        except Exception:
+            self.client_worker = None
+            self.api.worker = None
+            raise
 
     def disconnect(self):
         """Disconnect the Ray Client.
