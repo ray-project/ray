@@ -141,7 +141,7 @@ class ResourceSpec(
         assert "object_store_memory" not in resources, resources
 
         if node_ip_address is None:
-            node_ip_address = ray.services.get_node_ip_address()
+            node_ip_address = ray._private.services.get_node_ip_address()
 
         # Automatically create a node id resource on each node. This is
         # queryable with ray.state.node_ids() and ray.state.current_node_id().
@@ -179,7 +179,9 @@ class ResourceSpec(
         avail_memory = ray.utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
-            object_store_memory = int(avail_memory * 0.3)
+            object_store_memory = int(
+                avail_memory *
+                ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (object_store_memory >
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):

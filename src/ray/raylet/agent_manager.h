@@ -33,7 +33,7 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
   struct Options {
-    const ClientID node_id;
+    const NodeID node_id;
     std::vector<std::string> agent_commands;
   };
 

@@ -5,13 +5,12 @@
 # In short, if you change it here, PLEASE also change it in setup.py.
 #
 # setup.py install_requires
-aiohttp
+aiohttp==3.7
 aioredis
 click >= 7.0
 colorama
 colorful
 filelock
-google
 gpustat
 grpcio >= 1.28.1
 jsonschema
@@ -22,7 +21,7 @@ prometheus_client >= 0.7.1
 protobuf >= 3.8.0
 py-spy >= 0.2.0
 pyyaml
-redis >= 3.3.2, < 3.5.0
+redis >= 3.5.0
 requests
 
 ## setup.py extras
@@ -37,14 +36,15 @@ scipy==1.4.1
 tabulate
 tensorboardX
 uvicorn
-pydantic
-dataclasses
+pydantic<1.7
+dataclasses; python_version < '3.7'
+starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
 boto3
 cython==0.29.0
-dataclasses
+dataclasses; python_version < '3.7'
 dask[complete]
 feather-format
 gym
@@ -55,8 +55,10 @@ moto
 mypy
 networkx
 numba
+# higher version of llvmlite breaks windows
+llvmlite==0.34.0
 openpyxl
-pettingzoo
+pexpect
 Pillow; platform_system != "Windows"
 pygments
 pytest==5.4.3
@@ -70,3 +72,4 @@ testfixtures
 werkzeug
 xlrd
 starlette
+smart_open[s3]

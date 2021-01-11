@@ -47,13 +47,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int object_manager_push_timeout_ms() const
 
-        int object_manager_repeated_push_delay_ms() const
-
         uint64_t object_manager_default_chunk_size() const
-
-        int num_workers_per_process_python() const
-
-        int num_workers_per_process_java() const
 
         uint32_t maximum_gcs_deletion_batch_size() const
 
@@ -67,4 +61,10 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool enable_timeline() const
 
+<<<<<<< HEAD
         c_bool work_stealing_enabled() const
+=======
+        c_bool automatic_object_deletion_enabled() const
+
+        uint32_t max_grpc_message_size() const
+>>>>>>> cancel_queued_tasks

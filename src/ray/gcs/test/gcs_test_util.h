@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "gmock/gmock.h"
+#include "ray/common/bundle_spec.h"
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
@@ -41,8 +42,9 @@ struct Mocker {
     builder.SetCommonTaskSpec(task_id, name + ":" + empty_descriptor->CallString(),
                               Language::PYTHON, empty_descriptor, job_id, TaskID::Nil(),
                               0, TaskID::Nil(), owner_address, 1, resource, resource,
-                              PlacementGroupID::Nil());
-    builder.SetActorCreationTaskSpec(actor_id, max_restarts, {}, 1, detached, name);
+                              std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+    builder.SetActorCreationTaskSpec(actor_id, max_restarts, /*max_task_retries=*/0, {},
+                                     1, detached, name);
     return builder.Build();
   }
 
@@ -51,7 +53,7 @@ struct Mocker {
                                                        bool detached = false,
                                                        const std::string name = "") {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -67,7 +69,7 @@ struct Mocker {
                                                            bool detached = false,
                                                            const std::string name = "") {
     rpc::Address owner_address;
-    owner_address.set_raylet_id(ClientID::FromRandom().Binary());
+    owner_address.set_raylet_id(NodeID::FromRandom().Binary());
     owner_address.set_ip_address("1234");
     owner_address.set_port(5678);
     owner_address.set_worker_id(WorkerID::FromRandom().Binary());
@@ -78,21 +80,37 @@ struct Mocker {
     return request;
   }
 
+  static BundleSpecification GenBundleCreation(
+      const PlacementGroupID &placement_group_id, const int bundle_index,
+      std::unordered_map<std::string, double> &unit_resource) {
+    rpc::Bundle bundle;
+    auto mutable_bundle_id = bundle.mutable_bundle_id();
+    mutable_bundle_id->set_bundle_index(bundle_index);
+    mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+    auto mutable_unit_resources = bundle.mutable_unit_resources();
+    for (auto &resource : unit_resource) {
+      mutable_unit_resources->insert({resource.first, resource.second});
+    }
+    return BundleSpecification(bundle);
+  }
+
   static PlacementGroupSpecification GenPlacementGroupCreation(
       const std::string &name,
       std::vector<std::unordered_map<std::string, double>> &bundles,
-      rpc::PlacementStrategy strategy) {
+      rpc::PlacementStrategy strategy, const JobID &job_id, const ActorID &actor_id) {
     PlacementGroupSpecBuilder builder;
 
     auto placement_group_id = PlacementGroupID::FromRandom();
-    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy);
+    builder.SetPlacementGroupSpec(placement_group_id, name, bundles, strategy, job_id,
+                                  actor_id, /* is_creator_detached */ false);
     return builder.Build();
   }
 
   static rpc::CreatePlacementGroupRequest GenCreatePlacementGroupRequest(
       const std::string name = "",
       rpc::PlacementStrategy strategy = rpc::PlacementStrategy::SPREAD,
-      int bundles_count = 2, double cpu_num = 1.0) {
+      int bundles_count = 2, double cpu_num = 1.0, const JobID job_id = JobID::FromInt(1),
+      const ActorID &actor_id = ActorID::Nil()) {
     rpc::CreatePlacementGroupRequest request;
     std::vector<std::unordered_map<std::string, double>> bundles;
     std::unordered_map<std::string, double> bundle;
@@ -101,7 +119,7 @@ struct Mocker {
       bundles.push_back(bundle);
     }
     auto placement_group_creation_spec =
-        GenPlacementGroupCreation(name, bundles, strategy);
+        GenPlacementGroupCreation(name, bundles, strategy, job_id, actor_id);
     request.mutable_placement_group_spec()->CopyFrom(
         placement_group_creation_spec.GetMessage());
     return request;
@@ -109,7 +127,7 @@ struct Mocker {
   static std::shared_ptr<rpc::GcsNodeInfo> GenNodeInfo(
       uint16_t port = 0, const std::string address = "127.0.0.1") {
     auto node = std::make_shared<rpc::GcsNodeInfo>();
-    node->set_node_id(ClientID::FromRandom().Binary());
+    node->set_node_id(NodeID::FromRandom().Binary());
     node->set_node_manager_port(port);
     node->set_node_manager_address(address);
     return node;
@@ -158,7 +176,7 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
-      const ClientID &node_id) {
+      const NodeID &node_id) {
     auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
     profile_table_data->set_component_id(node_id.Binary());
     return profile_table_data;

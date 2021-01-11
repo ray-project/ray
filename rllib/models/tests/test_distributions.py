@@ -5,6 +5,7 @@ from scipy.stats import beta, norm
 import tree
 import unittest
 
+from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
     DiagGaussian, GumbelSoftmax, MultiActionDistribution, MultiCategorical, \
     SquashedGaussian
@@ -55,7 +56,9 @@ class TestDistributions(unittest.TestCase):
         dist = distribution_cls(inputs, {}, **(extra_kwargs or {}))
         for _ in range(100):
             sample = dist.sample()
-            if fw != "tf":
+            if fw == "jax":
+                sample_check = sample
+            elif fw != "tf":
                 sample_check = sample.numpy()
             else:
                 sample_check = sess.run(sample)
@@ -71,7 +74,9 @@ class TestDistributions(unittest.TestCase):
                     assert bounds[0] in sample_check
                     assert bounds[1] in sample_check
             logp = dist.logp(sample)
-            if fw != "tf":
+            if fw == "jax":
+                logp_check = logp
+            elif fw != "tf":
                 logp_check = logp.numpy()
             else:
                 logp_check = sess.run(logp)
@@ -82,15 +87,18 @@ class TestDistributions(unittest.TestCase):
         batch_size = 10000
         num_categories = 4
         # Create categorical distribution with n categories.
-        inputs_space = Box(-1.0, 2.0, shape=(batch_size, num_categories))
+        inputs_space = Box(
+            -1.0, 2.0, shape=(batch_size, num_categories), dtype=np.float32)
         values_space = Box(
             0, num_categories - 1, shape=(batch_size, ), dtype=np.int32)
 
         inputs = inputs_space.sample()
 
-        for fw, sess in framework_iterator(session=True):
+        for fw, sess in framework_iterator(
+                session=True, frameworks=("tf", "tf2", "torch")):
             # Create the correct distribution object.
-            cls = Categorical if fw != "torch" else TorchCategorical
+            cls = JAXCategorical if fw == "jax" else Categorical if \
+                fw != "torch" else TorchCategorical
             categorical = cls(inputs, {})
 
             # Do a stability test using extreme NN outputs to see whether
@@ -112,7 +120,7 @@ class TestDistributions(unittest.TestCase):
             # Batch of size=3 and non-deterministic -> expect roughly the mean.
             out = categorical.sample()
             check(
-                tf.reduce_mean(out)
+                np.mean(out) if fw == "jax" else tf.reduce_mean(out)
                 if fw != "torch" else torch.mean(out.float()),
                 1.0,
                 decimals=0)
@@ -423,7 +431,7 @@ class TestDistributions(unittest.TestCase):
     def test_gumbel_softmax(self):
         """Tests the GumbelSoftmax ActionDistribution (tf + eager only)."""
         for fw, sess in framework_iterator(
-                frameworks=["tf", "tfe"], session=True):
+                frameworks=("tf2", "tf", "tfe"), session=True):
             batch_size = 1000
             num_categories = 5
             input_space = Box(-1.0, 1.0, shape=(batch_size, num_categories))

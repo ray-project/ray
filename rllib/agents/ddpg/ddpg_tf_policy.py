@@ -175,7 +175,6 @@ def ddpg_actor_critic_loss(policy, model, _, train_batch):
     if twin_q:
         td_error = q_t_selected - q_t_selected_target
         twin_td_error = twin_q_t_selected - q_t_selected_target
-        td_error = td_error + twin_td_error
         if use_huber:
             errors = huber_loss(td_error, huber_threshold) + \
                 huber_loss(twin_td_error, huber_threshold)
@@ -246,6 +245,8 @@ def make_ddpg_optimizers(policy, config):
             learning_rate=config["actor_lr"])
         policy._critic_optimizer = tf1.train.AdamOptimizer(
             learning_rate=config["critic_lr"])
+    # TODO: (sven) make this function return both optimizers and
+    #  TFPolicy handle optimizers vs loss terms correctly (like torch).
     return None
 
 

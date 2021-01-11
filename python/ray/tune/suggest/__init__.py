@@ -1,3 +1,4 @@
+from ray.utils import get_function_args
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.basic_variant import BasicVariantGenerator
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
@@ -8,8 +9,6 @@ from ray.tune.suggest.repeater import Repeater
 
 def create_searcher(
         search_alg,
-        metric=None,
-        mode=None,
         **kwargs,
 ):
     """Instantiate a search algorithm based on the given string.
@@ -30,6 +29,9 @@ def create_searcher(
     Example:
         >>> search_alg = tune.create_searcher('ax')
     """
+
+    def _import_variant_generator():
+        return BasicVariantGenerator
 
     def _import_ax_search():
         from ray.tune.suggest.ax import AxSearch
@@ -72,6 +74,8 @@ def create_searcher(
         return SigOptSearch
 
     SEARCH_ALG_IMPORT = {
+        "variant_generator": _import_variant_generator,
+        "random": _import_variant_generator,
         "ax": _import_ax_search,
         "dragonfly": _import_dragonfly_search,
         "skopt": _import_skopt_search,
@@ -90,7 +94,11 @@ def create_searcher(
             f"Got: {search_alg}")
 
     SearcherClass = SEARCH_ALG_IMPORT[search_alg]()
-    return SearcherClass(metric=metric, mode=mode, **kwargs)
+
+    search_alg_args = get_function_args(SearcherClass)
+    trimmed_kwargs = {k: v for k, v in kwargs.items() if k in search_alg_args}
+
+    return SearcherClass(**trimmed_kwargs)
 
 
 __all__ = [

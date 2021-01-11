@@ -14,8 +14,9 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/redis_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
@@ -30,8 +31,6 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   void Disconnect() override;
 
   GcsPubSub &GetGcsPubSub() { return *gcs_pub_sub_; }
-
-  RedisGcsClient &GetRedisGcsClient() { return *redis_gcs_client_; }
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
@@ -59,7 +58,7 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   /// Reconnect to GCS RPC server.
   void ReconnectGcsServer();
 
-  std::unique_ptr<RedisGcsClient> redis_gcs_client_;
+  std::shared_ptr<RedisClient> redis_client_;
 
   std::unique_ptr<GcsPubSub> gcs_pub_sub_;
 
@@ -72,6 +71,8 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
   std::function<bool(std::pair<std::string, int> *)> get_server_address_func_;
   std::function<void(bool)> resubscribe_func_;
   std::pair<std::string, int> current_gcs_server_address_;
+  int64_t last_reconnect_timestamp_ms_;
+  std::pair<std::string, int> last_reconnect_address_;
 };
 
 }  // namespace gcs

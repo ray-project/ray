@@ -17,6 +17,12 @@ class SearchAlgorithm:
     """
     _finished = False
 
+    _metric = None
+
+    @property
+    def metric(self):
+        return self._metric
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict) -> bool:
         """Pass search properties to search algorithm.
@@ -33,6 +39,10 @@ class SearchAlgorithm:
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
         """
+        if self._metric and metric:
+            return False
+        if metric:
+            self._metric = metric
         return True
 
     @property

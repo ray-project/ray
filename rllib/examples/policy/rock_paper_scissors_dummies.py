@@ -1,7 +1,10 @@
+import gym
+import numpy as np
 import random
 
 from ray.rllib.examples.env.rock_paper_scissors import RockPaperScissors
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.view_requirement import ViewRequirement
 
 
 class AlwaysSameHeuristic(Policy):
@@ -10,6 +13,12 @@ class AlwaysSameHeuristic(Policy):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.exploration = self._create_exploration()
+        self.view_requirements.update({
+            "state_in_0": ViewRequirement(
+                "state_out_0",
+                shift=-1,
+                space=gym.spaces.Box(0, 100, shape=(), dtype=np.int32))
+        })
 
     def get_initial_state(self):
         return [

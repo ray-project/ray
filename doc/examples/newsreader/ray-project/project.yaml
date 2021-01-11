@@ -4,7 +4,7 @@ name: ray-example-newsreader
 
 description: "A simple news reader example that uses ray actors to serve requests"
 tags: ["ray-example", "flask", "rss", "newsreader"]
-documentation: https://docs.ray.io/en/latest/auto_examples/plot_newsreader.html
+documentation: https://docs.ray.io/en/master/auto_examples/plot_newsreader.html
 
 cluster:
   config: ray-project/cluster.yaml

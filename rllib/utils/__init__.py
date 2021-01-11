@@ -53,28 +53,41 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, tuple] else ctor([elements])
 
 
+class NullContextManager:
+    """No-op context manager"""
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+
 force_tuple = partial(force_list, to_tuple=True)
 
 __all__ = [
     "add_mixins",
     "check",
     "check_compute_single_action",
+    "deep_update",
     "deprecation_warning",
     "fc",
     "force_list",
     "force_tuple",
     "framework_iterator",
     "lstm",
-    "one_hot",
-    "relu",
-    "sigmoid",
-    "softmax",
-    "deep_update",
     "merge_dicts",
+    "one_hot",
     "override",
+    "relu",
     "renamed_function",
     "renamed_agent",
     "renamed_class",
+    "sigmoid",
+    "softmax",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",

@@ -21,6 +21,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches, \
 from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -38,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
-    # The GAE(lambda) parameter.
+    # The GAE (lambda) parameter.
     "lambda": 1.0,
     # Initial coefficient for KL divergence.
     "kl_coeff": 0.2,
@@ -101,7 +102,7 @@ def validate_config(config: TrainerConfigDict) -> None:
     Args:
         config (TrainerConfigDict): The Trainer's config to check.
 
-    Throws:
+    Raises:
         ValueError: In case something is wrong with the config.
     """
     if isinstance(config["entropy_coeff"], int):
@@ -126,7 +127,8 @@ def validate_config(config: TrainerConfigDict) -> None:
     if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "
-            "function. Consider setting batch_mode=complete_episodes.")
+            "function (to estimate the return at the end of the truncated "
+            "trajectory). Consider setting batch_mode=complete_episodes.")
 
     # Multi-gpu not supported for PyTorch and tf-eager.
     if config["framework"] in ["tf2", "tfe", "torch"]:
@@ -193,10 +195,10 @@ def warn_about_bad_reward_scales(config, result):
 
     # Warn about excessively high VF loss.
     learner_stats = result["info"]["learner"]
-    if "default_policy" in learner_stats:
+    if DEFAULT_POLICY_ID in learner_stats:
         scaled_vf_loss = (config["vf_loss_coeff"] *
-                          learner_stats["default_policy"]["vf_loss"])
-        policy_loss = learner_stats["default_policy"]["policy_loss"]
+                          learner_stats[DEFAULT_POLICY_ID]["vf_loss"])
+        policy_loss = learner_stats[DEFAULT_POLICY_ID]["policy_loss"]
         if config["vf_share_layers"] and scaled_vf_loss > 100:
             logger.warning(
                 "The magnitude of your value function loss is extremely large "
@@ -243,7 +245,10 @@ def execution_plan(workers: WorkerSet,
         SelectExperiences(workers.trainable_policies()))
     # Concatenate the SampleBatches into one.
     rollouts = rollouts.combine(
-        ConcatBatches(min_batch_size=config["train_batch_size"]))
+        ConcatBatches(
+            min_batch_size=config["train_batch_size"],
+            count_steps_by=config["multiagent"]["count_steps_by"],
+        ))
     # Standardize advantages.
     rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 
@@ -284,4 +289,5 @@ PPOTrainer = build_trainer(
     validate_config=validate_config,
     default_policy=PPOTFPolicy,
     get_policy_class=get_policy_class,
-    execution_plan=execution_plan)
+    execution_plan=execution_plan,
+)

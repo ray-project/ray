@@ -1,3 +1,6 @@
+from gym.spaces import Space
+from typing import Optional
+
 from ray.rllib.utils.exploration.ornstein_uhlenbeck_noise import \
     OrnsteinUhlenbeckNoise
 from ray.rllib.utils.schedules import ConstantSchedule
@@ -11,7 +14,8 @@ class PerWorkerOrnsteinUhlenbeckNoise(OrnsteinUhlenbeckNoise):
     See Ape-X paper.
     """
 
-    def __init__(self, action_space, *, framework, num_workers, worker_index,
+    def __init__(self, action_space: Space, *, framework: Optional[str],
+                 num_workers: Optional[int], worker_index: Optional[int],
                  **kwargs):
         """
         Args:

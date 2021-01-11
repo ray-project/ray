@@ -9,7 +9,7 @@ import aiohttp.web
 from aiohttp import hdrs
 from grpc.experimental import aio as aiogrpc
 
-import ray.services
+import ray._private.services
 import ray.new_dashboard.consts as dashboard_consts
 import ray.new_dashboard.utils as dashboard_utils
 from ray.core.generated import gcs_service_pb2
@@ -42,7 +42,7 @@ class DashboardHead:
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
         self.http_session = None
-        self.ip = ray.services.get_node_ip_address()
+        self.ip = ray._private.services.get_node_ip_address()
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
         self.grpc_port = self.server.add_insecure_port("[::]:0")
         logger.info("Dashboard head grpc address: %s:%s", self.ip,
@@ -191,16 +191,6 @@ class DashboardHead:
                 except Exception:
                     logger.exception(f"Error notifying coroutine {co}")
 
-        async def _purge_data():
-            """Purge data in datacenter."""
-            while True:
-                await asyncio.sleep(
-                    dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
-                try:
-                    await DataOrganizer.purge()
-                except Exception:
-                    logger.exception("Error purging data.")
-
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
@@ -219,7 +209,13 @@ class DashboardHead:
 
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
-        await asyncio.gather(self._update_nodes(), _async_notify(),
-                             _purge_data(), web_server,
+        concurrent_tasks = [
+            self._update_nodes(),
+            _async_notify(),
+            DataOrganizer.purge(),
+            DataOrganizer.organize(),
+            web_server,
+        ]
+        await asyncio.gather(*concurrent_tasks,
                              *(m.run(self.server) for m in modules))
         await self.server.wait_for_termination()

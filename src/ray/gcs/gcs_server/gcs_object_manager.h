@@ -14,10 +14,10 @@
 
 #pragma once
 
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -33,7 +33,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
         [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
           // All of the related actors should be reconstructed when a node is removed from
           // the GCS.
-          OnNodeRemoved(ClientID::FromBinary(node->node_id()));
+          OnNodeRemoved(NodeID::FromBinary(node->node_id()));
         });
   }
 
@@ -53,21 +53,26 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
                                   rpc::RemoveObjectLocationReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Load initial data from gcs storage to memory cache asynchronously.
+  /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
-  /// \param done Callback that will be called when load is complete.
-  void LoadInitialData(const EmptyCallback &done);
+  /// \param gcs_init_data.
+  void Initialize(const GcsInitData &gcs_init_data);
+
+  std::string DebugString() const;
 
  protected:
-  typedef absl::flat_hash_set<ClientID> LocationSet;
+  struct LocationSet {
+    absl::flat_hash_set<NodeID> locations;
+    std::string spilled_url = "";
+  };
 
   /// Add a location of objects.
   /// If the GCS server restarts, this function is used to reload data from storage.
   ///
   /// \param node_id The object location that will be added.
   /// \param object_ids The ids of objects which location will be added.
-  void AddObjectsLocation(const ClientID &node_id,
+  void AddObjectsLocation(const NodeID &node_id,
                           const absl::flat_hash_set<ObjectID> &object_ids)
       LOCKS_EXCLUDED(mutex_);
 
@@ -75,32 +80,33 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   ///
   /// \param object_id The id of object.
   /// \param node_id The node id of the new location.
-  void AddObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id)
+  void AddObjectLocationInCache(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get all locations of the given object.
   ///
   /// \param object_id The id of object to lookup.
   /// \return Object locations.
-  LocationSet GetObjectLocations(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  absl::flat_hash_set<NodeID> GetObjectLocations(const ObjectID &object_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Handler if a node is removed.
   ///
   /// \param node_id The node that will be removed.
-  void OnNodeRemoved(const ClientID &node_id) LOCKS_EXCLUDED(mutex_);
+  void OnNodeRemoved(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
 
   /// Remove object's location.
   ///
   /// \param object_id The id of the object which location will be removed.
   /// \param node_id The location that will be removed.
-  void RemoveObjectLocationInCache(const ObjectID &object_id, const ClientID &node_id)
+  void RemoveObjectLocationInCache(const ObjectID &object_id, const NodeID &node_id)
       LOCKS_EXCLUDED(mutex_);
 
  private:
   typedef absl::flat_hash_set<ObjectID> ObjectSet;
 
-  std::shared_ptr<ObjectTableDataList> GenObjectTableDataList(
-      const GcsObjectManager::LocationSet &location_set) const;
+  const ObjectLocationInfo GenObjectLocationInfo(const ObjectID &object_id) const
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Get object locations by object id from map.
   /// Will create it if not exist and the flag create_if_not_exist is set to true.
@@ -118,7 +124,7 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
   /// \param node_id The id of node to lookup.
   /// \param create_if_not_exist Whether to create a new one if not exist.
   /// \return ObjectSet *
-  GcsObjectManager::ObjectSet *GetObjectSetByNode(const ClientID &node_id,
+  GcsObjectManager::ObjectSet *GetObjectSetByNode(const NodeID &node_id,
                                                   bool create_if_not_exist = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -130,10 +136,20 @@ class GcsObjectManager : public rpc::ObjectInfoHandler {
 
   /// Mapping from node id to objects that held by the node.
   /// This is the local cache of nodes' objects in the storage.
-  absl::flat_hash_map<ClientID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<NodeID, ObjectSet> node_to_objects_ GUARDED_BY(mutex_);
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+
+  // Debug info.
+  enum CountType {
+    GET_OBJECT_LOCATIONS_REQUEST = 0,
+    GET_ALL_OBJECT_LOCATIONS_REQUEST = 1,
+    ADD_OBJECT_LOCATION_REQUEST = 2,
+    REMOVE_OBJECT_LOCATION_REQUEST = 3,
+    CountType_MAX = 4,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
 };
 
 }  // namespace gcs

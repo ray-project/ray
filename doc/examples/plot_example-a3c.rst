@@ -13,7 +13,7 @@ View the `code for this example`_.
 
 .. note::
 
-    For an overview of Ray's reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
+    For an overview of Ray's reinforcement learning library, see `RLlib <http://docs.ray.io/en/master/rllib.html>`__.
 
 To run the application, first install **ray** and then some dependencies:
 

@@ -23,9 +23,9 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
     TorchDistributionWrapper, TorchCategorical
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_ops import explained_variance, global_norm, \
     sequence_mask
@@ -114,11 +114,11 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
             unpacked_old_policy_behaviour_logits = torch.chunk(
                 old_policy_behaviour_logits, output_hidden_shape, dim=1)
 
-        # Prepare actions for loss
+        # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else torch.unsqueeze(
             actions, dim=1)
 
-        # Prepare KL for Loss
+        # Prepare KL for loss.
         action_kl = _make_time_major(
             old_policy_action_dist.kl(action_dist), drop_last=True)
 
@@ -152,7 +152,7 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         logp_ratio = is_ratio * torch.exp(actions_logp - prev_actions_logp)
         policy._is_ratio = is_ratio
 
-        advantages = vtrace_returns.pg_advantages
+        advantages = vtrace_returns.pg_advantages.to(policy.device)
         surrogate_loss = torch.min(
             advantages * logp_ratio,
             advantages *
@@ -163,8 +163,8 @@ def appo_surrogate_loss(policy: Policy, model: ModelV2,
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values_time_major[:-1] - vtrace_returns.vs
-        value_targets = vtrace_returns.vs
+        value_targets = vtrace_returns.vs.to(policy.device)
+        delta = values_time_major[:-1] - value_targets
         mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
         # The entropy loss.
@@ -315,12 +315,16 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
     KLCoeffMixin.__init__(policy, config)
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
+    # Move target net to device (this is done automatically for the
+    # policy.model, but not for any other models the policy has).
+    policy.target_model = policy.target_model.to(policy.device)
 
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-AsyncPPOTorchPolicy = build_torch_policy(
+AsyncPPOTorchPolicy = build_policy_class(
     name="AsyncPPOTorchPolicy",
+    framework="torch",
     loss_fn=appo_surrogate_loss,
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
@@ -328,7 +332,7 @@ AsyncPPOTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=choose_optimizer,
     before_init=setup_early_mixins,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     make_model=make_appo_model,
     mixins=[
         LearningRateSchedule, KLCoeffMixin, TargetNetworkMixin,

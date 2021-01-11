@@ -5,7 +5,7 @@ import time
 
 import pytest
 import ray
-from ray.test_utils import check_call_ray
+from ray.test_utils import check_call_ray, wait_for_condition
 
 
 def unix_socket_create_path(name):
@@ -42,7 +42,7 @@ def test_tempdir_commandline():
     shutil.rmtree(ray.utils.get_ray_temp_dir(), ignore_errors=True)
     check_call_ray([
         "start", "--head", "--temp-dir=" + os.path.join(
-            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2")
+            ray.utils.get_user_temp_dir(), "i_am_a_temp_dir2"), "--port", "0"
     ])
     assert os.path.exists(
         os.path.join(ray.utils.get_user_temp_dir(),
@@ -74,14 +74,23 @@ def test_raylet_tempfiles(shutdown_only):
     assert top_levels.issuperset({"sockets", "logs"})
     log_files = set(os.listdir(node.get_logs_dir_path()))
     log_files_expected = {
-        "log_monitor.out", "log_monitor.err", "plasma_store.out",
-        "plasma_store.err", "monitor.out", "monitor.err", "redis-shard_0.out",
-        "redis-shard_0.err", "redis.out", "redis.err", "raylet.out",
-        "raylet.err", "gcs_server.out", "gcs_server.err"
+        "log_monitor.log", "plasma_store.out", "plasma_store.err",
+        "monitor.log", "redis-shard_0.out", "redis-shard_0.err", "redis.out",
+        "redis.err", "raylet.out", "raylet.err", "gcs_server.out",
+        "gcs_server.err", "dashboard.log", "dashboard_agent.log"
     }
 
-    for expected in log_files_expected:
-        assert expected in log_files
+    def check_all_log_file_exists():
+        for expected in log_files_expected:
+            log_files = set(os.listdir(node.get_logs_dir_path()))
+            if expected not in log_files:
+                return False
+        return True
+
+    wait_for_condition(check_all_log_file_exists)
+    # Get the list of log files again since the previous one
+    # might have the stale information.
+    log_files = set(os.listdir(node.get_logs_dir_path()))
     assert log_files_expected.issubset(log_files)
     assert log_files.issuperset(log_files_expected)
 

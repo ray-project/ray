@@ -78,21 +78,19 @@ documentation <https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.htm
 
 We wrap the training script in a function ``train_cifar(config, checkpoint_dir=None)``. As you
 can guess, the ``config`` parameter will receive the hyperparameters we would like to
-train with. The ``checkpoint_dir`` parameter is used to restore checkpoints.
+train with. The ``checkpoint_dir`` parameter is used to restore checkpoints and gets
+filled automatically by Ray Tune. Saving of checkpoints will be covered :ref:`below <communicating-with-ray-tune>`.
 
 .. code-block:: python
 
     net = Net(config["l1"], config["l2"])
+    optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
 
     if checkpoint_dir:
         checkpoint = os.path.join(checkpoint_dir, "checkpoint")
-        net.load_state_dict(torch.load(checkpoint))
-
-The learning rate of the optimizer is made configurable, too:
-
-.. code-block:: python
-
-    optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=0.9)
+        model_state, optimizer_state = torch.load(checkpoint)
+        net.load_state_dict(model_state)
+        optimizer.load_state_dict(optimizer_state)
 
 We also split the training data into a training and validation subset. We thus train on
 80% of the data and calculate the validation loss on the remaining 20%. The batch sizes
@@ -129,6 +127,8 @@ also supports :doc:`fractional GPUs </using-ray-with-gpus>`
 so we can share GPUs among trials, as long as the model still fits on the GPU memory. We'll come back
 to that later.
 
+.. _communicating-with-ray-tune:
+
 Communicating with Ray Tune
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -150,6 +150,8 @@ resources on those trials.
 
 The :ref:`checkpoint saving <tune-checkpoint>` is optional. However, it is necessary if we wanted to use advanced
 schedulers like `Population Based Training <https://docs.ray.io/en/master/tune/tutorials/tune-advanced-tutorial.html>`_.
+In this cases, the created checkpoint directory will be passed as the ``checkpoint_dir`` parameter
+to the training function.
 After training, we can also restore the checkpointed models and validate them on a test set.
 
 
@@ -162,7 +164,7 @@ The full code example looks like this:
    :language: python
    :start-after: __train_begin__
    :end-before: __train_end__
-   :emphasize-lines: 2,4-9,12,14-18,28,33,43,70,81-84,86
+   :emphasize-lines: 2,4-9,12,14-20,30,35,45,72,83-89,91
 
 As you can see, most of the code is adapted directly from the example.
 

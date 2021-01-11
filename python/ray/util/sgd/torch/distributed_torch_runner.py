@@ -3,8 +3,6 @@ import os
 
 import torch
 import torch.distributed as dist
-from torch.utils.data import DataLoader, IterableDataset
-from torch.utils.data.distributed import DistributedSampler
 from ray.util.sgd.torch.utils import setup_process_group
 
 import ray
@@ -42,6 +40,7 @@ class DistributedTorchRunner(TorchRunner):
         self.wrap_ddp = wrap_ddp
         self.add_dist_sampler = add_dist_sampler
         self.world_rank = None
+        self.local_rank = None
 
     def setup_address(self):
         return setup_address()
@@ -61,72 +60,56 @@ class DistributedTorchRunner(TorchRunner):
         setup_process_group(
             url, world_rank, world_size, timeout, backend=self.backend)
 
+    def set_local_rank(self, local_rank):
+        """Sets the local rank of this runner.
+
+        Args:
+            local_rank (int): the index of the runner on its node.
+        """
+        self.local_rank = local_rank
+
     def setup_operator(self):
         """Runs distributed coordination components.
 
         This helps avoid timeouts due to creator functions (perhaps
         downloading data or models).
         """
-        device_ids = None
+        device = torch.device("cpu")
         if self.use_gpu and torch.cuda.is_available():
-            device_ids = self.get_device_ids()
+            device = self.get_device()
 
         self.training_operator = self.training_operator_cls(
             self.config,
             world_rank=self.world_rank,
-            device_ids=device_ids,
+            local_rank=self.local_rank,
+            is_distributed=True,
+            device=device,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             wrap_ddp=self.wrap_ddp,
-            wrap_distributed_sampler=True,
             add_dist_sampler=self.add_dist_sampler,
             scheduler_step_freq=self.scheduler_step_freq)
 
-    def get_device_ids(self):
+    def get_device(self):
         """Needed for SyncBatchNorm, which needs 1 GPU per process."""
-        return [0]
+        return torch.device("cuda:0")
 
-    def _wrap_dataloaders(self):
-        def with_sampler(loader):
-            # Automatically set the DistributedSampler
-            data_loader_args = {
-                "dataset": loader.dataset,
-                "batch_size": loader.batch_size,
-                "shuffle": False,
-                "num_workers": loader.num_workers,
-                "collate_fn": loader.collate_fn,
-                "pin_memory": loader.pin_memory,
-                "drop_last": loader.drop_last,
-                "timeout": loader.timeout,
-                "worker_init_fn": loader.worker_init_fn,
-                "sampler": DistributedSampler(loader.dataset)
-            }
-            return DataLoader(**data_loader_args)
-
-        def should_wrap_dataloader(loader):
-            return (isinstance(loader, DataLoader)
-                    and not isinstance(loader.dataset, IterableDataset))
-
-        if should_wrap_dataloader(self.train_loader):
-            if self.add_dist_sampler:
-                self.train_loader = with_sampler(self.train_loader)
-
-        if self.validation_loader is not None and should_wrap_dataloader(
-                self.validation_loader):
-            if self.add_dist_sampler:
-                self.validation_loader = with_sampler(self.validation_loader)
-
-    def train_epoch(self, **kwargs):
+    def train_epoch(self,
+                    num_steps=None,
+                    profile=False,
+                    info=None,
+                    iterator=None):
         """Runs a training epoch and updates the model parameters.
 
         Automatically sets epoch of sampler if possible.
         """
-        if hasattr(self.train_loader, "sampler") and hasattr(
+        if iterator is None and hasattr(self.train_loader, "sampler") and \
+            hasattr(
                 self.train_loader.sampler, "set_epoch"):
             self.train_loader.sampler.set_epoch(self.epochs)
-        return super(DistributedTorchRunner, self).train_epoch(**kwargs)
+        return super(DistributedTorchRunner, self).train_epoch(
+            num_steps=num_steps, profile=profile, info=info, iterator=iterator)
 
     def shutdown(self):
         """Attempts to shut down the worker."""
@@ -313,8 +296,9 @@ class LocalDistributedRunner(DistributedTorchRunner):
             logger.error("Failed to set local CUDA device.")
             raise
 
-    def get_device_ids(self):
-        return [int(self.local_cuda_device)]
+    def get_device(self):
+        device_str = "cuda:" + self.local_cuda_device
+        return torch.device(device_str)
 
     def shutdown(self, cleanup=True):
         super(LocalDistributedRunner, self).shutdown()

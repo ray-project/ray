@@ -1,6 +1,7 @@
 from gym.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
+import warnings
 
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.framework import try_import_torch
@@ -34,7 +35,7 @@ def convert_to_non_torch_type(stats):
     def mapping(item):
         if isinstance(item, torch.Tensor):
             return item.cpu().item() if len(item.size()) == 0 else \
-                item.cpu().detach().numpy()
+                item.detach().cpu().numpy()
         else:
             return item
 
@@ -62,7 +63,22 @@ def convert_to_torch_tensor(x, device=None):
             return RepeatedValues(
                 tree.map_structure(mapping, item.values), item.lengths,
                 item.max_len)
-        tensor = torch.from_numpy(np.asarray(item))
+        # Numpy arrays.
+        if isinstance(item, np.ndarray):
+            # np.object_ type (e.g. info dicts in train batch): leave as-is.
+            if item.dtype == np.object_:
+                return item
+            # Non-writable numpy-arrays will cause PyTorch warning.
+            elif item.flags.writeable is False:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    tensor = torch.from_numpy(item)
+            # Already numpy: Wrap as torch tensor.
+            else:
+                tensor = torch.from_numpy(item)
+        # Everything else: Convert to numpy, then wrap as torch tensor.
+        else:
+            tensor = torch.from_numpy(np.asarray(item))
         # Floatify all float64 tensors.
         if tensor.dtype == torch.double:
             tensor = tensor.float()
@@ -125,11 +141,11 @@ def minimize_and_clip(optimizer, clip_val=10):
 
 def one_hot(x, space):
     if isinstance(space, Discrete):
-        return nn.functional.one_hot(x, space.n)
+        return nn.functional.one_hot(x.long(), space.n)
     elif isinstance(space, MultiDiscrete):
         return torch.cat(
             [
-                nn.functional.one_hot(x[:, i], n)
+                nn.functional.one_hot(x[:, i].long(), n)
                 for i, n in enumerate(space.nvec)
             ],
             dim=-1)

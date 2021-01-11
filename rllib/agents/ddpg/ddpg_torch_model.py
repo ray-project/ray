@@ -2,7 +2,8 @@ import numpy as np
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.framework import try_import_torch, get_activation_fn
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 
@@ -49,12 +50,18 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         super(DDPGTorchModel, self).__init__(obs_space, action_space,
                                              num_outputs, model_config, name)
 
-        self.bounded = np.logical_and(action_space.bounded_above,
-                                      action_space.bounded_below).any()
-        self.low_action = torch.tensor(action_space.low, dtype=torch.float32)
-        self.action_range = torch.tensor(
-            action_space.high - action_space.low, dtype=torch.float32)
-        self.action_dim = np.product(action_space.shape)
+        self.bounded = np.logical_and(self.action_space.bounded_above,
+                                      self.action_space.bounded_below).any()
+        low_action = nn.Parameter(
+            torch.from_numpy(self.action_space.low).float())
+        low_action.requires_grad = False
+        self.register_parameter("low_action", low_action)
+        action_range = nn.Parameter(
+            torch.from_numpy(self.action_space.high -
+                             self.action_space.low).float())
+        action_range.requires_grad = False
+        self.register_parameter("action_range", action_range)
+        self.action_dim = np.product(self.action_space.shape)
 
         # Build the policy network.
         self.policy_model = nn.Sequential()
@@ -135,7 +142,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         This implements Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Tensor): Actions to return the Q-values for.
@@ -151,7 +158,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
 
         This implements the twin Q(s, a).
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
             actions (Optional[Tensor]): Actions to return the Q-values for.
@@ -168,7 +175,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         This outputs the support for pi(s). For continuous action spaces, this
         is the action directly. For discrete, is is the mean / std dev.
 
-        Arguments:
+        Args:
             model_out (Tensor): obs embeddings from the model layers, of shape
                 [BATCH_SIZE, num_outputs].
 

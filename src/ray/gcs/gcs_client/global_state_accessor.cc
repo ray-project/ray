@@ -108,17 +108,12 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
     const ObjectID &object_id) {
   std::unique_ptr<std::string> object_info;
   std::promise<bool> promise;
-  auto on_done = [object_id, &object_info, &promise](
+  auto on_done = [&object_info, &promise](
                      const Status &status,
-                     const std::vector<rpc::ObjectTableData> &result) {
+                     const boost::optional<rpc::ObjectLocationInfo> &result) {
     RAY_CHECK_OK(status);
-    if (!result.empty()) {
-      rpc::ObjectLocationInfo object_location_info;
-      object_location_info.set_object_id(object_id.Binary());
-      for (auto &data : result) {
-        object_location_info.add_locations()->CopyFrom(data);
-      }
-      object_info.reset(new std::string(object_location_info.SerializeAsString()));
+    if (result) {
+      object_info.reset(new std::string(result->SerializeAsString()));
     }
     promise.set_value(true);
   };
@@ -127,13 +122,14 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
   return object_info;
 }
 
-std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
+std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
   rpc::ResourceMap node_resource_map;
   std::promise<void> promise;
   auto on_done =
       [&node_resource_map, &promise](
           const Status &status,
-          const boost::optional<ray::gcs::NodeInfoAccessor::ResourceMap> &result) {
+          const boost::optional<ray::gcs::NodeResourceInfoAccessor::ResourceMap>
+              &result) {
         RAY_CHECK_OK(status);
         if (result) {
           auto result_value = result.get();
@@ -143,9 +139,19 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const ClientID &node_id) {
         }
         promise.set_value();
       };
-  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(node_id, on_done));
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(node_id, on_done));
   promise.get_future().get();
   return node_resource_map.SerializeAsString();
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
+  std::vector<std::string> available_resources;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
+      TransformForMultiItemCallback<rpc::AvailableResources>(available_resources,
+                                                             promise)));
+  promise.get_future().get();
+  return available_resources;
 }
 
 std::string GlobalStateAccessor::GetInternalConfig() {
@@ -169,6 +175,16 @@ std::string GlobalStateAccessor::GetInternalConfig() {
   return config_proto.SerializeAsString();
 }
 
+std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
+  std::unique_ptr<std::string> resource_batch_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllResourceUsage(
+      TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
+                                                            promise)));
+  promise.get_future().get();
+  return resource_batch_data;
+}
+
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;
@@ -186,17 +202,6 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
       TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
   promise.get_future().get();
   return actor_table_data;
-}
-
-std::unique_ptr<std::string> GlobalStateAccessor::GetActorCheckpointId(
-    const ActorID &actor_id) {
-  std::unique_ptr<std::string> actor_checkpoint_id_data;
-  std::promise<bool> promise;
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
-      actor_id, TransformForOptionalItemCallback<rpc::ActorCheckpointIdData>(
-                    actor_checkpoint_id_data, promise)));
-  promise.get_future().get();
-  return actor_checkpoint_id_data;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
@@ -220,7 +225,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
 }
 
 bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
-  auto data_ptr = std::make_shared<WorkerTableData>();
+  auto data_ptr = std::make_shared<rpc::WorkerTableData>();
   data_ptr->ParseFromString(serialized_string);
   std::promise<bool> promise;
   RAY_CHECK_OK(
@@ -230,6 +235,16 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
       }));
   promise.get_future().get();
   return true;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
+  std::vector<std::string> placement_group_table_data;
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncGetAll(
+      TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
+          placement_group_table_data, promise)));
+  promise.get_future().get();
+  return placement_group_table_data;
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(

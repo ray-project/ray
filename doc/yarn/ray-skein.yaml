@@ -28,7 +28,7 @@ services:
             # By default, we set object store memory and heap memory to roughly 200 MB. This is conservative
             # and should be set according to application needs.
             #
-            ray start --head --redis-port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
+            ray start --head --port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
 
             # This executes the user script.
             python example.py

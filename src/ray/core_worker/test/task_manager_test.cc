@@ -46,7 +46,7 @@ class TaskManagerTest : public ::testing::Test {
                    num_retries_++;
                    return Status::OK();
                  },
-                 [this](const ClientID &node_id) { return all_nodes_alive_; },
+                 [this](const NodeID &node_id) { return all_nodes_alive_; },
                  [this](const ObjectID &object_id) {
                    objects_to_recover_.push_back(object_id);
                  }) {}

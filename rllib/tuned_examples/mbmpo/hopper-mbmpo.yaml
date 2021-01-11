@@ -4,7 +4,7 @@ hopper-mbmpo:
     stop:
         training_iteration: 500
     config:
-         # Only supported in torch right now
+        # Only supported in torch right now.
         framework: torch
         # 200 in paper, 1000 will take forever
         horizon: 200

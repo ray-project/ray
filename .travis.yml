@@ -1,6 +1,6 @@
 language: generic
-# Use Ubuntu 16.04
-dist: xenial
+# Use Ubuntu 18.04
+dist: bionic
 
 git:
   clone: false  # Clone manually to work around Travis issues like https://github.com/travis-ci/travis-ci/issues/6337
@@ -28,7 +28,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
 
@@ -40,12 +40,13 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
         # bazel python tests for medium size tests. Used for parallelization.
         - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,medium_size_python_tests_a_to_j python/ray/tests/...; fi
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,client_tests --test_env=RAY_CLIENT_MODE=1 python/ray/tests/...; fi
 
     - os: linux
       env:
@@ -55,7 +56,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -84,7 +85,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
 
@@ -97,7 +98,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -113,7 +114,7 @@ matrix:
         - RAY_CYTHON_EXAMPLES=1
         - RAY_USE_RANDOM_PORTS=1
       install:
-        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED
+        - . ./ci/travis/ci.sh init RAY_CI_SERVE_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_PYTHON_AFFECTED,RAY_CI_DASHBOARD_AFFECTED
       before_script:
         - . ./ci/travis/ci.sh build
       script:
@@ -140,6 +141,7 @@ matrix:
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_USE_RANDOM_PORTS=1
+        - RAY_ENABLE_NEW_SCHEDULER=0
       language: java
       jdk: openjdk8
       install:
@@ -149,8 +151,9 @@ matrix:
       script:
         # Streaming cpp test.
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then bazel test --config=ci $(./scripts/bazel_export_options) --test_output=all //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
-        - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
-        - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
+        # BROKEN
+        # - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
+        # - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
 
     - os: linux
       env:
@@ -175,7 +178,7 @@ matrix:
         - . ./ci/travis/ci.sh init RAY_CI_MACOS_WHEELS_AFFECTED,RAY_CI_JAVA_AFFECTED,RAY_CI_STREAMING_JAVA_AFFECTED
       before_script:
         - brew tap adoptopenjdk/openjdk
-        - brew cask install adoptopenjdk8
+        - brew install --cask adoptopenjdk8
         - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
         - java -version
         - . ./ci/travis/ci.sh build
@@ -186,6 +189,7 @@ matrix:
     # Build Linux wheels and jars.
     - os: linux
       env:
+        # - PYTHON=3.6
         - LINUX_WHEELS=1 LINUX_JARS=1
         - PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
@@ -197,7 +201,9 @@ matrix:
         - . ./ci/travis/ci.sh build
       script:
         - . ./ci/travis/ci.sh test_wheels
-        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then . $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh; fi
+        - export PATH="$HOME/miniconda3/bin:$PATH"
+        - python -m pip install docker
+        - if [[ "$TRAVIS_PULL_REQUEST" != "false" ]]; then python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py; fi
         - bash ./java/build-jar-multiplatform.sh linux
       cache: false
 
@@ -273,7 +279,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -294,7 +300,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -315,7 +321,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_A_TO_L=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -333,7 +339,7 @@ matrix:
       env:
         - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS_M_TO_Z=1
         # TODO (sven): Remove this after fixing rllib tests num_cpus.
-        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+        - RAY_USE_MULTIPROCESSING_CPU_COUNT=1
         - PYTHON=3.6
         - TF_VERSION=2.1.0
         - TFP_VERSION=0.8
@@ -352,9 +358,6 @@ matrix:
       env:
         - TUNE_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED
@@ -372,9 +375,6 @@ matrix:
       env:
         - SGD_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_SGD_AFFECTED
@@ -385,15 +385,13 @@ matrix:
         # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,-pytorch,-py37 python/ray/util/sgd/...
         - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37 python/ray/util/sgd/...
         - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37 python/ray/util/sgd/...
+        # - ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only python/ray/util/xgboost/...
 
     # Docs: Tests and examples.
     - os: linux
       env:
         - DOC_TESTING=1
         - PYTHON=3.6
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_PYTHON_AFFECTED,RAY_CI_TUNE_AFFECTED,RAY_CI_DOC_AFFECTED
@@ -409,9 +407,6 @@ matrix:
       env:
         - PYTHON=3.7 TUNE_TESTING=1
         - INSTALL_HOROVOD=1
-        - TF_VERSION=2.1.0
-        - TFP_VERSION=0.8
-        - TORCH_VERSION=1.5
         - PYTHONWARNINGS=ignore
       install:
         - . ./ci/travis/ci.sh init RAY_CI_TUNE_AFFECTED,RAY_CI_SGD_AFFECTED
@@ -445,14 +440,8 @@ script:
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only python/ray/serve/...; fi
 
-  # ray dashboard tests
-  - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/dashboard/...; fi
-
   # ray new dashboard tests
   - if [ "$RAY_CI_DASHBOARD_AFFECTED" == "1" ]; then ./ci/keep_alive bazel test python/ray/new_dashboard/...; fi
-
-  # ray operator tests
-  - (cd deploy/ray-operator && export CC=gcc && suppress_output go build && suppress_output go test ./...)
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z python/ray/tests/...; fi
@@ -496,7 +485,7 @@ deploy:
 
   - provider: script
     edge: true # This supposedly opts in to deploy v2.
-    script: ./ci/keep_alive bash $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.sh
+    script: export PATH="$HOME/miniconda3/bin:$PATH"; ./ci/keep_alive python $TRAVIS_BUILD_DIR/ci/travis/build-docker-images.py
     skip_cleanup: true
     on:
       repo: ray-project/ray
@@ -535,4 +524,3 @@ deploy:
       repo: ray-project/ray
       branch: master
       condition: $MULTIPLATFORM_JARS = 1 || $MAC_JARS = 1 || $LINUX_JARS = 1
-

@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 from ray.tune import trial_runner
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.trial import Trial
 
 
@@ -10,6 +11,12 @@ class TrialScheduler:
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution
     PAUSE = "PAUSE"  #: Status for pausing trial execution
     STOP = "STOP"  #: Status for stopping trial execution
+
+    _metric = None
+
+    @property
+    def metric(self):
+        return self._metric
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:
@@ -22,6 +29,15 @@ class TrialScheduler:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
         """
+        if self._metric and metric:
+            return False
+        if metric:
+            self._metric = metric
+
+        if self._metric is None:
+            # Per default, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         return True
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",

@@ -10,7 +10,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
-from ray.tune.utils import detect_checkpoint_function
+from ray.tune.utils import date_str, detect_checkpoint_function
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +123,17 @@ class Experiment:
                  max_failures=0,
                  restore=None):
 
+        if loggers is not None:
+            # Most users won't run into this as `tune.run()` does not pass
+            # the argument anymore. However, we will want to inform users
+            # if they instantiate their `Experiment` objects themselves.
+            raise ValueError(
+                "Passing `loggers` to an `Experiment` is deprecated. Use "
+                "an `LoggerCallback` callback instead, e.g. by passing the "
+                "`Logger` classes to `tune.logger.LegacyLoggerCallback` and "
+                "passing this as part of the `callback` parameter to "
+                "`tune.run()`.")
+
         config = config or {}
         if callable(run) and detect_checkpoint_function(run):
             if checkpoint_at_end:
@@ -137,8 +148,18 @@ class Experiment:
                     "within your trainable function.")
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
+
+        # If the name has been set explicitly, we don't want to create
+        # dated directories. The same is true for string run identifiers.
+        if int(os.environ.get("TUNE_DISABLE_DATED_SUBDIR", 0)) == 1 or name \
+           or isinstance(run, str):
+            self.dir_name = self.name
+        else:
+            self.dir_name = "{}_{}".format(self.name, date_str())
+
         if upload_dir:
-            self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
+            self.remote_checkpoint_dir = os.path.join(upload_dir,
+                                                      self.dir_name)
         else:
             self.remote_checkpoint_dir = None
 
@@ -146,6 +167,13 @@ class Experiment:
         stopping_criteria = {}
         if not stop:
             pass
+        elif isinstance(stop, list):
+            if any(not isinstance(s, Stopper) for s in stop):
+                raise ValueError(
+                    "If you pass a list as the `stop` argument to "
+                    "`tune.run()`, each element must be an instance of "
+                    "`tune.stopper.Stopper`.")
+            self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):
@@ -249,29 +277,28 @@ class Experiment:
             return run_object
         elif isinstance(run_object, type) or callable(run_object):
             name = "DEFAULT"
-            if hasattr(run_object, "__name__"):
-                name = run_object.__name__
+            if hasattr(run_object, "_name"):
+                name = run_object._name
+            elif hasattr(run_object, "__name__"):
+                fn_name = run_object.__name__
+                if fn_name == "<lambda>":
+                    name = "lambda"
+                elif fn_name.startswith("<"):
+                    name = "DEFAULT"
+                else:
+                    name = fn_name
             else:
                 logger.warning(
                     "No name detected on trainable. Using {}.".format(name))
             try:
                 register_trainable(name, run_object)
             except (TypeError, PicklingError) as e:
-                msg = (
-                    f"{str(e)}. The trainable ({str(run_object)}) could not "
-                    "be serialized, which is needed for parallel execution. "
-                    "To diagnose the issue, try the following:\n\n"
-                    "\t- Run `tune.utils.diagnose_serialization(trainable)` "
-                    "to check if non-serializable variables are captured "
-                    "in scope.\n"
-                    "\t- Try reproducing the issue by calling "
-                    "`pickle.dumps(trainable)`.\n"
-                    "\t- If the error is typing-related, try removing "
-                    "the type annotations and try again.\n\n"
-                    "If you have any suggestions on how to improve "
-                    "this error message, please reach out to the "
-                    "Ray developers on github.com/ray-project/ray/issues/")
-                raise type(e)(msg) from None
+                extra_msg = (f"Other options: "
+                             "\n-Try reproducing the issue by calling "
+                             "`pickle.dumps(trainable)`. "
+                             "\n-If the error is typing-related, try removing "
+                             "the type annotations and try again.")
+                raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
@@ -287,7 +314,7 @@ class Experiment:
     @property
     def checkpoint_dir(self):
         if self.local_dir:
-            return os.path.join(self.local_dir, self.name)
+            return os.path.join(self.local_dir, self.dir_name)
 
     @property
     def run_identifier(self):

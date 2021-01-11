@@ -10,65 +10,100 @@ Note that the C Pickler sublassing API is CPython-specific. Therefore, some
 guards present in cloudpickle.py that were written to handle PyPy specificities
 are not present in cloudpickle_fast.py
 """
+import _collections_abc
 import abc
 import copyreg
 import io
 import itertools
 import logging
 import sys
+import struct
 import types
 import weakref
 import typing
 
+from enum import Enum
+from collections import ChainMap
+
+from .compat import pickle, Pickler
 from .cloudpickle import (
-    _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
-    _find_imported_submodules, _get_cell_contents, _is_importable_by_name, _builtin_type,
-    Enum, _get_or_create_tracker_id,  _make_skeleton_class, _make_skeleton_enum,
-    _extract_class_dict, dynamic_subimport, subimport, _typevar_reduce, _get_bases,
-    cell_set, _make_empty_cell,
+    _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
+    _find_imported_submodules, _get_cell_contents, _is_importable,
+    _builtin_type, _get_or_create_tracker_id,  _make_skeleton_class,
+    _make_skeleton_enum, _extract_class_dict, dynamic_subimport, subimport,
+    _typevar_reduce, _get_bases, _make_cell, _make_empty_cell, CellType,
+    _is_parametrized_type_hint, PYPY, cell_set,
+    parametrized_type_hint_getinitargs, _create_parametrized_type_hint,
+    builtin_code_type,
+    _make_dict_keys, _make_dict_values, _make_dict_items,
 )
 
-if sys.version_info[:2] < (3, 8):
-    import pickle5 as pickle
-    from pickle5 import Pickler
-    load, loads = pickle.load, pickle.loads
+
+if pickle.HIGHEST_PROTOCOL >= 5 and not PYPY:
+    # Shorthands similar to pickle.dump/pickle.dumps
+
+    def dump(obj, file, protocol=None, buffer_callback=None):
+        """Serialize obj as bytes streamed into file
+
+        protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
+        pickle.HIGHEST_PROTOCOL. This setting favors maximum communication
+        speed between processes running the same Python version.
+
+        Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
+        compatibility with older versions of Python.
+        """
+        CloudPickler(
+            file, protocol=protocol, buffer_callback=buffer_callback
+        ).dump(obj)
+
+    def dumps(obj, protocol=None, buffer_callback=None):
+        """Serialize obj as a string of bytes allocated in memory
+
+        protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
+        pickle.HIGHEST_PROTOCOL. This setting favors maximum communication
+        speed between processes running the same Python version.
+
+        Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
+        compatibility with older versions of Python.
+        """
+        with io.BytesIO() as file:
+            cp = CloudPickler(
+                file, protocol=protocol, buffer_callback=buffer_callback
+            )
+            cp.dump(obj)
+            return file.getvalue()
+
 else:
-    import _pickle
-    import pickle
-    from _pickle import Pickler
-    load, loads = _pickle.load, _pickle.loads
+    # Shorthands similar to pickle.dump/pickle.dumps
+    def dump(obj, file, protocol=None):
+        """Serialize obj as bytes streamed into file
 
-import numpy
+        protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
+        pickle.HIGHEST_PROTOCOL. This setting favors maximum communication
+        speed between processes running the same Python version.
+
+        Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
+        compatibility with older versions of Python.
+        """
+        CloudPickler(file, protocol=protocol).dump(obj)
+
+    def dumps(obj, protocol=None):
+        """Serialize obj as a string of bytes allocated in memory
+
+        protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
+        pickle.HIGHEST_PROTOCOL. This setting favors maximum communication
+        speed between processes running the same Python version.
+
+        Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
+        compatibility with older versions of Python.
+        """
+        with io.BytesIO() as file:
+            cp = CloudPickler(file, protocol=protocol)
+            cp.dump(obj)
+            return file.getvalue()
 
 
-# Shorthands similar to pickle.dump/pickle.dumps
-def dump(obj, file, protocol=None, buffer_callback=None):
-    """Serialize obj as bytes streamed into file
-
-    protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
-    pickle.HIGHEST_PROTOCOL. This setting favors maximum communication speed
-    between processes running the same Python version.
-
-    Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
-    compatibility with older versions of Python.
-    """
-    CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback).dump(obj)
-
-
-def dumps(obj, protocol=None, buffer_callback=None):
-    """Serialize obj as a string of bytes allocated in memory
-
-    protocol defaults to cloudpickle.DEFAULT_PROTOCOL which is an alias to
-    pickle.HIGHEST_PROTOCOL. This setting favors maximum communication speed
-    between processes running the same Python version.
-
-    Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
-    compatibility with older versions of Python.
-    """
-    with io.BytesIO() as file:
-        cp = CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback)
-        cp.dump(obj)
-        return file.getvalue()
+load, loads = pickle.load, pickle.loads
 
 
 # COLLECTION OF OBJECTS __getnewargs__-LIKE METHODS
@@ -151,13 +186,18 @@ def _class_getstate(obj):
         clsdict.pop('_abc_cache', None)
         clsdict.pop('_abc_negative_cache', None)
         clsdict.pop('_abc_negative_cache_version', None)
-        clsdict.pop('_abc_impl', None)
+        # these are generated by some thirdparty libraries
+        clsdict.pop('_abc_generic_negative_cache', None)
+        clsdict.pop('_abc_generic_negative_cache_version', None)
+
         registry = clsdict.pop('_abc_registry', None)
         if registry is None:
-            # in Python3.7+, the abc caches and registered subclasses of a
-            # class are bundled into the single _abc_impl attribute
             if hasattr(abc, '_get_dump'):
+                # in Python3.7+, the abc caches and registered subclasses of a
+                # class are bundled into the single _abc_impl attribute
+                clsdict.pop('_abc_impl', None)
                 (registry, _, _, _) = abc._get_dump(obj)
+
                 clsdict["_abc_impl"] = [subclass_weakref()
                                         for subclass_weakref in registry]
             else:
@@ -217,13 +257,13 @@ def _code_reduce(obj):
     """codeobject reducer"""
     if hasattr(obj, "co_posonlyargcount"):  # pragma: no branch
         args = (
-                obj.co_argcount, obj.co_posonlyargcount,
-                obj.co_kwonlyargcount, obj.co_nlocals, obj.co_stacksize,
-                obj.co_flags, obj.co_code, obj.co_consts, obj.co_names,
-                obj.co_varnames, obj.co_filename, obj.co_name,
-                obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
-                obj.co_cellvars
-            )
+            obj.co_argcount, obj.co_posonlyargcount,
+            obj.co_kwonlyargcount, obj.co_nlocals, obj.co_stacksize,
+            obj.co_flags, obj.co_code, obj.co_consts, obj.co_names,
+            obj.co_varnames, obj.co_filename, obj.co_name,
+            obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
+            obj.co_cellvars
+        )
     else:
         args = (
             obj.co_argcount, obj.co_kwonlyargcount, obj.co_nlocals,
@@ -235,26 +275,14 @@ def _code_reduce(obj):
     return types.CodeType, args
 
 
-def _make_cell(contents):
-    cell = _make_empty_cell()
-    cell_set(cell, contents)
-    return cell
-
-
 def _cell_reduce(obj):
     """Cell (containing values of a function's free variables) reducer"""
     try:
-        contents = (obj.cell_contents,)
+        obj.cell_contents
     except ValueError:  # cell is empty
-        contents = ()
-
-    if sys.version_info[:2] < (3, 8):
-        if contents:
-            return _make_cell, contents
-        else:
-            return _make_empty_cell, ()
+        return _make_empty_cell, ()
     else:
-        return types.CellType, contents
+        return _make_cell, (obj.cell_contents, )
 
 
 def _classmethod_reduce(obj):
@@ -298,10 +326,10 @@ def _file_reduce(obj):
         obj.seek(0)
         contents = obj.read()
         obj.seek(curloc)
-    except IOError:
+    except IOError as e:
         raise pickle.PicklingError(
             "Cannot pickle file %s as it cannot be read" % name
-        )
+        ) from e
     retval.write(contents)
     retval.seek(curloc)
 
@@ -322,11 +350,11 @@ def _memoryview_reduce(obj):
 
 
 def _module_reduce(obj):
-    if _is_dynamic(obj):
+    if _is_importable(obj):
+        return subimport, (obj.__name__,)
+    else:
         obj.__dict__.pop('__builtins__', None)
         return dynamic_subimport, (obj.__name__, vars(obj))
-    else:
-        return subimport, (obj.__name__,)
 
 
 def _method_reduce(obj):
@@ -379,9 +407,27 @@ def _class_reduce(obj):
         return type, (NotImplemented,)
     elif obj in _BUILTIN_TYPE_NAMES:
         return _builtin_type, (_BUILTIN_TYPE_NAMES[obj],)
-    elif not _is_importable_by_name(obj):
+    elif not _is_importable(obj):
         return _dynamic_class_reduce(obj)
     return NotImplemented
+
+
+def _dict_keys_reduce(obj):
+    # Safer not to ship the full dict as sending the rest might
+    # be unintended and could potentially cause leaking of
+    # sensitive information
+    return _make_dict_keys, (list(obj), )
+
+
+def _dict_values_reduce(obj):
+    # Safer not to ship the full dict as sending the rest might
+    # be unintended and could potentially cause leaking of
+    # sensitive information
+    return _make_dict_values, (list(obj), )
+
+
+def _dict_items_reduce(obj):
+    return _make_dict_items, (dict(obj), )
 
 
 # COLLECTIONS OF OBJECTS STATE SETTERS
@@ -439,154 +485,30 @@ def _class_setstate(obj, state):
     return obj
 
 
-def _numpy_frombuffer(buffer, dtype, shape, order):
-    # Get the _frombuffer() function for reconstruction
-    from numpy.core.numeric import _frombuffer
-    array = _frombuffer(buffer, dtype, shape, order)
-    # Unfortunately, numpy does not follow the standard, so we still
-    # have to set the readonly flag for it here.
-    array.setflags(write=isinstance(buffer, bytearray) or not buffer.readonly)
-    return array
-
-
-def _numpy_ndarray_reduce(array):
-    # This function is implemented according to 'array_reduce_ex_picklebuffer'
-    # in numpy C backend. This is a workaround for python3.5 pickling support.
-    if sys.version_info >= (3, 8):
-        import pickle
-        picklebuf_class = pickle.PickleBuffer
-    elif sys.version_info >= (3, 5):
-        try:
-            import pickle5
-            picklebuf_class = pickle5.PickleBuffer
-        except Exception:
-            raise ImportError("Using pickle protocol 5 requires the pickle5 "
-                              "module for Python >=3.5 and <3.8")
-    else:
-        raise ValueError("pickle protocol 5 is not available for Python < 3.5")
-    # if the array if Fortran-contiguous and not C-contiguous,
-    # the PickleBuffer instance will hold a view on the transpose
-    # of the initial array, that is C-contiguous.
-    if not array.flags.c_contiguous and array.flags.f_contiguous:
-        order = "F"
-        picklebuf_args = array.transpose()
-    else:
-        order = "C"
-        picklebuf_args = array
-    try:
-        buffer = picklebuf_class(picklebuf_args)
-    except Exception:
-        # Some arrays may refuse to export a buffer, in which case
-        # just fall back on regular __reduce_ex__ implementation
-        # (gh-12745).
-        return array.__reduce__()
-
-    return _numpy_frombuffer, (buffer, array.dtype, array.shape, order)
-
-
 class CloudPickler(Pickler):
-    """Fast C Pickler extension with additional reducing routines.
-
-    CloudPickler's extensions exist into into:
-
-    * its dispatch_table containing reducers that are called only if ALL
-      built-in saving functions were previously discarded.
-    * a special callback named "reducer_override", invoked before standard
-      function/class builtin-saving method (save_global), to serialize dynamic
-      functions
-    """
-
-    # cloudpickle's own dispatch_table, containing the additional set of
-    # objects (compared to the standard library pickle) that cloupickle can
-    # serialize.
-    dispatch = {}
-    dispatch[classmethod] = _classmethod_reduce
-    dispatch[io.TextIOWrapper] = _file_reduce
-    dispatch[logging.Logger] = _logger_reduce
-    dispatch[logging.RootLogger] = _root_logger_reduce
-    dispatch[memoryview] = _memoryview_reduce
-    dispatch[property] = _property_reduce
-    dispatch[staticmethod] = _classmethod_reduce
-    if sys.version_info[:2] >= (3, 8):
-        dispatch[types.CellType] = _cell_reduce
-    else:
-        dispatch[type(_make_empty_cell())] = _cell_reduce
-    dispatch[types.CodeType] = _code_reduce
-    dispatch[types.GetSetDescriptorType] = _getset_descriptor_reduce
-    dispatch[types.ModuleType] = _module_reduce
-    dispatch[types.MethodType] = _method_reduce
-    dispatch[types.MappingProxyType] = _mappingproxy_reduce
-    dispatch[weakref.WeakSet] = _weakset_reduce
-    dispatch[typing.TypeVar] = _typevar_reduce
-
-    def __init__(self, file, protocol=None, buffer_callback=None):
-        if protocol is None:
-            protocol = DEFAULT_PROTOCOL
-        Pickler.__init__(self, file, protocol=protocol, buffer_callback=buffer_callback)
-        # map functions __globals__ attribute ids, to ensure that functions
-        # sharing the same global namespace at pickling time also share their
-        # global namespace at unpickling time.
-        self.globals_ref = {}
-
-        # Take into account potential custom reducers registered by external
-        # modules
-        self.dispatch_table = copyreg.dispatch_table.copy()
-        self.dispatch_table.update(self.dispatch)
-        self.proto = int(protocol)
-
-    def reducer_override(self, obj):
-        """Type-agnostic reducing callback for function and classes.
-
-        For performance reasons, subclasses of the C _pickle.Pickler class
-        cannot register custom reducers for functions and classes in the
-        dispatch_table. Reducer for such types must instead implemented in the
-        special reducer_override method.
-
-        Note that method will be called for any object except a few
-        builtin-types (int, lists, dicts etc.), which differs from reducers in
-        the Pickler's dispatch_table, each of them being invoked for objects of
-        a specific type only.
-
-        This property comes in handy for classes: although most classes are
-        instances of the ``type`` metaclass, some of them can be instances of
-        other custom metaclasses (such as enum.EnumMeta for example). In
-        particular, the metaclass will likely not be known in advance, and thus
-        cannot be special-cased using an entry in the dispatch_table.
-        reducer_override, among other things, allows us to register a reducer
-        that will be called for any class, independently of its type.
+    # set of reducers defined and used by cloudpickle (private)
+    _dispatch_table = {}
+    _dispatch_table[classmethod] = _classmethod_reduce
+    _dispatch_table[io.TextIOWrapper] = _file_reduce
+    _dispatch_table[logging.Logger] = _logger_reduce
+    _dispatch_table[logging.RootLogger] = _root_logger_reduce
+    _dispatch_table[memoryview] = _memoryview_reduce
+    _dispatch_table[property] = _property_reduce
+    _dispatch_table[staticmethod] = _classmethod_reduce
+    _dispatch_table[CellType] = _cell_reduce
+    _dispatch_table[types.CodeType] = _code_reduce
+    _dispatch_table[types.GetSetDescriptorType] = _getset_descriptor_reduce
+    _dispatch_table[types.ModuleType] = _module_reduce
+    _dispatch_table[types.MethodType] = _method_reduce
+    _dispatch_table[types.MappingProxyType] = _mappingproxy_reduce
+    _dispatch_table[weakref.WeakSet] = _weakset_reduce
+    _dispatch_table[typing.TypeVar] = _typevar_reduce
+    _dispatch_table[_collections_abc.dict_keys] = _dict_keys_reduce
+    _dispatch_table[_collections_abc.dict_values] = _dict_values_reduce
+    _dispatch_table[_collections_abc.dict_items] = _dict_items_reduce
 
 
-        Notes:
-
-        * reducer_override has the priority over dispatch_table-registered
-          reducers.
-        * reducer_override can be used to fix other limitations of cloudpickle
-          for other types that suffered from type-specific reducers, such as
-          Exceptions. See https://github.com/cloudpipe/cloudpickle/issues/248
-        """
-
-        # This is a patch for python3.5
-        if isinstance(obj, numpy.ndarray):
-            if (self.proto < 5 or
-                    (not obj.flags.c_contiguous and not obj.flags.f_contiguous) or
-                    (issubclass(type(obj), numpy.ndarray) and type(obj) is not numpy.ndarray) or
-                    obj.dtype == "O" or obj.itemsize == 0):
-                return NotImplemented
-            return _numpy_ndarray_reduce(obj)
-
-        t = type(obj)
-        try:
-            is_anyclass = issubclass(t, type)
-        except TypeError:  # t is not a class (old Boost; see SF #502085)
-            is_anyclass = False
-
-        if is_anyclass:
-            return _class_reduce(obj)
-        elif isinstance(obj, types.FunctionType):
-            return self._function_reduce(obj)
-        else:
-            # fallback to save_global, including the Pickler's distpatch_table
-            return NotImplemented
+    dispatch_table = ChainMap(_dispatch_table, copyreg.dispatch_table)
 
     # function reducers are defined as instance methods of CloudPickler
     # objects, as they rely on a CloudPickler attribute (globals_ref)
@@ -609,7 +531,7 @@ class CloudPickler(Pickler):
         As opposed to cloudpickle.py, There no special handling for builtin
         pypy functions because cloudpickle_fast is CPython-specific.
         """
-        if _is_importable_by_name(obj):
+        if _is_importable(obj):
             return NotImplemented
         else:
             return self._dynamic_function_reduce(obj)
@@ -642,12 +564,8 @@ class CloudPickler(Pickler):
         if func.__closure__ is None:
             closure = None
         else:
-            if sys.version_info[:2] >= (3, 8):
-                closure = tuple(
-                    types.CellType() for _ in range(len(code.co_freevars)))
-            else:
-                closure = tuple(
-                    _make_empty_cell() for _ in range(len(code.co_freevars)))
+            closure = tuple(
+                _make_empty_cell() for _ in range(len(code.co_freevars)))
 
         return code, base_globals, None, None, closure
 
@@ -660,6 +578,209 @@ class CloudPickler(Pickler):
                     "Could not pickle object as excessively deep recursion "
                     "required."
                 )
-                raise pickle.PicklingError(msg)
+                raise pickle.PicklingError(msg) from e
             else:
                 raise
+
+    if pickle.HIGHEST_PROTOCOL >= 5:
+        # `CloudPickler.dispatch` is only left for backward compatibility - note
+        # that when using protocol 5, `CloudPickler.dispatch` is not an
+        # extension of `Pickler.dispatch` dictionary, because CloudPickler
+        # subclasses the C-implemented Pickler, which does not expose a
+        # `dispatch` attribute.  Earlier versions of the protocol 5 CloudPickler
+        # used `CloudPickler.dispatch` as a class-level attribute storing all
+        # reducers implemented by cloudpickle, but the attribute name was not a
+        # great choice given the meaning of `Cloudpickler.dispatch` when
+        # `CloudPickler` extends the pure-python pickler.
+        dispatch = dispatch_table
+
+        # Implementation of the reducer_override callback, in order to
+        # efficiently serialize dynamic functions and classes by subclassing
+        # the C-implemented Pickler.
+        # TODO: decorrelate reducer_override (which is tied to CPython's
+        # implementation - would it make sense to backport it to pypy? - and
+        # pickle's protocol 5 which is implementation agnostic. Currently, the
+        # availability of both notions coincide on CPython's pickle and the
+        # pickle5 backport, but it may not be the case anymore when pypy
+        # implements protocol 5
+        def __init__(self, file, protocol=None, buffer_callback=None):
+            if protocol is None:
+                protocol = DEFAULT_PROTOCOL
+            Pickler.__init__(
+                self, file, protocol=protocol, buffer_callback=buffer_callback
+            )
+            # map functions __globals__ attribute ids, to ensure that functions
+            # sharing the same global namespace at pickling time also share
+            # their global namespace at unpickling time.
+            self.globals_ref = {}
+            self.proto = int(protocol)
+
+        def reducer_override(self, obj):
+            """Type-agnostic reducing callback for function and classes.
+
+            For performance reasons, subclasses of the C _pickle.Pickler class
+            cannot register custom reducers for functions and classes in the
+            dispatch_table. Reducer for such types must instead implemented in
+            the special reducer_override method.
+
+            Note that method will be called for any object except a few
+            builtin-types (int, lists, dicts etc.), which differs from reducers
+            in the Pickler's dispatch_table, each of them being invoked for
+            objects of a specific type only.
+
+            This property comes in handy for classes: although most classes are
+            instances of the ``type`` metaclass, some of them can be instances
+            of other custom metaclasses (such as enum.EnumMeta for example). In
+            particular, the metaclass will likely not be known in advance, and
+            thus cannot be special-cased using an entry in the dispatch_table.
+            reducer_override, among other things, allows us to register a
+            reducer that will be called for any class, independently of its
+            type.
+
+
+            Notes:
+
+            * reducer_override has the priority over dispatch_table-registered
+            reducers.
+            * reducer_override can be used to fix other limitations of
+              cloudpickle for other types that suffered from type-specific
+              reducers, such as Exceptions. See
+              https://github.com/cloudpipe/cloudpickle/issues/248
+            """
+            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
+                try:
+                    return (
+                        _create_parametrized_type_hint,
+                        parametrized_type_hint_getinitargs(obj)
+                    )
+                except Exception:
+                    # TODO(suquark): Cloudpickle would misclassify pydantic classes into type hints.
+                    # We temporarily ignores the exceptions here.
+                    pass
+            t = type(obj)
+            try:
+                is_anyclass = issubclass(t, type)
+            except TypeError:  # t is not a class (old Boost; see SF #502085)
+                is_anyclass = False
+
+            if is_anyclass:
+                return _class_reduce(obj)
+            elif isinstance(obj, types.FunctionType):
+                return self._function_reduce(obj)
+            else:
+                # fallback to save_global, including the Pickler's
+                # distpatch_table
+                return NotImplemented
+
+    else:
+        # When reducer_override is not available, hack the pure-Python
+        # Pickler's types.FunctionType and type savers. Note: the type saver
+        # must override Pickler.save_global, because pickle.py contains a
+        # hard-coded call to save_global when pickling meta-classes.
+        dispatch = Pickler.dispatch.copy()
+
+        def __init__(self, file, protocol=None):
+            if protocol is None:
+                protocol = DEFAULT_PROTOCOL
+            Pickler.__init__(self, file, protocol=protocol)
+            # map functions __globals__ attribute ids, to ensure that functions
+            # sharing the same global namespace at pickling time also share
+            # their global namespace at unpickling time.
+            self.globals_ref = {}
+            assert hasattr(self, 'proto')
+
+        def _save_reduce_pickle5(self, func, args, state=None, listitems=None,
+                                 dictitems=None, state_setter=None, obj=None):
+            save = self.save
+            write = self.write
+            self.save_reduce(
+                func, args, state=None, listitems=listitems,
+                dictitems=dictitems, obj=obj
+            )
+            # backport of the Python 3.8 state_setter pickle operations
+            save(state_setter)
+            save(obj)  # simple BINGET opcode as obj is already memoized.
+            save(state)
+            write(pickle.TUPLE2)
+            # Trigger a state_setter(obj, state) function call.
+            write(pickle.REDUCE)
+            # The purpose of state_setter is to carry-out an
+            # inplace modification of obj. We do not care about what the
+            # method might return, so its output is eventually removed from
+            # the stack.
+            write(pickle.POP)
+
+        def save_global(self, obj, name=None, pack=struct.pack):
+            """
+            Save a "global".
+
+            The name of this method is somewhat misleading: all types get
+            dispatched here.
+            """
+            if obj is type(None):  # noqa
+                return self.save_reduce(type, (None,), obj=obj)
+            elif obj is type(Ellipsis):
+                return self.save_reduce(type, (Ellipsis,), obj=obj)
+            elif obj is type(NotImplemented):
+                return self.save_reduce(type, (NotImplemented,), obj=obj)
+            elif obj in _BUILTIN_TYPE_NAMES:
+                return self.save_reduce(
+                    _builtin_type, (_BUILTIN_TYPE_NAMES[obj],), obj=obj)
+
+            if sys.version_info[:2] < (3, 7) and _is_parametrized_type_hint(obj):  # noqa  # pragma: no branch
+                # Parametrized typing constructs in Python < 3.7 are not
+                # compatible with type checks and ``isinstance`` semantics. For
+                # this reason, it is easier to detect them using a
+                # duck-typing-based check (``_is_parametrized_type_hint``) than
+                # to populate the Pickler's dispatch with type-specific savers.
+                self.save_reduce(
+                    _create_parametrized_type_hint,
+                    parametrized_type_hint_getinitargs(obj),
+                    obj=obj
+                )
+            elif name is not None:
+                Pickler.save_global(self, obj, name=name)
+            elif not _is_importable(obj, name=name):
+                self._save_reduce_pickle5(*_dynamic_class_reduce(obj), obj=obj)
+            else:
+                Pickler.save_global(self, obj, name=name)
+        dispatch[type] = save_global
+
+        def save_function(self, obj, name=None):
+            """ Registered with the dispatch to handle all function types.
+
+            Determines what kind of function obj is (e.g. lambda, defined at
+            interactive prompt, etc) and handles the pickling appropriately.
+            """
+            if _is_importable(obj, name=name):
+                return Pickler.save_global(self, obj, name=name)
+            elif PYPY and isinstance(obj.__code__, builtin_code_type):
+                return self.save_pypy_builtin_func(obj)
+            else:
+                return self._save_reduce_pickle5(
+                    *self._dynamic_function_reduce(obj), obj=obj
+                )
+
+        def save_pypy_builtin_func(self, obj):
+            """Save pypy equivalent of builtin functions.
+            PyPy does not have the concept of builtin-functions. Instead,
+            builtin-functions are simple function instances, but with a
+            builtin-code attribute.
+            Most of the time, builtin functions should be pickled by attribute.
+            But PyPy has flaky support for __qualname__, so some builtin
+            functions such as float.__new__ will be classified as dynamic. For
+            this reason only, we created this special routine. Because
+            builtin-functions are not expected to have closure or globals,
+            there is no additional hack (compared the one already implemented
+            in pickle) to protect ourselves from reference cycles. A simple
+            (reconstructor, newargs, obj.__dict__) tuple is save_reduced.  Note
+            also that PyPy improved their support for __qualname__ in v3.6, so
+            this routing should be removed when cloudpickle supports only PyPy
+            3.6 and later.
+            """
+            rv = (types.FunctionType, (obj.__code__, {}, obj.__name__,
+                                       obj.__defaults__, obj.__closure__),
+                  obj.__dict__)
+            self.save_reduce(*rv, obj=obj)
+
+        dispatch[types.FunctionType] = save_function

@@ -26,7 +26,7 @@ use it plug and play for your existing models, assuming their parameters are con
 
     .. code-block:: bash
 
-        $ pip install ray torch torchvision pytorch-lightning
+        $ pip install "ray[tune]" torch torchvision pytorch-lightning
 
 .. contents::
     :local:

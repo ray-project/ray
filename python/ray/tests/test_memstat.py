@@ -27,7 +27,7 @@ DESER_ACTOR_TASK_ARG = "(deserialize actor task arg)"
 def data_lines(memory_str):
     for line in memory_str.split("\n"):
         if (not line or "---" in line or "===" in line or "Object ID" in line
-                or "pid=" in line):
+                or "pid=" in line or "Plasma memory" in line):
             continue
         yield line
 

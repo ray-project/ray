@@ -103,6 +103,8 @@ class TorchRNNModel(TorchRNN, nn.Module):
 
     @override(ModelV2)
     def get_initial_state(self):
+        # TODO: (sven): Get rid of `get_initial_state` once Trajectory
+        #  View API is supported across all of RLlib.
         # Place hidden states on same device as model.
         h = [
             self.fc1.weight.new(1, self.lstm_state_size).zero_().squeeze(0),

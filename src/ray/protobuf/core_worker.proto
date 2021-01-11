@@ -71,12 +71,13 @@ message ReturnObject {
   int64 size = 6;
 }
 
-message StealWorkRequest {
+message StealTasksRequest {
 }
 
-message StealWorkReply {
+message StealTasksReply {
   int64 number_of_tasks_stolen = 1;
-  repeated TaskSpec tasks_stolen = 2;
+  // The Task IDs of the tasks that were stolen
+  repeated bytes tasks_stolen = 2;
 }
 
 
@@ -176,7 +177,7 @@ message WaitForObjectEvictionReply {
 message AddObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  bytes client_id = 3;
+  bytes node_id = 3;
 }
 
 message AddObjectLocationOwnerReply {
@@ -185,7 +186,7 @@ message AddObjectLocationOwnerReply {
 message RemoveObjectLocationOwnerRequest {
   bytes intended_worker_id = 1;
   bytes object_id = 2;
-  bytes client_id = 3;
+  bytes node_id = 3;
 }
 
 message RemoveObjectLocationOwnerReply {
@@ -197,7 +198,7 @@ message GetObjectLocationsOwnerRequest {
 }
 
 message GetObjectLocationsOwnerReply {
-  repeated bytes client_ids = 1;
+  repeated bytes node_ids = 1;
 }
 
 message KillActorRequest {
@@ -217,6 +218,8 @@ message CancelTaskRequest {
   bytes intended_task_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
 }
 
 message CancelTaskReply {
@@ -229,6 +232,8 @@ message RemoteCancelTaskRequest {
   bytes remote_object_id = 1;
   // Whether to kill the worker.
   bool force_kill = 2;
+  // Whether to recursively cancel tasks.
+  bool recursive = 3;
 }
 
 message RemoteCancelTaskReply {
@@ -299,8 +304,6 @@ message LocalGCReply {
 
 message PlasmaObjectReadyRequest {
   bytes object_id = 1;
-  int64 data_size = 2;
-  int64 metadata_size = 3;
 }
 
 message PlasmaObjectReadyReply {
@@ -319,16 +322,34 @@ message SpillObjectsReply {
 message RestoreSpilledObjectsRequest {
   // The URLs of spilled objects.
   repeated string spilled_objects_url = 1;
+  // Object ids to restore. The order of object ids
+  // must be the same as spilled_objects_url.
+  repeated bytes object_ids_to_restore = 2;
 }
 
 message RestoreSpilledObjectsReply {
+  int64 bytes_restored_total = 1;
+}
+
+message DeleteSpilledObjectsRequest {
+  // The URLs of spilled objects.
+  repeated string spilled_objects_url = 1;
+}
+
+message DeleteSpilledObjectsReply {
+}
+
+message ExitRequest {
+}
+
+message ExitReply {
 }
 
 service CoreWorkerService {
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Steal tasks from a worker if it has a surplus of work
-  rpc StealWork(StealWorkRequest) returns (StealWorkReply);
+  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
@@ -369,6 +390,11 @@ service CoreWorkerService {
   // Restore spilled objects from external storage. Caller: raylet; callee: I/O worker.
   rpc RestoreSpilledObjects(RestoreSpilledObjectsRequest)
       returns (RestoreSpilledObjectsReply);
+  // Delete spilled objects from external storage. Caller: raylet; callee: I/O worker.
+  rpc DeleteSpilledObjects(DeleteSpilledObjectsRequest)
+      returns (DeleteSpilledObjectsReply);
   // Notification from raylet that an object ID is available in local plasma.
   rpc PlasmaObjectReady(PlasmaObjectReadyRequest) returns (PlasmaObjectReadyReply);
+  // Request for a worker to exit.
+  rpc Exit(ExitRequest) returns (ExitReply);
 }

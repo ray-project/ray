@@ -446,7 +446,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Start trial
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save
-        self.assertEquals(trials[0].status, Trial.TERMINATED)
+        self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         trials += [
             Trial(
@@ -461,7 +461,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process result, dispatch save
         runner.step()  # Process save
         runner.step()  # Error
-        self.assertEquals(trials[1].status, Trial.ERROR)
+        self.assertEqual(trials[1].status, Trial.ERROR)
 
         trials += [
             Trial(
@@ -472,8 +472,8 @@ class TrialRunnerTest3(unittest.TestCase):
         ]
         runner.add_trial(trials[2])
         runner.step()  # Start trial
-        self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
-        self.assertEquals(trials[2].status, Trial.RUNNING)
+        self.assertEqual(len(runner.trial_executor.get_checkpoints()), 3)
+        self.assertEqual(trials[2].status, Trial.RUNNING)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
@@ -529,7 +529,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         new_trials = runner2.get_trials()
-        self.assertEquals(len(new_trials), 3)
+        self.assertEqual(len(new_trials), 3)
         self.assertTrue(
             runner2.get_trial("non_checkpoint").status == Trial.TERMINATED)
         self.assertTrue(
@@ -575,15 +575,15 @@ class TrialRunnerTest3(unittest.TestCase):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        self.assertEquals(count_checkpoints(tmpdir), 1)
+        self.assertEqual(count_checkpoints(tmpdir), 1)
 
         runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for _ in range(5):
             runner2.step()
-        self.assertEquals(count_checkpoints(tmpdir), 2)
+        self.assertEqual(count_checkpoints(tmpdir), 2)
 
         runner2.checkpoint()
-        self.assertEquals(count_checkpoints(tmpdir), 2)
+        self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
     def testUserCheckpoint(self):
@@ -612,7 +612,13 @@ class TrialRunnerTest3(unittest.TestCase):
 
 
 class SearchAlgorithmTest(unittest.TestCase):
-    def tearDown(self):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(
+            num_cpus=4, num_gpus=0, local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
         ray.shutdown()
         _register_all()
 
@@ -629,8 +635,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         self.assertTrue("d=4" in trial.experiment_tag)
 
     def _test_repeater(self, num_samples, repeat):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             index = 0
 
@@ -660,25 +664,23 @@ class SearchAlgorithmTest(unittest.TestCase):
 
     def testRepeat1(self):
         trials = self._test_repeater(num_samples=2, repeat=1)
-        self.assertEquals(len(trials), 2)
+        self.assertEqual(len(trials), 2)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
-        self.assertEquals(len(parameter_set), 2)
+        self.assertEqual(len(parameter_set), 2)
 
     def testRepeat4(self):
         trials = self._test_repeater(num_samples=12, repeat=4)
-        self.assertEquals(len(trials), 12)
+        self.assertEqual(len(trials), 12)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
-        self.assertEquals(len(parameter_set), 3)
+        self.assertEqual(len(parameter_set), 3)
 
     def testOddRepeat(self):
         trials = self._test_repeater(num_samples=11, repeat=5)
-        self.assertEquals(len(trials), 11)
+        self.assertEqual(len(trials), 11)
         parameter_set = {t.evaluated_params["test_variable"] for t in trials}
-        self.assertEquals(len(parameter_set), 3)
+        self.assertEqual(len(parameter_set), 3)
 
     def testSetGetRepeater(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
@@ -729,8 +731,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert new_repeater.searcher.returned_result[-1] == {"result": 3}
 
     def testSetGetLimiter(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
@@ -761,8 +761,6 @@ class SearchAlgorithmTest(unittest.TestCase):
         assert limiter2.suggest("test_3")["score"] == 3
 
     def testBatchLimiter(self):
-        ray.init(num_cpus=4)
-
         class TestSuggestion(Searcher):
             def __init__(self, index):
                 self.index = index
@@ -841,7 +839,7 @@ class ResourcesTest(unittest.TestCase):
         original = Resources(1, 0, 0, 1, custom_resources={"a": 1, "b": 2})
         jsoned = resources_to_json(original)
         new_resource = json_to_resources(jsoned)
-        self.assertEquals(original, new_resource)
+        self.assertEqual(original, new_resource)
 
 
 if __name__ == "__main__":

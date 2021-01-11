@@ -1,5 +1,6 @@
 package io.ray.runtime.object;
 
+import com.google.common.primitives.Bytes;
 import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.api.id.ObjectId;
 import io.ray.runtime.actor.NativeActorHandle;
@@ -9,6 +10,7 @@ import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.Serializer;
+import io.ray.runtime.util.IdUtil;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,14 +25,14 @@ import org.apache.commons.lang3.tuple.Pair;
  */
 public class ObjectSerializer {
 
-  private static final byte[] WORKER_EXCEPTION_META = String
-      .valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
-  private static final byte[] ACTOR_EXCEPTION_META = String
-      .valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
-  private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
-      .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
-  private static final byte[] TASK_EXECUTION_EXCEPTION_META = String
-      .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
+  private static final byte[] WORKER_EXCEPTION_META =
+      String.valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
+  private static final byte[] ACTOR_EXCEPTION_META =
+      String.valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
+  private static final byte[] TASK_EXECUTION_EXCEPTION_META =
+      String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
@@ -53,31 +55,30 @@ public class ObjectSerializer {
    * Deserialize an object from an {@link NativeRayObject} instance.
    *
    * @param nativeRayObject The object to deserialize.
-   * @param objectId The associated object ID of the object.
-   * @return The deserialized object.
+   * @param objectId The associated object ID of the object. Returns The deserialized object.
    */
-  public static Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId,
-      Class<?> objectType) {
+  public static Object deserialize(
+      NativeRayObject nativeRayObject, ObjectId objectId, Class<?> objectType) {
     byte[] meta = nativeRayObject.metadata;
     byte[] data = nativeRayObject.data;
 
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
-      if (Arrays.equals(meta, OBJECT_METADATA_TYPE_RAW)) {
+      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
         }
         return data;
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
-          Arrays.equals(meta, OBJECT_METADATA_TYPE_JAVA)) {
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_CROSS_LANGUAGE) == 0
+          || Bytes.indexOf(meta, OBJECT_METADATA_TYPE_JAVA) == 0) {
         return Serializer.decode(data, objectType);
-      } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
+      } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
-      } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-        return new RayActorException();
-      } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
+      } else if (Bytes.indexOf(meta, ACTOR_EXCEPTION_META) == 0) {
+        return new RayActorException(IdUtil.getActorIdFromObjectId(objectId));
+      } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0) {
         return new UnreconstructableException(objectId);
-      } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
+      } else if (Bytes.indexOf(meta, TASK_EXECUTION_EXCEPTION_META) == 0) {
         // Serialization logic of task execution exception: an instance of
         // `io.ray.runtime.exception.RayTaskException`
         //    -> a `RayException` protobuf message
@@ -90,15 +91,14 @@ public class ObjectSerializer {
           return RayTaskException.fromBytes(serialized);
         } catch (InvalidProtocolBufferException e) {
           throw new IllegalArgumentException(
-              "Can't deserialize RayTaskException object: " + objectId
-                  .toString());
+              "Can't deserialize RayTaskException object: " + objectId.toString());
         }
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE)) {
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ACTOR_HANDLE) == 0) {
         byte[] serialized = Serializer.decode(data, byte[].class);
         return NativeActorHandle.fromBytes(serialized);
-      } else if (Arrays.equals(meta, OBJECT_METADATA_TYPE_PYTHON)) {
-        throw new IllegalArgumentException("Can't deserialize Python object: " + objectId
-            .toString());
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_PYTHON) == 0) {
+        throw new IllegalArgumentException(
+            "Can't deserialize Python object: " + objectId.toString());
       }
       throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
     } else {
@@ -110,8 +110,7 @@ public class ObjectSerializer {
   /**
    * Serialize an Java object to an {@link NativeRayObject} instance.
    *
-   * @param object The object to serialize.
-   * @return The serialized object.
+   * @param object The object to serialize. Returns The serialized object.
    */
   public static NativeRayObject serialize(Object object) {
     if (object instanceof NativeRayObject) {
@@ -140,7 +139,7 @@ public class ObjectSerializer {
       // any other type should be the MessagePack serialized bytes.
       return new NativeRayObject(serializedBytes, TASK_EXECUTION_EXCEPTION_META);
     } else if (object instanceof NativeActorHandle) {
-      NativeActorHandle actorHandle = (NativeActorHandle)object;
+      NativeActorHandle actorHandle = (NativeActorHandle) object;
       byte[] serializedBytes = Serializer.encode(actorHandle.toBytes()).getLeft();
       // serializedBytes is MessagePack serialized bytes
       // Only OBJECT_METADATA_TYPE_RAW is raw bytes,
@@ -149,10 +148,12 @@ public class ObjectSerializer {
     } else {
       try {
         Pair<byte[], Boolean> serialized = Serializer.encode(object);
-        NativeRayObject nativeRayObject = new NativeRayObject(serialized.getLeft(),
-            serialized.getRight()
-                ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE
-                : OBJECT_METADATA_TYPE_JAVA);
+        NativeRayObject nativeRayObject =
+            new NativeRayObject(
+                serialized.getLeft(),
+                serialized.getRight()
+                    ? OBJECT_METADATA_TYPE_CROSS_LANGUAGE
+                    : OBJECT_METADATA_TYPE_JAVA);
         nativeRayObject.setContainedObjectIds(getAndClearContainedObjectIds());
         return nativeRayObject;
       } catch (Exception e) {

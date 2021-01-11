@@ -31,7 +31,7 @@ DEFAULT_CONFIG = impala.ImpalaTrainer.merge_trainer_configs(
     {
         # Whether to use V-trace weighted advantages. If false, PPO GAE
         # advantages will be used instead.
-        "vtrace": False,
+        "vtrace": True,
 
         # == These two options only apply if vtrace: False ==
         # Should use a critic as a baseline (otherwise don't use value

@@ -10,10 +10,11 @@ import time
 import urllib
 import urllib.parse
 import yaml
+from socket import socket
 
 import ray
 import psutil
-import ray.services as services
+import ray._private.services as services
 from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
@@ -21,8 +22,7 @@ from ray.autoscaler._private.commands import (
 import ray.ray_constants as ray_constants
 import ray.utils
 
-from ray.autoscaler._private.cli_logger import cli_logger
-import colorful as cf
+from ray.autoscaler._private.cli_logger import cli_logger, cf
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ logging_options = [
         default="auto",
         help=("Use color logging. "
               "Auto enables color logging if stdout is a TTY.")),
-    click.option("-v", "--verbose", count=True)
+    click.option("-v", "--verbose", default=None, count=True)
 ]
 
 
@@ -97,7 +97,7 @@ def add_click_options(options):
 @click.version_option()
 def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
-    ray.utils.setup_logger(level, logging_format)
+    ray.ray_logging.setup_logger(level, logging_format)
     cli_logger.set_format(format_tmpl=logging_format)
 
 
@@ -150,6 +150,72 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
                 from None
 
 
+def continue_debug_session():
+    """Continue active debugging session.
+
+    This function will connect 'ray debug' to the right debugger
+    when a user is stepping between Ray tasks.
+    """
+    active_sessions = ray.experimental.internal_kv._internal_kv_list(
+        "RAY_PDB_")
+
+    for active_session in active_sessions:
+        if active_session.startswith(b"RAY_PDB_CONTINUE"):
+            print("Continuing pdb session in different process...")
+            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
+            while True:
+                data = ray.experimental.internal_kv._internal_kv_get(key)
+                if data:
+                    session = json.loads(data)
+                    if "exit_debugger" in session:
+                        ray.experimental.internal_kv._internal_kv_del(key)
+                        return
+                    host, port = session["pdb_address"].split(":")
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
+                    ray.experimental.internal_kv._internal_kv_del(key)
+                    continue_debug_session()
+                    return
+                time.sleep(1.0)
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def debug(address):
+    """Show all active breakpoints and exceptions in the Ray debugger."""
+    if not address:
+        address = services.get_ray_address_to_use_or_die()
+    logger.info(f"Connecting to Ray instance at {address}.")
+    ray.init(address=address, log_to_driver=False)
+    while True:
+        continue_debug_session()
+
+        active_sessions = ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_")
+        print("Active breakpoints:")
+        for i, active_session in enumerate(active_sessions):
+            data = json.loads(
+                ray.experimental.internal_kv._internal_kv_get(active_session))
+            print(
+                str(i) + ": " + data["proctitle"] + " | " + data["filename"] +
+                ":" + str(data["lineno"]))
+            print(data["traceback"])
+        inp = input("Enter breakpoint index or press enter to refresh: ")
+        if inp == "":
+            print()
+            continue
+        else:
+            index = int(inp)
+            session = json.loads(
+                ray.experimental.internal_kv._internal_kv_get(
+                    active_sessions[index]))
+            host, port = session["pdb_address"].split(":")
+            ray.util.rpdb.connect_pdb_client(host, int(port))
+
+
 @cli.command()
 @click.option(
     "--node-ip-address",
@@ -160,11 +226,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--port",
+    type=int,
     required=False,
-    type=str,
-    help="the port of the head ray process. If not provided, tries to use "
-    "{0}, falling back to a random port if {0} is "
-    "not available".format(ray_constants.DEFAULT_PORT))
+    help=f"the port of the head ray process. If not provided, defaults to "
+    f"{ray_constants.DEFAULT_PORT}; if port is set to 0, we will"
+    f" allocate an available port.")
 @click.option(
     "--redis-password",
     required=False,
@@ -207,6 +273,18 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     default=10999,
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
+@click.option(
+    "--worker-port-list",
+    required=False,
+    help="a comma-separated list of open ports for workers to bind on. "
+    "Overrides '--min-worker-port' and '--max-worker-port'.")
+@click.option(
+    "--ray-client-server-port",
+    required=False,
+    type=int,
+    default=None,
+    help="the port number the ray client server will bind on. If not set, "
+    "the ray client server will not be started.")
 @click.option(
     "--memory",
     required=False,
@@ -316,24 +394,11 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--code-search-path",
-    default=None,
-    hidden=True,
-    type=str,
-    help="A list of directories or jar files separated by colon that specify "
-    "the search path for user code. This will be used as `CLASSPATH` in "
-    "Java and `PYTHONPATH` in Python.")
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
     type=json.loads,
     help="Override system configuration defaults.")
-@click.option(
-    "--load-code-from-local",
-    is_flag=True,
-    default=False,
-    help="Specify whether load code from local file or GCS serialization.")
 @click.option(
     "--lru-evict",
     is_flag=True,
@@ -357,18 +422,17 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, memory, object_store_memory,
+          min_worker_port, max_worker_port, worker_port_list,
+          ray_client_server_port, memory, object_store_memory,
           redis_max_memory, num_cpus, num_gpus, resources, head,
           include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, java_worker_options, load_code_from_local,
-          code_search_path, system_config, lru_evict,
+          temp_dir, java_worker_options, system_config, lru_evict,
           enable_object_reconstruction, metrics_export_port, log_style,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
-
     if gcs_server_port and not head:
         raise ValueError(
             "gcs_server_port can be only assigned when you specify --head.")
@@ -381,7 +445,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
     if address is not None:
         (redis_address, redis_address_ip,
          redis_address_port) = services.validate_redis_address(address)
-
     try:
         resources = json.loads(resources)
     except Exception:
@@ -403,6 +466,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         node_ip_address=node_ip_address,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
+        worker_port_list=worker_port_list,
+        ray_client_server_port=ray_client_server_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         gcs_server_port=gcs_server_port,
@@ -423,13 +488,20 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
-        load_code_from_local=load_code_from_local,
-        code_search_path=code_search_path,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port)
     if head:
+        # Use default if port is none, allocate an available port if port is 0
+        if port is None:
+            port = ray_constants.DEFAULT_PORT
+
+        if port == 0:
+            with socket() as s:
+                s.bind(("", 0))
+                port = s.getsockname()[1]
+
         num_redis_shards = None
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -447,12 +519,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             "started, so a Redis address should not be "
                             "provided.")
 
+        node_ip_address = services.get_node_ip_address()
+
         # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(
-            node_ip_address=services.get_node_ip_address())
+        ray_params.update_if_absent(node_ip_address=node_ip_address)
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger, "Using IP address {} for this node.",
-                            ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port,
             redis_shard_ports=redis_shard_ports,
@@ -461,6 +532,16 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             redis_max_clients=None,
             autoscaling_config=autoscaling_config,
         )
+
+        # Fail early when starting a new cluster when one is already running
+        if address is None:
+            default_address = f"{node_ip_address}:{port}"
+            redis_addresses = services.find_redis_address(default_address)
+            if len(redis_addresses) > 0:
+                raise ConnectionError(
+                    f"Ray is already running at {default_address}. "
+                    f"Please specify a different port using the `--port`"
+                    f" command to `ray start`.")
 
         node = ray.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
@@ -477,6 +558,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         with cli_logger.group("Next steps"):
             cli_logger.print(
                 "To connect to this Ray runtime from another node, run")
+            # NOTE(kfstorm): Java driver rely on this line to get the address
+            # of the cluster. Please be careful when updating this line.
             cli_logger.print(
                 cf.bold("  ray start --address='{}'{}"), redis_address,
                 f" --redis-password='{redis_password}'"
@@ -501,33 +584,14 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.newline()
             cli_logger.print("To terminate the Ray runtime, run")
             cli_logger.print(cf.bold("  ray stop"))
-
-        cli_logger.old_info(
-            logger,
-            "\nStarted Ray on this node. You can add additional nodes to "
-            "the cluster by calling\n\n"
-            "    ray start --address='{}'{}\n\n"
-            "from the node you wish to add. You can connect a driver to the "
-            "cluster from Python by running\n\n"
-            "    import ray\n"
-            "    ray.init(address='auto'{})\n\n"
-            "If you have trouble connecting from a different machine, check "
-            "that your firewall is configured properly. If you wish to "
-            "terminate the processes that have been started, run\n\n"
-            "    ray stop".format(
-                redis_address, " --redis-password='" + redis_password + "'"
-                if redis_password else "",
-                ", _redis_password='" + redis_password + "'"
-                if redis_password else ""))
     else:
         # Start Ray on a non-head node.
         if not (port is None):
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--port"), cf.bold("--head"))
 
-            raise Exception(
-                "If --head is not passed in, --port and --redis-port are not "
-                "allowed.")
+            raise Exception("If --head is not passed in, --port is not "
+                            "allowed.")
         if redis_shard_ports is not None:
             cli_logger.abort("`{}` should not be specified without `{}`.",
                              cf.bold("--redis-shard-ports"), cf.bold("--head"))
@@ -566,8 +630,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             node_ip_address=services.get_node_ip_address(redis_address))
 
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
-        cli_logger.old_info(logger, "Using IP address {} for this node.",
-                            ray_params.node_ip_address)
 
         # Check that there aren't already Redis clients with the same IP
         # address connected with this Redis instance. This raises an exception
@@ -587,18 +649,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
 
-        cli_logger.old_info(
-            logger, "\nStarted Ray on this node. If you wish to terminate the "
-            "processes that have been started, run\n\n"
-            "    ray stop")
-
     if block:
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
             cli_logger.print(
                 "This command will now block until terminated by a signal.")
             cli_logger.print(
-                "Runing subprocesses are monitored and a message will be "
+                "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
 
         while True:
@@ -607,8 +664,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             if len(deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprcesses exited unexpectedly:")
-                cli_logger.old_error(logger,
-                                     "Ray processes died unexpectedly:")
 
                 with cli_logger.indented():
                     for process_type, process in deceased:
@@ -616,15 +671,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                             "{}",
                             cf.bold(str(process_type)),
                             _tags={"exit code": str(process.returncode)})
-                        cli_logger.old_error(
-                            logger, "\t{} died with exit code {}".format(
-                                process_type, process.returncode))
 
                 # shutdown_at_exit will handle cleanup.
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
-                cli_logger.old_error(
-                    logger, "Killing remaining processes and exiting...")
                 sys.exit(1)
 
 
@@ -657,6 +707,7 @@ def stop(force, verbose, log_style, log_color):
         ["plasma_store", True],
         ["gcs_server", True],
         ["monitor.py", False],
+        ["ray.util.client.server", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
@@ -664,6 +715,7 @@ def stop(force, verbose, log_style, log_color):
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
+        ["new_dashboard/agent.py", False],
         ["ray_process_reaper.py", False],
     ]
 
@@ -696,10 +748,6 @@ def stop(force, verbose, log_style, log_color):
             total_found += 1
 
             proc_string = str(subprocess.list2cmdline(proc_args))
-            if verbose:
-                operation = "Terminating" if force else "Killing"
-                cli_logger.old_info(logger, "%s process %s: %s", operation,
-                                    proc.pid, proc_string)
             try:
                 if force:
                     proc.kill()
@@ -726,7 +774,6 @@ def stop(force, verbose, log_style, log_color):
             except (psutil.Error, OSError) as ex:
                 cli_logger.error("Could not terminate `{}` due to {}",
                                  cf.bold(proc_string), str(ex))
-                cli_logger.old_error(logger, "Error: %s", ex)
 
     if total_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
@@ -824,7 +871,6 @@ def up(cluster_config_file, min_workers, max_workers, no_restart, restart_only,
             cli_logger.warning("{}", str(e))
             cli_logger.warning(
                 "Could not download remote cluster configuration file.")
-            cli_logger.old_info(logger, "Error downloading file: ", e)
     create_or_update_cluster(
         config_file=cluster_config_file,
         override_min_workers=min_workers,
@@ -1011,6 +1057,14 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes,
     """Upload specific files to a Ray cluster."""
     cli_logger.configure(log_style, log_color, verbose)
 
+    if all_nodes:
+        cli_logger.warning(
+            "WARNING: the `all_nodes` option is deprecated and will be "
+            "removed in the future. "
+            "Rsync to worker nodes is not reliable since workers may be "
+            "added during autoscaling. Please use the `file_mounts` "
+            "feature instead for consistent file sync in autoscaling clusters")
+
     rsync(
         cluster_config_file,
         source,
@@ -1099,11 +1153,6 @@ def submit(cluster_config_file, screen, tmux, stop, start, cluster_name,
                            cf.bold("-- <args ...>"),
                            cf.bold("ray submit script.py -- --arg=123 --flag"))
         cli_logger.newline()
-        cli_logger.old_warning(
-            logger,
-            "ray submit [yaml] [script.py] --args=... is deprecated and "
-            "will be removed in a future version of Ray. Use "
-            "`ray submit [yaml] script.py -- --arg1 --arg2` instead.")
 
     if start:
         create_or_update_cluster(
@@ -1248,7 +1297,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
+    echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.
@@ -1285,7 +1334,7 @@ def microbenchmark():
 def timeline(address):
     """Take a Chrome tracing timeline for a Ray cluster."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
@@ -1313,7 +1362,7 @@ def timeline(address):
 def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, _redis_password=redis_password)
     print(ray.internal.internal_api.memory_summary())
@@ -1328,7 +1377,7 @@ def memory(address, redis_password):
 def status(address):
     """Print cluster status, including autoscaling info."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     print(debug_status())
@@ -1343,7 +1392,7 @@ def status(address):
 def global_gc(address):
     """Trigger Python garbage collection on all cluster workers."""
     if not address:
-        address = services.find_redis_address_or_die()
+        address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address)
     ray.internal.internal_api.global_gc()
@@ -1411,6 +1460,7 @@ def add_command_alias(command, name, hidden):
 
 
 cli.add_command(dashboard)
+cli.add_command(debug)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(up)

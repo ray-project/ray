@@ -8,6 +8,7 @@ See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
 Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
 """
 
+import logging
 from typing import Optional, Type
 
 from ray.rllib.agents.trainer import with_common_config
@@ -16,6 +17,8 @@ from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict
+
+logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__

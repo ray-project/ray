@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import signal
 import sys
 import tempfile
 import threading
@@ -14,12 +16,8 @@ import ray.utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError
 from ray.cluster_utils import Cluster
-from ray.test_utils import (
-    wait_for_condition,
-    SignalActor,
-    init_error_pubsub,
-    get_error_message,
-)
+from ray.test_utils import (wait_for_condition, SignalActor, init_error_pubsub,
+                            get_error_message, Semaphore)
 
 
 def test_failed_task(ray_start_regular, error_pubsub):
@@ -86,7 +84,7 @@ def test_failed_task(ray_start_regular, error_pubsub):
 def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
     address = address_info["redis_address"]
-    redis_client = ray.services.create_redis_client(
+    redis_client = ray._private.services.create_redis_client(
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     error_message = "Test error message"
     ray.utils.push_error_to_driver_through_redis(
@@ -456,9 +454,18 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular,
 
     @ray.remote
     class Actor:
-        pass
+        def __init__(self):
+            # This log is added to debug a flaky test issue.
+            print(os.getpid())
+
+        def ping(self):
+            pass
 
     a = Actor.remote()
+    # Without this waiting, there seems to be race condition happening
+    # in the CI. This is not a fundamental fix for that, but it at least
+    # makes the test less flaky.
+    ray.get(a.ping.remote())
     a = Actor.remote()
     a.__ray_terminate__.remote()
     time.sleep(1)
@@ -625,11 +632,10 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-@pytest.mark.skip(reason="TODO detect resource deadlock")
-def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
-    p = error_pubsub
-    # Check that we get warning messages for infeasible tasks.
-    ray.init(num_cpus=1)
+def test_warning_all_tasks_blocked(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
     class Foo:
@@ -639,12 +645,52 @@ def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
     @ray.remote
     def f():
         # Creating both actors is not possible.
-        actors = [Foo.remote() for _ in range(2)]
+        actors = [Foo.remote() for _ in range(3)]
         for a in actors:
             ray.get(a.f.remote())
 
     # Run in a task to check we handle the blocked task case correctly
     f.remote()
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_actor_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+    b = Actor.remote()  # noqa
+
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_task_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+
+    @ray.remote(num_cpus=1)
+    def f():
+        print("f running")
+        time.sleep(999)
+
+    ids = [f.remote()]  # noqa
+
     errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
@@ -727,24 +773,44 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     ray.init(num_cpus=num_cpus)
     p = init_error_pubsub()
 
+    remote_wait = Semaphore.remote(value=0)
+    nested_wait = Semaphore.remote(value=0)
+
+    ray.get([
+        remote_wait.locked.remote(),
+        nested_wait.locked.remote(),
+    ])
+
     @ray.remote
     def f():
         time.sleep(1000)
         return 1
 
     @ray.remote
-    def h():
-        time.sleep(1)
+    def h(nested_waits):
+        nested_wait.release.remote()
+        ray.get(nested_waits)
         ray.get(f.remote())
 
     @ray.remote
-    def g():
+    def g(remote_waits, nested_waits):
         # Sleep so that the f tasks all get submitted to the scheduler after
         # the g tasks.
-        time.sleep(1)
-        ray.get(h.remote())
+        remote_wait.release.remote()
+        # wait until every lock is released.
+        ray.get(remote_waits)
+        ray.get(h.remote(nested_waits))
 
-    [g.remote() for _ in range(num_cpus * 6)]
+    num_root_tasks = num_cpus * 4
+    # Lock remote task until everything is scheduled.
+    remote_waits = []
+    nested_waits = []
+    for _ in range(num_root_tasks):
+        remote_waits.append(remote_wait.acquire.remote())
+        nested_waits.append(nested_wait.acquire.remote())
+
+    [g.remote(remote_waits, nested_waits) for _ in range(num_root_tasks)]
+
     errors = get_error_message(p, 1, ray_constants.WORKER_POOL_LARGE_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_POOL_LARGE_ERROR
@@ -1223,6 +1289,104 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
         assert len(keys) <= 1, len(keys)
     else:
         assert len(keys) <= 2, len(keys)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "ping_gcs_rpc_server_max_retries": 100
+        }
+    }],
+    indirect=True)
+def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
+    p = log_pubsub
+    # Get gcs server pid to send a signal.
+    all_processes = ray.worker._global_node.all_processes
+    gcs_server_process = all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    os.kill(gcs_server_pid, signal.SIGBUS)
+    msg = None
+    cnt = 0
+    # wait for max 30 seconds.
+    while cnt < 3000 and not msg:
+        msg = p.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            cnt += 1
+            continue
+        data = json.loads(ray.utils.decode(msg["data"]))
+        assert data["pid"] == "gcs_server"
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "task_retry_delay_ms": 500
+        }
+    }],
+    indirect=True)
+def test_async_actor_task_retries(ray_start_regular):
+    # https://github.com/ray-project/ray/issues/11683
+
+    signal = SignalActor.remote()
+
+    @ray.remote
+    class DyingActor:
+        def __init__(self):
+            print("DyingActor init called")
+            self.should_exit = False
+
+        def set_should_exit(self):
+            print("DyingActor.set_should_exit called")
+            self.should_exit = True
+
+        async def get(self, x, wait=False):
+            print(f"DyingActor.get called with x={x}, wait={wait}")
+            if self.should_exit:
+                os._exit(0)
+            if wait:
+                await signal.wait.remote()
+            return x
+
+    # Normal in order actor task retries should work
+    dying = DyingActor.options(
+        max_restarts=-1,
+        max_task_retries=-1,
+    ).remote()
+
+    assert ray.get(dying.get.remote(1)) == 1
+    ray.get(dying.set_should_exit.remote())
+    assert ray.get(dying.get.remote(42)) == 42
+
+    # Now let's try out of order retries:
+    # Task seqno 0 will return
+    # Task seqno 1 will be pending and retried later
+    # Task seqno 2 will return
+    # Task seqno 3 will crash the actor and retried later
+    dying = DyingActor.options(
+        max_restarts=-1,
+        max_task_retries=-1,
+    ).remote()
+
+    # seqno 0
+    ref_0 = dying.get.remote(0)
+    assert ray.get(ref_0) == 0
+    # seqno 1
+    ref_1 = dying.get.remote(1, wait=True)
+    # seqno 2
+    ref_2 = dying.set_should_exit.remote()
+    assert ray.get(ref_2) is None
+    # seqno 3, this will crash the actor because previous task set should exit
+    # to true.
+    ref_3 = dying.get.remote(3)
+
+    # At this point the actor should be restarted. The two pending tasks
+    # [ref_1, ref_3] should be retried, but not the completed tasks [ref_0,
+    # ref_2]. Critically, if ref_2 was retried, ref_3 can never return.
+    ray.get(signal.send.remote())
+    assert ray.get(ref_1) == 1
+    assert ray.get(ref_3) == 3
 
 
 if __name__ == "__main__":

@@ -77,7 +77,7 @@ When you have multiple tasks that need to wait on some condition, you can use a 
     signal = SignalActor.remote()
     tasks = [wait_and_go.remote(signal) for _ in range(4)]
     print("ready...")
-    # Tasks will all be waiting for the singals.
+    # Tasks will all be waiting for the signals.
     print("set..")
     ray.get(signal.send.remote())
 
@@ -188,36 +188,6 @@ as the worker process name when this task is executing (if a Python task), and w
 appear as the task name in the logs.
 
 .. image:: images/task_name_dashboard.png
-
-
-Dynamic Custom Resources
-------------------------
-
-Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
-load balancing, gang scheduling, and priority-based scheduling.
-
-
-.. code-block:: python
-
-    ray.init()
-    resource_name = "test_resource"
-    resource_capacity = 1.0
-
-    @ray.remote
-    def set_resource(resource_name, resource_capacity):
-        ray.experimental.set_resource(resource_name, resource_capacity)
-
-    ray.get(set_resource.remote(resource_name, resource_capacity))
-
-    available_resources = ray.available_resources()
-    cluster_resources = ray.cluster_resources()
-
-    assert available_resources[resource_name] == resource_capacity
-    assert cluster_resources[resource_name] == resource_capacity
-
-
-.. autofunction:: ray.experimental.set_resource
-    :noindex:
 
 
 Accelerator Types

@@ -20,6 +20,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -27,7 +28,9 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
  public:
   ServiceBasedGcsClientTest() {
     RayConfig::instance().initialize(
-        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)}});
+        {{"ping_gcs_rpc_server_max_retries", std::to_string(60)},
+         {"maximum_gcs_destroyed_actor_cached_count", std::to_string(10)},
+         {"maximum_gcs_dead_node_cached_count", std::to_string(10)}});
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -142,6 +145,13 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id));
   }
 
+  void WaitForActorUnsubscribed(const ActorID &actor_id) {
+    auto condition = [this, actor_id]() {
+      return gcs_client_->Actors().IsActorUnsubscribed(actor_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
   bool SubscribeAllActors(
       const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
@@ -150,20 +160,46 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
-        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
+  bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data,
+                     bool is_detached = true, bool skip_wait = false) {
+    rpc::TaskSpec message;
+    auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+    message.set_job_id(actor_id.JobId().Binary());
+    message.set_type(TaskType::ACTOR_CREATION_TASK);
+    message.set_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+    message.set_caller_id(actor_id.Binary());
+    message.set_max_retries(0);
+    message.set_num_returns(1);
+    message.set_parent_task_id(TaskID::ForActorCreationTask(actor_id).Binary());
+    message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
+    message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
+    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // worker client is called during the actor registration process. In order to simulate
+    // the scenario of registration failure, we set the address to an illegal value.
+    if (!is_detached) {
+      rpc::Address address;
+      address.set_ip_address("");
+      message.mutable_caller_address()->CopyFrom(address);
+    }
+    TaskSpecification task_spec(message);
 
-  bool UpdateActor(const ActorID &actor_id,
-                   const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
-        actor_id, actor_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
+    if (skip_wait) {
+      return gcs_client_->Actors()
+          .AsyncRegisterActor(task_spec, [](Status status) {})
+          .ok();
+    }
+
+    // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+    // client will register the actor again and promise may be set twice.
+    auto promise = std::make_shared<std::promise<bool>>();
+    RAY_CHECK_OK(
+        gcs_client_->Actors().AsyncRegisterActor(task_spec, [promise](Status status) {
+          try {
+            promise->set_value(status.ok());
+          } catch (...) {
+          }
+        }));
+    return WaitReady(promise->get_future(), timeout_ms_);
   }
 
   rpc::ActorTableData GetActor(const ActorID &actor_id) {
@@ -180,48 +216,31 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return actor_table_data;
   }
 
-  bool AddCheckpoint(
-      const std::shared_ptr<rpc::ActorCheckpointData> &actor_checkpoint_data) {
+  std::vector<rpc::ActorTableData> GetAllActors(bool filter_non_dead_actor = false) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
-        actor_checkpoint_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  rpc::ActorCheckpointData GetCheckpoint(const ActorID &actor_id,
-                                         const ActorCheckpointID &checkpoint_id) {
-    std::promise<bool> promise;
-    rpc::ActorCheckpointData actor_checkpoint_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
-        checkpoint_id, actor_id,
-        [&actor_checkpoint_data, &promise](
-            Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
-          assert(result);
-          actor_checkpoint_data.CopyFrom(*result);
+    std::vector<rpc::ActorTableData> actors;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
+        [filter_non_dead_actor, &actors, &promise](
+            Status status, const std::vector<rpc::ActorTableData> &result) {
+          if (!result.empty()) {
+            if (filter_non_dead_actor) {
+              for (auto &iter : result) {
+                if (iter.state() == gcs::ActorTableData::DEAD) {
+                  actors.emplace_back(iter);
+                }
+              }
+            } else {
+              actors.assign(result.begin(), result.end());
+            }
+          }
           promise.set_value(true);
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return actor_checkpoint_data;
-  }
-
-  rpc::ActorCheckpointIdData GetCheckpointID(const ActorID &actor_id) {
-    std::promise<bool> promise;
-    rpc::ActorCheckpointIdData actor_checkpoint_id_data;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
-        actor_id,
-        [&actor_checkpoint_id_data, &promise](
-            Status status, const boost::optional<rpc::ActorCheckpointIdData> &result) {
-          assert(result);
-          actor_checkpoint_id_data.CopyFrom(*result);
-          promise.set_value(true);
-        }));
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return actor_checkpoint_id_data;
+    return actors;
   }
 
   bool SubscribeToNodeChange(
-      const gcs::SubscribeCallback<ClientID, rpc::GcsNodeInfo> &subscribe) {
+      const gcs::SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -229,7 +248,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
-    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info);
+    Status status = gcs_client_->Nodes().RegisterSelf(local_node_info, nullptr);
     return status.ok();
   }
 
@@ -258,7 +277,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return nodes;
   }
 
-  bool UnregisterNode(const ClientID &node_id) {
+  bool UnregisterNode(const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncUnregister(
         node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -267,18 +286,19 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool SubscribeToResources(const gcs::ItemCallback<rpc::NodeResourceChange> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeToResources(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  gcs::NodeInfoAccessor::ResourceMap GetResources(const ClientID &node_id) {
-    gcs::NodeInfoAccessor::ResourceMap resource_map;
+  gcs::NodeResourceInfoAccessor::ResourceMap GetResources(const NodeID &node_id) {
+    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
-        node_id, [&resource_map, &promise](
-                     Status status,
-                     const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &result) {
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
+        node_id,
+        [&resource_map, &promise](
+            Status status,
+            const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &result) {
           if (result) {
             resource_map.insert(result->begin(), result->end());
           }
@@ -288,31 +308,31 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return resource_map;
   }
 
-  bool UpdateResources(const ClientID &node_id, const std::string &key) {
+  bool UpdateResources(const NodeID &node_id, const std::string &key) {
     std::promise<bool> promise;
-    gcs::NodeInfoAccessor::ResourceMap resource_map;
+    gcs::NodeResourceInfoAccessor::ResourceMap resource_map;
     auto resource = std::make_shared<rpc::ResourceTableData>();
     resource->set_resource_capacity(1.0);
     resource_map[key] = resource;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
         node_id, resource_map,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool DeleteResources(const ClientID &node_id,
+  bool DeleteResources(const NodeID &node_id,
                        const std::vector<std::string> &resource_names) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDeleteResources(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncDeleteResources(
         node_id, resource_names,
         [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool SubscribeBatchHeartbeat(
-      const gcs::ItemCallback<rpc::HeartbeatBatchTableData> &subscribe) {
+  bool SubscribeBatchResourceUsage(
+      const gcs::ItemCallback<rpc::ResourceUsageBatchData> &subscribe) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncSubscribeBatchedResourceUsage(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
@@ -322,6 +342,27 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
         heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
+        resources, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::vector<rpc::AvailableResources> GetAllAvailableResources() {
+    std::promise<bool> promise;
+    std::vector<rpc::AvailableResources> resources;
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllAvailableResources(
+        [&resources, &promise](Status status,
+                               const std::vector<rpc::AvailableResources> &result) {
+          EXPECT_TRUE(!result.empty());
+          resources.assign(result.begin(), result.end());
+          promise.set_value(status.ok());
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return resources;
   }
 
   bool SubscribeTask(
@@ -335,8 +376,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeTask(const TaskID &task_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id));
+  }
+
+  void WaitForTaskUnsubscribed(const TaskID &task_id) {
+    auto condition = [this, task_id]() {
+      return gcs_client_->Tasks().IsTaskUnsubscribed(task_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  void WaitForTaskLeaseUnsubscribed(const TaskID &task_id) {
+    auto condition = [this, task_id]() {
+      return gcs_client_->Tasks().IsTaskLeaseUnsubscribed(task_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
   }
 
   bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
@@ -361,13 +415,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return task_table_data;
   }
 
-  bool DeleteTask(const std::vector<TaskID> &task_ids) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(
-        task_ids, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool SubscribeTaskLease(
       const TaskID &task_id,
       const gcs::SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>>
@@ -380,7 +427,6 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeTaskLease(const TaskID &task_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id));
   }
 
@@ -402,7 +448,8 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
 
   bool SubscribeToLocations(
       const ObjectID &object_id,
-      const gcs::SubscribeCallback<ObjectID, gcs::ObjectChangeNotification> &subscribe) {
+      const gcs::SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
+          &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncSubscribeToLocations(
         object_id, subscribe,
@@ -411,11 +458,17 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   void UnsubscribeToLocations(const ObjectID &object_id) {
-    std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id));
   }
 
-  bool AddLocation(const ObjectID &object_id, const ClientID &node_id) {
+  void WaitForObjectUnsubscribed(const ObjectID &object_id) {
+    auto condition = [this, object_id]() {
+      return gcs_client_->Objects().IsObjectUnsubscribed(object_id);
+    };
+    EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+  }
+
+  bool AddLocation(const ObjectID &object_id, const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncAddLocation(
         object_id, node_id,
@@ -423,7 +476,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RemoveLocation(const ObjectID &object_id, const ClientID &node_id) {
+  bool RemoveLocation(const ObjectID &object_id, const NodeID &node_id) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncRemoveLocation(
         object_id, node_id,
@@ -435,9 +488,12 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     std::promise<bool> promise;
     std::vector<rpc::ObjectTableData> locations;
     RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(
-        object_id, [&locations, &promise](
-                       Status status, const std::vector<rpc::ObjectTableData> &result) {
-          locations = result;
+        object_id,
+        [&locations, &promise](Status status,
+                               const boost::optional<rpc::ObjectLocationInfo> &result) {
+          for (const auto &loc : result->locations()) {
+            locations.push_back(loc);
+          }
           promise.set_value(status.ok());
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
@@ -460,7 +516,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe) {
+      const gcs::ItemCallback<rpc::WorkerTableData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -483,14 +539,21 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
-  }
-
   void CheckActorData(const gcs::ActorTableData &actor,
                       rpc::ActorTableData_ActorState expected_state) {
     ASSERT_TRUE(actor.state() == expected_state);
+  }
+
+  absl::flat_hash_set<NodeID> RegisterNodeAndMarkDead(int node_count) {
+    absl::flat_hash_set<NodeID> node_ids;
+    for (int index = 0; index < node_count; ++index) {
+      auto node_info = Mocker::GenNodeInfo();
+      auto node_id = NodeID::FromBinary(node_info->node_id());
+      EXPECT_TRUE(RegisterNode(*node_info));
+      EXPECT_TRUE(UnregisterNode(node_id));
+      node_ids.insert(node_id);
+    }
+    return node_ids;
   }
 
   // GCS server.
@@ -525,6 +588,29 @@ TEST_F(ServiceBasedGcsClientTest, TestJobInfo) {
   WaitForExpectedCount(job_updates, 2);
 }
 
+TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
+  // NOTE: `TestActorSubscribeAll` will subscribe to all actor messages, so we need to
+  // execute it before `TestActorInfo`, otherwise `TestActorSubscribeAll` will receive
+  // messages from `TestActorInfo`.
+  // Create actor table data.
+  JobID job_id = JobID::FromInt(1);
+  auto actor_table_data1 = Mocker::GenActorTableData(job_id);
+  auto actor_table_data2 = Mocker::GenActorTableData(job_id);
+
+  // Subscribe to any register or update operations of actors.
+  std::atomic<int> actor_update_count(0);
+  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
+                                            const gcs::ActorTableData &data) {
+    ++actor_update_count;
+  };
+  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
+
+  // Register an actor to GCS.
+  RegisterActor(actor_table_data1, false);
+  RegisterActor(actor_table_data2, false);
+  WaitForExpectedCount(actor_update_count, 2);
+}
+
 TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
   // Create actor table data.
   JobID job_id = JobID::FromInt(1);
@@ -541,72 +627,22 @@ TEST_F(ServiceBasedGcsClientTest, TestActorInfo) {
 
   // Register an actor to GCS.
   ASSERT_TRUE(RegisterActor(actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::ALIVE);
+  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
   // Cancel subscription to an actor.
   UnsubscribeActor(actor_id);
-
-  // Update dynamic states of actor in GCS.
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-  ASSERT_TRUE(GetActor(actor_id).state() == rpc::ActorTableData::DEAD);
-  WaitForExpectedCount(actor_update_count, 1);
-}
-
-TEST_F(ServiceBasedGcsClientTest, TestActorCheckpoint) {
-  // Create actor checkpoint data.
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data = Mocker::GenActorTableData(job_id);
-  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
-
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  auto checkpoint = std::make_shared<rpc::ActorCheckpointData>();
-  checkpoint->set_actor_id(actor_table_data->actor_id());
-  checkpoint->set_checkpoint_id(checkpoint_id.Binary());
-  checkpoint->set_execution_dependency(checkpoint_id.Binary());
-
-  // Add actor checkpoint data to GCS.
-  ASSERT_TRUE(AddCheckpoint(checkpoint));
-
-  // Get actor checkpoint data from GCS.
-  auto get_checkpoint_result = GetCheckpoint(actor_id, checkpoint_id);
-  ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
-
-  // Get actor checkpoint id data from GCS.
-  auto get_checkpoint_id_result = GetCheckpointID(actor_id);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
-  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
-}
-
-TEST_F(ServiceBasedGcsClientTest, TestActorSubscribeAll) {
-  // Create actor table data.
-  JobID job_id = JobID::FromInt(1);
-  auto actor_table_data1 = Mocker::GenActorTableData(job_id);
-  auto actor_table_data2 = Mocker::GenActorTableData(job_id);
-
-  // Subscribe to any register or update operations of actors.
-  std::atomic<int> actor_update_count(0);
-  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
-    ++actor_update_count;
-  };
-  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
-
-  // Register an actor to GCS.
-  ASSERT_TRUE(RegisterActor(actor_table_data1));
-  ASSERT_TRUE(RegisterActor(actor_table_data2));
-  WaitForExpectedCount(actor_update_count, 2);
+  WaitForActorUnsubscribed(actor_id);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
   // Create gcs node info.
   auto gcs_node1_info = Mocker::GenNodeInfo();
-  ClientID node1_id = ClientID::FromBinary(gcs_node1_info->node_id());
+  NodeID node1_id = NodeID::FromBinary(gcs_node1_info->node_id());
 
   // Subscribe to node addition and removal events from GCS.
   std::atomic<int> register_count(0);
   std::atomic<int> unregister_count(0);
-  auto on_subscribe = [&register_count, &unregister_count](const ClientID &node_id,
+  auto on_subscribe = [&register_count, &unregister_count](const NodeID &node_id,
                                                            const rpc::GcsNodeInfo &data) {
     if (data.state() == rpc::GcsNodeInfo::ALIVE) {
       ++register_count;
@@ -625,7 +661,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeInfo) {
 
   // Register a node to GCS.
   auto gcs_node2_info = Mocker::GenNodeInfo();
-  ClientID node2_id = ClientID::FromBinary(gcs_node2_info->node_id());
+  NodeID node2_id = NodeID::FromBinary(gcs_node2_info->node_id());
   ASSERT_TRUE(RegisterNode(*gcs_node2_info));
   WaitForExpectedCount(register_count, 2);
 
@@ -671,7 +707,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   RAY_CHECK(RegisterNode(*node_info));
 
   // Update resources of node in GCS.
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
   WaitForExpectedCount(add_count, 1);
@@ -683,27 +719,128 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeResources) {
   ASSERT_TRUE(GetResources(node_id).empty());
 }
 
-TEST_F(ServiceBasedGcsClientTest, TestNodeHeartbeat) {
+TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsage) {
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> heartbeat_batch_count(0);
-  auto on_subscribe =
-      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
-        ++heartbeat_batch_count;
-      };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(on_subscribe));
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
 
   // Register node.
   auto node_info = Mocker::GenNodeInfo();
   RAY_CHECK(RegisterNode(*node_info));
 
-  // Report heartbeat of a node to GCS.
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_id.Binary());
-  // Set this flag because GCS won't publish unchanged heartbeat.
-  heartbeat->set_should_global_gc(true);
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(heartbeat_batch_count, 1);
+  // Report resource usage of a node to GCS.
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  resource->set_should_global_gc(true);
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestNodeResourceUsageWithLightResourceUsageReport) {
+  // Subscribe batched state of all nodes from GCS.
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
+
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
+  // Report unchanged resource usage of a node to GCS.
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 0);
+
+  // Report changed resource usage of a node to GCS.
+  auto resource1 = std::make_shared<rpc::ResourcesData>();
+  resource1->set_node_id(node_id.Binary());
+  resource1->set_resources_available_changed(true);
+  ASSERT_TRUE(ReportResourceUsage(resource1));
+  WaitForExpectedCount(resource_batch_count, 1);
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestGetAllAvailableResources) {
+  // Subscribe batched state of all nodes from GCS.
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
+
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
+  // Report resource usage of a node to GCS.
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  // Set this flag to indicate resources has changed.
+  resource->set_resources_available_changed(true);
+  (*resource->mutable_resources_available())["CPU"] = 1.0;
+  (*resource->mutable_resources_available())["GPU"] = 10.0;
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 1);
+
+  // Assert get all available resources right.
+  std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
+  EXPECT_EQ(resources.size(), 1);
+  EXPECT_EQ(resources[0].resources_available_size(), 2);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
+}
+
+TEST_F(ServiceBasedGcsClientTest,
+       TestGetAllAvailableResourcesWithLightResourceUsageReport) {
+  // Subscribe batched state of all nodes from GCS.
+  std::atomic<int> resource_batch_count(0);
+  auto on_subscribe = [&resource_batch_count](const gcs::ResourceUsageBatchData &result) {
+    ++resource_batch_count;
+  };
+  ASSERT_TRUE(SubscribeBatchResourceUsage(on_subscribe));
+
+  // Register node.
+  auto node_info = Mocker::GenNodeInfo();
+  RAY_CHECK(RegisterNode(*node_info));
+
+  // Report resource usage of a node to GCS.
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
+  auto resource = std::make_shared<rpc::ResourcesData>();
+  resource->set_node_id(node_id.Binary());
+  resource->set_resources_available_changed(true);
+  (*resource->mutable_resources_available())["CPU"] = 1.0;
+  (*resource->mutable_resources_available())["GPU"] = 10.0;
+  ASSERT_TRUE(ReportResourceUsage(resource));
+  WaitForExpectedCount(resource_batch_count, 1);
+
+  // Assert get all available resources right.
+  std::vector<rpc::AvailableResources> resources = GetAllAvailableResources();
+  EXPECT_EQ(resources.size(), 1);
+  EXPECT_EQ(resources[0].resources_available_size(), 2);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["CPU"], 1.0);
+  EXPECT_EQ((*resources[0].mutable_resources_available())["GPU"], 10.0);
+
+  // Report unchanged resource usage of a node to GCS.
+  auto resource1 = std::make_shared<rpc::ResourcesData>();
+  resource1->set_node_id(node_id.Binary());
+  (*resource1->mutable_resources_available())["GPU"] = 8.0;
+  ASSERT_TRUE(ReportResourceUsage(resource1));
+  WaitForExpectedCount(resource_batch_count, 1);
+
+  // The value would remain unchanged.
+  std::vector<rpc::AvailableResources> resources1 = GetAllAvailableResources();
+  EXPECT_EQ(resources1.size(), 1);
+  EXPECT_EQ(resources1[0].resources_available_size(), 2);
+  EXPECT_EQ((*resources1[0].mutable_resources_available())["CPU"], 1.0);
+  EXPECT_EQ((*resources1[0].mutable_resources_available())["GPU"], 10.0);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
@@ -725,6 +862,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
   // Cancel subscription to a task.
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   // Add a task to GCS again.
   ASSERT_TRUE(AddTask(task_table_data));
@@ -732,10 +870,6 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   // Assert unsubscribe succeeded.
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   EXPECT_EQ(task_count, 1);
-
-  // Delete tasks from GCS.
-  std::vector<TaskID> task_ids = {task_id};
-  ASSERT_TRUE(DeleteTask(task_ids));
 
   // Subscribe to the event that the given task lease is added in GCS.
   std::atomic<int> task_lease_count(0);
@@ -747,13 +881,14 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
   ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
 
   // Add a task lease to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitForExpectedCount(task_lease_count, 2);
 
   // Cancel subscription to a task lease.
   UnsubscribeTaskLease(task_id);
+  WaitForTaskLeaseUnsubscribed(task_id);
 
   // Add a task lease to GCS again.
   ASSERT_TRUE(AddTaskLease(task_lease));
@@ -771,18 +906,18 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskInfo) {
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
   ObjectID object_id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Subscribe to any update of an object's location.
   std::atomic<int> object_add_count(0);
   std::atomic<int> object_remove_count(0);
   auto on_subscribe = [&object_add_count, &object_remove_count](
                           const ObjectID &object_id,
-                          const gcs::ObjectChangeNotification &result) {
-    if (!result.GetData().empty()) {
-      if (result.IsAdded()) {
+                          const std::vector<rpc::ObjectLocationChange> &result) {
+    for (const auto &res : result) {
+      if (res.is_add()) {
         ++object_add_count;
-      } else if (result.IsRemoved()) {
+      } else {
         ++object_remove_count;
       }
     }
@@ -805,6 +940,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object_id);
+  WaitForObjectUnsubscribed(object_id);
 
   // Add location of object to GCS again.
   ASSERT_TRUE(AddLocation(object_id, node_id));
@@ -816,7 +952,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectInfo) {
 
 TEST_F(ServiceBasedGcsClientTest, TestStats) {
   // Add profile data to GCS.
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto profile_table_data = Mocker::GenProfileTableData(node_id);
   ASSERT_TRUE(AddProfileData(profile_table_data));
 }
@@ -824,8 +960,7 @@ TEST_F(ServiceBasedGcsClientTest, TestStats) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
@@ -834,14 +969,14 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   auto worker_data = Mocker::GenWorkerTableData();
   worker_data->mutable_worker_address()->set_worker_id(WorkerID::FromRandom().Binary());
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
-  WaitForExpectedCount(worker_failure_count, 0);
+  WaitForExpectedCount(worker_failure_count, 1);
 
   // Add a worker to GCS.
   ASSERT_TRUE(AddWorker(worker_data));
 
   // Report a worker failure to GCS when this worker is actually exist.
   ASSERT_TRUE(ReportWorkerFailure(worker_data));
-  WaitForExpectedCount(worker_failure_count, 1);
+  WaitForExpectedCount(worker_failure_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestErrorInfo) {
@@ -905,55 +1040,60 @@ TEST_F(ServiceBasedGcsClientTest, TestActorTableResubscribe) {
   // Subscribe to updates for this actor.
   ASSERT_TRUE(SubscribeActor(actor_id, actor_subscribe));
 
-  ASSERT_TRUE(RegisterActor(actor_table_data));
+  ASSERT_FALSE(RegisterActor(actor_table_data, false));
 
-  // We should receive a new ALIVE notification from the subscribe channel.
+  // We should receive a new DEAD notification from the subscribe channel.
   WaitForExpectedCount(num_subscribe_all_notifications, 1);
   WaitForExpectedCount(num_subscribe_one_notifications, 1);
-  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::ALIVE);
+  CheckActorData(subscribe_all_notifications[0], rpc::ActorTableData::DEAD);
+  CheckActorData(subscribe_one_notifications[0], rpc::ActorTableData::DEAD);
 
   // Restart GCS server.
   RestartGcsServer();
 
   // When GCS client detects that GCS server has restarted, but the pub-sub server
-  // didn't restart, it will fetch data again from the GCS server. So we'll receive
-  // another notification of ALIVE state.
-  WaitForExpectedCount(num_subscribe_all_notifications, 2);
-  WaitForExpectedCount(num_subscribe_one_notifications, 2);
-  CheckActorData(subscribe_all_notifications[1], rpc::ActorTableData::ALIVE);
-  CheckActorData(subscribe_one_notifications[1], rpc::ActorTableData::ALIVE);
-
-  // Update the actor state to DEAD.
-  actor_table_data->set_state(rpc::ActorTableData::DEAD);
-  ASSERT_TRUE(UpdateActor(actor_id, actor_table_data));
-
-  // We should receive a new DEAD notification from the subscribe channel.
-  WaitForExpectedCount(num_subscribe_all_notifications, 3);
+  // didn't restart, it will fetch data again from the GCS server. The GCS will destroy
+  // the actor because it finds that the actor is out of scope, so we'll receive another
+  // notification of DEAD state.
   WaitForExpectedCount(num_subscribe_one_notifications, 3);
-  CheckActorData(subscribe_all_notifications[2], rpc::ActorTableData::DEAD);
-  CheckActorData(subscribe_one_notifications[2], rpc::ActorTableData::DEAD);
+
+  // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  // client will register the actor again. When an actor is registered, the status in GCS
+  // is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
+  // destroy the actor and the status of the actor will change to `DEAD`. The GCS client
+  // fetch actor info from the GCS server, and the status of the actor may be
+  // `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
+  // more.
+  // If the status of the actor is `DEPENDENCIES_UNREADY`, we will fetch two records, so
+  // `num_subscribe_all_notifications` will be 4. If the status of the actor is `DEAD`, we
+  // will fetch one record, so `num_subscribe_all_notifications` will be 3.
+  auto condition = [&num_subscribe_all_notifications]() {
+    return num_subscribe_all_notifications == 3 || num_subscribe_all_notifications == 4;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
   ObjectID object1_id = ObjectID::FromRandom();
   ObjectID object2_id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Subscribe to any update of an object's location.
   std::atomic<int> object1_change_count(0);
   std::atomic<int> object2_change_count(0);
   ASSERT_TRUE(SubscribeToLocations(
-      object1_id, [&object1_change_count](const ObjectID &object_id,
-                                          const gcs::ObjectChangeNotification &result) {
-        if (!result.GetData().empty()) {
+      object1_id,
+      [&object1_change_count](const ObjectID &object_id,
+                              const std::vector<rpc::ObjectLocationChange> &result) {
+        if (!result.empty()) {
           ++object1_change_count;
         }
       }));
   ASSERT_TRUE(SubscribeToLocations(
-      object2_id, [&object2_change_count](const ObjectID &object_id,
-                                          const gcs::ObjectChangeNotification &result) {
-        if (!result.GetData().empty()) {
+      object2_id,
+      [&object2_change_count](const ObjectID &object_id,
+                              const std::vector<rpc::ObjectLocationChange> &result) {
+        if (!result.empty()) {
           ++object2_change_count;
         }
       }));
@@ -965,7 +1105,7 @@ TEST_F(ServiceBasedGcsClientTest, TestObjectTableResubscribe) {
 
   // Cancel subscription to any update of an object's location.
   UnsubscribeToLocations(object1_id);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  WaitForObjectUnsubscribed(object1_id);
 
   // Restart GCS.
   RestartGcsServer();
@@ -985,7 +1125,7 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
-  auto node_subscribe = [&node_change_count](const ClientID &id,
+  auto node_subscribe = [&node_change_count](const NodeID &id,
                                              const rpc::GcsNodeInfo &result) {
     ++node_change_count;
   };
@@ -1000,37 +1140,37 @@ TEST_F(ServiceBasedGcsClientTest, TestNodeTableResubscribe) {
   ASSERT_TRUE(SubscribeToResources(resource_subscribe));
 
   // Subscribe batched state of all nodes from GCS.
-  std::atomic<int> batch_heartbeat_count(0);
-  auto batch_heartbeat_subscribe =
-      [&batch_heartbeat_count](const rpc::HeartbeatBatchTableData &result) {
-        ++batch_heartbeat_count;
+  std::atomic<int> batch_resource_usage_count(0);
+  auto batch_resource_usage_subscribe =
+      [&batch_resource_usage_count](const rpc::ResourceUsageBatchData &result) {
+        ++batch_resource_usage_count;
       };
-  ASSERT_TRUE(SubscribeBatchHeartbeat(batch_heartbeat_subscribe));
+  ASSERT_TRUE(SubscribeBatchResourceUsage(batch_resource_usage_subscribe));
 
   auto node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
-  ClientID node_id = ClientID::FromBinary(node_info->node_id());
+  NodeID node_id = NodeID::FromBinary(node_info->node_id());
   std::string key = "CPU";
   ASSERT_TRUE(UpdateResources(node_id, key));
-  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
-  heartbeat->set_client_id(node_info->node_id());
-  // Set this flag because GCS won't publish unchanged heartbeat.
-  heartbeat->set_should_global_gc(true);
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
-  WaitForExpectedCount(batch_heartbeat_count, 1);
+  auto resources = std::make_shared<rpc::ResourcesData>();
+  resources->set_node_id(node_info->node_id());
+  // Set this flag because GCS won't publish unchanged resources.
+  resources->set_should_global_gc(true);
+  ASSERT_TRUE(ReportResourceUsage(resources));
+  WaitForExpectedCount(batch_resource_usage_count, 1);
 
   RestartGcsServer();
 
   node_info = Mocker::GenNodeInfo(1);
   ASSERT_TRUE(RegisterNode(*node_info));
-  node_id = ClientID::FromBinary(node_info->node_id());
+  node_id = NodeID::FromBinary(node_info->node_id());
   ASSERT_TRUE(UpdateResources(node_id, key));
-  heartbeat->set_client_id(node_info->node_id());
-  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+  resources->set_node_id(node_info->node_id());
+  ASSERT_TRUE(ReportResourceUsage(resources));
 
   WaitForExpectedCount(node_change_count, 2);
   WaitForExpectedCount(resource_change_count, 2);
-  WaitForExpectedCount(batch_heartbeat_count, 2);
+  WaitForExpectedCount(batch_resource_usage_count, 2);
 }
 
 TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
@@ -1056,16 +1196,17 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
   ASSERT_TRUE(SubscribeTaskLease(task_id, task_lease_subscribe));
 
   ASSERT_TRUE(AddTask(task_table_data));
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
   auto task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitForExpectedCount(task_count, 1);
   WaitForExpectedCount(task_lease_count, 1);
   UnsubscribeTask(task_id);
+  WaitForTaskUnsubscribed(task_id);
 
   RestartGcsServer();
 
-  node_id = ClientID::FromRandom();
+  node_id = NodeID::FromRandom();
   task_lease = Mocker::GenTaskLeaseData(task_id.Binary(), node_id.Binary());
   ASSERT_TRUE(AddTaskLease(task_lease));
   WaitForExpectedCount(task_lease_count, 3);
@@ -1075,8 +1216,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
@@ -1096,7 +1236,7 @@ TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
 
 TEST_F(ServiceBasedGcsClientTest, TestGcsTableReload) {
   ObjectID object_id = ObjectID::FromRandom();
-  ClientID node_id = ClientID::FromRandom();
+  NodeID node_id = NodeID::FromRandom();
 
   // Register node to GCS.
   auto node_info = Mocker::GenNodeInfo();
@@ -1164,8 +1304,8 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
       for (int index = 0; index < sub_and_unsub_loop_count; ++index) {
         auto object_id = ObjectID::FromRandom();
         ASSERT_TRUE(SubscribeToLocations(
-            object_id,
-            [](const ObjectID &id, const gcs::ObjectChangeNotification &result) {}));
+            object_id, [](const ObjectID &id,
+                          const std::vector<rpc::ObjectLocationChange> &result) {}));
         gcs_client_->Objects().AsyncResubscribe(false);
         UnsubscribeToLocations(object_id);
       }
@@ -1174,6 +1314,93 @@ TEST_F(ServiceBasedGcsClientTest, TestMultiThreadSubAndUnsub) {
   for (auto &thread : threads) {
     thread->join();
     thread.reset();
+  }
+}
+
+// This UT is only used to test the query actor info performance.
+// We disable it by default.
+TEST_F(ServiceBasedGcsClientTest, DISABLED_TestGetActorPerf) {
+  // Register actors.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = 5000;
+  rpc::TaskSpec task_spec;
+  rpc::TaskArg task_arg;
+  task_arg.set_data("0123456789");
+  for (int index = 0; index < 10000; ++index) {
+    task_spec.add_args()->CopyFrom(task_arg);
+  }
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    actor_table_data->mutable_task_spec()->CopyFrom(task_spec);
+    RegisterActor(actor_table_data, false, true);
+  }
+
+  // Get all actors.
+  auto condition = [this, actor_count]() {
+    return (int)GetAllActors().size() == actor_count;
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  int64_t start_time = current_time_ms();
+  auto actors = GetAllActors();
+  RAY_LOG(INFO) << "It takes " << current_time_ms() - start_time << "ms to query "
+                << actor_count << " actors.";
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDestroyedActors) {
+  // Register actors and the actors will be destroyed.
+  JobID job_id = JobID::FromInt(1);
+  int actor_count = RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+  }
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  absl::flat_hash_set<ActorID> actor_ids;
+  for (int index = 0; index < actor_count; ++index) {
+    auto actor_table_data = Mocker::GenActorTableData(job_id);
+    RegisterActor(actor_table_data, false);
+    actor_ids.insert(ActorID::FromBinary(actor_table_data->actor_id()));
+  }
+
+  // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
+  // client will register the actor again and the status of the actor may be
+  // `DEPENDENCIES_UNREADY` or `DEAD`. We should get all dead actors.
+  auto condition = [this]() {
+    return GetAllActors(true).size() ==
+           RayConfig::instance().maximum_gcs_destroyed_actor_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto actors = GetAllActors(true);
+  for (const auto &actor : actors) {
+    EXPECT_TRUE(actor_ids.contains(ActorID::FromBinary(actor.actor_id())));
+  }
+}
+
+TEST_F(ServiceBasedGcsClientTest, TestEvictExpiredDeadNodes) {
+  // Simulate the scenario of node dead.
+  int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  RegisterNodeAndMarkDead(node_count);
+
+  // Restart GCS.
+  RestartGcsServer();
+
+  const auto &node_ids = RegisterNodeAndMarkDead(node_count);
+
+  // Get all nodes.
+  auto condition = [this]() {
+    return GetNodeInfoList().size() ==
+           RayConfig::instance().maximum_gcs_dead_node_cached_count();
+  };
+  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
+
+  auto nodes = GetNodeInfoList();
+  for (const auto &node : nodes) {
+    EXPECT_TRUE(node_ids.contains(NodeID::FromBinary(node.node_id())));
   }
 }
 

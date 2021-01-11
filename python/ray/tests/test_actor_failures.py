@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import numpy as np
 import os
@@ -14,6 +15,7 @@ from ray.test_utils import (
     wait_for_pid_to_exit,
     generate_system_config_map,
     get_other_nodes,
+    new_scheduler_enabled,
     SignalActor,
 )
 
@@ -210,6 +212,66 @@ def test_actor_restart_with_retry(ray_init_with_task_retry_delay):
         ray.get(actor.increase.remote())
 
 
+def test_named_actor_max_task_retries(ray_init_with_task_retry_delay):
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+            self.event = asyncio.Event()
+
+        def increment(self):
+            self.count += 1
+            self.event.set()
+
+        async def wait_for_count(self, count):
+            while True:
+                if self.count >= count:
+                    return
+                await self.event.wait()
+                self.event.clear()
+
+    @ray.remote
+    class ActorToKill:
+        def __init__(self, counter):
+            counter.increment.remote()
+
+        def run(self, counter, signal):
+            counter.increment.remote()
+            ray.get(signal.wait.remote())
+
+    @ray.remote
+    class CallingActor:
+        def __init__(self):
+            self.actor = ray.get_actor("a")
+
+        def call_other(self, counter, signal):
+            return ray.get(self.actor.run.remote(counter, signal))
+
+    init_counter = Counter.remote()
+    run_counter = Counter.remote()
+    signal = SignalActor.remote()
+
+    # Start the two actors, wait for ActorToKill's constructor to run.
+    a = ActorToKill.options(
+        name="a", max_restarts=-1, max_task_retries=-1).remote(init_counter)
+    c = CallingActor.remote()
+    ray.get(init_counter.wait_for_count.remote(1), timeout=30)
+
+    # Signal the CallingActor to call ActorToKill, wait for it to be running,
+    # then kill ActorToKill.
+    # Verify that this causes ActorToKill's constructor to run a second time
+    # and the run method to begin a second time.
+    ref = c.call_other.remote(run_counter, signal)
+    ray.get(run_counter.wait_for_count.remote(1), timeout=30)
+    ray.kill(a, no_restart=False)
+    ray.get(init_counter.wait_for_count.remote(2), timeout=30)
+    ray.get(run_counter.wait_for_count.remote(2), timeout=30)
+
+    # Signal the run method to finish, verify that the CallingActor returns.
+    signal.send.remote()
+    ray.get(ref, timeout=30)
+
+
 def test_actor_restart_on_node_failure(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,
@@ -265,6 +327,7 @@ def test_actor_restart_on_node_failure(ray_start_cluster):
     assert result == 1 or result == results[-1] + 1
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic resources todo")
 def test_actor_restart_without_task(ray_start_regular):
     """Test a dead actor can be restarted without sending task to it."""
 
@@ -483,6 +546,7 @@ def test_decorated_method(ray_start_regular):
         "num_cpus": 1,
         "num_nodes": 3,
     }], indirect=True)
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic resources todo")
 def test_ray_wait_dead_actor(ray_start_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
     cluster = ray_start_cluster

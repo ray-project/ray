@@ -1,7 +1,13 @@
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-.. image:: https://readthedocs.org/projects/ray/badge/?version=latest
-    :target: http://docs.ray.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/ray/badge/?version=master
+    :target: http://docs.ray.io/en/master/?badge=master
+
+.. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
+    :target: https://forms.gle/9TSdDYUgxYs8SA9e8
+
+.. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
+    :target: https://discuss.ray.io/
 
 |
 
@@ -12,7 +18,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
+- `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
 - `Ray Serve`_: Scalable and Programmable Serving
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
@@ -75,7 +81,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://docs.ray.io/en/latest/cluster/index.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/master/cluster/index.html>`_.
 
 Tune Quick Start
 ----------------
@@ -94,7 +100,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune]
+    $ pip install "ray[tune]"
 
 
 This example runs a parallel grid search to optimize an example objective function.
@@ -137,10 +143,10 @@ If TensorBoard is installed, automatically visualize all trial results:
 
     tensorboard --logdir ~/ray_results
 
-.. _`Tune`: https://docs.ray.io/en/latest/tune.html
-.. _`Population Based Training (PBT)`: https://docs.ray.io/en/latest/tune-schedulers.html#population-based-training-pbt
-.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/latest/tune-schedulers.html#median-stopping-rule
-.. _`HyperBand/ASHA`: https://docs.ray.io/en/latest/tune-schedulers.html#asynchronous-hyperband
+.. _`Tune`: https://docs.ray.io/en/master/tune.html
+.. _`Population Based Training (PBT)`: https://docs.ray.io/en/master/tune-schedulers.html#population-based-training-pbt
+.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/master/tune-schedulers.html#median-stopping-rule
+.. _`HyperBand/ASHA`: https://docs.ray.io/en/master/tune-schedulers.html#asynchronous-hyperband
 
 RLlib Quick Start
 -----------------
@@ -152,7 +158,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 
@@ -186,7 +192,7 @@ RLlib Quick Start
             "num_workers": 4,
             "env_config": {"corridor_length": 5}})
 
-.. _`RLlib`: https://docs.ray.io/en/latest/rllib.html
+.. _`RLlib`: https://docs.ray.io/en/master/rllib.html
 
 
 Ray Serve Quick Start
@@ -197,10 +203,10 @@ Ray Serve Quick Start
 
 `Ray Serve`_ is a scalable model-serving library built on Ray. It is:
 
-- Framework Agnostic: Use the same toolkit to serve everything from deep 
-  learning models built with frameworks like PyTorch or Tensorflow & Keras 
+- Framework Agnostic: Use the same toolkit to serve everything from deep
+  learning models built with frameworks like PyTorch or Tensorflow & Keras
   to Scikit-Learn models or arbitrary business logic.
-- Python First: Configure your model serving with pure Python code - no more 
+- Python First: Configure your model serving with pure Python code - no more
   YAMLs or JSON configs.
 - Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
   increase the throughput of your model.
@@ -247,9 +253,9 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 
     # Deploy model
-    serve.init()
-    serve.create_backend("iris:v1", BoostingModel)
-    serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+    client = serve.start()
+    client.create_backend("iris:v1", BoostingModel)
+    client.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
 
     # Query it!
     sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
@@ -261,7 +267,7 @@ This example runs serves a scikit-learn gradient boosting classifier.
     # }
 
 
-.. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
+.. _`Ray Serve`: https://docs.ray.io/en/master/serve/index.html
 
 More Information
 ----------------
@@ -270,6 +276,7 @@ More Information
 - `Tutorial`_
 - `Blog`_
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
+- `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
@@ -279,11 +286,12 @@ More Information
 - `Ray HotOS paper`_
 - `Blog (old)`_
 
-.. _`Documentation`: http://docs.ray.io/en/latest/index.html
+.. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
 .. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
@@ -292,19 +300,16 @@ More Information
 Getting Involved
 ----------------
 
-- `ray-dev@googlegroups.com`_: For discussions about development or any general
-  questions.
-- `StackOverflow`_: For questions about how to use Ray.
-- `GitHub Issues`_: For reporting bugs and feature requests.
-- `Pull Requests`_: For submitting code contributions.
-- `Meetup Group`_: Join our meetup group.
 - `Community Slack`_: Join our Slack workspace.
+- `Forum`_: For discussions about development, questions about usage, and feature requests.
+- `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Meetup Group`_: Join our meetup group.
+- `StackOverflow`_: For questions about how to use Ray.
 
-.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
-.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
 .. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
 .. _`Twitter`: https://twitter.com/raydistributed

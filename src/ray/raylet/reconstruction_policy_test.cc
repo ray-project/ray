@@ -21,9 +21,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/redis_accessor.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/reconstruction_policy.h"
 
 namespace ray {
 
@@ -56,28 +58,28 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
       const ObjectID object_id = callback.first;
       auto it = locations_.find(object_id);
       if (it == locations_.end()) {
-        callback.second(object_id, std::unordered_set<ray::ClientID>());
+        callback.second(object_id, std::unordered_set<ray::NodeID>(), "");
       } else {
-        callback.second(object_id, it->second);
+        callback.second(object_id, it->second, "");
       }
     }
     callbacks_.clear();
   }
 
   void SetObjectLocations(const ObjectID &object_id,
-                          const std::unordered_set<ClientID> &locations) {
+                          const std::unordered_set<NodeID> &locations) {
     locations_[object_id] = locations;
   }
 
-  void HandleClientRemoved(const ClientID &client_id) override {
+  void HandleNodeRemoved(const NodeID &node_id) override {
     for (auto &locations : locations_) {
-      locations.second.erase(client_id);
+      locations.second.erase(node_id);
     }
   }
 
   std::string DebugString() const override { return ""; }
 
-  MOCK_METHOD0(GetLocalClientID, ray::ClientID());
+  MOCK_METHOD0(GetLocalNodeID, ray::NodeID());
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD4(SubscribeObjectLocations,
@@ -86,28 +88,29 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD2(UnsubscribeObjectLocations,
                ray::Status(const ray::UniqueID &, const ObjectID &));
   MOCK_METHOD3(ReportObjectAdded,
-               ray::Status(const ObjectID &, const ClientID &,
+               ray::Status(const ObjectID &, const NodeID &,
                            const object_manager::protocol::ObjectInfoT &));
   MOCK_METHOD3(ReportObjectRemoved,
-               ray::Status(const ObjectID &, const ClientID &,
+               ray::Status(const ObjectID &, const NodeID &,
                            const object_manager::protocol::ObjectInfoT &));
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
-  std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
+  std::unordered_map<ObjectID, std::unordered_set<NodeID>> locations_;
 };
 
-class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
+class MockNodeInfoAccessor : public gcs::ServiceBasedNodeInfoAccessor {
  public:
-  MockNodeInfoAccessor(gcs::RedisGcsClient *client)
-      : gcs::RedisNodeInfoAccessor(client) {}
+  MockNodeInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : gcs::ServiceBasedNodeInfoAccessor(client) {}
 
-  bool IsRemoved(const ClientID &node_id) const override { return false; }
+  bool IsRemoved(const NodeID &node_id) const override { return false; }
 };
 
-class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
+class MockTaskInfoAccessor : public gcs::ServiceBasedTaskInfoAccessor {
  public:
-  MockTaskInfoAccessor(gcs::RedisGcsClient *client) : RedisTaskInfoAccessor(client) {}
+  MockTaskInfoAccessor(gcs::ServiceBasedGcsClient *client)
+      : ServiceBasedTaskInfoAccessor(client) {}
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
@@ -180,9 +183,9 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
       task_reconstruction_log_;
 };
 
-class MockGcs : public gcs::RedisGcsClient {
+class MockGcs : public gcs::ServiceBasedGcsClient {
  public:
-  MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
+  MockGcs() : gcs::ServiceBasedGcsClient(gcs::GcsClientOptions("", 0, "")){};
 
   void Init(gcs::TaskInfoAccessor *task_accessor, gcs::NodeInfoAccessor *node_accessor) {
     task_accessor_.reset(task_accessor);
@@ -204,7 +207,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
             [this](const TaskID &task_id, const ObjectID &obj) {
               TriggerReconstruction(task_id);
             },
-            reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
+            reconstruction_timeout_ms_, NodeID::FromRandom(), mock_gcs_,
             mock_object_directory_)),
         timer_canceled_(false) {
     subscribe_callback_ = [this](const TaskID &task_id,
@@ -298,7 +301,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSimple) {
 TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
   TaskID task_id = ForNormalTask();
   ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
-  mock_object_directory_->SetObjectLocations(object_id, {ClientID::FromRandom()});
+  mock_object_directory_->SetObjectLocations(object_id, {NodeID::FromRandom()});
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
@@ -310,7 +313,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 
   // Simulate evicting one of the objects.
   mock_object_directory_->SetObjectLocations(object_id,
-                                             std::unordered_set<ray::ClientID>());
+                                             std::unordered_set<ray::NodeID>());
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was
@@ -321,8 +324,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionEvicted) {
 TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   TaskID task_id = ForNormalTask();
   ObjectID object_id = ObjectID::FromIndex(task_id, /*index=*/1);
-  ClientID client_id = ClientID::FromRandom();
-  mock_object_directory_->SetObjectLocations(object_id, {client_id});
+  NodeID node_id = NodeID::FromRandom();
+  mock_object_directory_->SetObjectLocations(object_id, {node_id});
 
   // Listen for both objects.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id, rpc::Address());
@@ -333,7 +336,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionObjectLost) {
   ASSERT_EQ(reconstructed_tasks_[task_id], 0);
 
   // Simulate evicting one of the objects.
-  mock_object_directory_->HandleClientRemoved(client_id);
+  mock_object_directory_->HandleNodeRemoved(node_id);
   // Run the test again.
   Run(reconstruction_timeout_ms_ * 1.1);
   // Check that reconstruction was triggered, since one of the objects was
@@ -370,7 +373,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
 
   // Acquire the task lease for a period longer than the test period.
   auto task_lease_data = std::make_shared<TaskLeaseData>();
-  task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
+  task_lease_data->set_node_manager_id(NodeID::FromRandom().Binary());
   task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
   task_lease_data->set_timeout(2 * test_period);
   task_lease_data->set_task_id(task_id.Binary());
@@ -398,7 +401,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   // Send the reconstruction manager heartbeats about the object.
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseData>();
-    task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
+    task_lease_data->set_node_manager_id(NodeID::FromRandom().Binary());
     task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
     task_lease_data->set_timeout(reconstruction_timeout_ms_);
     task_lease_data->set_task_id(task_id.Binary());
@@ -452,7 +455,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   // reconstruction.
   auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
   task_reconstruction_data->set_task_id(task_id.Binary());
-  task_reconstruction_data->set_node_manager_id(ClientID::FromRandom().Binary());
+  task_reconstruction_data->set_node_manager_id(NodeID::FromRandom().Binary());
   task_reconstruction_data->set_num_reconstructions(0);
   RAY_CHECK_OK(mock_gcs_->Tasks().AttemptTaskReconstruction(
       task_reconstruction_data,

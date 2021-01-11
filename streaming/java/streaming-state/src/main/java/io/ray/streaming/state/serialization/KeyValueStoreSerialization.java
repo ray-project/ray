@@ -18,9 +18,7 @@
 
 package io.ray.streaming.state.serialization;
 
-/**
- * Key Value Serialization and Deserialization.
- */
+/** Key Value Serialization and Deserialization. */
 public interface KeyValueStoreSerialization<K, V> {
 
   byte[] serializeKey(K key);

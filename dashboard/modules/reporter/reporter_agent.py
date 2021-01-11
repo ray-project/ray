@@ -14,11 +14,11 @@ import ray
 import ray.gcs_utils
 import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.new_dashboard.utils as dashboard_utils
-import ray.services
+import ray._private.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.metrics_agent import MetricsAgent
+from ray.metrics_agent import MetricsAgent, Gauge, Record
 import psutil
 
 logger = logging.getLogger(__name__)
@@ -65,13 +65,26 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         super().__init__(dashboard_agent)
         self._cpu_counts = (psutil.cpu_count(),
                             psutil.cpu_count(logical=False))
-        self._ip = ray.services.get_node_ip_address()
+        self._ip = ray._private.services.get_node_ip_address()
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
         self._key = f"{reporter_consts.REPORTER_PREFIX}" \
                     f"{self._dashboard_agent.node_id}"
+        # A list of gauges to record and export metrics.
+        self._gauges = {
+            "node_cpu": Gauge("node_cpu", "Total CPU usage on a ray node",
+                              "percentage", ["ip"]),
+            "node_mem": Gauge("node_mem", "Total memory usage on a ray node",
+                              "mb", ["ip"]),
+            "raylet_cpu": Gauge("raylet_cpu",
+                                "CPU usage of the raylet on a node.",
+                                "percentage", ["ip", "pid"]),
+            "raylet_mem": Gauge("raylet_mem",
+                                "Memory usage of the raylet on a node", "mb",
+                                ["ip", "pid"])
+        }
 
     async def GetProfilingStats(self, request, context):
         pid = request.pid
@@ -94,23 +107,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, std_out=stdout, std_err=stderr)
 
-    async def ReportMetrics(self, request, context):
-        # NOTE: Exceptions are not propagated properly
-        # when we don't catch them here.
+    async def ReportOCMetrics(self, request, context):
+        # This function receives a GRPC containing OpenCensus (OC) metrics
+        # from a Ray process, then exposes those metrics to Prometheus.
         try:
-            metrcs_description_required = (
-                self._metrics_agent.record_metrics_points(
-                    request.metrics_points))
-        except Exception as e:
-            logger.error(e)
+            self._metrics_agent.record_metric_points_from_protobuf(
+                request.metrics)
+        except Exception:
             logger.error(traceback.format_exc())
-
-        # If metrics description is missing, we should notify cpp processes
-        # that we need them. Cpp processes will then report them to here.
-        # We need it when (1) a new metric is reported (application metric)
-        # (2) a reporter goes down and restarted (currently not implemented).
-        return reporter_pb2.ReportMetricsReply(
-            metrcs_description_required=metrcs_description_required)
+        return reporter_pb2.ReportOCMetricsReply()
 
     @staticmethod
     def _get_cpu_percent():
@@ -125,8 +130,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         try:
             gpus = gpustat.new_query().gpus
         except Exception as e:
-            logger.debug(
-                "gpustat failed to retrieve GPU information: {}".format(e))
+            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
         for gpu in gpus:
             # Note the keys in this dict have periods which throws
             # off javascript so we change .s to _s
@@ -186,6 +190,25 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 ]) for w in self._workers if w.status() != psutil.STATUS_ZOMBIE
             ]
 
+    def _get_raylet_stats(self):
+        curr_proc = psutil.Process()
+        # Here, parent is always raylet because the
+        # dashboard agent is a child of the raylet process.
+        parent = curr_proc.parent()
+        if parent is None or parent.pid == 1:
+            return []
+        if parent.status() == psutil.STATUS_ZOMBIE:
+            return []
+
+        return parent.as_dict(attrs=[
+            "pid",
+            "create_time",
+            "cpu_percent",
+            "cpu_times",
+            "cmdline",
+            "memory_info",
+        ])
+
     @staticmethod
     def _get_raylet_cmdline():
         try:
@@ -216,7 +239,6 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         then, prev_network_stats = self._network_stats_hist[0]
         netstats = ((network_stats[0] - prev_network_stats[0]) / (now - then),
                     (network_stats[1] - prev_network_stats[1]) / (now - then))
-
         return {
             "now": now,
             "hostname": self._hostname,
@@ -233,15 +255,50 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             "cmdline": self._get_raylet_cmdline(),
         }
 
-    async def _perform_iteration(self):
-        """Get any changes to the log files and push updates to Redis."""
-        aioredis_client = await aioredis.create_redis_pool(
-            address=self._dashboard_agent.redis_address,
-            password=self._dashboard_agent.redis_password)
+    def _record_stats(self, stats):
+        ip = stats["ip"]
+        # -- CPU per node --
+        cpu_usage = float(stats["cpu"])
+        cpu_record = Record(
+            gauge=self._gauges["node_cpu"], value=cpu_usage, tags={"ip": ip})
 
+        # -- Mem per node --
+        total, avail, _ = stats["mem"]
+        mem_usage = float(total - avail) / 1e6
+        mem_record = Record(
+            gauge=self._gauges["node_mem"], value=mem_usage, tags={"ip": ip})
+
+        raylet_stats = self._get_raylet_stats()
+        raylet_pid = str(raylet_stats["pid"])
+        # -- raylet CPU --
+        raylet_cpu_usage = float(raylet_stats["cpu_percent"]) * 100
+        raylet_cpu_record = Record(
+            gauge=self._gauges["raylet_cpu"],
+            value=raylet_cpu_usage,
+            tags={
+                "ip": ip,
+                "pid": raylet_pid
+            })
+
+        # -- raylet mem --
+        raylet_mem_usage = float(raylet_stats["memory_info"].rss) / 1e6
+        raylet_mem_record = Record(
+            gauge=self._gauges["raylet_mem"],
+            value=raylet_mem_usage,
+            tags={
+                "ip": ip,
+                "pid": raylet_pid
+            })
+
+        self._metrics_agent.record_reporter_stats(
+            [cpu_record, mem_record, raylet_cpu_record, raylet_mem_record])
+
+    async def _perform_iteration(self, aioredis_client):
+        """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
                 stats = self._get_all_stats()
+                self._record_stats(stats)
                 await aioredis_client.publish(self._key, jsonify_asdict(stats))
             except Exception:
                 logger.exception("Error publishing node physical stats.")
@@ -249,5 +306,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
                 reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
     async def run(self, server):
+        aioredis_client = await aioredis.create_redis_pool(
+            address=self._dashboard_agent.redis_address,
+            password=self._dashboard_agent.redis_password)
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
-        await self._perform_iteration()
+        await self._perform_iteration(aioredis_client)

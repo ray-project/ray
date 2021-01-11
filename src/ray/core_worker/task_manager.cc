@@ -183,7 +183,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     reference_counter_->UpdateObjectSize(object_id, return_object.size());
 
     if (return_object.in_plasma()) {
-      const auto pinned_at_raylet_id = ClientID::FromBinary(worker_addr.raylet_id());
+      const auto pinned_at_raylet_id = NodeID::FromBinary(worker_addr.raylet_id());
       if (check_node_alive_(pinned_at_raylet_id)) {
         reference_counter_->UpdateObjectPinnedAtRaylet(object_id, pinned_at_raylet_id);
         // Mark it as in plasma with a dummy object.
@@ -454,6 +454,18 @@ absl::optional<TaskSpecification> TaskManager::GetTaskSpec(const TaskID &task_id
     return absl::optional<TaskSpecification>();
   }
   return it->second.spec;
+}
+
+std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
+    const TaskID &parent_task_id) const {
+  std::vector<TaskID> ret_vec;
+  absl::MutexLock lock(&mu_);
+  for (auto it : submissible_tasks_) {
+    if ((it.second.pending) && (it.second.spec.ParentTaskId() == parent_task_id)) {
+      ret_vec.push_back(it.first);
+    }
+  }
+  return ret_vec;
 }
 
 }  // namespace ray

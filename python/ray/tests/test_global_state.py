@@ -9,6 +9,8 @@ import ray
 import ray.ray_constants
 import ray.test_utils
 
+from ray._raylet import GlobalStateAccessor
+
 
 # TODO(rliaw): The proper way to do this is to have the pytest config setup.
 @pytest.mark.skipif(
@@ -108,6 +110,14 @@ def test_global_state_actor_table(ray_start_regular):
     assert get_state() == dead_state
 
 
+def test_global_state_worker_table(ray_start_regular):
+
+    # Get worker table from gcs.
+    workers_data = ray.state.workers()
+
+    assert len(workers_data) == 1
+
+
 def test_global_state_actor_entry(ray_start_regular):
     @ray.remote
     class Actor:
@@ -142,11 +152,9 @@ def test_load_report(shutdown_only, max_shapes):
         _system_config={
             "max_resource_shapes_per_load_report": max_shapes,
         })
-    redis = ray.services.create_redis_client(
-        cluster["redis_address"],
-        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
-    client = redis.pubsub(ignore_subscribe_messages=True)
-    client.psubscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN)
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
 
     @ray.remote
     def sleep():
@@ -163,23 +171,14 @@ def test_load_report(shutdown_only, max_shapes):
             self.report = None
 
         def check_load_report(self):
-            try:
-                message = client.get_message()
-            except redis.exceptions.ConnectionError:
-                pass
+            message = global_state_accessor.get_all_resource_usage()
             if message is None:
                 return False
 
-            pattern = message["pattern"]
-            data = message["data"]
-            if pattern != ray.gcs_utils.XRAY_HEARTBEAT_BATCH_PATTERN:
-                return False
-
-            pub_message = ray.gcs_utils.PubSubMessage.FromString(data)
-            heartbeat_data = pub_message.data
-            heartbeat = ray.gcs_utils.HeartbeatBatchTableData.FromString(
-                heartbeat_data)
-            self.report = heartbeat.resource_load_by_shape.resource_demands
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+                message)
+            self.report = \
+                resource_usage.resource_load_by_shape.resource_demands
             if max_shapes == 0:
                 return True
             elif max_shapes == 2:
@@ -194,6 +193,8 @@ def test_load_report(shutdown_only, max_shapes):
     # Check that we respect the max shapes limit.
     if max_shapes != -1:
         assert len(checker.report) <= max_shapes
+
+    print(checker.report)
 
     if max_shapes > 0:
         # Check that we always include the 1-CPU resource shape.
@@ -212,6 +213,123 @@ def test_load_report(shutdown_only, max_shapes):
             else:
                 assert demand.num_ready_requests_queued > 0
                 assert demand.num_infeasible_requests_queued == 0
+    global_state_accessor.disconnect()
+
+
+def test_placement_group_load_report(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Add a head node that doesn't have gpu resource.
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+    global_state_accessor = GlobalStateAccessor(
+        cluster.address, ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    class PgLoadChecker:
+        def nothing_is_ready(self):
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
+                return False
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
+                return len(pg_load.placement_group_data) == 2
+            return False
+
+        def only_first_one_ready(self):
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
+                return False
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
+                return len(pg_load.placement_group_data) == 1
+            return False
+
+        def two_infeasible_pg(self):
+            resource_usage = self._read_resource_usage()
+            if not resource_usage:
+                return False
+            if resource_usage.HasField("placement_group_load"):
+                pg_load = resource_usage.placement_group_load
+                return len(pg_load.placement_group_data) == 2
+            return False
+
+        def _read_resource_usage(self):
+            message = global_state_accessor.get_all_resource_usage()
+            if message is None:
+                return False
+
+            resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+                message)
+            return resource_usage
+
+    checker = PgLoadChecker()
+
+    # Create 2 placement groups that are infeasible.
+    pg_feasible = ray.util.placement_group([{"A": 1}])
+    pg_infeasible = ray.util.placement_group([{"B": 1}])
+    _, unready = ray.wait(
+        [pg_feasible.ready(), pg_infeasible.ready()], timeout=0)
+    assert len(unready) == 2
+    ray.test_utils.wait_for_condition(checker.nothing_is_ready)
+
+    # Add a node that makes pg feasible. Make sure load include this change.
+    cluster.add_node(resources={"A": 1})
+    ray.get(pg_feasible.ready())
+    ray.test_utils.wait_for_condition(checker.only_first_one_ready)
+    # Create one more infeasible pg and make sure load is properly updated.
+    pg_infeasible_second = ray.util.placement_group([{"C": 1}])
+    _, unready = ray.wait([pg_infeasible_second.ready()], timeout=0)
+    assert len(unready) == 1
+    ray.test_utils.wait_for_condition(checker.two_infeasible_pg)
+    global_state_accessor.disconnect()
+
+
+def test_backlog_report(shutdown_only):
+    cluster = ray.init(
+        num_cpus=1, _system_config={
+            "report_worker_backlog": True,
+        })
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(num_cpus=1)
+    def foo(x):
+        print(".")
+        time.sleep(x)
+        return None
+
+    def backlog_size_set():
+        message = global_state_accessor.get_all_resource_usage()
+        if message is None:
+            return False
+
+        resource_usage = ray.gcs_utils.ResourceUsageBatchData.FromString(
+            message)
+        aggregate_resource_load = \
+            resource_usage.resource_load_by_shape.resource_demands
+        if len(aggregate_resource_load) == 1:
+            backlog_size = aggregate_resource_load[0].backlog_size
+            print(backlog_size)
+            # Ideally we'd want to assert backlog_size == 8, but guaranteeing
+            # the order the order that submissions will occur is too
+            # hard/flaky.
+            return backlog_size > 0
+        return False
+
+    # We want this first task to finish
+    refs = [foo.remote(0.5)]
+    # These tasks should all start _before_ the first one finishes.
+    refs.extend([foo.remote(1000) for _ in range(9)])
+    # Now there's 1 request running, 1 queued in the raylet, and 8 queued in
+    # the worker backlog.
+
+    ray.get(refs[0])
+    # First request finishes, second request is now running, third lease
+    # request is sent to the raylet with backlog=7
+
+    ray.test_utils.wait_for_condition(backlog_size_set, timeout=2)
+    global_state_accessor.disconnect()
 
 
 if __name__ == "__main__":

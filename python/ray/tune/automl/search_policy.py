@@ -106,13 +106,15 @@ class AutoMLSearcher(SearchAlgorithm):
                     deep_insert(path.split("."), value, new_spec["config"])
 
                 trial = create_trial_from_spec(
-                    new_spec, exp.name, self._parser, experiment_tag=tag)
+                    new_spec, exp.dir_name, self._parser, experiment_tag=tag)
 
                 # AutoML specific fields set in Trial
                 trial.results = []
                 trial.best_result = None
                 trial.param_config = param_config
                 trial.extra_arg = extra_arg
+
+                trial.invalidate_json_state()
 
                 trials.append(trial)
                 self._running_trials[trial.trial_id] = trial
@@ -142,6 +144,7 @@ class AutoMLSearcher(SearchAlgorithm):
                 or result[self.reward_attr] \
                 > trial.best_result[self.reward_attr]:
             trial.best_result = result
+            trial.invalidate_json_state()
 
         # Update job's best trial
         if self.best_trial is None \

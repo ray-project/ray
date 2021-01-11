@@ -13,12 +13,12 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorCheckpointID,
-    CClientID,
+    CNodeID,
     CJobID,
     CTaskID,
     CObjectID,
     CPlacementGroupID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
@@ -48,6 +48,11 @@ ctypedef void (*ray_callback_function) \
 
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
+
+# NOTE: This ctypedef is needed, because Cython doesn't compile
+# "pair[shared_ptr[const CActorHandle], CRayStatus]".
+# This is a bug of cython: https://github.com/cython/cython/issues/3967.
+ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -89,7 +94,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids,
             int max_retries,
-            c_pair[CPlacementGroupID, int64_t] placement_options)
+            c_pair[CPlacementGroupID, int64_t] placement_options,
+            c_bool placement_group_capture_child_tasks,
+            c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -100,6 +107,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             CPlacementGroupID *placement_group_id)
         CRayStatus RemovePlacementGroup(
             const CPlacementGroupID &placement_group_id)
+        CRayStatus WaitPlacementGroupReady(
+            const CPlacementGroupID &placement_group_id, int timeout_ms)
         void SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -108,7 +117,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
-        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill)
+        CRayStatus CancelTask(const CObjectID &object_id, c_bool force_kill,
+                              c_bool recursive)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -121,7 +131,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
-        CClientID GetCurrentNodeId()
+        CNodeID GetCurrentNodeId()
+        CPlacementGroupID GetCurrentPlacementGroupId()
+        c_bool ShouldCaptureChildTasksInPlacementGroup()
         const CActorID &GetActorId()
         void SetActorTitle(const c_string &title)
         void SetWebuiDisplay(const c_string &key, const c_string &message)
@@ -133,8 +145,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
-        const CActorHandle* GetActorHandle(const CActorID &actor_id) const
-        pair[const CActorHandle*, CRayStatus] GetNamedActorHandle(
+        ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
+        pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
             const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
@@ -172,9 +184,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                        c_bool plasma_objects_only)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results)
+                        int64_t timeout_ms, c_vector[c_bool] *results,
+                        c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only, c_bool delete_creating_tasks)
+                          c_bool local_only)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
@@ -189,16 +202,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
-        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
-                                          CActorCheckpointID *checkpoint_id)
-        CRayStatus NotifyActorResumedFromCheckpoint(
-            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
-                               const CClientID &client_Id)
+                               const CNodeID &client_Id)
         CRayStatus SpillObjects(const c_vector[CObjectID] &object_ids)
-        CRayStatus ForceRestoreSpilledObjects(
-                const c_vector[CObjectID] &object_ids)
 
     cdef cppclass CCoreWorkerOptions "ray::CoreWorkerOptions":
         CWorkerType worker_type
@@ -224,12 +231,19 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[shared_ptr[CRayObject]] &args,
             const c_vector[CObjectID] &arg_reference_ids,
             const c_vector[CObjectID] &return_ids,
+            const c_string debugger_breakpoint,
             c_vector[shared_ptr[CRayObject]] *returns) nogil
          ) task_execution_callback
+        (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
-        (c_vector[c_string](const c_vector[CObjectID]&) nogil) spill_objects
-        (void(const c_vector[c_string]&) nogil) restore_spilled_objects
+        (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
+        (int64_t(
+            const c_vector[CObjectID] &,
+            const c_vector[c_string] &) nogil) restore_spilled_objects
+        (void(
+            const c_vector[c_string]&,
+            CWorkerType) nogil) delete_spilled_objects
         (void(c_string *stack_out) nogil) get_lang_stack
         c_bool ref_counting_enabled
         c_bool is_local_mode

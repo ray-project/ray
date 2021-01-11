@@ -61,6 +61,7 @@ class BaseID {
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static T FromRandom();
   static T FromBinary(const std::string &binary);
+  static T FromHex(const std::string &hex_str);
   static const T &Nil();
   static size_t Size() { return T::Size(); }
 
@@ -123,7 +124,7 @@ class JobID : public BaseID<JobID> {
 
 class ActorID : public BaseID<ActorID> {
  private:
-  static constexpr size_t kUniqueBytesLength = 4;
+  static constexpr size_t kUniqueBytesLength = 12;
 
  public:
   /// Length of `ActorID` in bytes.
@@ -324,6 +325,8 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   uint8_t id_[kLength];
 };
 
+typedef std::pair<PlacementGroupID, int64_t> BundleID;
+
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
 static_assert(sizeof(ActorID) == ActorID::kLength + sizeof(size_t),
@@ -392,6 +395,45 @@ T BaseID<T>::FromBinary(const std::string &binary) {
   T t;
   std::memcpy(t.MutableData(), binary.data(), binary.size());
   return t;
+}
+
+inline unsigned char hex_to_uchar(const char c, bool &err) {
+  unsigned char num = 0;
+  if (c >= '0' && c <= '9') {
+    num = c - '0';
+  } else if (c >= 'a' && c <= 'f') {
+    num = c - 'a' + 0xa;
+  } else if (c >= 'A' && c <= 'F') {
+    num = c - 'A' + 0xA;
+  } else {
+    err = true;
+  }
+  return num;
+}
+
+template <typename T>
+T BaseID<T>::FromHex(const std::string &hex_str) {
+  T id;
+
+  if (2 * T::Size() != hex_str.size()) {
+    RAY_LOG(ERROR) << "incorrect hex string length: 2 * " << T::Size()
+                   << " != " << hex_str.size() << ", hex string: " << hex_str;
+    return T::Nil();
+  }
+
+  uint8_t *data = id.MutableData();
+  for (size_t i = 0; i < T::Size(); i++) {
+    char first = hex_str[2 * i];
+    char second = hex_str[2 * i + 1];
+    bool err = false;
+    data[i] = (hex_to_uchar(first, err) << 4) + hex_to_uchar(second, err);
+    if (err) {
+      RAY_LOG(ERROR) << "incorrect hex character, hex string: " << hex_str;
+      return T::Nil();
+    }
+  }
+
+  return id;
 }
 
 template <typename T>

@@ -119,14 +119,14 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     def task():
         return 1
 
-    assert await ray.async_compat.get_async(task.remote()) == 1
+    assert await task.remote().as_future() == 1
 
     @ray.remote
     def task_throws():
         1 / 0
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await ray.async_compat.get_async(task_throws.remote())
+        await task_throws.remote().as_future()
 
     # Test actor calls.
     str_len = 200 * 1024
@@ -145,15 +145,18 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     actor = Actor.remote()
 
-    actor_call_future = ray.async_compat.get_async(actor.echo.remote(2))
+    actor_call_future = actor.echo.remote(2).as_future()
     assert await actor_call_future == 2
 
-    promoted_to_plasma_future = ray.async_compat.get_async(
-        actor.big_object.remote())
+    promoted_to_plasma_future = actor.big_object.remote().as_future()
     assert await promoted_to_plasma_future == "a" * str_len
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        await ray.async_compat.get_async(actor.throw_error.remote())
+        await actor.throw_error.remote().as_future()
+
+    ray.kill(actor)
+    with pytest.raises(ray.exceptions.RayActorError):
+        await actor.echo.remote(1)
 
 
 def test_asyncio_actor_async_get(ray_start_regular_shared):
@@ -193,6 +196,32 @@ async def test_asyncio_double_await(ray_start_regular_shared):
     await signal.send.remote()
     await waiting
     await waiting
+
+
+@pytest.mark.asyncio
+async def test_asyncio_exit_actor(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/12649
+    # The test should just hang without the fix.
+
+    @ray.remote
+    class Actor:
+        async def exit(self):
+            ray.actor.exit_actor()
+
+        async def ping(self):
+            return "pong"
+
+        async def loop_forever(self):
+            while True:
+                await asyncio.sleep(5)
+
+    a = Actor.options(max_task_retries=0).remote()
+    a.loop_forever.remote()
+    # Make sure exit_actor exits immediately, not once all tasks completed.
+    ray.get(a.exit.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ping.remote())
 
 
 if __name__ == "__main__":

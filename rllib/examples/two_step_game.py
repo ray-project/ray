@@ -10,6 +10,7 @@ See also: centralized_critic.py for centralized critic PPO on this game.
 
 import argparse
 from gym.spaces import Tuple, MultiDiscrete, Dict, Discrete
+import os
 
 import ray
 from ray import tune
@@ -77,6 +78,8 @@ if __name__ == "__main__":
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
             "framework": "torch" if args.torch else "tf",
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         }
         group = False
     elif args.run == "QMIX":
@@ -93,11 +96,17 @@ if __name__ == "__main__":
                 "separate_state_space": True,
                 "one_hot_state_encoding": True
             },
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "framework": "torch" if args.torch else "tf",
         }
         group = True
     else:
-        config = {"framework": "torch" if args.torch else "tf"}
+        config = {
+            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            "framework": "torch" if args.torch else "tf",
+        }
         group = False
 
     ray.init(num_cpus=args.num_cpus or None)
