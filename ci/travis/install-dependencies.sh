@@ -297,12 +297,13 @@ install_dependencies() {
 
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7"]; then
+    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7" ]; then
       # Install Python 3.7 dependencies if 3.7 is set.
       pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.7-requirements_tune.txt
     else
       # Else default to Python 3.6.
       pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.6-requirements_tune.txt
+    fi
   fi
 
   # Remove this entire section once RLlib and Serve dependencies are fixed.
