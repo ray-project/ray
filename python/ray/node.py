@@ -147,6 +147,30 @@ class Node:
         if "plasma_store_as_thread" not in self._config:
             self._config["plasma_store_as_thread"] = True
 
+        # Configure log rotation parameters.
+        max_bytes = ray_constants.LOGGING_ROTATE_BYTES
+        backup_count = ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+
+        # If it is not a head node, get the config value from Redis.
+        if not head:
+            redis_client = self.create_redis_client()
+            max_bytes = int(
+                ray.utils.decode(
+                    _get_with_retry(redis_client, "log_rotation_max_bytes")))
+            backup_count = int(
+                ray.utils.decode(
+                    _get_with_retry(redis_client,
+                                    "log_rotation_backup_count")))
+
+        if "log_rotation_max_bytes" not in self._config:
+            self._config["log_rotation_max_bytes"] = max_bytes
+        if "log_rotation_backup_count" not in self._config:
+            self._config["log_rotation_backup_count"] = backup_count
+
+        assert self._config["log_rotation_max_bytes"] >= 0
+        assert self._config["log_rotation_backup_count"] >= 0
+
+        # Register the temp dir.
         if head:
             redis_client = None
             # date including microsecond
@@ -218,6 +242,10 @@ class Node:
             redis_client.set("session_name", self.session_name)
             redis_client.set("session_dir", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
+            redis_client.set("log_rotation_max_bytes",
+                             self._config["log_rotation_max_bytes"])
+            redis_client.set("log_rotation_backup_count",
+                             self._config["log_rotation_backup_count"])
 
         if not connect_only:
             self.start_ray_processes()
@@ -604,7 +632,8 @@ class Node:
             stdout_file=subprocess.DEVNULL,
             stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            config=self._config)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
@@ -628,6 +657,7 @@ class Node:
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
+            config=self._config,
             port=self._ray_params.dashboard_port)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -748,7 +778,8 @@ class Node:
             stderr_file=stderr_file,
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            config=self._config)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 

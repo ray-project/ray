@@ -1042,7 +1042,8 @@ def start_log_monitor(redis_address,
                       stdout_file=None,
                       stderr_file=None,
                       redis_password=None,
-                      fate_share=None):
+                      fate_share=None,
+                      config=None):
     """Start a log monitor process.
 
     Args:
@@ -1053,17 +1054,19 @@ def start_log_monitor(redis_address,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     log_monitor_filepath = os.path.join(RAY_PATH, "log_monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        log_monitor_filepath,
-        f"--redis-address={redis_address}",
-        f"--logs-dir={logs_dir}",
+        sys.executable, "-u", log_monitor_filepath,
+        f"--redis-address={redis_address}", f"--logs-dir={logs_dir}",
+        f"--logging-rotate-bytes={str(config['log_rotation_max_bytes'])}",
+        f"--logging-rotate-backup-count="
+        f"{str(config['log_rotation_backup_count'])}"
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
@@ -1085,7 +1088,8 @@ def start_dashboard(require_dashboard,
                     stdout_file=None,
                     stderr_file=None,
                     redis_password=None,
-                    fate_share=None):
+                    fate_share=None,
+                    config=None):
     """Start a dashboard process.
 
     Args:
@@ -1104,6 +1108,8 @@ def start_dashboard(require_dashboard,
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1129,14 +1135,12 @@ def start_dashboard(require_dashboard,
     dashboard_dir = "new_dashboard"
     dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        f"--host={host}",
-        f"--port={port}",
-        f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}",
-        f"--log-dir={logdir}",
+        sys.executable, "-u", dashboard_filepath, f"--host={host}",
+        f"--port={port}", f"--redis-address={redis_address}",
+        f"--temp-dir={temp_dir}", f"--log-dir={logdir}",
+        f"--logging-rotate-bytes={str(config['log_rotation_max_bytes'])}",
+        f"--logging-rotate-backup-count="
+        f"{str(config['log_rotation_backup_count'])}"
     ]
 
     if redis_password:
@@ -1776,7 +1780,8 @@ def start_monitor(redis_address,
                   stderr_file=None,
                   autoscaling_config=None,
                   redis_password=None,
-                  fate_share=None):
+                  fate_share=None,
+                  config=None):
     """Run a process to monitor the other processes.
 
     Args:
@@ -1788,17 +1793,19 @@ def start_monitor(redis_address,
             no redirection should happen, then this should be None.
         autoscaling_config: path to autoscaling config file.
         redis_password (str): The password of the redis server.
+        config (dict|None): Optional configuration that will
+            override defaults in RayConfig.
 
     Returns:
         ProcessInfo for the process that was started.
     """
     monitor_path = os.path.join(RAY_PATH, "monitor.py")
     command = [
-        sys.executable,
-        "-u",
-        monitor_path,
-        f"--logs-dir={logs_dir}",
-        "--redis-address=" + str(redis_address),
+        sys.executable, "-u", monitor_path, f"--logs-dir={logs_dir}",
+        f"--redis-address={redis_address}",
+        f"--logging-rotate-bytes={str(config['log_rotation_max_bytes'])}",
+        f"--logging-rotate-backup-count="
+        f"{str(config['log_rotation_backup_count'])}"
     ]
     if autoscaling_config:
         command.append("--autoscaling-config=" + str(autoscaling_config))

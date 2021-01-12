@@ -150,12 +150,9 @@ LOGGER_LEVEL = "info"
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = ("The logging level threshold, choices=['debug', 'info',"
                      " 'warning', 'error', 'critical'], default='info'")
-# Default param for RotatingFileHandler
-# maxBytes. 10G by default. We intentionally set the default value high
-# so that users who won't care don't know about the existence of this.
-LOGGING_ROTATE_BYTES = 10 * 1000 * 1000 * 1000
-# The default will grow logs up until 500GB without log loss.
-LOGGING_ROTATE_BACKUP_COUNT = 50  # backupCount
+
+LOGGING_ROTATE_BYTES = 100 * 1024 * 1024
+LOGGING_ROTATE_BACKUP_COUNT = 5
 
 # Constants used to define the different process types.
 PROCESS_TYPE_REAPER = "reaper"
