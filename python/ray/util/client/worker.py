@@ -63,8 +63,7 @@ class Worker:
             except grpc.FutureTimeoutError:
                 if conn_attempts == connection_retries:
                     raise ConnectionError("ray client connection timeout")
-                logger.info(
-                    f"Couldn't connect in {timeout} seconds, retrying")
+                logger.info(f"Couldn't connect in {timeout} seconds, retrying")
                 timeout = timeout + 5
                 if timeout > MAX_TIMEOUT_SEC:
                     timeout = MAX_TIMEOUT_SEC
