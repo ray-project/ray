@@ -189,6 +189,7 @@ message KVGetResponse {
 message KVPutRequest {
   bytes key = 1;
   bytes value = 2;
+  bool overwrite = 3;
 }
 
 message KVPutResponse {
