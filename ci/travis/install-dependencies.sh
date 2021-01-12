@@ -306,6 +306,11 @@ install_dependencies() {
     fi
   fi
 
+  # For Tune, install upstream dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_upstream.txt
+  fi
+
   # Remove this entire section once RLlib and Serve dependencies are fixed.
   if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
     # If CI has deemed that a different version of Tensorflow or Torch
