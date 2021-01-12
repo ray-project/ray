@@ -19,6 +19,7 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
+from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -1363,9 +1364,13 @@ def memory(address, redis_password):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address, _redis_password=redis_password)
-    print(ray.internal.internal_api.memory_summary())
+    state = GlobalState()
+    state._initialize_global_state(address, redis_password)
+    node_table = state.node_table()
+    print(
+        ray.internal.internal_api.memory_summary(
+            node_table[0]["NodeManagerAddress"],
+            node_table[0]["NodeManagerPort"]))
 
 
 @cli.command()
