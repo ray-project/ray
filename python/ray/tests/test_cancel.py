@@ -182,6 +182,7 @@ def test_stress(shutdown_only, use_force):
 
     ray.cancel(first, force=use_force)
     cancelled.add(first)
+    original_cancelled = cancelled.copy()
 
     for done in cancelled:
         with pytest.raises(valid_exceptions(use_force)):
@@ -191,8 +192,13 @@ def test_stress(shutdown_only, use_force):
             ray.cancel(t, force=use_force)
             cancelled.add(t)
         if t in cancelled:
-            with pytest.raises(valid_exceptions(use_force)):
-                ray.get(t, timeout=120)
+            try:
+                with pytest.raises(valid_exceptions(use_force)):
+                    ray.get(t, timeout=120)
+            except GetTimeoutError as e:
+                typ = "previously cancelled" if t in original_cancelled else "recently cancelled"
+                ttyp = "infinite sleep" if sleep_or_no[indx] else "noop"
+                print(f"[Iteration: {indx}] Failed on a {typ} task that was {ttyp}")
         else:
             ray.get(t, timeout=120)
 
