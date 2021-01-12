@@ -140,6 +140,7 @@ class VisionNetwork(TFModelV2):
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
         self.base_model = tf.keras.Model(inputs, [conv_out, value_out])
+        self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
