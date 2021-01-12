@@ -22,9 +22,6 @@ from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
 
-# Note: Since we do single steps in most of these tests,
-# they only work with TUNE_RESULT_BUFFER_LENGTH = 1 or 0
-
 
 class TrialRunnerTest3(unittest.TestCase):
     def setUp(self):

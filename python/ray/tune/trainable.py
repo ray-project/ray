@@ -176,7 +176,7 @@ class Trainable:
                 # If the function API trainable completed, return
                 break
             elif len(results) >= max_buffer_length:
-                # If the buffer is full return
+                # If the buffer is full, return
                 break
             now = time.time()
 
