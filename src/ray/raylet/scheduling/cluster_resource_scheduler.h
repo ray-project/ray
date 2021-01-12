@@ -66,6 +66,10 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
       const std::unordered_map<std::string, double> &resource_map_total,
       const std::unordered_map<std::string, double> &resource_map_available);
 
+  /// Update node resources. This hanppens when a node resource usage udpated.
+  ///
+  /// \param node_id_string ID of the node which resoruces need to be udpated.
+  /// \param resource_data The node resource data.
   bool UpdateNode(const std::string &node_id_string,
                   const rpc::ResourcesData &resource_data) override;
 
@@ -157,6 +161,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources *ret_resources) const;
+
+  /// Get local node resources.
+  const NodeResources &GetLocalNodeResources() const;
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();

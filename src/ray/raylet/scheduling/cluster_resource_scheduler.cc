@@ -361,6 +361,12 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
   }
 }
 
+const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
+  const auto &node_it = nodes_.find(local_node_id_);
+  RAY_CHECK(node_it != nodes_.end());
+  return node_it->second.GetLocalView();
+}
+
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
 
 void ClusterResourceScheduler::AddLocalResource(const std::string &resource_name,

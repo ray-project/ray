@@ -645,17 +645,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// should give up the CPU resources allocated for the running task for the time being
   /// and the worker itself should also be marked as blocked.
   ///
-  /// \param worker The worker to be marked as blocked.
-  /// \return true if the worker is non-block and release_resources is true, else false.
-  bool ReleaseCpuResourcesAndMarkWorkerAsBlocked(std::shared_ptr<WorkerInterface> worker,
-                                                 bool release_resources) override;
+  /// \param worker The worker who will give up the CPU resources.
+  /// \return true if the cpu resources of the specified worker are released successfully,
+  /// else false.
+  bool ReleaseCpuResourcesFromUnblockedWorker(
+      std::shared_ptr<WorkerInterface> worker) override;
 
   /// When a task is no longer blocked in a ray.get or ray.wait, the CPU resources that
   /// the worker gave up should be returned to it.
   ///
   /// \param worker The blocked worker.
-  /// \return true if the worker is blocking, else false.
-  bool ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
+  /// \return true if the cpu resources are returned back to the specified worker, else
+  /// false.
+  bool ReturnCpuResourcesToBlockedWorker(
       std::shared_ptr<WorkerInterface> worker) override;
 
   // Schedule and dispatch tasks.
@@ -680,13 +682,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param Output parameter.
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const override;
 
-  /// Call once a task finishes (i.e. a worker is returned).
+  /// Remove assigned task.
+  /// This method will be removed and can be replaced by `worker->GetAssignedTask()`
+  /// directly once we remove the legacy scheduler
   ///
   /// \param worker: The worker which was running the task.
-  void HandleTaskFinished(std::shared_ptr<WorkerInterface> worker,
-                          Task *finished_task = nullptr) override;
+  /// \param task: Output parameter.
+  bool RemoveAssignedTask(std::shared_ptr<WorkerInterface> worker, Task *task) override;
 
   /// Return worker resources.
+  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
+  /// once we remove the legacy scheduler.
   ///
   /// \param worker: The worker which was running the task.
   void ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) override;
@@ -699,9 +705,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// false if the task is already running.
   bool CancelTask(const TaskID &task_id) override;
 
-  /// Queue task and schedule.
-  /// \param fn: The function used during dispatching.
-  /// \param task: The incoming task to schedule.
+  /// Queue task and schedule. This hanppens when processing the worker lease request.
+  ///
+  /// \param task: The incoming task to be queued and scheduled.
+  /// \param reply: The reply of the lease request.
+  /// \param send_reply_callback: The function used during dispatching.
   void QueueAndScheduleTask(const Task &task, rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
@@ -726,6 +734,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                   const rpc::ResourcesData &resource_data) override;
 
   /// Handle the object missing event.
+  ///
+  /// \param object_id ID of the missing object.
+  /// \param waiting_task_ids IDs of tasks that are waitting for the specified missing
+  /// object.
   void OnObjectMissing(const ObjectID &object_id,
                        const std::vector<TaskID> &waiting_task_ids) override;
 

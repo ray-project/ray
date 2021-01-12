@@ -291,29 +291,17 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
-void ClusterTaskManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker,
-                                            Task *finished_task) {
-  if (finished_task) {
-    *finished_task = worker->GetAssignedTask();
-  }
-
-  if (worker->GetAllocatedInstances() != nullptr) {
-    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
-    worker->ClearAllocatedInstances();
-    cluster_resource_scheduler_->ReleaseWorkerResources(
-        worker->GetLifetimeAllocatedInstances());
-    worker->ClearLifetimeAllocatedInstances();
-  }
+bool ClusterTaskManager::RemoveAssignedTask(std::shared_ptr<WorkerInterface> worker,
+                                            Task *task) {
+  RAY_CHECK(worker != nullptr && task != nullptr);
+  *task = worker->GetAssignedTask();
+  return true;
 }
 
 void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {
-  if (worker->GetAllocatedInstances() != nullptr) {
-    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
-    worker->ClearAllocatedInstances();
-    cluster_resource_scheduler_->ReleaseWorkerResources(
-        worker->GetLifetimeAllocatedInstances());
-    worker->ClearLifetimeAllocatedInstances();
-  }
+  // TODO(Shanly): This method will be removed and can be replaced by
+  // `ReleaseWorkerResources` directly once we remove the legacy scheduler.
+  ReleaseWorkerResources(worker);
 }
 
 void ReplyCancelled(Work &work) {
@@ -784,53 +772,53 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
 }
 
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
-  cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
-  worker->ClearAllocatedInstances();
-  cluster_resource_scheduler_->ReleaseWorkerResources(
-      worker->GetLifetimeAllocatedInstances());
-  worker->ClearLifetimeAllocatedInstances();
+  if (worker->GetAllocatedInstances() != nullptr) {
+    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
+    worker->ClearAllocatedInstances();
+    cluster_resource_scheduler_->ReleaseWorkerResources(
+        worker->GetLifetimeAllocatedInstances());
+    worker->ClearLifetimeAllocatedInstances();
+  }
 }
 
-bool ClusterTaskManager::ReleaseCpuResourcesAndMarkWorkerAsBlocked(
-    std::shared_ptr<WorkerInterface> worker, bool release_resources) {
-  if (!worker || worker->IsBlocked() || !release_resources) {
+bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(
+    std::shared_ptr<WorkerInterface> worker) {
+  if (!worker || worker->IsBlocked()) {
     return false;
   }
-  std::vector<double> cpu_instances;
+
   if (worker->GetAllocatedInstances() != nullptr) {
-    cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
-  }
-  if (cpu_instances.size() > 0) {
-    std::vector<double> overflow_cpu_instances =
-        cluster_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
-    for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
-      RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
+    auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+    if (cpu_instances.size() > 0) {
+      std::vector<double> overflow_cpu_instances =
+          cluster_resource_scheduler_->AddCPUResourceInstances(cpu_instances);
+      for (unsigned int i = 0; i < overflow_cpu_instances.size(); i++) {
+        RAY_CHECK(overflow_cpu_instances[i] == 0) << "Should not be overflow";
+      }
+      return true;
     }
-    worker->MarkBlocked();
   }
 
-  return true;
+  return false;
 }
 
-bool ClusterTaskManager::ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
+bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
     std::shared_ptr<WorkerInterface> worker) {
-  // Important: avoid double unblocking if the unblock RPC finishes after task end.
   if (!worker || !worker->IsBlocked()) {
     return false;
   }
-  std::vector<double> cpu_instances;
   if (worker->GetAllocatedInstances() != nullptr) {
-    cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+    auto cpu_instances = worker->GetAllocatedInstances()->GetCPUInstancesDouble();
+    if (cpu_instances.size() > 0) {
+      // Important: we allow going negative here, since otherwise you can use infinite
+      // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
+      // negative, at most one task can "borrow" this worker's resources.
+      cluster_resource_scheduler_->SubtractCPUResourceInstances(
+          cpu_instances, /*allow_going_negative=*/true);
+      return true;
+    }
   }
-  if (cpu_instances.size() > 0) {
-    // Important: we allow going negative here, since otherwise you can use infinite
-    // CPU resources by repeatedly blocking / unblocking a task. By allowing it to go
-    // negative, at most one task can "borrow" this worker's resources.
-    cluster_resource_scheduler_->SubtractCPUResourceInstances(
-        cpu_instances, /*allow_going_negative=*/true);
-    worker->MarkUnblocked();
-  }
-  return true;
+  return false;
 }
 
 void ClusterTaskManager::ScheduleAndDispatchTasks() {

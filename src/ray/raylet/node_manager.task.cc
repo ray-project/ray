@@ -31,24 +31,22 @@ void NodeManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker
   worker->ResetLifetimeResourceIds();
 }
 
-bool NodeManager::ReleaseCpuResourcesAndMarkWorkerAsBlocked(
-    std::shared_ptr<WorkerInterface> worker, bool release_resources) {
-  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked() ||
-      !release_resources) {
-    return false;  // The worker may have died or is no longer processing the task.
+bool NodeManager::ReleaseCpuResourcesFromUnblockedWorker(
+    std::shared_ptr<WorkerInterface> worker) {
+  if (!worker || worker->IsBlocked()) {
+    return false;
   }
+
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
   local_available_resources_.Release(cpu_resource_ids);
   cluster_resource_map_[self_node_id_].Release(cpu_resource_ids.ToResourceSet());
-
-  worker->MarkBlocked();
   return true;
 }
 
-bool NodeManager::ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
+bool NodeManager::ReturnCpuResourcesToBlockedWorker(
     std::shared_ptr<WorkerInterface> worker) {
-  if (!worker->IsBlocked()) {
-    return false;  // Don't need to unblock the worker.
+  if (!worker || !worker->IsBlocked()) {
+    return false;
   }
 
   const TaskID &task_id = worker->GetAssignedTaskId();
@@ -71,7 +69,6 @@ bool NodeManager::ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(
         << "Resources oversubscribed: "
         << cluster_resource_map_[self_node_id_].GetAvailableResources().ToString();
   }
-  worker->MarkUnblocked();
   return true;
 }
 
@@ -129,22 +126,11 @@ void NodeManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resource
   resources_data->mutable_resource_load_by_shape()->Swap(&resource_load);
 }
 
-void NodeManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker,
-                                     Task *finished_task) {
+bool NodeManager::RemoveAssignedTask(std::shared_ptr<WorkerInterface> worker,
+                                     Task *task) {
+  RAY_CHECK(worker != nullptr && task != nullptr);
   const auto &task_id = worker->GetAssignedTaskId();
-  Task removed_task;
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  RAY_CHECK(local_queues_.RemoveTask(task_id, &removed_task)) << task_id;
-  if (finished_task) {
-    *finished_task = std::move(removed_task);
-  }
-
-  // Release task's resources. The worker's lifetime resources are still held.
-  auto const &task_resources = worker->GetTaskResourceIds();
-  local_available_resources_.ReleaseConstrained(
-      task_resources, cluster_resource_map_[self_node_id_].GetTotalResources());
-  cluster_resource_map_[self_node_id_].Release(task_resources.ToResourceSet());
-  worker->ResetTaskResourceIds();
+  return local_queues_.RemoveTask(task_id, task);
 }
 
 void NodeManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {

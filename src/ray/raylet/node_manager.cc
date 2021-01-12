@@ -1756,10 +1756,15 @@ void NodeManager::SubmitTask(const Task &task) {
 
 void NodeManager::HandleDirectCallTaskBlocked(
     const std::shared_ptr<WorkerInterface> &worker, bool release_resources) {
-  if (cluster_task_manager_->ReleaseCpuResourcesAndMarkWorkerAsBlocked(
-          worker, release_resources)) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
+  if (!worker || worker->IsBlocked() || worker->GetAssignedTaskId().IsNil() ||
+      !release_resources) {
+    return;  // The worker may have died or is no longer processing the task.
   }
+
+  if (cluster_task_manager_->ReleaseCpuResourcesFromUnblockedWorker(worker)) {
+    worker->MarkBlocked();
+  }
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::HandleDirectCallTaskUnblocked(
@@ -1772,7 +1777,10 @@ void NodeManager::HandleDirectCallTaskUnblocked(
   // if we don't need to unblock the worker below.
   dependency_manager_.CancelGetRequest(worker->WorkerId());
 
-  if (cluster_task_manager_->ReturnCpuResourcesToWorkerAndMarkWorkerAsUnblocked(worker)) {
+  if (worker->IsBlocked()) {
+    if (cluster_task_manager_->ReturnCpuResourcesToBlockedWorker(worker)) {
+      worker->MarkUnblocked();
+    }
     cluster_task_manager_->ScheduleAndDispatchTasks();
   }
 }
@@ -1974,7 +1982,8 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   Task task;
-  cluster_task_manager_->HandleTaskFinished(worker_ptr, &task);
+  RAY_CHECK(cluster_task_manager_->RemoveAssignedTask(worker_ptr, &task));
+  cluster_task_manager_->ReleaseWorkerResources(worker_ptr);
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {
