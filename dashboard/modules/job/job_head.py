@@ -103,16 +103,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 pubsub_message = ray.gcs_utils.PubSubMessage.FromString(data)
                 message = ray.gcs_utils.JobTableData.FromString(
                     pubsub_message.data)
-                job_id = ray._raylet.JobID(message.job_id)
-                if job_id.is_submitted_from_dashboard():
-                    job_table_data = job_table_data_to_dict(message)
-                    job_id = job_table_data["jobId"]
-                    # Update jobs.
-                    DataSource.jobs[job_id] = job_table_data
-                else:
-                    logger.info(
-                        "Ignore job %s which is not submitted from dashboard.",
-                        job_id.hex())
+                job_table_data = job_table_data_to_dict(message)
+                job_id = job_table_data["jobId"]
+                # Update jobs.
+                DataSource.jobs[job_id] = job_table_data
             except Exception:
                 logger.exception("Error receiving job info.")
 
