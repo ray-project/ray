@@ -70,13 +70,15 @@ def get_initializer(name, framework="tf"):
 
 
 class Synchronizable:
-    """ Interface for classes that require instance-level thread locking for their methods """
+    """Interface for classes that require instance-level locking for their methods.
+    """
     def __init__(self):
         self.synchronized_lock = threading.RLock()
 
     @staticmethod
     @decorator
     def synchronized(wrapped, instance=None, args=None, kwargs=None):
-        """ wrapper used to decorate the instance methods that should be locked with self.synchronized_lock """
+        """Decorator for instance methods that should be locked (thread safe).
+        """
         with instance.synchronized_lock:
             return wrapped(*args, **kwargs)

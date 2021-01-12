@@ -233,7 +233,7 @@ class ModelV2:
             input_dict: Dict[str, TensorType],
             state: List[Any] = None,
             seq_lens: TensorType = None) -> (TensorType, TensorType, List[TensorType]):
-        """ Convenience function to use where both model out and value function are required """
+        """Use this if both model's output and -value are required (thread safe)."""
         model_out, state = self.__call__(input_dict, state, seq_lens)
         value = self.value_function()
         return model_out, value, state
@@ -260,8 +260,7 @@ class ModelV2:
     @PublicAPI
     def from_batch_with_value(self, train_batch: SampleBatch,
                               is_training: bool = True) -> (TensorType, TensorType, List[TensorType]):
-        """Convenience function that calls this model with a tensor batch and calls value function atomically so that
-            competing threads aren't exposed to other thread's value_function outputs
+        """Calls model and value function in thread-safe manner."""
 
         All this does is unpack the tensor batch to call this model with the
         right input dict, state, and seq len arguments.
