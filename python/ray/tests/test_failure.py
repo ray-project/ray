@@ -292,17 +292,14 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
     p = error_pubsub
     error_message1 = "actor constructor failed"
-    error_flag_file_name = "/tmp/TEST_ERROR_FLAG_" + str(
-        random.randint(0, 99999))
 
     @ray.remote(max_restarts=2)
     class FailedActor:
         def __init__(self):
             # This actor will raise error at first time.
             # Then after restarting, it will be created successfully
-            if not os.path.isfile(error_flag_file_name):
-                open(error_flag_file_name, "w").close()
-                print("flag not exits, raise error")
+            if not ray.get_runtime_context().was_current_actor_reconstructed:
+                print("Actor is fresh started, raise error")
                 raise Exception(error_message1)
 
         def ok(self):
@@ -324,7 +321,6 @@ def test_failed_actor_init_and_restart(ray_start_regular, error_pubsub):
             return False
 
     wait_for_condition(wait_until_ok)
-    os.remove(error_flag_file_name)
 
 
 def test_failed_actor_method(ray_start_regular, error_pubsub):
