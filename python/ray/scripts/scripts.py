@@ -19,8 +19,11 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
+<<<<<<< HEAD
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
+=======
+>>>>>>> Access memory info in ray memory via GlobalStateAccessor rather than calling ray.init()
 from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
@@ -1368,10 +1371,18 @@ def memory(address, redis_password):
         address = services.get_ray_address_to_use_or_die()
     state = GlobalState()
     state._initialize_global_state(address, redis_password)
+<<<<<<< HEAD
     raylet = state.node_table()[0]
     print(
         ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
                                                  raylet["NodeManagerPort"]))
+=======
+    node_table = state.node_table()
+    print(
+        ray.internal.internal_api.memory_summary(
+            node_table[0]["NodeManagerAddress"],
+            node_table[0]["NodeManagerPort"]))
+>>>>>>> Access memory info in ray memory via GlobalStateAccessor rather than calling ray.init()
 
 
 @cli.command()
