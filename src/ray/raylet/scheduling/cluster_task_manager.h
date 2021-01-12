@@ -155,7 +155,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   std::string DebugStr() const override;
 
  private:
-   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
+  /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
   /// any such node exist. Skip tasks which are not schedulable.
   ///
