@@ -262,7 +262,7 @@ class ModelV2:
     @PublicAPI
     def from_batch_with_value(self, train_batch: SampleBatch,
                               is_training: bool = True) -> (TensorType, TensorType, List[TensorType]):
-        """Calls model and value function in thread-safe manner."""
+        """Calls model and its value function in a thread-safe manner.
 
         All this does is unpack the tensor batch to call this model with the
         right input dict, state, and seq len arguments.
