@@ -33,7 +33,6 @@ if __name__ == "__main__":
         "model": {
             "custom_model": "bn_model",
         },
-        "lr": 0.0003,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
@@ -46,7 +45,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=2)
+    results = tune.run(args.run, stop=stop, config=config, verbose=1)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
