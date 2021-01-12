@@ -65,7 +65,21 @@ class BatchNormModel(TFModelV2):
                 kernel_initializer=normc_initializer(1.0),
                 activation=None,
                 name="vf")
+
+        # Register variables.
+        # NOTE: This is not the recommended way of doing things. We would
+        # prefer creating keras-style Layers like it's done in the
+        # `KerasBatchNormModel` class below and then have TFModelV2 auto-detect
+        # the created vars. However, since there is a bug
+        # in keras/tf that prevents us from using that KerasBatchNormModel
+        # example (see comments below), we do variable registration the old,
+        # manual way for this example Model here.
         if not self._registered:
+            # Register already auto-detected variables (from the wrapping
+            # Model, e.g. DQNTFModel).
+            self.register_variables(self.variables())
+            # Then register everything we added to the graph in this `forward`
+            # call.
             self.register_variables(
                 tf1.get_collection(
                     tf1.GraphKeys.TRAINABLE_VARIABLES, scope=".+/model/.+"))
