@@ -295,20 +295,14 @@ install_dependencies() {
     pip install 'recsim>=0.2.4'
   fi
 
-  # Additional Tune test dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
-  fi
-
-  # Additional RaySGD test dependencies.
-  if [ "${SGD_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
-    # TODO: eventually have a separate requirements file for Ray SGD.
-  fi
-
-  # Additional Doc test dependencies.
-  if [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_tune.txt
+  # Additional Tune/SGD/Doc test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7"]; then
+      # Install Python 3.7 dependencies if 3.7 is set.
+      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.7-requirements_tune.txt
+    else
+      # Else default to Python 3.6.
+      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.6-requirements_tune.txt
   fi
 
   # Remove this entire section once RLlib and Serve dependencies are fixed.
