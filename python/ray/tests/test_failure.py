@@ -9,7 +9,6 @@ import time
 
 import numpy as np
 import pytest
-import random
 import redis
 
 import ray
