@@ -15,8 +15,8 @@ def deprecation_warning(old, new=None, error=None):
     Args:
         old (str): A description of the "thing" that is to be deprecated.
         new (Optional[str]): A description of the new "thing" that replaces it.
-        error (Optional[bool,Exception]): Whether or which exception to throw.
-            If True, throw ValueError.
+        error (Optional[Union[bool,Exception]]): Whether or which exception to
+            throw. If True, throw ValueError.
     """
     msg = "`{}` has been deprecated.{}".format(
         old, (" Use `{}` instead.".format(new) if new else ""))

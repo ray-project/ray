@@ -335,7 +335,7 @@ Status ConnectWithRetries(const std::string &address, int port,
     }
     RAY_LOG(WARNING) << errorMessage << " Will retry in "
                      << RayConfig::instance().redis_db_connect_wait_milliseconds()
-                     << " milliseconds.";
+                     << " milliseconds. Each retry takes about two minutes.";
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));

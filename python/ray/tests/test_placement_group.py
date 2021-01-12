@@ -1,6 +1,7 @@
 import pytest
 import os
 import sys
+import time
 
 try:
     import pytest_timeout
@@ -50,7 +51,7 @@ def test_placement_group_pack(ray_start_cluster):
                 "CPU": 2
             }
         ])
-    assert placement_group.wait(10000)
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -96,7 +97,7 @@ def test_placement_group_strict_pack(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    assert placement_group.wait(10000)
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -142,7 +143,7 @@ def test_placement_group_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    assert placement_group.wait(10000)
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -192,7 +193,7 @@ def test_placement_group_strict_spread(ray_start_cluster):
         }, {
             "CPU": 2
         }])
-    assert placement_group.wait(10000)
+    ray.get(placement_group.ready())
     actor_1 = Actor.options(
         placement_group=placement_group,
         placement_group_bundle_index=0).remote()
@@ -674,12 +675,18 @@ def test_atomic_creation(ray_start_cluster):
 
     @ray.remote(num_cpus=3)
     def bothering_task():
-        import time
-        time.sleep(1)
+        time.sleep(6)
         return True
 
     # Schedule tasks to fail initial placement group creation.
     tasks = [bothering_task.remote() for _ in range(2)]
+
+    # Make sure the two common task has scheduled.
+    def tasks_scheduled():
+        return ray.available_resources()["CPU"] == 2.0
+
+    wait_for_condition(tasks_scheduled)
+
     # Create an actor that will fail bundle scheduling.
     # It is important to use pack strategy to make test less flaky.
     pg = ray.util.placement_group(
@@ -699,7 +706,7 @@ def test_atomic_creation(ray_start_cluster):
     # Wait on the placement group now. It should be unready
     # because normal actor takes resources that are required
     # for one of bundle creation.
-    ready, unready = ray.wait([pg.ready()], timeout=0)
+    ready, unready = ray.wait([pg.ready()], timeout=0.5)
     assert len(ready) == 0
     assert len(unready) == 1
     # Wait until all tasks are done.
@@ -1177,7 +1184,7 @@ def test_create_placement_group_after_gcs_server_restart(
 
     # Create placement group 1 successfully.
     placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    assert placement_group1.wait(10000)
+    ray.get(placement_group1.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group1)
     assert table["state"] == "CREATED"
 
@@ -1187,7 +1194,7 @@ def test_create_placement_group_after_gcs_server_restart(
 
     # Create placement group 2 successfully.
     placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-    assert placement_group2.wait(10000)
+    ray.get(placement_group2.ready(), timeout=10)
     table = ray.util.placement_group_table(placement_group2)
     assert table["state"] == "CREATED"
 
@@ -1233,38 +1240,52 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 def test_create_placement_group_during_gcs_server_restart(
         ray_start_cluster_head):
     cluster = ray_start_cluster_head
-    cluster.add_node(num_cpus=20)
+    cluster.add_node(num_cpus=200)
     cluster.wait_for_nodes()
 
     # Create placement groups during gcs server restart.
     placement_groups = []
     for i in range(0, 100):
-        placement_group = ray.util.placement_group([{
-            "CPU": 0.1
-        }, {
-            "CPU": 0.1
-        }])
+        placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
         placement_groups.append(placement_group)
 
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
 
     for i in range(0, 100):
-        assert placement_groups[i].wait(10000)
+        ray.get(placement_groups[i].ready())
 
 
-def test_placement_group_wait_api(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=20, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_placement_group_wait_api(ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
 
-    placement_group = ray.util.placement_group(
-        name="name", strategy="PACK", bundles=[{
-            "CPU": 2,
-        }, {
-            "CPU": 2
-        }])
-    assert placement_group.wait(10000)
+    # Create placement group 1 successfully.
+    placement_group1 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group1.wait(10)
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Create placement group 2 successfully.
+    placement_group2 = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
+    assert placement_group2.wait(10)
+
+    # Remove placement group 1.
+    ray.util.remove_placement_group(placement_group1)
+
+    # Wait for placement group 1 after it is removed.
+    with pytest.raises(Exception):
+        placement_group1.wait(10)
 
 
 if __name__ == "__main__":

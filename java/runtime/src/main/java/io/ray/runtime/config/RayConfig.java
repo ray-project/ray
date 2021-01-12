@@ -13,7 +13,6 @@ import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.util.NetworkUtil;
 import java.io.File;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +20,7 @@ import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 
-/**
- * Configurations of Ray runtime.
- * See `ray.default.conf` for the meaning of each field.
- */
+/** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
 public class RayConfig {
 
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
@@ -32,10 +28,9 @@ public class RayConfig {
 
   private Config config;
 
-  /**
-   * IP of this node. if not provided, IP will be automatically detected.
-   */
+  /** IP of this node. if not provided, IP will be automatically detected. */
   public final String nodeIp;
+
   public final WorkerType workerMode;
   public final RunMode runMode;
   private JobId jobId;
@@ -65,8 +60,8 @@ public class RayConfig {
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
-      Preconditions.checkArgument(redisAddress != null,
-          "Redis address must be set in worker mode.");
+      Preconditions.checkArgument(
+          redisAddress != null, "Redis address must be set in worker mode.");
     }
   }
 
@@ -146,7 +141,8 @@ public class RayConfig {
     if (config.hasPath("ray.raylet.node-manager-port")) {
       nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
     } else {
-      Preconditions.checkState(workerMode != WorkerType.WORKER,
+      Preconditions.checkState(
+          workerMode != WorkerType.WORKER,
           "Worker started by raylet should accept the node manager port from raylet.");
     }
 
@@ -174,34 +170,12 @@ public class RayConfig {
     if (config.hasPath("ray.job.code-search-path")) {
       codeSearchPathString = config.getString("ray.job.code-search-path");
     }
-    if (!StringUtils.isEmpty(codeSearchPathString)) {
-      codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
-    } else {
-      codeSearchPath = Collections.emptyList();
+    if (StringUtils.isEmpty(codeSearchPathString)) {
+      codeSearchPathString = System.getProperty("java.class.path");
     }
+    codeSearchPath = Arrays.asList(codeSearchPathString.split(":"));
 
-    boolean enableMultiTenancy;
-    if (config.hasPath("ray.raylet.config.enable_multi_tenancy")) {
-      enableMultiTenancy =
-          Boolean.valueOf(config.getString("ray.raylet.config.enable_multi_tenancy"));
-    } else {
-      String envString = System.getenv("RAY_ENABLE_MULTI_TENANCY");
-      if (StringUtils.isNotBlank(envString)) {
-        enableMultiTenancy = "1".equals(envString);
-      } else {
-        enableMultiTenancy = true; // Default value
-      }
-    }
-
-    if (!enableMultiTenancy) {
-      if (!isDriver) {
-        numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
-      } else {
-        numWorkersPerProcess = 1; // Actually this value isn't used in RayNativeRuntime.
-      }
-    } else {
-      numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
-    }
+    numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
     headArgs = config.getStringList("ray.head-args");
 
@@ -240,9 +214,7 @@ public class RayConfig {
     return config;
   }
 
-  /**
-   * Renders the config value as a HOCON string.
-   */
+  /** Renders the config value as a HOCON string. */
   @Override
   public String toString() {
     // These items might be dynamically generated or mutated at runtime.
@@ -280,10 +252,8 @@ public class RayConfig {
   }
 
   /**
-   * Create a RayConfig by reading configuration in the following order:
-   * 1. System properties.
-   * 2. `ray.conf` file.
-   * 3. `ray.default.conf` file.
+   * Create a RayConfig by reading configuration in the following order: 1. System properties. 2.
+   * `ray.conf` file. 3. `ray.default.conf` file.
    */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
@@ -297,5 +267,4 @@ public class RayConfig {
     config = config.withFallback(ConfigFactory.load(DEFAULT_CONFIG_FILE));
     return new RayConfig(config.withOnlyPath("ray"));
   }
-
 }

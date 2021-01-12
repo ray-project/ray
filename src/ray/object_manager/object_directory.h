@@ -22,7 +22,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/format/object_manager_generated.h"
 
 namespace ray {
@@ -39,6 +39,11 @@ struct RemoteConnectionInfo {
   std::string ip;
   uint16_t port;
 };
+
+/// Callback for object location notifications.
+using OnLocationsFound =
+    std::function<void(const ray::ObjectID &object_id,
+                       const std::unordered_set<ray::NodeID> &, const std::string &)>;
 
 class ObjectDirectoryInterface {
  public:
@@ -58,12 +63,7 @@ class ObjectDirectoryInterface {
   /// \return A vector of information for all connected remote object managers.
   virtual std::vector<RemoteConnectionInfo> LookupAllRemoteConnections() const = 0;
 
-  /// Callback for object location notifications.
-  using OnLocationsFound =
-      std::function<void(const ray::ObjectID &object_id,
-                         const std::unordered_set<ray::NodeID> &, const std::string &)>;
-
-  /// Lookup object locations. Callback may be invoked with empty list of node ids.
+  /// Lookup object locations. Callback may be invoked with empty list of client ids.
   ///
   /// \param object_id The object's ObjectID.
   /// \param callback Invoked with (possibly empty) list of node ids and object_id.

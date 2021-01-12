@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class GlobalSignals:
     node_info_fetched = Signal(dashboard_consts.SIGNAL_NODE_INFO_FETCHED)
     node_summary_fetched = Signal(dashboard_consts.SIGNAL_NODE_SUMMARY_FETCHED)
+    job_info_fetched = Signal(dashboard_consts.SIGNAL_JOB_INFO_FETCHED)
     worker_info_fetched = Signal(dashboard_consts.SIGNAL_WORKER_INFO_FETCHED)
 
 
@@ -22,6 +23,8 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
+    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
+    jobs = Dict()
     # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
@@ -77,7 +80,8 @@ class DataOrganizer:
         job_workers = {}
         node_workers = {}
         core_worker_stats = {}
-        for node_id in DataSource.nodes.keys():
+        # await inside for loop, so we create a copy of keys().
+        for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
                 job_id = worker["jobId"]
@@ -238,7 +242,7 @@ class DataOrganizer:
         pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
-        actor_process_gpu_stats = None
+        actor_process_gpu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -248,14 +252,11 @@ class DataOrganizer:
             for gpu_stats in node_physical_stats.get("gpus", []):
                 for process in gpu_stats.get("processes", []):
                     if process["pid"] == pid:
-                        actor_process_gpu_stats = gpu_stats
+                        actor_process_gpu_stats.append(gpu_stats)
                         break
-                if actor_process_gpu_stats is not None:
-                    break
 
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
-
         return actor
 
     @classmethod

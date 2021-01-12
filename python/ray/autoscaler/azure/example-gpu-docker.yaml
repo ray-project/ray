@@ -19,13 +19,14 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray:latest-gpu"
+    image: "rayproject/ray-ml:latest-gpu"
+    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
     container_name: "ray_nvidia_docker" # e.g. ray_docker
 
     # # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:latest-gpu"
+    # head_image: "rayproject/ray-ml:latest-gpu"
 
-    # worker_image: "rayproject/ray:latest"
+    # worker_image: "rayproject/ray-ml:latest"
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
@@ -65,9 +66,9 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-# NOTE: rayproject/ray:latest has ray latest bundled
+# NOTE: rayproject/ray-ml:latest has ray latest bundled
 setup_commands: []
-#     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+#     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
  
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

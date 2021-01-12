@@ -8,6 +8,9 @@ This library adds a new backend for XGBoost utilizing Ray.
 Please note that this is an early version and both the API and
 the behavior can change without prior notice.
 
+We'll switch to a release-based development process once the
+implementation has all features for first real world use cases.
+
 Installation
 ------------
 
@@ -131,6 +134,81 @@ setting this explicitly.
 The number of XGBoost actors always has to be set manually with
 the ``num_actors`` argument.
 
+Memory usage
+-------------
+XGBoost uses a compute-optimized datastructure, the ``DMatrix``,
+to hold training data. When converting a dataset to a ``DMatrix``,
+XGBoost creates intermediate copies and ends up
+holding a complete copy of the full data. The data will be converted
+into the local dataformat (on a 64 bit system these are 64 bit floats.)
+Depending on the system and original dataset dtype, this matrix can
+thus occupy more memory than the original dataset.
+
+The **peak memory usage** for CPU-based training is at least
+**3x** the dataset size (assuming dtype ``float32`` on a 64bit system)
+plus about **400,000 KiB** for other resources,
+like operating system requirements and storing of intermediate
+results.
+
+**Example**
+
+- Machine type: AWS m5.xlarge (4 vCPUs, 16 GiB RAM)
+- Usable RAM: ~15,350,000 KiB
+- Dataset: 1,250,000 rows with 1024 features, dtype float32.
+  Total size: 5,000,000 KiB
+- XGBoost DMatrix size: ~10,000,000 KiB
+
+This dataset will fit exactly on this node for training.
+
+Note that the DMatrix size might be lower on a 32 bit system.
+
+**GPUs**
+
+Generally, the same memory requirements exist for GPU-based
+training. Additionally, the GPU must have enough memory
+to hold the dataset.
+
+In the example above, the GPU must have at least
+10,000,000 KiB (about 9.6 GiB) memory. However,
+empirically we found that using a ``DeviceQuantileDMatrix``
+seems to show more peak GPU memory usage, possibly
+for intermediate storage when loading data (about 10%).
+
+**Best practices**
+
+In order to reduce peak memory usage, consider the following
+suggestions:
+
+- Store data as ``float32`` or less. More precision is often
+  not needed, and keeping data in a smaller format will
+  help reduce peak memory usage for initial data loading.
+- Pass the ``dtype`` when loading data from CSV. Otherwise,
+  floating point values will be loaded as ``np.float64``
+  per default, increasing peak memory usage by 33%.
+
+Placement Strategies
+--------------------
+``xgboost_ray`` leverages :ref:`Ray's Placement Group API <ray-placement-group-doc-ref>`
+to implement placement strategies for better fault tolerance.
+
+By default, a SPREAD strategy is used for training, which attempts to spread all of the training workers
+across the nodes in a cluster on a best-effort basis. This improves fault tolerance since it minimizes the
+number of worker failures when a node goes down, but comes at a cost of increased inter-node communication
+To disable this strategy, set the ``USE_SPREAD_STRATEGY`` environment variable to 0. If disabled, no
+particular placement strategy will be used.
+
+Note that this strategy is used only when ``elastic_training`` is not used. If ``elastic_training`` is set to ``True``,
+no placement strategy is used.
+
+When ``xgboost_ray`` is used with Ray Tune for hyperparameter tuning, a PACK strategy is used. This strategy
+attempts to place all workers for each trial on the same node on a best-effort basis. This means that if a node
+goes down, it will be less likely to impact multiple trials.
+
+When placement strategies are used, ``xgboost_ray`` will wait for 100 seconds for the required resources
+to become available, and will fail if the required resources cannot be reserved and the cluster cannot autoscale
+to increase the number of resources. You can change the ``PLACEMENT_GROUP_TIMEOUT_S`` environment variable to modify
+how long this timeout should be.
+
 More examples
 -------------
 
@@ -143,21 +221,3 @@ the `examples folder <https://github.com/ray-project/xgboost_ray/tree/master/exa
   * `[download dataset (2.6 GB)] <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`__
 * `HIGGS classification example with Parquet <https://github.com/ray-project/xgboost_ray/tree/master/examples/higgs_parquet.py>`__ (uses the same dataset)
 * `Test data classification <https://github.com/ray-project/xgboost_ray/tree/master/examples/train_on_test_data.py>`__ (uses a self-generated dataset)
-
-Package Reference
------------------
-
-
-Training/Validation
-~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.util.xgboost.RayParams
-
-.. autofunction:: ray.util.xgboost.train
-
-.. autofunction:: ray.util.xgboost.predict
-
-RayDMatrix
-~~~~~~~~~~
-
-.. autoclass:: ray.util.xgboost.RayDMatrix

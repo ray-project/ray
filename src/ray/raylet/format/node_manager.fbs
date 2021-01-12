@@ -194,6 +194,7 @@ table NotifyUnblocked {
 }
 
 table NotifyDirectCallTaskBlocked {
+  release_resources: bool;
 }
 
 table NotifyDirectCallTaskUnblocked {
@@ -208,8 +209,6 @@ table WaitRequest {
   num_ready_objects: int;
   // timeout
   timeout: long;
-  // Whether to wait until objects appear locally.
-  wait_local: bool;
   // False for direct call tasks. Blocking for those tasks is handled via the
   // NotifyDirectCallTaskBlocked/Unblocked IPCs.
   mark_worker_blocked: bool;
@@ -250,8 +249,6 @@ table FreeObjectsRequest {
   // Whether keep this request with local object store
   // or send it to all the object stores.
   local_only: bool;
-  // Whether also delete objects' creating tasks from GCS.
-  delete_creating_tasks: bool;
   // List of object ids we'll delete from object store.
   object_ids: [string];
 }

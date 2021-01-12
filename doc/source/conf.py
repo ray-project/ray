@@ -25,7 +25,7 @@ from datetime import datetime
 import mock
 
 
-class ChildClassMock(mock.MagicMock):
+class ChildClassMock(mock.Mock):
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock
@@ -41,6 +41,7 @@ MOCK_MODULES = [
     "horovod",
     "horovod.ray",
     "kubernetes",
+    "mlflow",
     "mxnet",
     "mxnet.model",
     "psutil",
@@ -94,6 +95,9 @@ for mod_name in MOCK_MODULES:
 sys.modules["tensorflow"].VERSION = "9.9.9"
 sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
 sys.modules["pytorch_lightning"] = ChildClassMock()
+sys.modules["xgboost"] = ChildClassMock()
+sys.modules["xgboost.core"] = ChildClassMock()
+sys.modules["xgboost.callback"] = ChildClassMock()
 
 
 class SimpleClass(object):
@@ -473,6 +477,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
-    app.add_stylesheet('css/custom.css')
+    app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

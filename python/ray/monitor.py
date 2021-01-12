@@ -15,11 +15,14 @@ from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
 from ray._raylet import GlobalStateAccessor
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized
 
 import redis
 
@@ -65,11 +68,7 @@ def parse_resource_demands(resource_load_by_shape):
     except Exception:
         logger.exception("Failed to parse resource demands.")
 
-    # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
-    # This guarantees the resource demand scheduler bin packing algorithm takes
-    # a reasonable amount of time to run.
-    return waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE], \
-        infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+    return waiting_bundles, infeasible_bundles
 
 
 class Monitor:
@@ -85,7 +84,11 @@ class Monitor:
             This is used to receive notifications about failed components.
     """
 
-    def __init__(self, redis_address, autoscaling_config, redis_password=None):
+    def __init__(self,
+                 redis_address,
+                 autoscaling_config,
+                 redis_password=None,
+                 prefix_cluster_info=False):
         # Initialize the Redis clients.
         ray.state.state._initialize_global_state(
             redis_address, redis_password=redis_password)
@@ -107,8 +110,10 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
         if autoscaling_config:
-            self.autoscaler = StandardAutoscaler(autoscaling_config,
-                                                 self.load_metrics)
+            self.autoscaler = StandardAutoscaler(
+                autoscaling_config,
+                self.load_metrics,
+                prefix_cluster_info=prefix_cluster_info)
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
@@ -139,24 +144,24 @@ class Monitor:
         self.primary_subscribe_client.subscribe(channel)
 
     def update_load_metrics(self):
-        """Fetches heartbeat data from GCS and updates load metrics."""
+        """Fetches resource usage data from GCS and updates load metrics."""
 
-        all_heartbeat = self.global_state_accessor.get_all_heartbeat()
-        heartbeat_batch_data = \
-            ray.gcs_utils.HeartbeatBatchTableData.FromString(all_heartbeat)
-        for heartbeat_message in heartbeat_batch_data.batch:
-            resource_load = dict(heartbeat_message.resource_load)
-            total_resources = dict(heartbeat_message.resources_total)
-            available_resources = dict(heartbeat_message.resources_available)
+        all_resources = self.global_state_accessor.get_all_resource_usage()
+        resources_batch_data = \
+            ray.gcs_utils.ResourceUsageBatchData.FromString(all_resources)
+        for resource_message in resources_batch_data.batch:
+            resource_load = dict(resource_message.resource_load)
+            total_resources = dict(resource_message.resources_total)
+            available_resources = dict(resource_message.resources_available)
 
             waiting_bundles, infeasible_bundles = parse_resource_demands(
-                heartbeat_batch_data.resource_load_by_shape)
+                resources_batch_data.resource_load_by_shape)
 
             pending_placement_groups = list(
-                heartbeat_batch_data.placement_group_load.placement_group_data)
+                resources_batch_data.placement_group_load.placement_group_data)
 
             # Update the load metrics for this raylet.
-            node_id = ray.utils.binary_to_hex(heartbeat_message.node_id)
+            node_id = ray.utils.binary_to_hex(resource_message.node_id)
             ip = self.raylet_id_to_ip_map.get(node_id)
             if ip:
                 self.load_metrics.update(ip, total_resources,
@@ -178,14 +183,8 @@ class Monitor:
             data: a resource request as JSON, e.g. {"CPU": 1}
         """
 
-        if not self.autoscaler:
-            return
-
-        try:
-            self.autoscaler.request_resources(json.loads(data))
-        except Exception:
-            # We don't want this to kill the monitor.
-            traceback.print_exc()
+        resource_request = json.loads(data)
+        self.load_metrics.set_resource_requests(resource_request)
 
     def process_messages(self, max_messages=10000):
         """Process all messages ready in the subscription channels.
@@ -251,12 +250,23 @@ class Monitor:
 
         # Handle messages from the subscription channels.
         while True:
+            self.update_raylet_map()
+            self.update_load_metrics()
+            status = {
+                "load_metrics_report": self.load_metrics.summary()._asdict()
+            }
+
             # Process autoscaling actions
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
-                self.update_raylet_map()
-                self.update_load_metrics()
                 self.autoscaler.update()
+                status[
+                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
+
+            as_json = json.dumps(status)
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
 
             # Process a round of messages.
             self.process_messages()
