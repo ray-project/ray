@@ -88,7 +88,6 @@ class Worker:
         self.node = None
         self.mode = None
         self.cached_functions_to_run = []
-        self.actor_init_error = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
