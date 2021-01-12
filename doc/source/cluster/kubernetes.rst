@@ -364,7 +364,7 @@ If this admission controller is not enabled for your Kubernetes cluster, you may
 
 Further reference and discussion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-You can read about Kubernetes device plugins `here <https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/>`__,
+Read about Kubernetes device plugins `here <https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/device-plugins/>`__,
 about Kubernetes GPU plugins `here <https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus>`__,
 and about Nvidia's GPU plugin for Kubernetes `here <https://github.com/NVIDIA/k8s-device-plugin>`__.
 
