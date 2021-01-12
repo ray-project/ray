@@ -175,6 +175,8 @@ def test_stress(shutdown_only, use_force):
     sleep_or_no = [random.randint(0, 1) for _ in range(100)]
     tasks = [infinite_sleep.remote(i) for i in sleep_or_no]
     cancelled = set()
+
+    # Randomly kill queued tasks (infinitely sleeping or not).
     for t in tasks:
         if random.random() > 0.5:
             ray.cancel(t, force=use_force)
@@ -186,10 +188,13 @@ def test_stress(shutdown_only, use_force):
     for done in cancelled:
         with pytest.raises(valid_exceptions(use_force)):
             ray.get(done, timeout=120)
+
+    # Kill all infinitely sleeping tasks (queued or not).
     for indx, t in enumerate(tasks):
         if sleep_or_no[indx]:
             ray.cancel(t, force=use_force)
             cancelled.add(t)
+    for indx, t in enumerate(tasks):
         if t in cancelled:
             with pytest.raises(valid_exceptions(use_force)):
                 ray.get(t, timeout=120)
