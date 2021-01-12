@@ -198,7 +198,7 @@ def test_stress(shutdown_only, use_force):
             except GetTimeoutError as e:
                 typ = "previously cancelled" if t in original_cancelled else "recently cancelled"
                 ttyp = "infinite sleep" if sleep_or_no[indx] else "noop"
-                print(f"[Iteration: {indx}] Failed on a {typ} task that was {ttyp}")
+                asserr False, f"[Iteration: {indx}] Failed on a {typ} task that was {ttyp}"
         else:
             ray.get(t, timeout=120)
 
