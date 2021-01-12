@@ -145,7 +145,7 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
     # Use `num_framestacks` (int) instead.
-    "framestack": DEPRECATED_VALUE,
+    "framestack": True,
 }
 # __sphinx_doc_end__
 # yapf: enable
