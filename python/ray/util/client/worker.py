@@ -260,8 +260,10 @@ class Worker:
         resp = self.server.KVGet(req, metadata=self.metadata)
         return resp.value
 
-    def internal_kv_put(self, key: bytes, value: bytes) -> bool:
-        req = ray_client_pb2.KVPutRequest(key=key, value=value)
+    def internal_kv_put(self, key: bytes, value: bytes,
+                        overwrite: bool) -> bool:
+        req = ray_client_pb2.KVPutRequest(
+            key=key, value=value, overwrite=overwrite)
         resp = self.server.KVPut(req, metadata=self.metadata)
         return resp.already_exists
 
