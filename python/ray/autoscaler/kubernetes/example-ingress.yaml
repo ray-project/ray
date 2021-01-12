@@ -286,9 +286,11 @@ worker_nodes:
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
-#    "/path1/on/remote/machine": "/path1/on/local/machine",
-#    "/path2/on/remote/machine": "/path2/on/local/machine",
+#    "~/path1/on/remote/machine": "/path1/on/local/machine",
+#    "~/path2/on/remote/machine": "/path2/on/local/machine",
 }
+# Note that the container images in this example have a non-root user.
+# To avoid permissions issues, we recommend mounting into a subdirectory of home (~).
 
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker

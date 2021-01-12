@@ -9,9 +9,7 @@ import io.ray.runtime.util.LoggingUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * The default Ray runtime factory. It produces an instance of RayRuntime.
- */
+/** The default Ray runtime factory. It produces an instance of RayRuntime. */
 public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
   @Override
@@ -22,19 +20,22 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
     if (rayConfig.workerMode == WorkerType.WORKER) {
       // Handle the uncaught exceptions thrown from user-spawned threads.
-      Thread.setDefaultUncaughtExceptionHandler((Thread t, Throwable e) -> {
-        logger.error(String.format("Uncaught worker exception in thread %s", t), e);
-      });
+      Thread.setDefaultUncaughtExceptionHandler(
+          (Thread t, Throwable e) -> {
+            logger.error(String.format("Uncaught worker exception in thread %s", t), e);
+          });
     }
 
     try {
       logger.debug("Initializing runtime with config: {}", rayConfig);
-      AbstractRayRuntime innerRuntime = rayConfig.runMode == RunMode.SINGLE_PROCESS
-          ? new RayDevRuntime(rayConfig)
-          : new RayNativeRuntime(rayConfig);
-      RayRuntimeInternal runtime = rayConfig.numWorkersPerProcess > 1
-          ? RayRuntimeProxy.newInstance(innerRuntime)
-          : innerRuntime;
+      AbstractRayRuntime innerRuntime =
+          rayConfig.runMode == RunMode.SINGLE_PROCESS
+              ? new RayDevRuntime(rayConfig)
+              : new RayNativeRuntime(rayConfig);
+      RayRuntimeInternal runtime =
+          rayConfig.numWorkersPerProcess > 1
+              ? RayRuntimeProxy.newInstance(innerRuntime)
+              : innerRuntime;
       runtime.start();
       return runtime;
     } catch (Exception e) {

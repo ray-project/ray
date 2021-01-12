@@ -107,11 +107,11 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     boost::asio::io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    GcsNodeManager &gcs_node_manager)
+    GcsResourceManager &gcs_resource_manager)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_node_manager_(gcs_node_manager) {
+      gcs_resource_manager_(gcs_resource_manager) {
   Tick();
 }
 
@@ -410,26 +410,48 @@ void GcsPlacementGroupManager::HandleWaitPlacementGroupUntilReady(
   RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
                  << placement_group_id;
 
+  auto callback = [placement_group_id, reply, send_reply_callback](const Status &status) {
+    RAY_LOG(DEBUG)
+        << "Finished waiting for placement group until ready, placement group id = "
+        << placement_group_id;
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+
   // If the placement group does not exist or it has been successfully created, return
   // directly.
   const auto &iter = registered_placement_groups_.find(placement_group_id);
   if (iter == registered_placement_groups_.end()) {
-    RAY_LOG(DEBUG) << "Placement group is not exist, placement group id = "
-                   << placement_group_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply,
-                       Status::NotFound("Placement group is not exist."));
+    // Check whether the placement group does not exist or is removed.
+    auto on_done = [this, placement_group_id, reply, callback, send_reply_callback](
+                       const Status &status,
+                       const boost::optional<PlacementGroupTableData> &result) {
+      if (result) {
+        RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
+                       << placement_group_id;
+        GCS_RPC_SEND_REPLY(send_reply_callback, reply,
+                           Status::NotFound("Placement group is removed."));
+      } else {
+        // `wait` is a method of placement group object. Placement group object is
+        // obtained by create placement group api, so it can guarantee the existence of
+        // placement group.
+        // GCS client does not guarantee the order of placement group creation and
+        // wait, so GCS may call wait placement group first and then create placement
+        // group.
+        placement_group_to_create_callbacks_[placement_group_id].emplace_back(
+            std::move(callback));
+      }
+    };
+
+    Status status =
+        gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
+    if (!status.ok()) {
+      on_done(status, boost::none);
+    }
   } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
     RAY_LOG(DEBUG) << "Placement group is created, placement group id = "
                    << placement_group_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   } else {
-    auto callback = [placement_group_id, reply,
-                     send_reply_callback](const Status &status) {
-      RAY_LOG(DEBUG)
-          << "Finished waiting for placement group until ready, placement group id = "
-          << placement_group_id;
-      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-    };
     placement_group_to_create_callbacks_[placement_group_id].emplace_back(
         std::move(callback));
   }
@@ -515,7 +537,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       break;
     }
   }
-  gcs_node_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
+  gcs_resource_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {

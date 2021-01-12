@@ -15,20 +15,20 @@ public class JniUtils {
   private static String defaultDestDir;
 
   /**
-   * Loads the native library specified by the <code>libraryName</code> argument.
-   * The <code>libraryName</code> argument must not contain any platform specific
-   * prefix, file extension or path.
+   * Loads the native library specified by the <code>libraryName</code> argument. The <code>
+   * libraryName</code> argument must not contain any platform specific prefix, file extension or
+   * path.
    *
-   * @param libraryName   the name of the library.
+   * @param libraryName the name of the library.
    */
   public static synchronized void loadLibrary(String libraryName) {
     loadLibrary(getDefaultDestDir(), libraryName);
   }
 
   /**
-   * Loads the native library specified by the <code>libraryName</code> argument.
-   * The <code>libraryName</code> argument must not contain any platform specific
-   * prefix, file extension or path.
+   * Loads the native library specified by the <code>libraryName</code> argument. The <code>
+   * libraryName</code> argument must not contain any platform specific prefix, file extension or
+   * path.
    *
    * @param libraryName the name of the library.
    * @param exportSymbols export symbols of library so that it can be used by other libs.
@@ -38,9 +38,9 @@ public class JniUtils {
   }
 
   /**
-   * Loads the native library specified by the <code>libraryName</code> argument.
-   * The <code>libraryName</code> argument must not contain any platform specific
-   * prefix, file extension or path.
+   * Loads the native library specified by the <code>libraryName</code> argument. The <code>
+   * libraryName</code> argument must not contain any platform specific prefix, file extension or
+   * path.
    *
    * @param destDir The destination dir the library to be extracted.
    * @param libraryName the name of the library.
@@ -50,16 +50,16 @@ public class JniUtils {
   }
 
   /**
-   * Loads the native library specified by the <code>libraryName</code> argument.
-   * The <code>libraryName</code> argument must not contain any platform specific
-   * prefix, file extension or path.
+   * Loads the native library specified by the <code>libraryName</code> argument. The <code>
+   * libraryName</code> argument must not contain any platform specific prefix, file extension or
+   * path.
    *
    * @param destDir The destination dir the library to be extracted.
-   * @param libraryName   the name of the library.
+   * @param libraryName the name of the library.
    * @param exportSymbols export symbols of library so that it can be used by other libs.
    */
-  public static synchronized void loadLibrary(String destDir, String libraryName,
-      boolean exportSymbols) {
+  public static synchronized void loadLibrary(
+      String destDir, String libraryName, boolean exportSymbols) {
     if (!loadedLibs.contains(libraryName)) {
       LOGGER.debug("Loading native library {}.", libraryName);
       // Load native library.
@@ -77,9 +77,7 @@ public class JniUtils {
     }
   }
 
-  /**
-   * Cache the result so that multiple calls return the same dest dir.
-   */
+  /** Cache the result so that multiple calls return the same dest dir. */
   private static synchronized String getDefaultDestDir() {
     if (defaultDestDir == null) {
       try {

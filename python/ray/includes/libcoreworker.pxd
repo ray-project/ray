@@ -49,6 +49,11 @@ ctypedef void (*ray_callback_function) \
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
+# NOTE: This ctypedef is needed, because Cython doesn't compile
+# "pair[shared_ptr[const CActorHandle], CRayStatus]".
+# This is a bug of cython: https://github.com/cython/cython/issues/3967.
+ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
+
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -140,8 +145,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
-        const CActorHandle* GetActorHandle(const CActorID &actor_id) const
-        pair[const CActorHandle*, CRayStatus] GetNamedActorHandle(
+        ActorHandleSharedPtr GetActorHandle(const CActorID &actor_id) const
+        pair[ActorHandleSharedPtr, CRayStatus] GetNamedActorHandle(
             const c_string &name)
         void AddLocalReference(const CObjectID &object_id)
         void RemoveLocalReference(const CObjectID &object_id)
@@ -179,9 +184,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                        c_bool plasma_objects_only)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results)
+                        int64_t timeout_ms, c_vector[c_bool] *results,
+                        c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only, c_bool delete_creating_tasks)
+                          c_bool local_only)
         CRayStatus TriggerGlobalGC()
         c_string MemoryUsageString()
 
@@ -232,7 +238,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (CRayStatus() nogil) check_signals
         (void() nogil) gc_collect
         (c_vector[c_string](const c_vector[CObjectID] &) nogil) spill_objects
-        (void(
+        (int64_t(
             const c_vector[CObjectID] &,
             const c_vector[c_string] &) nogil) restore_spilled_objects
         (void(

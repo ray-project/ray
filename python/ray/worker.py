@@ -48,8 +48,10 @@ from ray.exceptions import (
 )
 from ray.function_manager import FunctionActorManager
 from ray.ray_logging import setup_logger
+from ray.ray_logging import global_worker_stdstream_dispatcher
 from ray.utils import _random_string, check_oversized_pickle
 from ray.util.inspect import is_cython
+from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -345,7 +347,8 @@ class Worker:
             # actually run the function locally.
             pickled_function = pickle.dumps(function)
 
-            function_to_run_id = hashlib.sha1(pickled_function).digest()
+            function_to_run_id = hashlib.shake_128(pickled_function).digest(
+                ray_constants.ID_SIZE)
             key = b"FunctionsToRun:" + function_to_run_id
             # First run the function on the driver.
             # We always run the task locally.
@@ -467,6 +470,7 @@ _global_node = None
 """ray.node.Node: The global node object that is created by ray.init()."""
 
 
+@client_mode_hook
 def init(
         address=None,
         *,
@@ -519,7 +523,7 @@ def init(
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
-    cluster with ray.init().
+    cluster with ray.init() or ray.init(address="auto").
 
     Args:
         address (str): The address of the Ray cluster to connect to. If
@@ -528,7 +532,9 @@ def init(
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
-            specify a specific node address.
+            specify a specific node address. If the environment variable
+            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
+            will set `address` to `RAY_ADDRESS`.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -630,13 +636,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-        else:
-            raise RuntimeError(
-                "Cannot use both the RAY_ADDRESS environment variable and "
-                "the address argument of ray.init simultaneously. If you "
-                "use RAY_ADDRESS to connect to a specific Ray cluster, "
-                "please call ray.init() or ray.init(address=\"auto\") on the "
-                "driver.")
 
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
@@ -767,6 +766,8 @@ def init(
         driver_object_store_memory=_driver_object_store_memory,
         job_id=None,
         job_config=job_config)
+    if job_config and job_config.code_search_path:
+        global_worker.set_load_code_from_local(True)
 
     for hook in _post_init_hooks:
         hook()
@@ -779,6 +780,7 @@ def init(
 _post_init_hooks = []
 
 
+@client_mode_hook
 def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
@@ -910,35 +912,42 @@ def print_logs(redis_client, threads_stopped, job_id):
             if data["job"] and ray.utils.binary_to_hex(
                     job_id.binary()) != data["job"]:
                 continue
-
-            print_file = sys.stderr if data["is_err"] else sys.stdout
-
-            def color_for(data):
-                if data["pid"] == "raylet":
-                    return colorama.Fore.YELLOW
-                else:
-                    return colorama.Fore.CYAN
-
-            if data["ip"] == localhost:
-                for line in data["lines"]:
-                    print(
-                        "{}{}(pid={}){} {}".format(
-                            colorama.Style.DIM, color_for(data), data["pid"],
-                            colorama.Style.RESET_ALL, line),
-                        file=print_file)
-            else:
-                for line in data["lines"]:
-                    print(
-                        "{}{}(pid={}, ip={}){} {}".format(
-                            colorama.Style.DIM, color_for(data), data["pid"],
-                            data["ip"], colorama.Style.RESET_ALL, line),
-                        file=print_file)
+            data["localhost"] = localhost
+            global_worker_stdstream_dispatcher.emit(data)
 
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error(f"print_logs: {e}")
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
+
+
+def print_to_stdstream(data):
+    print_file = sys.stderr if data["is_err"] else sys.stdout
+    print_worker_logs(data, print_file)
+
+
+def print_worker_logs(data, print_file):
+    def color_for(data):
+        if data["pid"] == "raylet":
+            return colorama.Fore.YELLOW
+        else:
+            return colorama.Fore.CYAN
+
+    if data["ip"] == data["localhost"]:
+        for line in data["lines"]:
+            print(
+                "{}{}(pid={}){} {}".format(colorama.Style.DIM, color_for(data),
+                                           data["pid"],
+                                           colorama.Style.RESET_ALL, line),
+                file=print_file)
+    else:
+        for line in data["lines"]:
+            print(
+                "{}{}(pid={}, ip={}){} {}".format(
+                    colorama.Style.DIM, color_for(data), data["pid"],
+                    data["ip"], colorama.Style.RESET_ALL, line),
+                file=print_file)
 
 
 def print_error_messages_raylet(task_error_queue, threads_stopped):
@@ -1035,6 +1044,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+@client_mode_hook
 def is_initialized():
     """Check if ray.init has been called yet.
 
@@ -1201,6 +1211,8 @@ def connect(node,
         worker.printer_thread.daemon = True
         worker.printer_thread.start()
         if log_to_driver:
+            global_worker_stdstream_dispatcher.add_handler(
+                "ray_print_logs", print_to_stdstream)
             worker.logger_thread = threading.Thread(
                 target=print_logs,
                 name="ray_print_logs",
@@ -1311,6 +1323,7 @@ def show_in_dashboard(message, key="", dtype="text"):
 blocking_get_inside_async_warned = False
 
 
+@client_mode_hook
 def get(object_refs, *, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -1389,6 +1402,7 @@ def get(object_refs, *, timeout=None):
         return values
 
 
+@client_mode_hook
 def put(value):
     """Store an object in the object store.
 
@@ -1417,7 +1431,8 @@ def put(value):
 blocking_wait_inside_async_warned = False
 
 
-def wait(object_refs, *, num_returns=1, timeout=None):
+@client_mode_hook
+def wait(object_refs, *, num_returns=1, timeout=None, fetch_local=True):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -1445,6 +1460,11 @@ def wait(object_refs, *, num_returns=1, timeout=None):
         num_returns (int): The number of object refs that should be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
+        fetch_local (bool): If True, wait for the object to be downloaded onto
+            the local node before returning it as ready. If False, ray.wait()
+            will not trigger fetching of objects to the local node and will
+            return immediately once the object is available anywhere in the
+            cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
@@ -1507,10 +1527,12 @@ def wait(object_refs, *, num_returns=1, timeout=None):
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
+            fetch_local,
         )
         return ready_ids, remaining_ids
 
 
+@client_mode_hook
 def get_actor(name):
     """Get a handle to a detached actor.
 
@@ -1531,6 +1553,7 @@ def get_actor(name):
     return handle
 
 
+@client_mode_hook
 def kill(actor, *, no_restart=True):
     """Kill an actor forcefully.
 
@@ -1558,6 +1581,7 @@ def kill(actor, *, no_restart=True):
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
 
+@client_mode_hook
 def cancel(object_ref, *, force=False, recursive=True):
     """Cancels a task according to the following conditions.
 
@@ -1674,6 +1698,7 @@ def make_decorator(num_returns=None,
     return decorator
 
 
+@client_mode_hook
 def remote(*args, **kwargs):
     """Defines a remote function or an actor class.
 

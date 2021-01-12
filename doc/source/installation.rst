@@ -229,6 +229,7 @@ Installing from ``pip`` should be sufficient for most Ray users.
 However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
 
 
+.. _docker-images:
 
 Docker Source Images
 --------------------

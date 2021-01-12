@@ -11,9 +11,10 @@ import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 
 /**
- * This class contains demo code of the Ray core walkthrough doc (https://docs.ray.io/en/master/walkthrough.html).
+ * This class contains demo code of the Ray core walkthrough doc
+ * (https://docs.ray.io/en/master/walkthrough.html).
  *
- * Please keep them in sync.
+ * <p>Please keep them in sync.
  */
 public class WalkthroughDemo {
 
@@ -79,9 +80,9 @@ public class WalkthroughDemo {
     List<Integer> results = Ray.get(objectRefs);
     Assert.assertEquals(results, ImmutableList.of(0, 1, 2));
 
-    WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/1, /*timeoutMs=*/1000);
-    System.out.println(waitResult.getReady());  // List of ready objects.
-    System.out.println(waitResult.getUnready());  // list of unready objects.
+    WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/ 1, /*timeoutMs=*/ 1000);
+    System.out.println(waitResult.getReady()); // List of ready objects.
+    System.out.println(waitResult.getUnready()); // list of unready objects.
   }
 
   // A regular Java class.
