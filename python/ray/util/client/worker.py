@@ -41,7 +41,7 @@ class Worker:
             secure: whether to use SSL secure channel or not.
             metadata: additional metadata passed in the grpc request headers.
         """
-        self.metadata = metadata
+        self.metadata = metadata if metadata else []
         self.channel = None
         self._client_id = make_client_id()
         if secure:
@@ -51,12 +51,20 @@ class Worker:
             self.channel = grpc.insecure_channel(conn_str)
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
 
-        self.data_client = DataClient(self.channel, self._client_id)
+        self.data_client = DataClient(self.channel, self._client_id,
+                                      self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
 
-        self.log_client = LogstreamClient(self.channel)
+        self.log_client = LogstreamClient(self.channel, self.metadata)
         self.log_client.set_logstream_level(logging.INFO)
         self.closed = False
+
+    def connection_info(self):
+        try:
+            data = self.data_client.ConnectionInfo()
+        except grpc.RpcError as e:
+            raise e.details()
+        return {"num_clients": data.num_clients}
 
     def get(self, vals, *, timeout: Optional[float] = None) -> Any:
         to_get = []
@@ -240,12 +248,32 @@ class Worker:
     def get_cluster_info(self, type: ray_client_pb2.ClusterInfoType.TypeEnum):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = type
-        resp = self.server.ClusterInfo(req)
+        resp = self.server.ClusterInfo(req, metadata=self.metadata)
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
             return output_dict
         return json.loads(resp.json)
+
+    def internal_kv_get(self, key: bytes) -> bytes:
+        req = ray_client_pb2.KVGetRequest(key=key)
+        resp = self.server.KVGet(req, metadata=self.metadata)
+        return resp.value
+
+    def internal_kv_put(self, key: bytes, value: bytes,
+                        overwrite: bool) -> bool:
+        req = ray_client_pb2.KVPutRequest(
+            key=key, value=value, overwrite=overwrite)
+        resp = self.server.KVPut(req, metadata=self.metadata)
+        return resp.already_exists
+
+    def internal_kv_del(self, key: bytes) -> None:
+        req = ray_client_pb2.KVDelRequest(key=key)
+        self.server.KVDel(req, metadata=self.metadata)
+
+    def internal_kv_list(self, prefix: bytes) -> bytes:
+        req = ray_client_pb2.KVListRequest(prefix=prefix)
+        return self.server.KVList(req, metadata=self.metadata).keys
 
     def is_initialized(self) -> bool:
         if self.server is not None:

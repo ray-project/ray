@@ -38,6 +38,28 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         self.registered_actor_classes = {}
         self._current_function_stub = None
 
+    def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
+        with disable_client_hook():
+            already_exists = ray.experimental.internal_kv._internal_kv_put(
+                request.key, request.value, overwrite=request.overwrite)
+        return ray_client_pb2.KVPutResponse(already_exists=already_exists)
+
+    def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
+        with disable_client_hook():
+            value = ray.experimental.internal_kv._internal_kv_get(request.key)
+        return ray_client_pb2.KVGetResponse(value=value)
+
+    def KVDel(self, request, context=None) -> ray_client_pb2.KVDelResponse:
+        with disable_client_hook():
+            ray.experimental.internal_kv._internal_kv_del(request.key)
+        return ray_client_pb2.KVDelResponse()
+
+    def KVList(self, request, context=None) -> ray_client_pb2.KVListResponse:
+        with disable_client_hook():
+            keys = ray.experimental.internal_kv._internal_kv_list(
+                request.prefix)
+        return ray_client_pb2.KVListResponse(keys=keys)
+
     def ClusterInfo(self, request,
                     context=None) -> ray_client_pb2.ClusterInfoResponse:
         resp = ray_client_pb2.ClusterInfoResponse()
@@ -427,7 +449,7 @@ def main():
         "-p", "--port", type=int, default=50051, help="Port to bind to")
     parser.add_argument(
         "--redis-address",
-        required=True,
+        required=False,
         type=str,
         help="Address to use to connect to Ray")
     parser.add_argument(
@@ -437,11 +459,15 @@ def main():
         help="Password for connecting to Redis")
     args = parser.parse_args()
     logging.basicConfig(level="INFO")
-    if args.redis_password:
-        ray.init(
-            address=args.redis_address, _redis_password=args.redis_password)
+    if args.redis_address:
+        if args.redis_password:
+            ray.init(
+                address=args.redis_address,
+                _redis_password=args.redis_password)
+        else:
+            ray.init(address=args.redis_address)
     else:
-        ray.init(address=args.redis_address)
+        ray.init()
     hostport = "%s:%d" % (args.host, args.port)
     logger.info(f"Starting Ray Client server on {hostport}")
     server = serve(hostport)
