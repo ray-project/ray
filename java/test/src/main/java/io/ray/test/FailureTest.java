@@ -9,13 +9,10 @@ import io.ray.runtime.exception.RayActorException;
 import io.ray.runtime.exception.RayTaskException;
 import io.ray.runtime.exception.RayWorkerException;
 import io.ray.runtime.exception.UnreconstructableException;
-import java.io.File;
-import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Random;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -87,15 +84,9 @@ public class FailureTest extends BaseTest {
      * This actor will raise error at first time. Then after restarting, it will be created
      * successfully
      */
-    public ActorFailedAtFirstTime(String flagFileName) {
-      File flagFile = new File(flagFileName);
-      if (!flagFile.exists()) {
-        LOGGER.info("flag file not exists, throw exception!, fileName={}", flagFile.toString());
-        try {
-          flagFile.createNewFile();
-        } catch (IOException e) {
-          throw new RuntimeException(e);
-        }
+    public ActorFailedAtFirstTime() {
+      if (!Ray.getRuntimeContext().wasCurrentActorRestarted()) {
+        LOGGER.info("Actor is fresh started, throw exception!");
         throw new RuntimeException(EXCEPTION_MESSAGE);
       }
     }
@@ -138,9 +129,8 @@ public class FailureTest extends BaseTest {
   }
 
   public void testActorCreationFailedAndRestarted() {
-    String flagFileName = "/tmp/TEST_ERROR_FLAG_" + new Random().nextInt(9999);
     ActorHandle<ActorFailedAtFirstTime> actor =
-        Ray.actor(ActorFailedAtFirstTime::new, flagFileName).setMaxRestarts(2).remote();
+        Ray.actor(ActorFailedAtFirstTime::new).setMaxRestarts(2).remote();
     // At first, actor will throw exceptions and restarted.
     // Finally after restarted, actor will be created successfully.
     boolean ok =
