@@ -449,7 +449,8 @@ class TrialRunnerTest3(unittest.TestCase):
         ]
         runner.add_trial(trials[0])
         runner.step()  # Start trial
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
         trials += [
@@ -462,7 +463,8 @@ class TrialRunnerTest3(unittest.TestCase):
         ]
         runner.add_trial(trials[1])
         runner.step()  # Start trial
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         runner.step()  # Error
         self.assertEqual(trials[1].status, Trial.ERROR)
 
@@ -488,8 +490,10 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(Trial.PENDING, restored_trial.status)
 
         runner2.step()  # Start trial
-        runner2.step()  # Process result, dispatch and process save
-        runner2.step()  # Process result, dispatch and process save
+        runner2.step()  # Process result, dispatch save
+        runner2.step()  # Process save
+        runner2.step()  # Process result, dispatch save
+        runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
     def testTrialNoSave(self):
@@ -604,14 +608,17 @@ class TrialRunnerTest3(unittest.TestCase):
 
         runner.step()  # start trial
         runner.step()  # run iteration 1-3
+        runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
         self.assertEqual(num_checkpoints(trial), 1)
 
-        runner.step()  # process save, run iteration 4-6
+        runner.step()  # run iteration 4-6
+        runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 6)
         self.assertEqual(num_checkpoints(trial), 2)
 
-        runner.step()  # process save, run iteration 7-9
+        runner.step()  # run iteration 7-9
+        runner.step()  # process save
         self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
         self.assertEqual(num_checkpoints(trial), 3)
 
@@ -662,7 +669,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertFalse(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 0)
 
-        runner.step()  # Process results 9-11, handle CP, schedule 12-19
+        runner.step()  # Process results 9-11
+        runner.step()  # handle CP, schedule 12-19
         self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 11)
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 1)
@@ -672,7 +680,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 1)
 
-        runner.step()  # Process results 20-21, handle CP, schedule 21-29
+        runner.step()  # Process results 20-21
+        runner.step()  # handle CP, schedule 21-29
         self.assertEqual(trials[0].last_result.get(TRAINING_ITERATION), 21)
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)

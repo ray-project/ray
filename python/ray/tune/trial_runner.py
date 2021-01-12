@@ -477,11 +477,6 @@ class TrialRunner:
             #  fetch_result functionality so that we don't timeout on fetch.
             trial = self.trial_executor.get_next_available_trial()  # blocking
 
-            # Only process trial (fetch results etc) if we don't have
-            # a cached action
-            if not trial.is_restoring and not trial.is_saving:
-                self._process_trial(trial)
-
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
                     self._process_trial_restore(trial)
@@ -514,6 +509,10 @@ class TrialRunner:
                         if log_once("tune_head_worker_checkpoint"):
                             logger.warning(msg)
 
+            else:
+                with warn_if_slow("process_trial"):
+                    self._process_trial(trial)
+
             # `self._queued_trial_decisions` now contains a final decision
             # based on all results
             final_decision = self._queued_trial_decisions.pop(
@@ -544,10 +543,21 @@ class TrialRunner:
                     message="Processing trial results took {duration:.3f} s, "
                     "which may be a performance bottleneck. Please consider "
                     "reporting results less frequently to Ray Tune."):
-                for result in results:
+                for i, result in enumerate(results):
                     with warn_if_slow("process_trial_result"):
                         decision = self._process_trial_result(trial, result)
-                    if decision == TrialScheduler.STOP:
+                    if decision is None:
+                        # If we didn't get a decision, this means a
+                        # non-training future (e.g. a save) was scheduled.
+                        # We do not allow processing more results then.
+                        if i < len(results) - 1:
+                            raise RuntimeError(
+                                f"Trial {trial} has a non-training future "
+                                f"scheduled but {len(results)-i} results "
+                                f"left to process. This should never "
+                                f"happen - please file an issue at "
+                                f"https://github.com/ray-project/ray/issues")
+                    elif decision == TrialScheduler.STOP:
                         # If the decision is to stop the trial,
                         # ignore all results that came after that.
                         break
@@ -637,6 +647,7 @@ class TrialRunner:
             # This prevents changing the trial's state or kicking off
             # another training step prematurely.
             self._cached_trial_decisions[trial.trial_id] = decision
+            return None
         else:
             self._queue_decision(trial, decision)
             return decision

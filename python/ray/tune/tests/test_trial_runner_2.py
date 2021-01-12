@@ -15,9 +15,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
 
-# Note: Since we do single steps in most of these tests,
-# they only work with TUNE_RESULT_BUFFER_LENGTH = 1 or 0
-
 
 def create_mock_components():
     class _MockScheduler(FIFOScheduler):
@@ -92,8 +89,9 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, process save
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
         runner.step()  # Error
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 1)
@@ -119,11 +117,14 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Error (transient), dispatch and process restore
+        runner.step()  # Process save
+        runner.step()  # Error (transient), dispatch restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 1)
+        runner.step()  # Process restore
+        self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(len(searchalg.errored_trials), 0)
         self.assertEqual(len(scheduler.errored_trials), 0)
 
@@ -149,7 +150,8 @@ class TrialRunnerTest2(unittest.TestCase):
             runner.step()  # Start trial
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
-            runner.step()  # Process result, dispatch and process save
+            runner.step()  # Process result, dispatch save
+            runner.step()  # Process save
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
             # Mimic a node failure
@@ -177,14 +179,17 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Error (transient), dispatch and process restore
+        runner.step()  # Process save
+        runner.step()  # Error (transient), dispatch restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 1)
-        runner.step()  # Error (transient), dispatch and process restore
+        runner.step()  # Process restore
+        runner.step()  # Error (transient), dispatch restore
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 2)
+        runner.step()  # Process restore
         runner.step()  # Error (terminal)
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 3)
@@ -207,8 +212,9 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
         runner.step()  # Error
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertRaises(TuneError, lambda: runner.step())
@@ -231,8 +237,9 @@ class TrialRunnerTest2(unittest.TestCase):
 
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].status, Trial.RUNNING)
+        runner.step()  # Process save
         with self.assertRaises(Exception):
             runner.step()  # Error
 
@@ -252,7 +259,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        runner.step()  # Process result, dispatch and process save, stop trial
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save, stop trial
         kwargs["restore_path"] = trials[0].checkpoint.value
         self.assertEqual(trials[0].status, Trial.TERMINATED)
 
@@ -261,8 +269,10 @@ class TrialRunnerTest2(unittest.TestCase):
 
         self.assertEqual(trials[1].status, Trial.PENDING)
 
-        runner.step()  # Start trial, dispatch and process restore
+        runner.step()  # Start trial, dispatch restore
+        self.assertEqual(trials[1].status, Trial.RUNNING)
 
+        runner.step()  # Process restore
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
@@ -281,7 +291,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
+        runner.step()  # Process save
         runner.trial_executor.stop_trial(trials[0])
         kwargs["restore_path"] = trials[0].checkpoint.value
 
@@ -289,11 +300,11 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()  # Start trial
+        runner.step()  # Start trial, dispatch restore
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
-        runner.step()  # Process result, dispatch restore
-        runner.step()  # Process result, process restore
+        runner.step()  # Process restore
+        runner.step()  # Process result
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
@@ -319,8 +330,9 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()  # Start trial
         self.assertEqual(trials[0].status, Trial.RUNNING)
         runner.step()  # Process result
-        runner.step()  # Process result, dispatch and process save
+        runner.step()  # Process result, dispatch save
         self.assertEqual(trials[0].last_result[DONE], True)
+        runner.step()  # Process save
         self.assertEqual(trials[0].has_checkpoint(), True)
 
     def testResultDone(self):

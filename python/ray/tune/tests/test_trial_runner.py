@@ -14,9 +14,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
 
-# Note: Since we do single steps in most of these tests,
-# they only work with TUNE_RESULT_BUFFER_LENGTH = 1 or 0
-
 
 class TrialRunnerTest(unittest.TestCase):
     def setUp(self):
