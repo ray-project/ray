@@ -302,8 +302,9 @@ To delete a running Ray cluster, you can run the following command:
 Using GPUs
 ----------
 
-Using GPUs on Kubernetes requires some setup.
-Here's where to find the relevant documentation for GPU usage on `GKE`_, for `EKS`_, and for `AKS`_.
+To use GPUs on Kubernetes, you will need to configure both your GKE setup and add additional values to your Ray cluster configuration.
+
+For relevant documentation for GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods. 
 For example, the image ``rayproject/ray-ml:nightly-gpu`` is ideal for running GPU-based ML workloads with the most recent nightly build of Ray.
