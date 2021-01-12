@@ -691,6 +691,9 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
+* **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
+  trial startups. After the grace period, Tune will block until a result from a running trial is received. Can
+  be disabled by setting this to lower or equal to 0.
 * **TUNE_WARN_THRESHOLD_S**: Threshold for logging if an Tune event loop operation takes too long. Defaults to 0.5 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 

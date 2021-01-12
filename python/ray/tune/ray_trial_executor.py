@@ -35,10 +35,6 @@ DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
 TUNE_MAX_COMMITTED_PLACEMENT_GROUPS = 1000
 
-# Seconds we wait for a trial to come up before we make blocking calls
-# to process events
-TRIAL_STARTUP_GRACE_PERIOD = 2.
-
 
 class _ActorClassCache:
     """Caches actor classes.
@@ -152,10 +148,10 @@ class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials=False,
-                 reuse_actors=False,
-                 ray_auto_init=None,
-                 refresh_period=None):
+                 queue_trials: bool = False,
+                 reuse_actors: bool = False,
+                 ray_auto_init: Optional[bool] = None,
+                 refresh_period: Optional[float] = None):
         if ray_auto_init is None:
             if os.environ.get("TUNE_DISABLE_AUTO_INIT") == "1":
                 logger.info("'TUNE_DISABLE_AUTO_INIT=1' detected.")
@@ -249,8 +245,10 @@ class RayTrialExecutor(TrialExecutor):
             ready, _ = ray.wait([ready_fut], timeout=0)
             if not ready:
                 return None
+            # The trainable actor always lives on the first bundle
             full_actor_class = _actor_cls.options(
-                placement_group=placement_group)
+                placement_group=placement_group,
+                placement_group_bundle_index=0)
         else:
             full_actor_class = _actor_cls.options(
                 num_cpus=trial.resources.cpu,

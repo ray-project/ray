@@ -15,7 +15,7 @@ class TrialExecutor:
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials=False):
+    def __init__(self, queue_trials: bool = False):
         """Initializes a new TrialExecutor.
 
         Args:

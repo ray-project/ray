@@ -12,9 +12,8 @@ import warnings
 from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.stopper import NoopStopper
-from ray.tune.ray_trial_executor import RayTrialExecutor, \
-    TRIAL_STARTUP_GRACE_PERIOD
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
@@ -29,6 +28,10 @@ from ray.tune.web_server import TuneServer
 from ray.util.debug import log_once
 
 MAX_DEBUG_TRIALS = 20
+# Seconds we wait for a trial to come up before we make blocking calls
+# to process events
+TUNE_TRIAL_STARTUP_GRACE_PERIOD = float(
+    os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", "10."))
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +380,8 @@ class TrialRunner:
                     # come up, and we would want to start the trial then.
                     queue_time = self._pending_trial_queue_times.setdefault(
                         next_trial.trial_id, time.time())
-                    if time.time() - queue_time < TRIAL_STARTUP_GRACE_PERIOD:
+                    if time.time(
+                    ) - queue_time < TUNE_TRIAL_STARTUP_GRACE_PERIOD:
                         process_events_timeout = 0.1
 
         if may_handle_events and self.trial_executor.get_running_trials():
