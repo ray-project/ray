@@ -42,8 +42,13 @@ class Worker:
         """Initializes the worker side grpc client.
 
         Args:
+            conn_str: The host:port connection string for the ray server.
             secure: whether to use SSL secure channel or not.
             metadata: additional metadata passed in the grpc request headers.
+            connection_retries: Number of times to attempt to reconnect to the
+              ray server if it doesn't respond immediately. Setting to 0 tries
+              at least once.  For infinite retries, catch the ConnectionError
+              exception.
         """
         self.metadata = metadata if metadata else []
         self.channel = None
@@ -56,12 +61,12 @@ class Worker:
 
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        while conn_attempts < connection_retries:
+        while conn_attempts < connection_retries + 1:
             conn_attempts += 1
             try:
                 grpc.channel_ready_future(self.channel).result(timeout=timeout)
             except grpc.FutureTimeoutError:
-                if conn_attempts == connection_retries:
+                if conn_attempts >= connection_retries:
                     raise ConnectionError("ray client connection timeout")
                 logger.info(f"Couldn't connect in {timeout} seconds, retrying")
                 timeout = timeout + 5
