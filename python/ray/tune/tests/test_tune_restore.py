@@ -13,6 +13,7 @@ import ray
 from ray import tune
 from ray.test_utils import recursive_fnmatch
 from ray.rllib import _register_all
+from ray.tune.callback import Callback
 from ray.tune.suggest import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.dragonfly import DragonflySearch
@@ -23,6 +24,7 @@ from ray.tune.suggest.optuna import OptunaSearch, param as ot_param
 from ray.tune.suggest.sigopt import SigOptSearch
 from ray.tune.suggest.zoopt import ZOOptSearch
 from ray.tune.utils import validate_save_restore
+from ray.tune.utils._mock_trainable import MyTrainableClass
 
 
 class TuneRestoreTest(unittest.TestCase):
@@ -84,57 +86,71 @@ class TuneRestoreTest(unittest.TestCase):
 
 
 class TuneFailResumeTest(unittest.TestCase):
+    class FailureInjectorCallback(Callback):
+        """Adds random failure injection to the TrialExecutor."""
+
+        def __init__(self, steps=20):
+            self._step = 0
+            self.steps = steps
+
+        def on_trial_start(self, trials, **info):
+            self._step += 1
+            print(len(trials))
+            if self._step >= self.steps:
+                raise RuntimeError
+
+    class CheckStateCallback(Callback):
+        """Checks state for the experiment initialization."""
+
+        def __init__(self, expected=20):
+            self.expected = expected
+            self._checked = False
+
+        def on_step_begin(self, iteration, trials, **kwargs):
+            if not self._checked:
+                assert len(trials) == self.expected
+                self._checked = True
+
     def setUp(self):
         ray.init(num_cpus=2)
+        self.logdir = tempfile.mkdtemp()
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        from ray.tune import register_trainable
+        register_trainable("trainable", MyTrainableClass)
 
     def tearDown(self):
         ray.shutdown()
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"].pop()
+        os.environ.pop("TUNE_GLOBAL_CHECKPOINT_S")
+        shutil.rmtree(self.logdir)
         _register_all()
 
     def testFailResumeGridSearch(self):
-        class FailureInjectorCallback(Callback):
-            """Adds random failure injection to the TrialExecutor."""
-
-            def __init__(self,
-                         steps=20):
-                self._step = 0
-                self.steps = steps
-
-            def on_step_begin(self, **info):
-                self._step += 1
-                if self._step % 5 == 0:
-                if self._step > self.steps:
-                    raise RuntimeError
-
         config = dict(
-            num_samples=10,
+            num_samples=5,
             fail_fast=True,
             config={
                 "test": tune.grid_search([1, 2, 3]),
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=tmpdir,
+            local_dir=self.logdir,
             verbose=1)
 
         try:
             tune.run(
                 "trainable",
-                callbacks=[FailureInjectorCallback()],
-                **config
-            )
+                callbacks=[self.FailureInjectorCallback()],
+                **config)
             raise Exception("Expected value error!")
         except RuntimeError:
             print("Failed as expected")
 
-        print("Resuming experiment.")
         analysis = tune.run(
             "trainable",
             resume=True,
+            callbacks=[self.CheckStateCallback()],
             **config)
-        assert len(analysis.trials) == 90
+        assert len(analysis.trials) == 45
 
 
 class TuneExampleTest(unittest.TestCase):
@@ -538,4 +554,4 @@ class SearcherTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
