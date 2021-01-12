@@ -31,7 +31,7 @@ class WaitResult;
 class Ray {
  public:
   /// Initialize Ray runtime.
-  static void Init();
+  static void Init(std::string address = "", bool local_mode = false);
 
   /// Shutdown Ray runtime.
   static void Shutdown();

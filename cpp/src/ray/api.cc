@@ -10,7 +10,7 @@ namespace api {
 std::shared_ptr<RayRuntime> Ray::runtime_ = nullptr;
 
 std::once_flag Ray::is_inited_;
-void Ray::Init() {
+void Ray::Init(std::string address, bool local_mode) {
   std::call_once(is_inited_,
                  [] { runtime_ = AbstractRayRuntime::DoInit(RayConfig::GetInstance()); });
 }
