@@ -307,7 +307,7 @@ install_dependencies() {
   fi
 
   # For Tune, install upstream dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ]; then
+  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" != 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_upstream.txt
   fi
 
