@@ -639,8 +639,7 @@ class TrialRunner:
             self._cached_trial_decisions[trial.trial_id] = decision
         else:
             self._queue_decision(trial, decision)
-
-        return decision
+            return decision
 
     def _validate_result_metrics(self, result):
         """

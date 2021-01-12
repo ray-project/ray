@@ -146,7 +146,11 @@ class Trainable:
         """Runs multiple iterations of training.
 
         Calls ``train()`` internally. Collects and combines multiple results.
-        This function
+        This function will run ``self.train()`` repeatedly until one of
+        the following conditions is met: 1) the maximum buffer length is
+        reached, 2) the maximum buffer time is reached, or 3) a checkpoint
+        was created. Even if the maximum time is reached, it will always
+        block until at least one result is received.
 
         Args:
             buffer_time_s (float): Maximum time to buffer. The next result
@@ -162,10 +166,17 @@ class Trainable:
         while now < send_buffer_at or not results:  # At least one result
             result = self.train()
             results.append(result)
-            if result.get(DONE, False) or result.get(
-                    SHOULD_CHECKPOINT, False) or result.get(
-                        RESULT_DUPLICATE,
-                        False) or len(results) >= max_buffer_length:
+            if result.get(DONE, False):
+                # If the trial is done, return
+                break
+            elif result.get(SHOULD_CHECKPOINT, False):
+                # If a checkpoint was created, return
+                break
+            elif result.get(RESULT_DUPLICATE):
+                # If the function API trainable completed, return
+                break
+            elif len(results) >= max_buffer_length:
+                # If the buffer is full return
                 break
             now = time.time()
 

@@ -268,8 +268,12 @@ class RayTrialExecutor(TrialExecutor):
                 len(self._running) // 10))
         with self._change_working_directory(trial):
             if TUNE_RESULT_BUFFER_LENGTH > 1:
+                buffer_length = TUNE_RESULT_BUFFER_LENGTH
+                if trial.checkpoint_freq > 0:
+                    buffer_length = min(buffer_length, trial.checkpoint_freq)
+
                 remote = trial.runner.train_buffered.remote(
-                    buffer_time_s, TUNE_RESULT_BUFFER_LENGTH)
+                    buffer_time_s, buffer_length)
             else:
                 remote = trial.runner.train.remote()
 

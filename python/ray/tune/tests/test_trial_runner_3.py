@@ -587,10 +587,38 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertEqual(count_checkpoints(tmpdir), 2)
         shutil.rmtree(tmpdir)
 
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 0.5)
+    @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 7)
+    def testCheckpointFreqBuffered(self):
+        def num_checkpoints(trial):
+            return sum(
+                item.startswith("checkpoint_")
+                for item in os.listdir(trial.logdir))
+
+        ray.init(num_cpus=2)
+
+        trial = Trial("__fake", checkpoint_freq=3)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
+        runner.add_trial(trial)
+
+        runner.step()  # start trial
+        runner.step()  # run iteration 1-3
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
+        self.assertEqual(num_checkpoints(trial), 1)
+
+        runner.step()  # process save, run iteration 4-6
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 6)
+        self.assertEqual(num_checkpoints(trial), 2)
+
+        runner.step()  # process save, run iteration 7-9
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 9)
+        self.assertEqual(num_checkpoints(trial), 3)
+
     def testUserCheckpoint(self):
         ray.init(num_cpus=3)
-        tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
         trials = runner.get_trials()
 
@@ -605,11 +633,10 @@ class TrialRunnerTest3(unittest.TestCase):
         runner.step()  # Process save
         self.assertTrue(trials[0].has_checkpoint())
 
-        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=self.tmpdir)
         runner2.step()  # 5: Start trial and dispatch restore
         trials2 = runner2.get_trials()
         self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
-        shutil.rmtree(tmpdir)
 
     @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_MIN_TIME_S", 1)
     @patch("ray.tune.ray_trial_executor.TUNE_RESULT_BUFFER_LENGTH", 8)
@@ -620,8 +647,8 @@ class TrialRunnerTest3(unittest.TestCase):
                 for item in os.listdir(trial.logdir))
 
         ray.init(num_cpus=3)
-        tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner = TrialRunner(
+            local_checkpoint_dir=self.tmpdir, checkpoint_period=0)
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 10}))
         trials = runner.get_trials()
 
@@ -655,8 +682,6 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
-
-        shutil.rmtree(tmpdir)
 
 
 class SearchAlgorithmTest(unittest.TestCase):
