@@ -135,7 +135,7 @@ void NodeManager::HandleTaskFinished(std::shared_ptr<WorkerInterface> worker,
   Task removed_task;
   // (See design_docs/task_states.rst for the state transition diagram.)
   RAY_CHECK(local_queues_.RemoveTask(task_id, &removed_task)) << task_id;
-  if (!finished_task) {
+  if (finished_task) {
     *finished_task = std::move(removed_task);
   }
 
