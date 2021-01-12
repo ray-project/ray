@@ -1,6 +1,7 @@
 import asyncio
 from asyncio.futures import Future
 from collections import defaultdict
+from enum import Enum
 import time
 from typing import Dict, Any, List, Optional, Set, Tuple
 from uuid import uuid4
@@ -29,6 +30,20 @@ CHECKPOINT_KEY = "serve-backend-state-checkpoint"
 # Feature flag for controller resource checking. If true, controller will
 # error if the desired replicas exceed current resource availability.
 _RESOURCE_CHECK_ENABLED = True
+
+class ReplicaState(Enum):
+    NEW = 1
+    SHOULD_START = 2
+    PENDING_START = 3
+    RUNNING = 4
+    SHOULD_STOP = 5
+    PENDING_STOP = 6
+    STOPPED = 7
+
+class BackendReplica:
+    def __init__(self, actor_name):
+        self._actor_name = actor_name
+        self._actor_handle = None
 
 
 class BackendState:
