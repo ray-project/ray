@@ -247,14 +247,14 @@ def temporary_helper_function():
 
     # Check that if we try to get the function it throws an exception and
     # does not hang.
-    with pytest.raises(Exception, match="failed to be imported"):
+    with pytest.raises(Exception, match="actor died unexpectedly"):
         ray.get(foo.get_val.remote(1, arg2=2))
 
     # Wait for the error from when the call to get_val.
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
+    errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert ("failed to be imported, and so cannot execute this method" in
+    assert errors[0].type == ray_constants.WORKER_DIED_PUSH_ERROR
+    assert ("A worker died or was killed" in
             errors[0].error_message)
 
     f.close()
