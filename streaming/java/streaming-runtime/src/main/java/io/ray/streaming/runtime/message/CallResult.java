@@ -10,8 +10,7 @@ public class CallResult<T> implements Serializable {
   private int resultCode;
   private String resultMsg;
 
-  public CallResult() {
-  }
+  public CallResult() {}
 
   public CallResult(boolean success, int resultCode, String resultMsg, T resultObj) {
     this.success = success;
@@ -95,9 +94,7 @@ public class CallResult<T> implements Serializable {
   }
 
   public enum CallResultEnum implements Serializable {
-    /**
-     * call result enum
-     */
+    /** call result enum */
     SUCCESS(0, "SUCCESS"),
     FAILED(1, "FAILED"),
     SKIPPED(2, "SKIPPED");

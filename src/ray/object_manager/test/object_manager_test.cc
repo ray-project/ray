@@ -154,7 +154,7 @@ class TestObjectManagerBase : public ::testing::Test {
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     uint64_t retry_with_request_id = 0;
-    std::shared_ptr<arrow::Buffer> data;
+    std::shared_ptr<Buffer> data;
     RAY_CHECK_OK(client.Create(object_id, ray::rpc::Address(), data_size, metadata,
                                metadata_size, &retry_with_request_id, &data));
     RAY_CHECK(retry_with_request_id == 0);

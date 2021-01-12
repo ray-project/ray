@@ -2,7 +2,7 @@ import inspect
 import logging
 import sys
 
-from ray.experimental.client.ray_client_helpers import ray_start_client_server
+from ray.util.client.ray_client_helpers import ray_start_client_server
 
 from ray._private.ray_microbenchmark_helpers import timeit
 from ray._private.ray_microbenchmark_helpers import ray_setup_and_teardown

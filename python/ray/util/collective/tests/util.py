@@ -28,6 +28,9 @@ class Worker:
         self.buffer = data
         return self.buffer
 
+    def get_buffer(self):
+        return self.buffer
+
     def set_list_buffer(self, list_of_arrays):
         self.list_buffer = list_of_arrays
         return self.list_buffer
@@ -50,6 +53,14 @@ class Worker:
 
     def do_reducescatter(self, group_name="default", op=ReduceOp.SUM):
         col.reducescatter(self.buffer, self.list_buffer, group_name, op)
+        return self.buffer
+
+    def do_send(self, group_name="default", dst_rank=0):
+        col.send(self.buffer, dst_rank, group_name)
+        return self.buffer
+
+    def do_recv(self, group_name="default", src_rank=0):
+        col.recv(self.buffer, src_rank, group_name)
         return self.buffer
 
     def destroy_group(self, group_name="default"):

@@ -31,8 +31,6 @@
 
 #include <boost/asio.hpp>
 
-#include "arrow/buffer.h"
-
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
@@ -45,24 +43,20 @@ namespace plasma {
 using fb::MessageType;
 using fb::PlasmaError;
 
-using arrow::MutableBuffer;
-
 // ----------------------------------------------------------------------
 // PlasmaBuffer
 
 /// A Buffer class that automatically releases the backing plasma object
 /// when it goes out of scope. This is returned by Get.
-class RAY_NO_EXPORT PlasmaBuffer : public Buffer {
+class RAY_NO_EXPORT PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 
   PlasmaBuffer(std::shared_ptr<PlasmaClient::Impl> client, const ObjectID &object_id,
                const std::shared_ptr<Buffer> &buffer)
-      : Buffer(buffer, 0, buffer->size()), client_(client), object_id_(object_id) {
-    if (buffer->is_mutable()) {
-      is_mutable_ = true;
-    }
-  }
+      : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+        client_(client),
+        object_id_(object_id) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -72,11 +66,11 @@ class RAY_NO_EXPORT PlasmaBuffer : public Buffer {
 /// A mutable Buffer class that keeps the backing data alive by keeping a
 /// PlasmaClient shared pointer. This is returned by Create. Release will
 /// be called in the associated Seal call.
-class RAY_NO_EXPORT PlasmaMutableBuffer : public MutableBuffer {
+class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
  public:
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client, uint8_t *mutable_data,
                       int64_t data_size)
-      : MutableBuffer(mutable_data, data_size), client_(client) {}
+      : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -308,7 +302,7 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // from the transfer.
     if (metadata != NULL) {
       // Copy the metadata to the buffer.
-      memcpy((*data)->mutable_data() + object.data_size, metadata, object.metadata_size);
+      memcpy((*data)->Data() + object.data_size, metadata, object.metadata_size);
     }
   } else {
     RAY_LOG(FATAL) << "GPU is not enabled.";
@@ -392,15 +386,16 @@ Status PlasmaClient::Impl::GetBuffers(
 
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
-        physical_buf = std::make_shared<Buffer>(
+        physical_buf = std::make_shared<SharedMemoryBuffer>(
             data + object->data_offset, object->data_size + object->metadata_size);
       } else {
         RAY_LOG(FATAL) << "GPU library is not enabled.";
       }
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SliceBuffer(physical_buf, 0, object->data_size);
-      object_buffers[i].metadata =
-          SliceBuffer(physical_buf, object->data_size, object->metadata_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+      object_buffers[i].metadata = SharedMemoryBuffer::Slice(
+          physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
@@ -449,16 +444,17 @@ Status PlasmaClient::Impl::GetBuffers(
       std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
-        physical_buf = std::make_shared<Buffer>(
+        physical_buf = std::make_shared<SharedMemoryBuffer>(
             data + object->data_offset, object->data_size + object->metadata_size);
       } else {
         RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
       }
       // Finish filling out the return values.
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SliceBuffer(physical_buf, 0, object->data_size);
-      object_buffers[i].metadata =
-          SliceBuffer(physical_buf, object->data_size, object->metadata_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+      object_buffers[i].metadata = SharedMemoryBuffer::Slice(
+          physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
