@@ -228,7 +228,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, pin_object=True):
+    def put_object(self, value, object_ref=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -242,7 +242,6 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
-            pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -274,8 +273,7 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref,
-                pin_object=pin_object))
+                serialized_value, object_ref=object_ref))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
@@ -1423,7 +1421,7 @@ def put(value):
     worker.check_connected()
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, pin_object=True)
+            object_ref = worker.put_object(value)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

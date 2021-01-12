@@ -936,9 +936,10 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   return Status::OK();
 }
 
-Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                          const ObjectID &object_id, const rpc::Address &owner_address,
-                          std::shared_ptr<Buffer> *data) {
+Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
+                                  const size_t data_size, const ObjectID &object_id,
+                                  const rpc::Address &owner_address,
+                                  std::shared_ptr<Buffer> *data) {
   if (options_.is_local_mode) {
     return Status::NotImplemented(
         "Creating an object with a pre-existing ObjectID is not supported in local mode");
@@ -948,13 +949,17 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   }
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object,
-                        const absl::optional<rpc::Address> &owner_address) {
-  auto status = plasma_store_provider_->Seal(object_id);
+Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
+  auto status = SealExisting(object_id, pin_object);
   if (!status.ok()) {
     reference_counter_->RemoveOwnedObject(object_id);
-    return status;
   }
+  return status;
+}
+
+Status CoreWorker::SealExisting(const ObjectID &object_id, bool pin_object,
+                                const absl::optional<rpc::Address> &owner_address) {
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
     RAY_LOG(DEBUG) << "Pinning sealed object " << object_id;
@@ -1759,8 +1764,8 @@ Status CoreWorker::AllocateReturnObjects(
               RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], object_ids[i],
-                                 owner_address, &data_buffer));
+        RAY_RETURN_NOT_OK(CreateExisting(metadatas[i], data_sizes[i], object_ids[i],
+                                         owner_address, &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -1844,7 +1849,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
     if (return_objects->at(i)->GetData() != nullptr &&
         return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
+      if (!SealExisting(return_ids[i], /*pin_object=*/true, caller_address).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
