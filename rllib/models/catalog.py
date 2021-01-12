@@ -16,7 +16,7 @@ from ray.rllib.models.tf.tf_action_dist import Categorical, \
     GaussianSquashedGaussian, \
     MultiActionDistribution, MultiCategorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
-    TorchDeterministic, TorchDiagGaussian, \
+    TorchDeterministic, TorchDiagGaussian, TorchGaussianSquashedGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -211,14 +211,31 @@ class ModelCatalog:
                     "Consider reshaping this into a single dimension, "
                     "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
+
             if dist_type is None:
-                if framework == "torch":
-                    dist_cls = TorchDiagGaussian
-                elif np.any(action_space.bounded_below &
-                            action_space.bounded_above):
-                    return ModelCatalog._make_bounded_dist(action_space)
+                cls = TorchGaussianSquashedGaussian if framework == "torch" \
+                    else GaussianSquashedGaussian
+                if np.any(action_space.bounded_below &
+                          action_space.bounded_above):
+                    if any(action_space.low != action_space.low[0]) or \
+                            any(action_space.high != action_space.high[0]):
+                        raise UnsupportedSpaceException(
+                            "The Box space has non-matching low/high value(s)."
+                            " Make sure that all low/high values are the same "
+                            "accross the different dimensions of your Box. If "
+                            "the different dimensions must have different "
+                            "low/high values, try splitting up your space into"
+                            " a Tuple or Dict space.")
+                    dist_cls = partial(
+                        cls,
+                        low=action_space.low[0],
+                        high=action_space.high[0])
+                    num_inputs = cls.required_model_output_shape(
+                        action_space, config)
+                    return dist_cls, num_inputs
                 else:
-                    dist_cls = DiagGaussian
+                    dist_cls = TorchDiagGaussian if framework == "torch" else \
+                        DiagGaussian
             elif dist_type == "deterministic":
                 dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
@@ -729,29 +746,6 @@ class ModelCatalog:
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
         return dist_class
-
-    @staticmethod
-    def _make_bounded_dist(action_space):
-        child_dists = []
-
-        low = np.ravel(action_space.low)
-        high = np.ravel(action_space.high)
-
-        for l, h in zip(low, high):
-            if not np.isinf(l) and not np.isinf(h):
-                dist = partial(GaussianSquashedGaussian, low=l, high=h)
-            else:
-                dist = DiagGaussian
-            child_dists.append(dist)
-
-        if len(child_dists) == 1:
-            return dist, 2
-
-        return partial(
-            MultiActionDistribution,
-            action_space=action_space,
-            child_distributions=child_dists,
-            input_lens=[2] * len(child_dists)), 2 * len(child_dists)
 
     @staticmethod
     def _validate_config(config: ModelConfigDict, framework: str) -> None:

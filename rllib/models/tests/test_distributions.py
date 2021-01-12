@@ -10,8 +10,8 @@ from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
     DiagGaussian, GaussianSquashedGaussian, GumbelSoftmax, \
     MultiActionDistribution, MultiCategorical, SquashedGaussian
 from ray.rllib.models.torch.torch_action_dist import TorchBeta, \
-    TorchCategorical, TorchDiagGaussian, TorchMultiActionDistribution, \
-    TorchMultiCategorical, TorchSquashedGaussian
+    TorchCategorical, TorchDiagGaussian, TorchGaussianSquashedGaussian, \
+    TorchMultiActionDistribution, TorchMultiCategorical, TorchSquashedGaussian
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT, \
     softmax, SMALL_NUMBER, LARGE_INTEGER
@@ -370,48 +370,48 @@ class TestDistributions(unittest.TestCase):
             check(outs, log_prob, decimals=4)
 
     def test_gaussian_squashed_gaussian(self):
-        for fw, sess in framework_iterator(frameworks="tf", session=True):
-            inputs1 = tf.constant([[-0.5, 0.2,
-                                    np.log(0.1),
-                                    np.log(0.5)],
-                                   [0.6, 0.8,
-                                    np.log(0.7),
-                                    np.log(0.8)],
-                                   [-10.0, 1.2,
-                                    np.log(0.9),
-                                    np.log(1.0)]])
+        for fw, sess in framework_iterator(session=True):
+            inputs1 = np.array(
+                [[-0.5, 0.2, np.log(0.1), np.log(0.5)], [
+                    0.6, 0.8, np.log(0.7), np.log(0.8)
+                ], [-10.0, 1.2, np.log(0.9),
+                    np.log(1.0)]],
+                dtype=np.float32)
 
-            inputs2 = tf.constant([[0.2, 0.3,
-                                    np.log(0.2),
-                                    np.log(0.4)],
-                                   [0.6, 0.8,
-                                    np.log(0.7),
-                                    np.log(0.8)],
-                                   [-11.0, 1.2,
-                                    np.log(0.9),
-                                    np.log(1.0)]])
+            inputs2 = np.array(
+                [[0.2, 0.3, np.log(0.2), np.log(0.4)], [
+                    0.6, 0.8, np.log(0.7), np.log(0.8)
+                ], [-11.0, 1.2, np.log(0.9),
+                    np.log(1.0)]],
+                dtype=np.float32)
 
-            gsg_dist1 = GaussianSquashedGaussian(inputs1, None)
-            gsg_dist2 = GaussianSquashedGaussian(inputs2, None)
+            cls = GaussianSquashedGaussian if fw != "torch" else \
+                TorchGaussianSquashedGaussian
+            gsg_dist1 = cls(inputs1, None)
+            gsg_dist2 = cls(inputs2, None)
 
             # KL, entropy, and logp values have been verified empirically.
             check(
-                sess.run(gsg_dist1.kl(gsg_dist2)), np.array([6.532504, 0.,
-                                                             0.]))
+                gsg_dist1.kl(gsg_dist2),
+                np.array([6.532504, 0.0, 0.0], dtype=np.float32))
             check(
-                sess.run(gsg_dist1.entropy()),
-                np.array([-0.74827796, 0.7070056, -4.971432]))
-            x = tf.constant([[-0.3939393939393939]])
+                gsg_dist1.entropy(),
+                np.array(
+                    [-0.74827796, 0.7070056, -4.971432], dtype=np.float32))
+            x = np.array([[-0.3939393939393939]], dtype=np.float32)
+            if fw == "torch":
+                x = torch.from_numpy(x)
             check(
-                sess.run(gsg_dist1.logp(x)),
-                np.array([0.736003, -3.1547096, -6.5595593]))
+                gsg_dist1.logp(x),
+                np.array([0.736003, -3.1547096, -6.5595593], dtype=np.float32))
 
             # This is just the squashed distribution means. Verified using
             # _unsquash (which was itself verified as part of the logp test).
-            expected = np.array([[-0.41861248,
-                                  0.1745522], [0.49179232, 0.62231755],
-                                 [-0.99906087, 0.81425166]])
-            check(sess.run(gsg_dist1.deterministic_sample()), expected)
+            expected = np.array(
+                [[-0.41861248, 0.1745522], [0.49179232, 0.62231755],
+                 [-0.99906087, 0.81425166]],
+                dtype=np.float32)
+            check(gsg_dist1.deterministic_sample(), expected)
 
     def test_beta(self):
         input_space = Box(-2.0, 1.0, shape=(2000, 10))

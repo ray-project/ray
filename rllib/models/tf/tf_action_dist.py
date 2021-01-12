@@ -385,6 +385,7 @@ class SquashedGaussian(_SquashedGaussianBase):
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
     """
 
+    @override(_SquashedGaussianBase)
     def _log_squash_grad(self, unsquashed_values):
         unsquashed_values_tanhd = tf.math.tanh(unsquashed_values)
         return tf.math.log(1 - unsquashed_values_tanhd**2 + SMALL_NUMBER)
@@ -420,64 +421,12 @@ class SquashedGaussian(_SquashedGaussianBase):
         return np.prod(action_space.shape) * 2
 
 
-class Beta(TFActionDistribution):
-    """
-    A Beta distribution is defined on the interval [0, 1] and parameterized by
-    shape parameters alpha and beta (also called concentration parameters).
-
-    PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
-        with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
-        and Gamma(n) = (n - 1)!
-    """
-
-    def __init__(self,
-                 inputs: List[TensorType],
-                 model: ModelV2,
-                 low: float = 0.0,
-                 high: float = 1.0):
-        # Stabilize input parameters (possibly coming from a linear layer).
-        inputs = tf.clip_by_value(inputs, log(SMALL_NUMBER),
-                                  -log(SMALL_NUMBER))
-        inputs = tf.math.log(tf.math.exp(inputs) + 1.0) + 1.0
-        self.low = low
-        self.high = high
-        alpha, beta = tf.split(inputs, 2, axis=-1)
-        # Note: concentration0==beta, concentration1=alpha (!)
-        self.dist = tfp.distributions.Beta(
-            concentration1=alpha, concentration0=beta)
-        super().__init__(inputs, model)
-
-    @override(ActionDistribution)
-    def deterministic_sample(self) -> TensorType:
-        mean = self.dist.mean()
-        return self._squash(mean)
-
-    @override(TFActionDistribution)
-    def _build_sample_op(self) -> TensorType:
-        return self._squash(self.dist.sample())
-
-    @override(ActionDistribution)
-    def logp(self, x: TensorType) -> TensorType:
-        unsquashed_values = self._unsquash(x)
-        return tf.math.reduce_sum(
-            self.dist.log_prob(unsquashed_values), axis=-1)
-
-    def _squash(self, raw_values: TensorType) -> TensorType:
-        return raw_values * (self.high - self.low) + self.low
-
-    def _unsquash(self, values: TensorType) -> TensorType:
-        return (values - self.low) / (self.high - self.low)
-
-    @staticmethod
-    @override(ActionDistribution)
-    def required_model_output_shape(
-            action_space: gym.Space,
-            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
-        return np.prod(action_space.shape) * 2
-
-
 class GaussianSquashedGaussian(_SquashedGaussianBase):
     """A gaussian CDF-squashed Gaussian distribution.
+
+    Can be used instead of the `SquashedGaussian` in case entropy or KL need
+    to be computable in analytical form (`SquashedGaussian` can only provide
+    those empirically).
 
     The distribution will never return low or high exactly, but
     `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
@@ -544,6 +493,62 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
         return np.prod(action_space.shape) * 2
 
 
+class Beta(TFActionDistribution):
+    """
+    A Beta distribution is defined on the interval [0, 1] and parameterized by
+    shape parameters alpha and beta (also called concentration parameters).
+
+    PDF(x; alpha, beta) = x**(alpha - 1) (1 - x)**(beta - 1) / Z
+        with Z = Gamma(alpha) Gamma(beta) / Gamma(alpha + beta)
+        and Gamma(n) = (n - 1)!
+    """
+
+    def __init__(self,
+                 inputs: List[TensorType],
+                 model: ModelV2,
+                 low: float = 0.0,
+                 high: float = 1.0):
+        # Stabilize input parameters (possibly coming from a linear layer).
+        inputs = tf.clip_by_value(inputs, log(SMALL_NUMBER),
+                                  -log(SMALL_NUMBER))
+        inputs = tf.math.log(tf.math.exp(inputs) + 1.0) + 1.0
+        self.low = low
+        self.high = high
+        alpha, beta = tf.split(inputs, 2, axis=-1)
+        # Note: concentration0==beta, concentration1=alpha (!)
+        self.dist = tfp.distributions.Beta(
+            concentration1=alpha, concentration0=beta)
+        super().__init__(inputs, model)
+
+    @override(ActionDistribution)
+    def deterministic_sample(self) -> TensorType:
+        mean = self.dist.mean()
+        return self._squash(mean)
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self) -> TensorType:
+        return self._squash(self.dist.sample())
+
+    @override(ActionDistribution)
+    def logp(self, x: TensorType) -> TensorType:
+        unsquashed_values = self._unsquash(x)
+        return tf.math.reduce_sum(
+            self.dist.log_prob(unsquashed_values), axis=-1)
+
+    def _squash(self, raw_values: TensorType) -> TensorType:
+        return raw_values * (self.high - self.low) + self.low
+
+    def _unsquash(self, values: TensorType) -> TensorType:
+        return (values - self.low) / (self.high - self.low)
+
+    @staticmethod
+    @override(ActionDistribution)
+    def required_model_output_shape(
+            action_space: gym.Space,
+            model_config: ModelConfigDict) -> Union[int, np.ndarray]:
+        return np.prod(action_space.shape) * 2
+
+
 class Deterministic(TFActionDistribution):
     """Action distribution that returns the input values directly.
 
@@ -573,15 +578,26 @@ class Deterministic(TFActionDistribution):
 
 class MultiActionDistribution(TFActionDistribution):
     """Action distribution that operates on a set of actions.
-
-    Args:
-        inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, model, *, child_distributions, input_lens,
-                 action_space):
-        ActionDistribution.__init__(self, inputs, model)
+    def __init__(self, inputs: List[TensorType], model: ModelV2, *,
+                 child_distributions: List[TFActionDistribution],
+                 input_lens: List[int], action_space: gym.spaces.Space):
+        """Initializes a MultiActionDistribution instance.
 
+        Args:
+            inputs (List[TensorType): A list of tensors from which to compute
+                samples.
+            child_distributions (List[TFActionDistribution]): Flattened list
+                of the child distributions within this multi distribution.
+            input_lens (List[int]): List of input vector lengths corresponding
+                to the list of `child_distributions`.
+            action_space (gym.spaces.Space): The (Tuple/Dict) action space
+                underlying this multi distribution.
+        """
+        ActionDistribution.__init__(self, inputs, model)
+        # The base struct (python dict/tuple) corresponding to the complex
+        # action space.
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.input_lens = np.array(input_lens, dtype=np.int32)
