@@ -68,3 +68,4 @@ class ClusterResourceSchedulerInterface {
   virtual std::string GetLocalResourceViewString() const = 0;
 };
 }  // namespace ray
+
