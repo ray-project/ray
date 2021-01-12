@@ -83,6 +83,60 @@ class TuneRestoreTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
 
 
+class TuneFailResumeTest(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=2)
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+
+    def tearDown(self):
+        ray.shutdown()
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"].pop()
+        _register_all()
+
+    def testFailResumeGridSearch(self):
+        class FailureInjectorCallback(Callback):
+            """Adds random failure injection to the TrialExecutor."""
+
+            def __init__(self,
+                         steps=20):
+                self._step = 0
+                self.steps = steps
+
+            def on_step_begin(self, **info):
+                self._step += 1
+                if self._step % 5 == 0:
+                if self._step > self.steps:
+                    raise RuntimeError
+
+        config = dict(
+            num_samples=10,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search([1, 2, 3]),
+                "test2": tune.grid_search([1, 2, 3]),
+            },
+            stop={"training_iteration": 2},
+            local_dir=tmpdir,
+            verbose=1)
+
+        try:
+            tune.run(
+                "trainable",
+                callbacks=[FailureInjectorCallback()],
+                **config
+            )
+            raise Exception("Expected value error!")
+        except RuntimeError:
+            print("Failed as expected")
+
+        print("Resuming experiment.")
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            **config)
+        assert len(analysis.trials) == 90
+
+
 class TuneExampleTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)

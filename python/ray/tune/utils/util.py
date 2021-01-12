@@ -1,5 +1,7 @@
+from typing import Dict
 import copy
 import json
+import glob
 import logging
 import numbers
 import os
@@ -404,6 +406,35 @@ def diagnose_serialization(trainable):
               "of these objects or moving them into the scope of "
               "the trainable. ")
         return failure_set
+
+
+def atomic_save(state: Dict, checkpoint_dir: str, file_name: str,
+                tmp_file_name: str):
+    """Atomically saves the object to the checkpoint directory
+
+    This is automatically used by tune.run during a Tune job.
+    """
+    import ray.cloudpickle as cloudpickle
+    tmp_search_ckpt_path = os.path.join(checkpoint_dir, tmp_file_name)
+    with open(tmp_search_ckpt_path, "wb") as f:
+        cloudpickle.dump(state, f)
+
+    os.rename(tmp_search_ckpt_path, os.path.join(checkpoint_dir, file_name))
+
+
+def load_newest_checkpoint(dirpath: str, ckpt_pattern: str):
+    """Returns path to most recently modified checkpoint.
+
+    Assumes files are saved with an ordered name.
+    """
+    import ray.cloudpickle as cloudpickle
+    full_paths = glob.glob(os.path.join(dirpath, ckpt_pattern))
+    if not full_paths:
+        return
+    most_recent_checkpoint = max(full_paths)
+    with open(most_recent_checkpoint, "rb") as f:
+        checkpoint_state = cloudpickle.load(f)
+    return checkpoint_state
 
 
 def wait_for_gpu(gpu_id=None, gpu_memory_limit=0.1, retry=20):

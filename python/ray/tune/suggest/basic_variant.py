@@ -2,7 +2,9 @@ import copy
 import itertools
 import os
 import uuid
+import types
 from typing import Dict, List, Optional, Union
+import warnings
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
@@ -11,6 +13,125 @@ from ray.tune.suggest.variant_generator import (
     count_variants, generate_variants, format_vars, flatten_resolved_vars,
     get_preset_variants)
 from ray.tune.suggest.search import SearchAlgorithm
+from ray.tune.utils.util import atomic_save, load_newest_checkpoint
+
+SERIALIZATION_THRESHOLD = 1e6
+
+
+class _VariantIterator:
+    """Avoid OOM!"""
+
+    def __init__(self, iterable, lazy_eval=False):
+        self.lazy_eval = lazy_eval
+        self.iterable = iterable
+        self._has_next = True
+        if lazy_eval:
+            self._load_value()
+        else:
+            self.iterable = list(iterable)
+            self._has_next = bool(self.iterable)
+
+    def _load_value(self):
+        try:
+            self.next_value = next(self.iterable)
+        except StopIteration:
+            self._has_next = False
+
+    def has_next(self):
+        return self._has_next
+
+    def __next__(self):
+        if self.lazy_eval:
+            current_value = self.next_value
+            self._load_value()
+            return current_value
+        current_value = self.iterable.pop(0)
+        self._has_next = bool(self.iterable)
+        return current_value
+
+
+class _TrialIterator:
+    def __init__(self,
+                 uuid_prefix,
+                 num_samples,
+                 unresolved_spec,
+                 output_path="",
+                 points_to_evaluate=None,
+                 lazy_eval=False):
+        self.parser = make_parser()
+        self.num_samples = num_samples
+        self.uuid_prefix = uuid_prefix
+        self.num_samples_left = num_samples
+        self.unresolved_spec = unresolved_spec
+        self.output_path = output_path
+        self.points_to_evaluate = points_to_evaluate or []
+        self.num_points_to_evaluate = len(self.points_to_evaluate)
+        self.counter = 0
+        self.lazy_eval = lazy_eval
+        self.variants = None
+
+    def set_variants_from_preset(self, config):
+        # This can cause OOM if not careful... perhaps we can have a
+        # check here?
+        self.variants = _VariantIterator(
+            get_preset_variants(self.unresolved_spec, config),
+            lazy_eval=self.lazy_eval)
+
+    def set_generated_variants(self):
+        self.variants = _VariantIterator(
+            generate_variants(self.unresolved_spec), lazy_eval=self.lazy_eval)
+
+    def create_trial(self, resolved_vars, spec):
+        trial_id = self.uuid_prefix + ("%05d" % self.counter)
+        experiment_tag = str(self.counter)
+        # Always append resolved vars to experiment tag?
+        if resolved_vars:
+            experiment_tag += "_{}".format(format_vars(resolved_vars))
+        self.counter += 1
+        return create_trial_from_spec(
+            spec,
+            self.output_path,
+            self.parser,
+            evaluated_params=flatten_resolved_vars(resolved_vars),
+            trial_id=trial_id,
+            experiment_tag=experiment_tag)
+
+    def __next__(self):
+        """Generates Trial objects with the variant generation process.
+
+        Uses a fixed point iteration to resolve variants. All trials
+        should be able to be generated at once.
+
+        See also: `ray.tune.suggest.variant_generator`.
+
+        Returns:
+            Trial object
+        """
+
+        if "run" not in self.unresolved_spec:
+            raise TuneError("Must specify `run` in {}".format(
+                self.unresolved_spec))
+
+        if self.variants and self.variants.has_next():
+            resolved_vars, spec = next(self.variants)
+            return self.create_trial(resolved_vars, spec)
+
+        if self.points_to_evaluate:
+            config = self.points_to_evaluate.pop(0)
+            self.num_samples_left -= 1
+            self.set_variants_from_preset(config)
+            resolved_vars, spec = next(self.variants)
+            return self.create_trial(resolved_vars, spec)
+        elif self.num_samples_left <= 0:
+            raise StopIteration
+        else:
+            self.set_generated_variants()
+            self.num_samples_left -= 1
+            resolved_vars, spec = next(self.variants)
+            return self.create_trial(resolved_vars, spec)
+
+    def __iter__(self):
+        return self
 
 
 class BasicVariantGenerator(SearchAlgorithm):
@@ -88,15 +209,15 @@ class BasicVariantGenerator(SearchAlgorithm):
       both of these trials.
 
     """
+    CKPT_FILE_TMPL = "basic-variant-state-{}.json"
 
     def __init__(self, points_to_evaluate: Optional[List[Dict]] = None):
         """Initializes the Variant Generator.
 
         """
-        self._parser = make_parser()
         self._trial_generator = []
+        self._iterators = []
         self._trial_iter = None
-        self._counter = 0
         self._finished = False
 
         self._points_to_evaluate = points_to_evaluate or []
@@ -126,13 +247,28 @@ class BasicVariantGenerator(SearchAlgorithm):
         experiment_list = convert_to_experiment_list(experiments)
         for experiment in experiment_list:
             points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
-            self._total_samples += count_variants(experiment.spec,
-                                                  points_to_evaluate)
-            self._trial_generator = itertools.chain(
-                self._trial_generator,
-                self._generate_trials(
-                    experiment.spec.get("num_samples", 1), experiment.spec,
-                    experiment.dir_name, points_to_evaluate))
+            variant_count = count_variants(experiment.spec, points_to_evaluate)
+            self._total_samples += variant_count
+            num_samples = experiment.spec.get("num_samples", 1)
+            grid_vals = variant_count // num_samples
+            if grid_vals > SERIALIZATION_THRESHOLD:
+                warnings.warn(
+                    "The number of pre-generated samples exceeds the "
+                    f"serialization threshold ({SERIALIZATION_THRESHOLD}). "
+                    "Experiment serialization may not work properly. "
+                    "To fix this, reduce the size of your grid: ({grid_vals})."
+                )
+
+            iterator = _TrialIterator(
+                uuid_prefix=self._uuid_prefix,
+                num_samples=num_samples,
+                unresolved_spec=experiment.spec,
+                output_path=experiment.dir_name,
+                points_to_evaluate=points_to_evaluate,
+                lazy_eval=grid_vals > SERIALIZATION_THRESHOLD)
+            self._iterators.append(iterator)
+            self._trial_generator = itertools.chain(self._trial_generator,
+                                                    iterator)
 
     def next_trial(self):
         """Provides one Trial object to be queued into the TrialRunner.
@@ -150,57 +286,38 @@ class BasicVariantGenerator(SearchAlgorithm):
             self.set_finished()
             return None
 
-    def _generate_trials(self,
-                         num_samples,
-                         unresolved_spec,
-                         output_path="",
-                         points_to_evaluate=None):
-        """Generates Trial objects with the variant generation process.
+    def get_state(self):
+        if any(iterator.lazy_eval for iterator in self._iterators):
+            return False
+        state = self.__dict__.copy()
+        del state["_trial_generator"]
+        return state
 
-        Uses a fixed point iteration to resolve variants. All trials
-        should be able to be generated at once.
+    def set_state(self, state):
+        self.__dict__.update(copy.deepcopy(state))
+        for iterator in self._iterators:
+            self._trial_generator = itertools.chain(self._trial_generator,
+                                                    iterator)
 
-        See also: `ray.tune.suggest.variant_generator`.
+    def save_to_dir(self, dirpath, session_str):
+        if any(iterator.lazy_eval for iterator in self._iterators):
+            return False
+        state_dict = self.get_state()
+        atomic_save(
+            state=state_dict,
+            checkpoint_dir=dirpath,
+            file_name=self.CKPT_FILE_TMPL.format(session_str),
+            tmp_file_name=".tmp_generator")
 
-        Yields:
-            Trial object
-        """
+    def has_checkpoint(self, dirpath: str):
+        return bool(
+            load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
 
-        if "run" not in unresolved_spec:
-            raise TuneError("Must specify `run` in {}".format(unresolved_spec))
-
-        points_to_evaluate = points_to_evaluate or []
-
-        while points_to_evaluate:
-            config = points_to_evaluate.pop(0)
-            for resolved_vars, spec in get_preset_variants(
-                    unresolved_spec, config):
-                trial_id = self._uuid_prefix + ("%05d" % self._counter)
-                experiment_tag = str(self._counter)
-                self._counter += 1
-                yield create_trial_from_spec(
-                    spec,
-                    output_path,
-                    self._parser,
-                    evaluated_params=flatten_resolved_vars(resolved_vars),
-                    trial_id=trial_id,
-                    experiment_tag=experiment_tag)
-            num_samples -= 1
-
-        if num_samples <= 0:
-            return
-
-        for _ in range(num_samples):
-            for resolved_vars, spec in generate_variants(unresolved_spec):
-                trial_id = self._uuid_prefix + ("%05d" % self._counter)
-                experiment_tag = str(self._counter)
-                if resolved_vars:
-                    experiment_tag += "_{}".format(format_vars(resolved_vars))
-                self._counter += 1
-                yield create_trial_from_spec(
-                    spec,
-                    output_path,
-                    self._parser,
-                    evaluated_params=flatten_resolved_vars(resolved_vars),
-                    trial_id=trial_id,
-                    experiment_tag=experiment_tag)
+    def restore_from_dir(self, dirpath: str):
+        """Restores self + searcher + search wrappers from dirpath."""
+        state_dict = load_newest_checkpoint(dirpath,
+                                            self.CKPT_FILE_TMPL.format("*"))
+        if not state_dict:
+            raise RuntimeError(
+                "Unable to find checkpoint in {}.".format(dirpath))
+        self.set_state(state_dict)
