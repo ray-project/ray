@@ -341,7 +341,7 @@ GPU taints and tolerations
 
 The `Nvidia gpu plugin`_ for Kubernetes applies `taints`_ to GPU nodes; these taints prevent non-GPU pods from being scheduled on GPU nodes.
 Managed Kubernetes services like GKE, EKS, and AKS automatically apply matching `tolerations`_ 
-to pods requesting GPU resources; tolerations are applied by means of Kubernetes's `ExtendedResourceToleration`_ `admission controller`_. 
+to pods requesting GPU resources. Tolerations are applied by means of Kubernetes's `ExtendedResourceToleration`_ `admission controller`_. 
 If this admission controller is not enabled for your Kubernetes cluster, you may need to manually add a GPU toleration each of to your GPU pod configurations. For example,
 
 .. code-block:: yaml
