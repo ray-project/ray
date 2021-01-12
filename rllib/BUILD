@@ -1090,13 +1090,6 @@ py_test(
 )
 
 py_test(
-    name = "test_models",
-    tags = ["models"],
-    size = "small",
-    srcs = ["models/tests/test_models.py"]
-)
-
-py_test(
     name = "test_preprocessors",
     tags = ["models"],
     size = "small",
