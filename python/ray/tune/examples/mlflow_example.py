@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Examples using MLFlowLoggerCallback and mlflow_mixin.
+"""Examples using MLfowLoggerCallback and mlflow_mixin.
 """
 import os
 import tempfile
@@ -8,7 +8,7 @@ import time
 import mlflow
 
 from ray import tune
-from ray.tune.integration.mlflow import MLFlowLoggerCallback, mlflow_mixin
+from ray.tune.integration.mlflow import MLflowLoggerCallback, mlflow_mixin
 
 
 def evaluation_fn(step, width, height):
@@ -33,7 +33,7 @@ def tune_function(mlflow_tracking_uri, finish_fast=False):
         name="mlflow",
         num_samples=5,
         callbacks=[
-            MLFlowLoggerCallback(
+            MLflowLoggerCallback(
                 tracking_uri=mlflow_tracking_uri,
                 experiment_name="example",
                 save_artifact=True)

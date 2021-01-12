@@ -86,6 +86,11 @@ class SampleBatch:
         # Keeps track of new columns added after initial ones.
         self.new_columns = []
 
+    @PublicAPI
+    def __len__(self):
+        """Returns the amount of samples in the sample batch."""
+        return self.count
+
     @staticmethod
     @PublicAPI
     def concat_samples(samples: List["SampleBatch"]) -> \
