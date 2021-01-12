@@ -213,7 +213,7 @@ class ModelCatalog:
                     "using a Tuple action space, or the multi-agent API.")
             if dist_type is None:
                 if framework == "torch":
-                    return TorchDiagGaussian
+                    dist_cls = TorchDiagGaussian
                 elif np.any(action_space.bounded_below &
                             action_space.bounded_above):
                     return ModelCatalog._make_bounded_dist(action_space)
