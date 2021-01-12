@@ -155,6 +155,7 @@ class Synchronizable:
     @staticmethod
     @decorator
     def synchronized(wrapped, instance=None, args=None, kwargs=None):
-        """Decorator for instance methods that should be locked (thread safe)."""
+        """Decorator for instance methods that should be locked (thread safe).
+        """
         with instance.synchronized_lock:
             return wrapped(*args, **kwargs)
