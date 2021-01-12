@@ -1,5 +1,5 @@
 import gym
-from gym.spaces import Box, Discrete, Tuple
+from gym.spaces import Box, Discrete
 import numpy as np
 import unittest
 
@@ -7,8 +7,7 @@ import ray
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS, ActionDistribution
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
-from ray.rllib.models.preprocessors import (NoPreprocessor, OneHotPreprocessor,
-                                            Preprocessor)
+from ray.rllib.models.preprocessors import NoPreprocessor, Preprocessor
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -64,28 +63,6 @@ class CustomActionDistribution(TFActionDistribution):
 class TestModelCatalog(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
-
-    def test_gym_preprocessors(self):
-        p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v0"))
-        self.assertEqual(type(p1), NoPreprocessor)
-
-        p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v0"))
-        self.assertEqual(type(p2), OneHotPreprocessor)
-
-    def test_tuple_preprocessor(self):
-        ray.init(object_store_memory=1000 * 1024 * 1024)
-
-        class TupleEnv:
-            def __init__(self):
-                self.observation_space = Tuple(
-                    [Discrete(5),
-                     Box(0, 5, shape=(3, ), dtype=np.float32)])
-
-        p1 = ModelCatalog.get_preprocessor(TupleEnv())
-        self.assertEqual(p1.shape, (8, ))
-        self.assertEqual(
-            list(p1.transform((0, np.array([1, 2, 3])))),
-            [float(x) for x in [1, 0, 0, 0, 0, 1, 2, 3]])
 
     def test_custom_preprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)

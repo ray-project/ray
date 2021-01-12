@@ -4,14 +4,10 @@ import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
 
-/**
- * see http://cr.openjdk.java.net/~briangoetz/lambda/lambda-translation.html.
- */
+/** see http://cr.openjdk.java.net/~briangoetz/lambda/lambda-translation.html. */
 public final class LambdaUtils {
 
-  private LambdaUtils() {
-  }
-
+  private LambdaUtils() {}
 
   public static SerializedLambda getSerializedLambda(Serializable lambda) {
     // Note.
@@ -26,6 +22,4 @@ public final class LambdaUtils {
       throw new RuntimeException("failed to getSerializedLambda:" + lambda.getClass().getName(), e);
     }
   }
-
-
 }

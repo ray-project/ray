@@ -8,8 +8,7 @@ from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 try:
     import nevergrad as ng
@@ -287,13 +286,16 @@ class NevergradSearch(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict) -> Parameter:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a Nevergrad search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(domain: Domain) -> Parameter:
             sampler = domain.get_sampler()
@@ -310,16 +312,23 @@ class NevergradSearch(Searcher):
                         exponent=sampler.base)
                 return ng.p.Scalar(lower=domain.lower, upper=domain.upper)
 
-            if isinstance(domain, Integer):
+            elif isinstance(domain, Integer):
+                if isinstance(sampler, LogUniform):
+                    return ng.p.Log(
+                        lower=domain.lower,
+                        upper=domain.upper,
+                        exponent=sampler.base).set_integer_casting()
                 return ng.p.Scalar(
                     lower=domain.lower,
                     upper=domain.upper).set_integer_casting()
 
-            if isinstance(domain, Categorical):
+            elif isinstance(domain, Categorical):
                 return ng.p.Choice(choices=domain.categories)
 
-            raise ValueError("SkOpt does not support parameters of type "
-                             "`{}`".format(type(domain).__name__))
+            raise ValueError("Nevergrad does not support parameters of type "
+                             "`{}` with samplers of type `{}`".format(
+                                 type(domain).__name__,
+                                 type(domain.sampler).__name__))
 
         # Parameter name is e.g. "a/b/c" for nested dicts
         space = {

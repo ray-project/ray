@@ -11,7 +11,6 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.jax.jax_action_dist import JAXCategorical
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
-from ray.rllib.models.tf.recurrent_net import LSTMWrapper
 from ray.rllib.models.tf.tf_action_dist import Categorical, \
     Deterministic, DiagGaussian, Dirichlet, \
     MultiActionDistribution, MultiCategorical
@@ -21,12 +20,13 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
+torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +34,27 @@ logger = logging.getLogger(__name__)
 # __sphinx_doc_begin__
 MODEL_DEFAULTS: ModelConfigDict = {
     # === Built-in options ===
-    # Number of hidden layers for fully connected net
+    # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
+    # These are used if no custom model is specified and the input space is 1D.
+    # Number of hidden layers to be used.
     "fcnet_hiddens": [256, 256],
-    # Nonlinearity for fully connected net (tanh, relu)
+    # Activation function descriptor.
+    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # "linear" (or None).
     "fcnet_activation": "tanh",
-    # Filter config. List of [out_channels, kernel, stride] for each filter
+
+    # VisionNetwork (tf and torch): rllib.models.tf|torch.visionnet.py
+    # These are used if no custom model is specified and the input space is 2D.
+    # Filter config: List of [out_channels, kernel, stride] for each filter.
+    # Example:
+    # Use None for making RLlib try to find a default filter setup given the
+    # observation space.
     "conv_filters": None,
-    # Nonlinearity for built-in convnet
+    # Activation function descriptor.
+    # Supported values are: "tanh", "relu", "swish" (or "silu"),
+    # "linear" (or None).
     "conv_activation": "relu",
+
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
     # has an effect is using the default fully connected net.
@@ -67,6 +80,32 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Experimental (only works with `_use_trajectory_view_api`=True):
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
+
+    # == Attention Nets (experimental: torch-version is untested) ==
+    # Whether to use a GTrXL ("Gru transformer XL"; attention net) as the
+    # wrapper Model around the default Model.
+    "use_attention": False,
+    # The number of transformer units within GTrXL.
+    # A transformer unit in GTrXL consists of a) MultiHeadAttention module and
+    # b) a position-wise MLP.
+    "attention_num_transformer_units": 1,
+    # The input and output size of each transformer unit.
+    "attention_dim": 64,
+    # The number of attention heads within the MultiHeadAttention units.
+    "attention_num_heads": 1,
+    # The dim of a single head (within the MultiHeadAttention units).
+    "attention_head_dim": 32,
+    # The memory sizes for inference and training.
+    "attention_memory_inference": 50,
+    "attention_memory_training": 50,
+    # The output dim of the position-wise MLP.
+    "attention_position_wise_mlp_dim": 32,
+    # The initial bias values for the 2 GRU gates within a transformer unit.
+    "attention_init_gru_gate_bias": 2.0,
+    # TODO: Whether to feed a_{t-n:t-1} to GTrXL (one-hot encoded if discrete).
+    # "attention_use_n_prev_actions": 0,
+    # Whether to feed r_{t-n:t-1} to GTrXL.
+    # "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
     # Whether to enable framestack for Atari envs
@@ -213,22 +252,25 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_shape(action_space: gym.Space) -> (np.dtype, List[int]):
+    def get_action_shape(action_space: gym.Space,
+                         framework: str = "tf") -> (np.dtype, List[int]):
         """Returns action tensor dtype and shape for the action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
+            framework (str): The framework identifier. One of "tf" or "torch".
+
         Returns:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
+        dl_lib = torch if framework == "torch" else tf
 
         if isinstance(action_space, gym.spaces.Discrete):
-            return (action_space.dtype, (None, ))
+            return action_space.dtype, (None, )
         elif isinstance(action_space, (gym.spaces.Box, Simplex)):
-            return (tf.float32, (None, ) + action_space.shape)
+            return dl_lib.float32, (None, ) + action_space.shape
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
-            return (tf.as_dtype(action_space.dtype),
-                    (None, ) + action_space.shape)
+            return action_space.dtype, (None, ) + action_space.shape
         elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
             flat_action_space = flatten_space(action_space)
             size = 0
@@ -240,7 +282,8 @@ class ModelCatalog:
                     all_discrete = False
                     size += np.product(flat_action_space[i].shape)
             size = int(size)
-            return (tf.int64 if all_discrete else tf.float32, (None, size))
+            return dl_lib.int64 if all_discrete else dl_lib.float32, \
+                (None, size)
         else:
             raise NotImplementedError(
                 "Action space {} not supported".format(action_space))
@@ -283,6 +326,8 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
+            model_config (ModelConfigDict): The "model" sub-config dict
+                within the Trainer's config dict.
             framework (str): One of "tf2", "tf", "tfe", "torch", or "jax".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
@@ -293,6 +338,9 @@ class ModelCatalog:
         Returns:
             model (ModelV2): Model to use for the policy.
         """
+
+        # Validate the given config dict.
+        ModelCatalog._validate_config(config=model_config, framework=framework)
 
         if model_config.get("custom_model"):
             # Allow model kwargs to be overridden / augmented by
@@ -316,7 +364,23 @@ class ModelCatalog:
                                                      model_interface)
 
             if framework in ["tf2", "tf", "tfe"]:
-                # Track and warn if vars were created but not registered.
+                # Try wrapping custom model with LSTM/attention, if required.
+                if model_config.get("use_lstm") or \
+                        model_config.get("use_attention"):
+                    from ray.rllib.models.tf.attention_net import \
+                        AttentionWrapper
+                    from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+
+                    wrapped_cls = model_cls
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper
+                        if model_config.get("use_lstm") else AttentionWrapper)
+                    model_cls._wrapped_forward = forward
+
+                # Obsolete: Track and warn if vars were created but not
+                # registered. Only still do this, if users do register their
+                # variables. If not (which they shouldn't), don't check here.
                 created = set()
 
                 def track_var_creation(next_creator, **kw):
@@ -345,20 +409,43 @@ class ModelCatalog:
                         # Other error -> re-raise.
                         else:
                             raise e
-                registered = set(instance.variables())
-                not_registered = set()
-                for var in created:
-                    if var not in registered:
-                        not_registered.add(var)
-                if not_registered:
-                    raise ValueError(
-                        "It looks like variables {} were created as part "
-                        "of {} but does not appear in model.variables() "
-                        "({}). Did you forget to call "
-                        "model.register_variables() on the variables in "
-                        "question?".format(not_registered, instance,
-                                           registered))
+
+                # User still registered TFModelV2's variables: Check, whether
+                # ok.
+                registered = set(instance.var_list)
+                if len(registered) > 0:
+                    not_registered = set()
+                    for var in created:
+                        if var not in registered:
+                            not_registered.add(var)
+                    if not_registered:
+                        raise ValueError(
+                            "It looks like you are still using "
+                            "`{}.register_variables()` to register your "
+                            "model's weights. This is no longer required, but "
+                            "if you are still calling this method at least "
+                            "once, you must make sure to register all created "
+                            "variables properly. The missing variables are {},"
+                            " and you only registered {}. "
+                            "Did you forget to call `register_variables()` on "
+                            "some of the variables in question?".format(
+                                instance, not_registered, registered))
             elif framework == "torch":
+                # Try wrapping custom model with LSTM/attention, if required.
+                if model_config.get("use_lstm") or \
+                        model_config.get("use_attention"):
+                    from ray.rllib.models.torch.attention_net import \
+                        AttentionWrapper
+                    from ray.rllib.models.torch.recurrent_net import \
+                        LSTMWrapper
+
+                    wrapped_cls = model_cls
+                    forward = wrapped_cls.forward
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper
+                        if model_config.get("use_lstm") else AttentionWrapper)
+                    model_cls._wrapped_forward = forward
+
                 # PyTorch automatically tracks nn.Modules inside the parent
                 # nn.Module's constructor.
                 # Try calling with kwargs first (custom ModelV2 should
@@ -394,16 +481,27 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, model_config, framework=framework)
+                    obs_space, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
 
-            if model_config.get("use_lstm"):
+            if model_config.get("use_lstm") or \
+                    model_config.get("use_attention"):
+
+                from ray.rllib.models.tf.attention_net import \
+                    AttentionWrapper
+                from ray.rllib.models.tf.recurrent_net import LSTMWrapper
+
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
-                v2_class = ModelCatalog._wrap_if_needed(
-                    wrapped_cls, LSTMWrapper)
+                if model_config.get("use_lstm"):
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper)
+                else:
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper)
+
                 v2_class._wrapped_forward = forward
 
             # Wrap in the requested interface.
@@ -413,17 +511,32 @@ class ModelCatalog:
 
         # Find a default TorchModelV2 and wrap with model_interface.
         elif framework == "torch":
-            v2_class = \
-                default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, model_config, framework=framework)
-            if model_config.get("use_lstm"):
-                from ray.rllib.models.torch.recurrent_net import LSTMWrapper \
-                    as TorchLSTMWrapper
+            # Try to get a default v2 model.
+            if not model_config.get("custom_model"):
+                v2_class = default_model or ModelCatalog._get_v2_model_class(
+                    obs_space, framework=framework)
+
+            if not v2_class:
+                raise ValueError("ModelV2 class could not be determined!")
+
+            if model_config.get("use_lstm") or \
+                    model_config.get("use_attention"):
+
+                from ray.rllib.models.torch.attention_net import \
+                    AttentionWrapper
+                from ray.rllib.models.torch.recurrent_net import LSTMWrapper
+
                 wrapped_cls = v2_class
                 forward = wrapped_cls.forward
-                v2_class = ModelCatalog._wrap_if_needed(
-                    wrapped_cls, TorchLSTMWrapper)
+                if model_config.get("use_lstm"):
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, LSTMWrapper)
+                else:
+                    v2_class = ModelCatalog._wrap_if_needed(
+                        wrapped_cls, AttentionWrapper)
+
                 v2_class._wrapped_forward = forward
+
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -433,9 +546,7 @@ class ModelCatalog:
         elif framework == "jax":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, model_config, framework=framework)
-            if model_config.get("use_lstm"):
-                raise NotImplementedError("JAXModel's not LSTM-wrappable yet!")
+                    obs_space, framework=framework)
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -560,7 +671,6 @@ class ModelCatalog:
 
     @staticmethod
     def _get_v2_model_class(input_space: gym.Space,
-                            model_config: ModelConfigDict,
                             framework: str = "tf") -> ModelV2:
 
         VisionNet = None
@@ -614,3 +724,26 @@ class ModelCatalog:
                 child_distributions=child_dists,
                 input_lens=input_lens), int(sum(input_lens))
         return dist_class
+
+    @staticmethod
+    def _validate_config(config: ModelConfigDict, framework: str) -> None:
+        """Validates a given model config dict.
+
+        Args:
+            config (ModelConfigDict): The "model" sub-config dict
+                within the Trainer's config dict.
+            framework (str): One of "jax", "tf2", "tf", "tfe", or "torch".
+
+        Raises:
+            ValueError: If something is wrong with the given config.
+        """
+        if config.get("use_attention") and config.get("use_lstm"):
+            raise ValueError("Only one of `use_lstm` or `use_attention` may "
+                             "be set to True!")
+        if framework == "jax":
+            if config.get("use_attention"):
+                raise ValueError("`use_attention` not available for "
+                                 "framework=jax so far!")
+            elif config.get("use_lstm"):
+                raise ValueError("`use_lstm` not available for "
+                                 "framework=jax so far!")

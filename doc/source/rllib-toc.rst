@@ -60,7 +60,6 @@ Training APIs
 Environments
 ------------
 *  `RLlib Environments Overview <rllib-env.html>`__
-*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 *  `OpenAI Gym <rllib-env.html#openai-gym>`__
 *  `Vectorized <rllib-env.html#vectorized>`__
 *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
@@ -110,6 +109,8 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
+   -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
+
 *  Derivative-free
 
    -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
@@ -143,6 +144,11 @@ Algorithms
 *  Exploration-based plug-ins (can be combined with any algo)
 
    -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+Sample Collection
+-----------------
+*  `The SampleCollector Class is Used to Store and Retrieve Temporary Data <rllib-sample-collection.html#the-samplecollector-class-is-used-to-store-and-retrieve-temporary-data>`__
+*  `Trajectory View API <rllib-sample-collection.html#trajectory-view-api>`__
 
 
 Offline Datasets

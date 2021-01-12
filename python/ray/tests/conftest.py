@@ -44,6 +44,7 @@ def _ray_start(**kwargs):
     init_kwargs.update(kwargs)
     # Start the Ray processes.
     address_info = ray.init(**init_kwargs)
+
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()

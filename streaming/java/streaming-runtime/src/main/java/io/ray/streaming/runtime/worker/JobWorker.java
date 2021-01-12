@@ -31,8 +31,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The streaming worker implementation class, it is ray actor. JobWorker is created by
- * {@link JobMaster} through ray api, and JobMaster communicates with JobWorker through Ray.call().
+ * The streaming worker implementation class, it is ray actor. JobWorker is created by {@link
+ * JobMaster} through ray api, and JobMaster communicates with JobWorker through Ray.call().
  *
  * <p>The JobWorker is responsible for creating tasks and defines the methods of communication
  * between workers.
@@ -49,27 +49,23 @@ public class JobWorker implements Serializable {
   }
 
   public final Object initialStateChangeLock = new Object();
-  /**
-   * isRecreate=true means this worker is initialized more than once after actor created.
-   */
+  /** isRecreate=true means this worker is initialized more than once after actor created. */
   public AtomicBoolean isRecreate = new AtomicBoolean(false);
+
   public ContextBackend contextBackend;
   private JobWorkerContext workerContext;
   private ExecutionVertex executionVertex;
   private StreamingWorkerConfig workerConfig;
-  /**
-   * The while-loop thread to read message, process message, and write results
-   */
+  /** The while-loop thread to read message, process message, and write results */
   private StreamTask task;
-  /**
-   * transferHandler handles messages by ray direct call
-   */
+  /** transferHandler handles messages by ray direct call */
   private TransferHandler transferHandler;
   /**
-   * A flag to avoid duplicated rollback. Becomes true after requesting
-   * rollback, set to false when finish rollback.
+   * A flag to avoid duplicated rollback. Becomes true after requesting rollback, set to false when
+   * finish rollback.
    */
   private boolean isNeedRollback = false;
+
   private int rollbackCount = 0;
 
   public JobWorker(ExecutionVertex executionVertex) {
@@ -80,7 +76,8 @@ public class JobWorker implements Serializable {
     this.workerConfig = new StreamingWorkerConfig(executionVertex.getWorkerConfig());
     this.contextBackend = ContextBackendFactory.getContextBackend(this.workerConfig);
 
-    LOG.info("Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
+    LOG.info(
+        "Ray.getRuntimeContext().wasCurrentActorRestarted()={}",
         Ray.getRuntimeContext().wasCurrentActorRestarted());
     if (!Ray.getRuntimeContext().wasCurrentActorRestarted()) {
       saveContext();
@@ -93,14 +90,14 @@ public class JobWorker implements Serializable {
     byte[] bytes = CheckpointStateUtil.get(contextBackend, getJobWorkerContextKey());
     if (bytes != null) {
       JobWorkerContext context = Serializer.decode(bytes);
-      LOG.info("Worker recover from checkpoint state, byte len={}, context={}.", bytes.length,
-          context);
+      LOG.info(
+          "Worker recover from checkpoint state, byte len={}, context={}.", bytes.length, context);
       init(context);
       requestRollback("LoadCheckpoint request rollback in new actor.");
     } else {
       LOG.error(
-          "Worker is reconstructed, but can't load checkpoint. " +
-              "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
+          "Worker is reconstructed, but can't load checkpoint. "
+              + "Check whether you checkpoint state is reliable. Current checkpoint state is {}.",
           contextBackend.getClass().getName());
     }
   }
@@ -108,19 +105,23 @@ public class JobWorker implements Serializable {
   public synchronized void saveContext() {
     byte[] contextBytes = Serializer.encode(workerContext);
     String key = getJobWorkerContextKey();
-    LOG.info("Saving context, worker context={}, serialized byte length={}, key={}.", workerContext,
-        contextBytes.length, key);
+    LOG.info(
+        "Saving context, worker context={}, serialized byte length={}, key={}.",
+        workerContext,
+        contextBytes.length,
+        key);
     CheckpointStateUtil.put(contextBackend, key, contextBytes);
   }
 
-  /**
-   * Initialize JobWorker and data communication pipeline.
-   */
+  /** Initialize JobWorker and data communication pipeline. */
   public Boolean init(JobWorkerContext workerContext) {
     // IMPORTANT: some test cases depends on this log to find workers' pid,
     // be careful when changing this log.
-    LOG.info("Initiating job worker: {}. Worker context is: {}, pid={}.",
-        workerContext.getWorkerName(), workerContext, EnvUtil.getJvmPid());
+    LOG.info(
+        "Initiating job worker: {}. Worker context is: {}, pid={}.",
+        workerContext.getWorkerName(),
+        workerContext,
+        EnvUtil.getJvmPid());
 
     this.workerContext = workerContext;
     this.executionVertex = workerContext.getExecutionVertex();
@@ -136,20 +137,25 @@ public class JobWorker implements Serializable {
   /**
    * Start worker's stream tasks with specific checkpoint ID.
    *
-   * @return a {@link CallResult} with {@link ChannelRecoverInfo},
-   *     contains {@link ChannelCreationStatus} of each input queue.
+   * <p>Returns a {@link CallResult} with {@link ChannelRecoverInfo}, contains {@link
+   * ChannelCreationStatus} of each input queue.
    */
   public CallResult<ChannelRecoverInfo> rollback(Long checkpointId, Long startRollbackTs) {
     synchronized (initialStateChangeLock) {
-      if (task != null && task.isAlive() && checkpointId == task.lastCheckpointId &&
-          task.isInitialState) {
+      if (task != null
+          && task.isAlive()
+          && checkpointId == task.lastCheckpointId
+          && task.isInitialState) {
         return CallResult.skipped("Task is already in initial state, skip this rollback.");
       }
     }
     long remoteCallCost = System.currentTimeMillis() - startRollbackTs;
 
-    LOG.info("Start rollback[{}], checkpoint is {}, remote call cost {}ms.",
-        executionVertex.getExecutionJobVertexName(), checkpointId, remoteCallCost);
+    LOG.info(
+        "Start rollback[{}], checkpoint is {}, remote call cost {}ms.",
+        executionVertex.getExecutionJobVertexName(),
+        checkpointId,
+        remoteCallCost);
 
     rollbackCount++;
     if (rollbackCount > 1) {
@@ -157,7 +163,7 @@ public class JobWorker implements Serializable {
     }
 
     try {
-      //Init transfer
+      // Init transfer
       TransferChannelType channelType = workerConfig.transferConfig.channelType();
       if (TransferChannelType.NATIVE_CHANNEL == channelType) {
         transferHandler = new TransferHandler();
@@ -174,8 +180,10 @@ public class JobWorker implements Serializable {
       ChannelRecoverInfo channelRecoverInfo = task.recover(isRecreate.get());
       isNeedRollback = false;
 
-      LOG.info("Rollback job worker success, checkpoint is {}, channelRecoverInfo is {}.",
-          checkpointId, channelRecoverInfo);
+      LOG.info(
+          "Rollback job worker success, checkpoint is {}, channelRecoverInfo is {}.",
+          checkpointId,
+          channelRecoverInfo);
 
       return CallResult.success(channelRecoverInfo);
     } catch (Exception e) {
@@ -184,13 +192,11 @@ public class JobWorker implements Serializable {
     }
   }
 
-  /**
-   * Create tasks based on the processor corresponding of the operator.
-   */
+  /** Create tasks based on the processor corresponding of the operator. */
   private StreamTask createStreamTask(long checkpointId) {
     StreamTask task;
-    StreamProcessor streamProcessor = ProcessBuilder
-        .buildProcessor(executionVertex.getStreamOperator());
+    StreamProcessor streamProcessor =
+        ProcessBuilder.buildProcessor(executionVertex.getStreamOperator());
     LOG.debug("Stream processor created: {}.", streamProcessor);
 
     if (streamProcessor instanceof SourceProcessor) {
@@ -208,9 +214,7 @@ public class JobWorker implements Serializable {
   // Checkpoint
   // ----------------------------------------------------------------------
 
-  /**
-   * Trigger source job worker checkpoint
-   */
+  /** Trigger source job worker checkpoint */
   public Boolean triggerCheckpoint(Long barrierId) {
     LOG.info("Receive trigger, barrierId is {}.", barrierId);
     if (task != null) {
@@ -228,9 +232,11 @@ public class JobWorker implements Serializable {
   }
 
   public Boolean clearExpiredCheckpoint(Long expiredStateCpId, Long expiredQueueCpId) {
-    LOG.info("Clear expired checkpoint state, checkpoint id is {}; " +
-            "Clear expired queue msg, checkpoint id is {}",
-        expiredStateCpId, expiredQueueCpId);
+    LOG.info(
+        "Clear expired checkpoint state, checkpoint id is {}; "
+            + "Clear expired queue msg, checkpoint id is {}",
+        expiredStateCpId,
+        expiredQueueCpId);
     if (task != null) {
       if (expiredStateCpId > 0) {
         task.clearExpiredCpState(expiredStateCpId);
@@ -247,13 +253,14 @@ public class JobWorker implements Serializable {
     LOG.info("Request rollback.");
     isNeedRollback = true;
     isRecreate.set(true);
-    boolean requestRet = RemoteCallMaster.requestJobWorkerRollback(
-        workerContext.getMaster(), new WorkerRollbackRequest(
-            workerContext.getWorkerActorId(),
-            exceptionMsg,
-            EnvUtil.getHostName(),
-            EnvUtil.getJvmPid()
-        ));
+    boolean requestRet =
+        RemoteCallMaster.requestJobWorkerRollback(
+            workerContext.getMaster(),
+            new WorkerRollbackRequest(
+                workerContext.getWorkerActorId(),
+                exceptionMsg,
+                EnvUtil.getHostName(),
+                EnvUtil.getJvmPid()));
     if (!requestRet) {
       LOG.warn("Job worker request rollback failed! exceptionMsg={}.", exceptionMsg);
     }
@@ -262,8 +269,10 @@ public class JobWorker implements Serializable {
   public Boolean checkIfNeedRollback(Long startCallTs) {
     // No save checkpoint in this query.
     long remoteCallCost = System.currentTimeMillis() - startCallTs;
-    LOG.info("Finished checking if need to rollback with result: {}, rpc delay={}ms.",
-        isNeedRollback, remoteCallCost);
+    LOG.info(
+        "Finished checking if need to rollback with result: {}, rpc delay={}ms.",
+        isNeedRollback,
+        remoteCallCost);
     return isNeedRollback;
   }
 
@@ -286,12 +295,11 @@ public class JobWorker implements Serializable {
   private String getJobWorkerContextKey() {
     return workerConfig.checkpointConfig.jobWorkerContextCpPrefixKey()
         + workerConfig.commonConfig.jobName()
-        + "_" + executionVertex.getExecutionVertexId();
+        + "_"
+        + executionVertex.getExecutionVertexId();
   }
 
-  /**
-   * Used by upstream streaming queue to send data to this actor
-   */
+  /** Used by upstream streaming queue to send data to this actor */
   public void onReaderMessage(byte[] buffer) {
     if (transferHandler != null) {
       transferHandler.onReaderMessage(buffer);
@@ -308,9 +316,7 @@ public class JobWorker implements Serializable {
     return transferHandler.onReaderMessageSync(buffer);
   }
 
-  /**
-   * Used by downstream streaming queue to send data to this actor
-   */
+  /** Used by downstream streaming queue to send data to this actor */
   public void onWriterMessage(byte[] buffer) {
     if (transferHandler != null) {
       transferHandler.onWriterMessage(buffer);
@@ -327,5 +333,4 @@ public class JobWorker implements Serializable {
     }
     return transferHandler.onWriterMessageSync(buffer);
   }
-
 }

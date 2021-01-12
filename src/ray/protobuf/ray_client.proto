@@ -35,6 +35,18 @@ message Arg {
   Type type = 4;
 }
 
+// A message representing the valid options to modify a task exectution
+//
+// TODO(barakmich): In the longer term, if everything were a client,
+// this message could be the actual standard for which options are
+// allowed in the API. Today, however, it's a bit flexible and defined in the
+// Python code. So for now, it's a stand-in message with a json field, but
+// this is forwards-compatible with deprecating that field and instituting
+// strongly defined and typed fields, without migrating the original ClientTask.
+message TaskOptions {
+  string json_options = 1;
+}
+
 // Represents one unit of work to be executed by the server.
 message ClientTask {
   enum RemoteExecType {
@@ -42,24 +54,35 @@ message ClientTask {
     ACTOR = 1;
     METHOD = 2;
     STATIC_METHOD = 3;
+    NAMED_ACTOR = 4;
   }
   // Which type of work this request represents.
   RemoteExecType type = 1;
-  // A name parameter, if the payload can be called in more than one way (like a method on
-  // a payload object).
+  // A name parameter, if the payload can be called in more than one way
+  // (like a method on a payload object).
   string name = 2;
   // A reference to the payload.
   bytes payload_id = 3;
-  // The parameters to pass to this call.
+  // Positional parameters to pass to this call.
   repeated Arg args = 4;
-  // The ID of the client namespace associated with the Datapath stream making this
-  // request.
-  string client_id = 5;
+  // Keyword parameters to pass to this call.
+  map<string, Arg> kwargs = 5;
+  // The ID of the client namespace associated with the Datapath stream
+  // making this request.
+  string client_id = 6;
+  // Options for modifying the remote task execution environment.
+  TaskOptions options = 7;
+  // Options passed to create the default remote task excution environment.
+  TaskOptions baseline_options = 8;
 }
 
 message ClientTaskTicket {
-  // A reference to the returned value from the execution.
-  bytes return_id = 1;
+  // Was the task successful?
+  bool valid = 1;
+  // A reference to the returned values from the execution.
+  repeated bytes return_ids = 2;
+  // If unsuccessful, an encoding of the error.
+  bytes error = 3;
 }
 
 // Delivers data to the server
@@ -155,6 +178,39 @@ message TerminateResponse {
   bool ok = 1;
 }
 
+message KVGetRequest {
+  bytes key = 1;
+}
+
+message KVGetResponse {
+  bytes value = 1;
+}
+
+message KVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+}
+
+message KVPutResponse {
+  bool already_exists = 1;
+}
+
+message KVDelRequest {
+  bytes key = 1;
+}
+
+message KVDelResponse {
+}
+
+message KVListRequest {
+  bytes prefix = 1;
+}
+
+message KVListResponse {
+  repeated bytes keys = 1;
+}
+
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
@@ -167,6 +223,14 @@ service RayletDriver {
   rpc Terminate(TerminateRequest) returns (TerminateResponse) {
   }
   rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
+  }
+  rpc KVGet(KVGetRequest) returns (KVGetResponse) {
+  }
+  rpc KVPut(KVPutRequest) returns (KVPutResponse) {
+  }
+  rpc KVDel(KVDelRequest) returns (KVDelResponse) {
+  }
+  rpc KVList(KVListRequest) returns (KVListResponse) {
   }
 }
 
@@ -181,6 +245,14 @@ message ReleaseResponse {
   repeated bool ok = 2;
 }
 
+message ConnectionInfoRequest {
+}
+
+message ConnectionInfoResponse {
+  // The number of data clients connected to the server, including the caller.
+  int32 num_clients = 1;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -189,6 +261,7 @@ message DataRequest {
     GetRequest get = 2;
     PutRequest put = 3;
     ReleaseRequest release = 4;
+    ConnectionInfoRequest connection_info = 5;
   }
 }
 
@@ -199,10 +272,38 @@ message DataResponse {
     GetResponse get = 2;
     PutResponse put = 3;
     ReleaseResponse release = 4;
+    ConnectionInfoResponse connection_info = 5;
   }
 }
 
 service RayletDataStreamer {
   rpc Datapath(stream DataRequest) returns (stream DataResponse) {
+  }
+}
+
+// A request to change the quantity or type of the logs
+// currently being streamed. Initially, all logs are disabled.
+message LogSettingsRequest {
+  // Set to recieve logs.
+  bool enabled = 1;
+  // At what loglevel should logs be forwarded on the stream.
+  int32 loglevel = 2;
+  // TODO(barakmich): More log filtering options.
+}
+
+message LogData {
+  // The message data in the log
+  string msg = 1;
+  // The loglevel at which this log should be displayed.
+  // * level > 0: Log leveling as per python's logging library
+  // * level == -1: stdout (fd 1)
+  // * level == -2: stderr (fd 2)
+  int32 level = 2;
+  // The name of the logger that generated this message.
+  string name = 3;
+}
+
+service RayletLogStreamer {
+  rpc Logstream(stream LogSettingsRequest) returns (stream LogData) {
   }
 }

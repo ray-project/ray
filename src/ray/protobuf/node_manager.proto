@@ -37,6 +37,8 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
+  // PID of the worker process.
+  uint32 worker_pid = 5;
 }
 
 message PrepareBundleResourcesRequest {
@@ -115,12 +117,36 @@ message GetNodeStatsRequest {
   bool include_memory_info = 1;
 }
 
+// Object store stats, which may be reported per-node or aggregated across
+// multiple nodes in the cluster (values are additive).
+message ObjectStoreStats {
+  // The amount of wall time total where spilling was happening.
+  double spill_time_total_s = 1;
+  // The number of bytes spilled total.
+  int64 spilled_bytes_total = 2;
+  // The number of objects spilled total.
+  int64 spilled_objects_total = 3;
+  // The amount of wall time total where object restore was happening.
+  double restore_time_total_s = 4;
+  // The number of bytes restored total.
+  int64 restored_bytes_total = 5;
+  // The number of objects restored total.
+  int64 restored_objects_total = 6;
+  // The current usage of the object store.
+  int64 object_store_bytes_used = 7;
+  // The max capacity of the object store.
+  int64 object_store_bytes_avail = 8;
+  // The number of local objects total.
+  int64 num_local_objects = 9;
+}
+
 message GetNodeStatsReply {
   repeated CoreWorkerStats core_workers_stats = 1;
   repeated ViewData view_data = 2;
   uint32 num_workers = 3;
   repeated TaskSpec infeasible_tasks = 4;
   repeated TaskSpec ready_tasks = 5;
+  ObjectStoreStats store_stats = 6;
 }
 
 message GlobalGCRequest {
@@ -129,6 +155,8 @@ message GlobalGCRequest {
 message GlobalGCReply {
 }
 
+// Accumulates memory info across all nodes. To access per-node memory info,
+// use GetNodeStats() calls instead.
 message FormatGlobalMemoryInfoRequest {
 }
 
@@ -136,6 +164,9 @@ message FormatGlobalMemoryInfoReply {
   // A tabular summary of the memory stats. To get this data in structured form,
   // you can instead use GetNodeStats() directly.
   string memory_summary = 1;
+  // Aggregate store stats across all nodes. To get the individual node data,
+  // you can instead use GetNodeStats() directly.
+  ObjectStoreStats store_stats = 2;
 }
 
 message RequestObjectSpillageRequest {
