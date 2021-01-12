@@ -93,6 +93,13 @@ class DataClient:
             del self.ready_data[req_id]
         return data
 
+    def ConnectionInfo(self,
+                       context=None) -> ray_client_pb2.ConnectionInfoResponse:
+        datareq = ray_client_pb2.DataRequest(
+            connection_info=ray_client_pb2.ConnectionInfoRequest())
+        resp = self._blocking_send(datareq)
+        return resp.connection_info
+
     def GetObject(self, request: ray_client_pb2.GetRequest,
                   context=None) -> ray_client_pb2.GetResponse:
         datareq = ray_client_pb2.DataRequest(get=request, )
