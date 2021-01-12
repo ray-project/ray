@@ -302,7 +302,7 @@ To delete a running Ray cluster, you can run the following command:
 Using GPUs
 ----------
 
-To use GPUs on Kubernetes, you will need to configure both your GKE setup and add additional values to your Ray cluster configuration.
+To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup and add additional values to your Ray cluster configuration.
 
 For relevant documentation for GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
