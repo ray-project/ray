@@ -2,7 +2,6 @@ import copy
 import itertools
 import os
 import uuid
-import types
 from typing import Dict, List, Optional, Union
 import warnings
 
@@ -57,7 +56,8 @@ class _TrialIterator:
                  unresolved_spec,
                  output_path="",
                  points_to_evaluate=None,
-                 lazy_eval=False):
+                 lazy_eval=False,
+                 start=0):
         self.parser = make_parser()
         self.num_samples = num_samples
         self.uuid_prefix = uuid_prefix
@@ -66,7 +66,7 @@ class _TrialIterator:
         self.output_path = output_path
         self.points_to_evaluate = points_to_evaluate or []
         self.num_points_to_evaluate = len(self.points_to_evaluate)
-        self.counter = 0
+        self.counter = start
         self.lazy_eval = lazy_eval
         self.variants = None
 
@@ -248,6 +248,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         for experiment in experiment_list:
             points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
             variant_count = count_variants(experiment.spec, points_to_evaluate)
+            previous_samples = self._total_samples
             self._total_samples += variant_count
             num_samples = experiment.spec.get("num_samples", 1)
             grid_vals = variant_count // num_samples
@@ -265,7 +266,8 @@ class BasicVariantGenerator(SearchAlgorithm):
                 unresolved_spec=experiment.spec,
                 output_path=experiment.dir_name,
                 points_to_evaluate=points_to_evaluate,
-                lazy_eval=grid_vals > SERIALIZATION_THRESHOLD)
+                lazy_eval=grid_vals > SERIALIZATION_THRESHOLD,
+                start=previous_samples)
             self._iterators.append(iterator)
             self._trial_generator = itertools.chain(self._trial_generator,
                                                     iterator)

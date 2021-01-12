@@ -95,7 +95,6 @@ class TuneFailResumeTest(unittest.TestCase):
 
         def on_trial_start(self, trials, **info):
             self._step += 1
-            print(len(trials))
             if self._step >= self.steps:
                 raise RuntimeError
 
