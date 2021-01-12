@@ -254,8 +254,7 @@ def temporary_helper_function():
     errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.WORKER_DIED_PUSH_ERROR
-    assert ("A worker died or was killed" in
-            errors[0].error_message)
+    assert ("A worker died or was killed" in errors[0].error_message)
 
     f.close()
 

@@ -296,24 +296,6 @@ def test_actor_exit_from_task(ray_start_regular_shared):
     print(ray.get(x_id))  # This should not hang.
 
 
-def test_actor_init_error_propagated(ray_start_regular_shared):
-    @ray.remote
-    class Actor:
-        def __init__(self, error=False):
-            if error:
-                raise Exception("oops")
-
-        def foo(self):
-            return "OK"
-
-    actor = Actor.remote(error=False)
-    ray.get(actor.foo.remote())
-
-    actor = Actor.remote(error=True)
-    with pytest.raises(Exception, match=".*oops.*"):
-        ray.get(actor.foo.remote())
-
-
 def test_keyword_args(ray_start_regular_shared):
     @ray.remote
     class Actor:
