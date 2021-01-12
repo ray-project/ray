@@ -89,28 +89,32 @@ There are at least 3 ways to define your custom serialization process:
    but you cannot access or modify the corresponding class, you can
    register the class with the serializer you use:
 
-.. code-block:: python
+   .. code-block:: python
 
-  import ray
-  import threading
+      import ray
+      import threading
 
-  class A:
-      def __init__(self, x):
-          self.x = x
-          self.lock = threading.Lock()  # could not be serialized!
+      class A:
+          def __init__(self, x):
+              self.x = x
+              self.lock = threading.Lock()  # could not be serialized!
 
-  ray.get(ray.put(A(1)))  # fail!
+      ray.get(ray.put(A(1)))  # fail!
 
-  def custom_serializer(a):
-      return a.x
+      def custom_serializer(a):
+          return a.x
 
-  def custom_deserializer(b):
-      return A(b)
+      def custom_deserializer(b):
+          return A(b)
 
-  # Register serializer and deserializer for class A:
-  ray.util.register_serializer(
-    A, serializer=custom_serializer, deserializer=custom_deserializer)
-  ray.get(ray.put(A(1)))  # success!
+      # Register serializer and deserializer for class A:
+      ray.util.register_serializer(
+        A, serializer=custom_serializer, deserializer=custom_deserializer)
+      ray.get(ray.put(A(1)))  # success!
+
+   NOTE: For every Ray worker, if you want to use the serializer,
+   you need to register the serializer. If you register a new serializer for a class,
+   the old serializer would be replaced in the worker.
 
 3. We also provide you an example, if you want to customize the serialization
    of a specific object:
