@@ -233,7 +233,7 @@ To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argum
                     state = json.loads(f.read())
                     start = state["step"] + 1
 
-            for iter in range(start, 100):
+            for step in range(start, 100):
                 time.sleep(1)
 
                 # Obtain a checkpoint directory
@@ -688,8 +688,14 @@ These are the environment variables Ray Tune currently considers:
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
-* **TUNE_RESULT_DIR**: Directory where Tune trial results are stored. If this
+* **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
+* **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed
+  to the driver. Enabling this might delay scheduling decisions, as trainables are speculatively
+  continued. Setting this to ``0`` disables result buffering. Defaults to 1000 (results).
+* **TUNE_RESULT_BUFFER_MAX_TIME_S**: Similarly, Ray Tune buffers results up to ``number_of_trial/10`` seconds,
+  but never longer than this value. Defaults to 100 (seconds).
+* **TUNE_RESULT_BUFFER_MIN_TIME_S**: Additionally, you can specify a minimum time to buffer results. Defaults to 0.
 * **TUNE_SYNCER_VERBOSITY**: Amount of command output when using Tune with Docker Syncer. Defaults to 0.
 * **TUNE_TRIAL_STARTUP_GRACE_PERIOD**: Amount of time after starting a trial that Ray Tune checks for successful
   trial startups. After the grace period, Tune will block until a result from a running trial is received. Can

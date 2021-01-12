@@ -1,6 +1,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <google/protobuf/map.h>
+
 #include <boost/range/join.hpp>
 
 #include "ray/util/logging.h"
@@ -354,7 +355,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     }
     waiting_tasks_.erase(iter);
 
-    task_dependency_manager_.RemoveTaskDependencies(task_id);
     return true;
   }
 
