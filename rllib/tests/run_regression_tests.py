@@ -43,6 +43,10 @@ parser.add_argument(
     "--torch",
     action="store_true",
     help="Runs all tests with PyTorch enabled.")
+parser.add_argument(
+    "--local-mode",
+    action="store_true",
+    help="Whether to run ray with `local_mode=True`.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -92,7 +96,7 @@ if __name__ == "__main__":
         passed = False
         for i in range(3):
             try:
-                ray.init(num_cpus=5)
+                ray.init(num_cpus=5, local_mode=args.local_mode)
                 trials = run_experiments(experiments, resume=False, verbose=2)
             finally:
                 ray.shutdown()

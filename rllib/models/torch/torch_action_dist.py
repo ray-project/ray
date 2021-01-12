@@ -225,12 +225,20 @@ class _TorchSquashedGaussianBase(TorchDistributionWrapper):
         assert len(self.distr.loc.shape) == 2
         assert len(self.distr.scale.shape) == 2
 
+    @override(TorchDistributionWrapper)
+    def sample(self):
+        s = self._squash(self.distr.sample())
+        assert len(s.shape) == 2
+        self.last_sample = s
+        return s
+
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
         mean = self.distr.loc
         assert len(mean.shape) == 2
         s = self._squash(mean)
         assert len(s.shape) == 2
+        self.last_sample = s
         return s
 
     @override(ActionDistribution)
@@ -246,12 +254,6 @@ class _TorchSquashedGaussianBase(TorchDistributionWrapper):
         return torch.sum(
             log_prob_gaussian - self._log_squash_grad(unsquashed_values),
             dim=-1)
-
-    @override(TorchDistributionWrapper)
-    def sample(self):
-        s = self._squash(self.distr.sample())
-        assert len(s.shape) == 2
-        return s
 
     def _squash(self, unsquashed_values):
         """Squash an array element-wise into the (high, low) range
@@ -346,7 +348,8 @@ class TorchGaussianSquashedGaussian(_TorchSquashedGaussianBase):
     # Chosen to match the standard logistic variance, so that:
     #   Var(N(0, 2 * _SCALE)) = Var(Logistic(0, 1))
     _SCALE = 0.5 * 1.8137
-    SQUASH_DIST = torch.distributions.normal.Normal(0.0, _SCALE)
+    SQUASH_DIST = \
+        torch.distributions.normal.Normal(0.0, _SCALE) if torch else None
 
     @override(_TorchSquashedGaussianBase)
     def __init__(self, *args, **kwargs):
@@ -354,7 +357,7 @@ class TorchGaussianSquashedGaussian(_TorchSquashedGaussianBase):
         self.scale = torch.from_numpy(np.array(self._SCALE))
         if self.model:
             self.scale = self.scale.to(
-                next(iter(self.model.parameters)).device)
+                next(iter(self.model.parameters())).device)
 
     @override(ActionDistribution)
     def kl(self, other):
