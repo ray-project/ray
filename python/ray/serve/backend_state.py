@@ -120,18 +120,6 @@ class BackendState:
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
 
-    def _set_backend_goal(self, backend_tag: BackendTag,
-                          backend_info: BackendInfo) -> None:
-        existing_goal_id = self.backend_goals.get(backend_tag)
-        new_goal_id = self._goal_manager.create_goal()
-
-        if backend_info is not None:
-            self.backends[backend_tag] = backend_info
-
-        self.backend_goals[backend_tag] = new_goal_id
-
-        return new_goal_id, existing_goal_id
-
     def create_backend(self, backend_tag: BackendTag,
                        backend_config: BackendConfig,
                        replica_config: ReplicaConfig) -> Optional[GoalId]:
@@ -431,13 +419,13 @@ class BackendState:
             if (not desired_info or
                     desired_info.backend_config.num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self.backend_goals[backend_tag])
+                completed_goals.append(self.goals.get(backend_tag))
 
             # Check for a non-zero number of backends
             if desired_info and existing_info and desired_info.backend_config.\
                     num_replicas == len(existing_info):
-                completed_goals.append(self.backend_goals[backend_tag])
-        return completed_goals
+                completed_goals.append(self.goals.get(backend_tag))
+        return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
         for goal_id in self._completed_goals():

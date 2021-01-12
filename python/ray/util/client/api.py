@@ -8,6 +8,12 @@ if TYPE_CHECKING:
     from ray.util.client.common import ClientObjectRef
 
 
+def as_bytes(value):
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    return value
+
+
 class ClientAPI:
     """The Client-side methods corresponding to the ray API. Delegates
     to the Client Worker that contains the connection to the ClientServer.
@@ -225,6 +231,30 @@ class ClientAPI:
         import ray.core.generated.ray_client_pb2 as ray_client_pb2
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
+
+    def _internal_kv_initialized(self) -> bool:
+        """Hook for internal_kv._internal_kv_initialized."""
+        return self.is_initialized()
+
+    def _internal_kv_get(self, key: bytes) -> bytes:
+        """Hook for internal_kv._internal_kv_get."""
+        return self.worker.internal_kv_get(as_bytes(key))
+
+    def _internal_kv_put(self,
+                         key: bytes,
+                         value: bytes,
+                         overwrite: bool = False) -> bool:
+        """Hook for internal_kv._internal_kv_put."""
+        return self.worker.internal_kv_put(
+            as_bytes(key), as_bytes(value), overwrite)
+
+    def _internal_kv_del(self, key: bytes) -> None:
+        """Hook for internal_kv._internal_kv_del."""
+        return self.worker.internal_kv_del(as_bytes(key))
+
+    def _internal_kv_list(self, prefix: bytes) -> bytes:
+        """Hook for internal_kv._internal_kv_list."""
+        return self.worker.internal_kv_list(as_bytes(prefix))
 
     def __getattr__(self, key: str):
         if not key.startswith("_"):

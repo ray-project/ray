@@ -33,7 +33,7 @@ class AsyncGoalManager:
         start = time.time()
         if goal_id not in self._pending_goals:
             logger.debug(f"Goal {goal_id} not found")
-            return True
+
         event = self._pending_goals[goal_id]
         await event.wait()
         logger.debug(
