@@ -26,7 +26,9 @@ class SearchSpaceTest(unittest.TestCase):
             "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
             "choice": tune.choice([2, 3, 4]),
             "randint": tune.randint(-9, 15),
+            "lograndint": tune.lograndint(1, 10),
             "qrandint": tune.qrandint(-21, 12, 3),
+            "qlograndint": tune.qlograndint(2, 20, 2),
             "randn": tune.randn(10, 2),
             "qrandn": tune.qrandn(10, 2, 0.2),
         }
@@ -58,10 +60,21 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertGreaterEqual(out["randint"], -9)
             self.assertLess(out["randint"], 15)
+            self.assertTrue(isinstance(out["randint"], int))
+
+            self.assertGreaterEqual(out["lograndint"], 1)
+            self.assertLess(out["lograndint"], 10)
+            self.assertTrue(isinstance(out["lograndint"], int))
 
             self.assertGreaterEqual(out["qrandint"], -21)
             self.assertLessEqual(out["qrandint"], 12)
             self.assertEqual(out["qrandint"] % 3, 0)
+            self.assertTrue(isinstance(out["qrandint"], int))
+
+            self.assertGreaterEqual(out["qlograndint"], 2)
+            self.assertLessEqual(out["qlograndint"], 20)
+            self.assertEqual(out["qlograndint"] % 2, 0)
+            self.assertTrue(isinstance(out["qlograndint"], int))
 
             # Very improbable
             self.assertGreater(out["randn"], 0)
@@ -129,6 +142,32 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(any(-4 < s < 4 for s in samples))
         self.assertTrue(-2 < np.mean(samples) < 2)
 
+    def testFunctionSignature(self):
+        from functools import partial
+
+        def sample_a():
+            return 0
+
+        def sample_b(spec):
+            return 1
+
+        def sample_c(spec, b="ok"):
+            return 2
+
+        def sample_d_invalid(spec, b):
+            return 3
+
+        sample_d_valid = partial(sample_d_invalid, b="ok")
+
+        for sample_fn in [sample_a, sample_b, sample_c, sample_d_valid]:
+            fn = tune.sample_from(sample_fn)
+            sample = fn.sample(None)
+            self.assertIsNotNone(sample)
+
+        with self.assertRaises(ValueError):
+            fn = tune.sample_from(sample_d_invalid)
+            print(fn.sample(None))
+
     def testQuantized(self):
         bounded_positive = tune.sample.Float(1e-4, 1e-1)
 
@@ -157,6 +196,10 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertAx(self):
         from ray.tune.suggest.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            AxSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -226,6 +269,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertBayesOpt(self):
         from ray.tune.suggest.bayesopt import BayesOptSearch
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            BayesOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -281,6 +330,10 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.bohb import TuneBOHB
         import ConfigSpace
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            TuneBOHB.convert_search_space({"grid": tune.grid_search([0, 1])})
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -332,6 +385,12 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertDragonfly(self):
         from ray.tune.suggest.dragonfly import DragonflySearch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            DragonflySearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -414,10 +473,16 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         from hyperopt import hp
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            HyperOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(-15, -10).quantized(2),
+                "x": tune.sample.Integer(-15, -10),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
@@ -426,7 +491,7 @@ class SearchSpaceTest(unittest.TestCase):
         hyperopt_config = {
             "a": hp.choice("a", [2, 3, 4]),
             "b": {
-                "x": hp.randint("x", -15, -10),
+                "x": hp.uniformint("x", -15, -10),
                 "y": 4,
                 "z": hp.loguniform("z", np.log(1e-4), np.log(1e-2))
             }
@@ -515,6 +580,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.nevergrad import NevergradSearch
         import nevergrad as ng
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            NevergradSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -576,6 +647,12 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.optuna import OptunaSearch, param
         from optuna.samplers import RandomSampler
 
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            OptunaSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
+
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
@@ -625,17 +702,28 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testConvertSkOpt(self):
         from ray.tune.suggest.skopt import SkOptSearch
+        from skopt.space import Real, Integer
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            SkOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
             "b": {
-                "x": tune.sample.Integer(0, 5).quantized(2),
+                "x": tune.sample.Integer(0, 5),
                 "y": 4,
                 "z": tune.sample.Float(1e-4, 1e-2).loguniform()
             }
         }
         converted_config = SkOptSearch.convert_search_space(config)
-        skopt_config = {"a": [2, 3, 4], "b/x": (0, 5), "b/z": (1e-4, 1e-2)}
+        skopt_config = {
+            "a": [2, 3, 4],
+            "b/x": Integer(0, 5),
+            "b/z": Real(1e-4, 1e-2, prior="log-uniform")
+        }
 
         searcher1 = SkOptSearch(space=converted_config, metric="a", mode="max")
         searcher2 = SkOptSearch(space=skopt_config, metric="a", mode="max")
@@ -667,6 +755,12 @@ class SearchSpaceTest(unittest.TestCase):
     def testConvertZOOpt(self):
         from ray.tune.suggest.zoopt import ZOOptSearch
         from zoopt import ValueType
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            ZOOptSearch.convert_search_space({
+                "grid": tune.grid_search([0, 1])
+            })
 
         config = {
             "a": tune.sample.Categorical([2, 3, 4]).uniform(),
@@ -972,4 +1066,4 @@ class SearchSpaceTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

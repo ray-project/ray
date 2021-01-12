@@ -1,7 +1,10 @@
 import logging
 import os
 import sys
+import threading
 from logging.handlers import RotatingFileHandler
+
+from typing import Callable
 
 import ray
 from ray.utils import binary_to_hex
@@ -258,3 +261,27 @@ def setup_and_get_worker_interceptor_logger(args,
     # logger to add a newline at the end of string.
     handler.terminator = ""
     return logger
+
+
+class WorkerStandardStreamDispatcher:
+    def __init__(self):
+        self.handlers = []
+        self._lock = threading.Lock()
+
+    def add_handler(self, name: str, handler: Callable) -> None:
+        with self._lock:
+            self.handlers.append((name, handler))
+
+    def remove_handler(self, name: str) -> None:
+        with self._lock:
+            new_handlers = [pair for pair in self.handlers if pair[0] != name]
+            self.handlers = new_handlers
+
+    def emit(self, data):
+        with self._lock:
+            for pair in self.handlers:
+                _, handle = pair
+                handle(data)
+
+
+global_worker_stdstream_dispatcher = WorkerStandardStreamDispatcher()

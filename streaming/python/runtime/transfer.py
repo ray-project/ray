@@ -14,7 +14,7 @@ from ray._raylet import JavaFunctionDescriptor
 from ray._raylet import PythonFunctionDescriptor
 from ray._raylet import Language
 
-CHANNEL_ID_LEN = 20
+CHANNEL_ID_LEN = ray.ObjectID.nil().size()
 logger = logging.getLogger(__name__)
 
 
@@ -58,8 +58,8 @@ class ChannelID:
 
     @staticmethod
     def gen_id(from_index, to_index, ts):
-        """Generate channel id, which is 20 character"""
-        channel_id = bytearray(20)
+        """Generate channel id, which is `CHANNEL_ID_LEN` character"""
+        channel_id = bytearray(CHANNEL_ID_LEN)
         for i in range(11, 7, -1):
             channel_id[i] = ts & 0xff
             ts >>= 8

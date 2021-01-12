@@ -126,6 +126,14 @@ py_test(
 )
 
 py_test(
+    name = "test_integration_mlflow",
+    size = "small",
+    srcs = ["tests/test_integration_mlflow.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"]
+)
+
+py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
@@ -254,7 +262,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only", "exclusive"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -473,15 +481,23 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# Commenting out for now because it is not idempotent
-# py_test(
-#     name = "mlflow_example",
-#     size = "medium",
-#     srcs = ["examples/mlflow_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"]
-# )
+py_test(
+ name = "mlflow_example",
+ size = "medium",
+ srcs = ["examples/mlflow_example.py"],
+ deps = [":tune_lib"],
+ tags = ["exclusive", "example"]
+)
 
+# Comment out for now until we sort out our dependencies.
+#py_test(
+#    name = "mlflow_ptl",
+#    size = "medium",
+#    srcs = ["examples/mlflow_ptl.py"],
+#    deps = [":tune_lib"],
+#    tags = ["exclusive", "example", "py37", "pytorch"],
+#    args = ["--smoke-test"]
+#)
 py_test(
     name = "mnist_pytorch",
     size = "small",
@@ -648,35 +664,35 @@ py_test(
 # )
 
 # Needs SigOpt API key.
-# py_test(
-#     name = "sigopt_example",
-#     size = "medium",
-#     srcs = ["examples/sigopt_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "sigopt_example",
+    size = "medium",
+    srcs = ["examples/sigopt_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
 
 # Needs SigOpt API key.
-# py_test(
-#     name = "sigopt_multi_objective_example",
-#     size = "medium",
-#     srcs = ["examples/sigopt_multi_objective_example.py"],
-#     deps = [":tune_lib"],                 s
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "sigopt_multi_objective_example",
+    size = "medium",
+    srcs = ["examples/sigopt_multi_objective_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
 # Needs SigOpt API key.
-# py_test(
-#     name = "sigopt_prior_beliefs_example",
-#     size = "medium",
-#     srcs = ["examples/sigopt_prior_beliefs_example.py"],
-#     deps = [":tune_lib"],
-#     tags = ["exclusive", "example"],
-#     args = ["--smoke-test"]
-# )
+py_test(
+    name = "sigopt_prior_beliefs_example",
+    size = "medium",
+    srcs = ["examples/sigopt_prior_beliefs_example.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive", "example"],
+    args = ["--smoke-test"]
+)
 
 py_test(
     name = "skopt_example",

@@ -27,10 +27,6 @@
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/plasma/compat.h"
 
-#ifdef PLASMA_CUDA
-#include "arrow/gpu/cuda_api.h"
-#endif
-
 namespace plasma {
 
 using ray::NodeID;
@@ -50,12 +46,6 @@ enum class ObjectState : int {
   /// Object is evicted to external store.
   PLASMA_EVICTED = 3,
 };
-
-namespace internal {
-
-struct CudaIpcPlaceholder {};
-
-}  //  namespace internal
 
 /// This type is used by the Plasma store. It is here because it is exposed to
 /// the eviction policy.
@@ -92,16 +82,8 @@ struct ObjectTableEntry {
   int64_t create_time;
   /// How long creation of this object took.
   int64_t construct_duration;
-
   /// The state of the object, e.g., whether it is open or sealed.
   ObjectState state;
-
-#ifdef PLASMA_CUDA
-  /// IPC GPU handle to share with clients.
-  std::shared_ptr<::arrow::cuda::CudaIpcMemHandle> ipc_handle;
-#else
-  std::shared_ptr<internal::CudaIpcPlaceholder> ipc_handle;
-#endif
 };
 
 /// Mapping from ObjectIDs to information about the object.

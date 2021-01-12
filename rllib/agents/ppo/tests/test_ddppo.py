@@ -2,6 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.ppo as ppo
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check_compute_single_action, \
     framework_iterator
 
@@ -39,7 +40,7 @@ class TestDDPPO(unittest.TestCase):
             trainer = ppo.ddppo.DDPPOTrainer(config=config, env="CartPole-v0")
             for _ in range(num_iterations):
                 result = trainer.train()
-                lr = result["info"]["learner"]["default_policy"]["cur_lr"]
+                lr = result["info"]["learner"][DEFAULT_POLICY_ID]["cur_lr"]
             trainer.stop()
             assert lr == 0.0, "lr should anneal to 0.0"
 

@@ -632,11 +632,10 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
-@pytest.mark.skip(reason="TODO detect resource deadlock")
-def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
-    p = error_pubsub
-    # Check that we get warning messages for infeasible tasks.
-    ray.init(num_cpus=1)
+def test_warning_all_tasks_blocked(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
 
     @ray.remote(num_cpus=1)
     class Foo:
@@ -646,12 +645,52 @@ def test_warning_for_resource_deadlock(error_pubsub, shutdown_only):
     @ray.remote
     def f():
         # Creating both actors is not possible.
-        actors = [Foo.remote() for _ in range(2)]
+        actors = [Foo.remote() for _ in range(3)]
         for a in actors:
             ray.get(a.f.remote())
 
     # Run in a task to check we handle the blocked task case correctly
     f.remote()
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_actor_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+    b = Actor.remote()  # noqa
+
+    errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 1
+    assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR
+
+
+def test_warning_task_waiting_on_actor(shutdown_only):
+    ray.init(
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
+    p = init_error_pubsub()
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        pass
+
+    a = Actor.remote()  # noqa
+
+    @ray.remote(num_cpus=1)
+    def f():
+        print("f running")
+        time.sleep(999)
+
+    ids = [f.remote()]  # noqa
+
     errors = get_error_message(p, 1, ray_constants.RESOURCE_DEADLOCK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.RESOURCE_DEADLOCK_ERROR

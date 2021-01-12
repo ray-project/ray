@@ -15,8 +15,7 @@ from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -238,13 +237,16 @@ class TuneBOHB(Searcher):
 
     @staticmethod
     def convert_search_space(spec: Dict) -> ConfigSpace.ConfigurationSpace:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a TuneBOHB search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par: str, domain: Domain
                           ) -> ConfigSpace.hyperparameters.Hyperparameter:
@@ -281,7 +283,15 @@ class TuneBOHB(Searcher):
                         log=False)
 
             elif isinstance(domain, Integer):
-                if isinstance(sampler, Uniform):
+                if isinstance(sampler, LogUniform):
+                    lower = domain.lower
+                    upper = domain.upper
+                    if quantize:
+                        lower = math.ceil(domain.lower / quantize) * quantize
+                        upper = math.floor(domain.upper / quantize) * quantize
+                    return ConfigSpace.UniformIntegerHyperparameter(
+                        par, lower=lower, upper=upper, q=quantize, log=True)
+                elif isinstance(sampler, Uniform):
                     lower = domain.lower
                     upper = domain.upper
                     if quantize:

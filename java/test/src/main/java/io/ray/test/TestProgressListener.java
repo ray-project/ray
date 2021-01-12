@@ -10,23 +10,25 @@ import org.testng.ITestResult;
 public class TestProgressListener implements IInvokedMethodListener, ITestListener {
 
   private String getFullTestName(ITestResult testResult) {
-    return testResult.getTestClass().getName() + "."
-        + testResult.getMethod().getMethodName();
+    return testResult.getTestClass().getName() + "." + testResult.getMethod().getMethodName();
   }
 
   private void printInfo(String tag, String content) {
     System.out.println(
-        "============ [" + LocalDateTime.now().toString() + "] [" + tag + "] " + content
+        "============ ["
+            + LocalDateTime.now().toString()
+            + "] ["
+            + tag
+            + "] "
+            + content
             + " ============");
   }
 
   @Override
-  public void beforeInvocation(IInvokedMethod method, ITestResult testResult) {
-  }
+  public void beforeInvocation(IInvokedMethod method, ITestResult testResult) {}
 
   @Override
-  public void afterInvocation(IInvokedMethod method, ITestResult testResult) {
-  }
+  public void afterInvocation(IInvokedMethod method, ITestResult testResult) {}
 
   @Override
   public void onTestStart(ITestResult result) {
@@ -58,10 +60,8 @@ public class TestProgressListener implements IInvokedMethodListener, ITestListen
   }
 
   @Override
-  public void onStart(ITestContext context) {
-  }
+  public void onStart(ITestContext context) {}
 
   @Override
-  public void onFinish(ITestContext context) {
-  }
+  public void onFinish(ITestContext context) {}
 }
