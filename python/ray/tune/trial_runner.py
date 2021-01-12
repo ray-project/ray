@@ -371,7 +371,7 @@ class TrialRunner:
                     "{duration:.3f} s, which may be a performance "
                     "bottleneck. Please ensure the "
                     "`TUNE_GLOBAL_CHECKPOINT_S` environment variable is "
-                    "something significantly higher than this time "
+                    "something significantly higher than this duration "
                     "to ensure compute time is mostly spent on the main "
                     "training loop."):
                 self.checkpoint()
