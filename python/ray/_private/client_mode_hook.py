@@ -34,9 +34,7 @@ def disable_client_hook():
 
 
 def client_mode_hook(func):
-    """
-    Decorator for ray module methods to delegate to ray client
-    """
+    """Decorator for ray module methods to delegate to ray client"""
     from ray.util.client import ray
 
     @wraps(func)
@@ -45,5 +43,36 @@ def client_mode_hook(func):
         if client_mode_enabled and _client_hook_enabled:
             return getattr(ray, func.__name__)(*args, **kwargs)
         return func(*args, **kwargs)
+
+    return wrapper
+
+
+def client_mode_convert_function(method):
+    """Decorator to convert a RemoteFunction call into a client call
+
+    The common case for this decorator is for methods on RemoteFunction
+    that need to transparently convert that RemoteFunction to a
+    ClientRemoteFunction. This happens in circumstances where the
+    RemoteFunction is declared early, in a library and only then is Ray used in
+    client mode -- nescessitating a conversion.
+    """
+    @wraps(method)
+    def wrapper(*args, **kwargs):
+        pass
+
+    return wrapper
+
+def client_mode_convert_actor(method):
+    """Decorator to convert an ActorClass call into a client call
+
+    The common case for this decorator is for methods on ActorClass
+    that need to transparently convert that ActorClass to a
+    ClientActorClass. This happens in circumstances where the
+    ActorClass is declared early, in a library and only then is Ray used in
+    client mode -- nescessitating a conversion.
+    """
+    @wraps(method)
+    def wrapper(*args, **kwargs):
+        pass
 
     return wrapper

@@ -13,6 +13,7 @@ from ray.util.placement_group import (
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.client_mode_hook import client_mode_convert_actor
 from ray import cross_language
 from ray.util.inspect import (
     is_function_or_method,
@@ -409,6 +410,7 @@ class ActorClass:
         """
         return self._remote(args=args, kwargs=kwargs)
 
+    @client_mode_convert_actor
     def options(self,
                 args=None,
                 kwargs=None,
@@ -472,6 +474,7 @@ class ActorClass:
 
         return ActorOptionWrapper()
 
+    @client_mode_convert_actor
     def _remote(self,
                 args=None,
                 kwargs=None,

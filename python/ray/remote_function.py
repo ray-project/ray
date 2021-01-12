@@ -4,6 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
+from ray._private.client_mode_hook import client_mode_convert_function
 from ray.util.placement_group import (
     PlacementGroup,
     check_placement_group_index,
@@ -107,6 +108,7 @@ class RemoteFunction:
                         f"of running '{self._function_name}()', "
                         f"try '{self._function_name}.remote()'.")
 
+    @client_mode_convert_function
     def options(self,
                 args=None,
                 kwargs=None,
@@ -164,6 +166,7 @@ class RemoteFunction:
 
         return FuncWrapper()
 
+    @client_mode_convert_function
     def _remote(self,
                 args=None,
                 kwargs=None,
