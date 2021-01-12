@@ -41,7 +41,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def KVPut(self, request, context=None) -> ray_client_pb2.KVPutResponse:
         with disable_client_hook():
             already_exists = ray.experimental.internal_kv._internal_kv_put(
-                request.key, request.value)
+                request.key, request.value, overwrite=request.overwrite)
         return ray_client_pb2.KVPutResponse(already_exists=already_exists)
 
     def KVGet(self, request, context=None) -> ray_client_pb2.KVGetResponse:
