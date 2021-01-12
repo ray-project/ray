@@ -233,7 +233,7 @@ To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argum
                     state = json.loads(f.read())
                     start = state["step"] + 1
 
-            for iter in range(start, 100):
+            for step in range(start, 100):
                 time.sleep(1)
 
                 # Obtain a checkpoint directory

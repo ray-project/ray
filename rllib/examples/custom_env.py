@@ -71,7 +71,6 @@ class CustomModel(TFModelV2):
                                           model_config, name)
         self.model = FullyConnectedNetwork(obs_space, action_space,
                                            num_outputs, model_config, name)
-        self.register_variables(self.model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         return self.model.forward(input_dict, state, seq_lens)
