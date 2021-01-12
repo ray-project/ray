@@ -29,12 +29,16 @@ from ray.util.client.logsclient import LogstreamClient
 
 logger = logging.getLogger(__name__)
 
+INITIAL_TIMEOUT_SEC = 5
+MAX_TIMEOUT_SEC = 30
+
 
 class Worker:
     def __init__(self,
                  conn_str: str = "",
                  secure: bool = False,
-                 metadata: List[Tuple[str, str]] = None):
+                 metadata: List[Tuple[str, str]] = None,
+                 connection_retries=3):
         """Initializes the worker side grpc client.
 
         Args:
@@ -49,6 +53,22 @@ class Worker:
             self.channel = grpc.secure_channel(conn_str, credentials)
         else:
             self.channel = grpc.insecure_channel(conn_str)
+
+        conn_attempts = 0
+        timeout = INITIAL_TIMEOUT_SEC
+        while conn_attempts < connection_retries:
+            conn_attempts += 1
+            try:
+                grpc.channel_ready_future(self.channel).result(timeout=timeout)
+            except grpc.FutureTimeoutError:
+                if conn_attempts == connection_retries:
+                    raise ConnectionError("ray client connection timeout")
+                logger.info(
+                    f"Couldn't connect in {timeout} seconds, retrying")
+                timeout = timeout + 5
+                if timeout > MAX_TIMEOUT_SEC:
+                    timeout = MAX_TIMEOUT_SEC
+
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
 
         self.data_client = DataClient(self.channel, self._client_id,
