@@ -361,7 +361,7 @@ Status ConnectOrFail(const std::string &address, int port,
 Status RedisContext::PingPort(const std::string &address, int port) {
   std::string errorMessage;
   return ConnectWithRetries(address, port, redisConnect,
-                            static_cast<redisContext **>(nullptr), errorMessage);
+                            static_cast<redisContext **>(nullptr));
 }
 
 Status RedisContext::Connect(const std::string &address, int port, bool sharding,
