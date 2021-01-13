@@ -58,8 +58,9 @@ void GcsNodeManager::HandleUnregisterNode(const rpc::UnregisterNodeRequest &requ
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
-    node_info_delta->set_state(rpc::GcsNodeInfo::DEAD);
-    node_info_delta->set_timestamp(current_sys_time_ms());
+    node_info_delta->set_node_id(node->node_id());
+    node_info_delta->set_state(node->state());
+    node_info_delta->set_timestamp(node->timestamp());
 
     auto on_done = [this, node_id, node_info_delta, reply,
                     send_reply_callback](const Status &status) {
@@ -183,8 +184,9 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id) {
     node->set_timestamp(current_sys_time_ms());
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
-    node_info_delta->set_state(rpc::GcsNodeInfo::DEAD);
-    node_info_delta->set_timestamp(current_sys_time_ms());
+    node_info_delta->set_node_id(node->node_id());
+    node_info_delta->set_state(node->state());
+    node_info_delta->set_timestamp(node->timestamp());
 
     auto on_done = [this, node_id, node_info_delta](const Status &status) {
       auto on_done = [this, node_id, node_info_delta](const Status &status) {
