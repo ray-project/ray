@@ -8,7 +8,7 @@ Deploying on Kubernetes
   This document is mainly for advanced Kubernetes usage. The easiest way to run a Ray cluster on Kubernetes is by using the built-in Cluster Launcher. Please see the :ref:`Cluster Launcher documentation <ray-launch-k8s>` for details.
 
 
-  
+
 This document assumes that you have access to a Kubernetes cluster and have
 ``kubectl`` installed locally and configured to access the cluster. It will
 first walk you through how to deploy a Ray cluster on your existing Kubernetes
@@ -156,7 +156,7 @@ and checking that they are restarted by Kubernetes:
   ray-worker-5c49b7cc57-jx2w2   1/1     Running   0          10s
 
 .. _ray-k8s-run:
- 
+
 Running Ray Programs
 --------------------
 
@@ -306,12 +306,12 @@ To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup
 
 For relevant documentation for GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
-The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods. 
+The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based images packaged with Ray for use in Kubernetes pods.
 For example, the image ``rayproject/ray-ml:nightly-gpu`` is ideal for running GPU-based ML workloads with the most recent nightly build of Ray.
-Read :ref:`here<docker-images>` for further details on Ray images. 
+Read :ref:`here<docker-images>` for further details on Ray images.
 
 Using Nvidia GPUs requires specifying the relevant resource `limits` in the container fields of your Kubernetes configurations.
-(Kubernetes `sets <https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/#using-device-plugins>`_ 
+(Kubernetes `sets <https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/#using-device-plugins>`_
 the GPU request equal to the limit.) The configuration for a pod running a Ray GPU image and
 using one Nvidia GPU looks like this:
 
@@ -338,11 +338,11 @@ GPU taints and tolerations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. note::
 
-  Users using a managed Kubernetes service probably don't need to worry about this section. 
+  Users using a managed Kubernetes service probably don't need to worry about this section.
 
 The `Nvidia gpu plugin`_ for Kubernetes applies `taints`_ to GPU nodes; these taints prevent non-GPU pods from being scheduled on GPU nodes.
-Managed Kubernetes services like GKE, EKS, and AKS automatically apply matching `tolerations`_ 
-to pods requesting GPU resources. Tolerations are applied by means of Kubernetes's `ExtendedResourceToleration`_ `admission controller`_. 
+Managed Kubernetes services like GKE, EKS, and AKS automatically apply matching `tolerations`_
+to pods requesting GPU resources. Tolerations are applied by means of Kubernetes's `ExtendedResourceToleration`_ `admission controller`_.
 If this admission controller is not enabled for your Kubernetes cluster, you may need to manually add a GPU toleration each of to your GPU pod configurations. For example,
 
 .. code-block:: yaml
@@ -369,7 +369,7 @@ Read about Kubernetes device plugins `here <https://kubernetes.io/docs/concepts/
 about Kubernetes GPU plugins `here <https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus>`__,
 and about Nvidia's GPU plugin for Kubernetes `here <https://github.com/NVIDIA/k8s-device-plugin>`__.
 
-If you run into problems setting up GPUs for your Ray cluster on Kubernetes, please reach out to us at `<https://discuss.ray.io>`_. 
+If you run into problems setting up GPUs for your Ray cluster on Kubernetes, please reach out to us at `<https://discuss.ray.io>`_.
 
 Questions or Issues?
 --------------------
