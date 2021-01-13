@@ -22,6 +22,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, TrainTFMultiGPU
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -60,9 +61,6 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 5e-5,
     # Learning rate schedule.
     "lr_schedule": None,
-    # Share layers for value function. If you set this to True, it's important
-    # to tune vf_loss_coeff.
-    "vf_share_layers": False,
     # Coefficient of the value function loss. IMPORTANT: you must tune this if
     # you set vf_share_layers: True.
     "vf_loss_coeff": 1.0,
@@ -90,6 +88,12 @@ DEFAULT_CONFIG = with_common_config({
     # Whether to fake GPUs (using CPUs).
     # Set this to True for debugging on non-GPU machines (set `num_gpus` > 0).
     "_fake_gpus": False,
+
+    # Deprecated keys:
+    # Share layers for value function. If you set this to True, it's important
+    # to tune vf_loss_coeff.
+    # Use config.model.vf_share_layers instead.
+    "vf_share_layers": DEPRECATED_VALUE,
 })
 
 # __sphinx_doc_end__
