@@ -231,8 +231,8 @@ class ModelCatalog:
                           action_space.bounded_above):
                     lo = np.min(action_space.low)
                     hi = np.max(action_space.high)
-                    if any(action_space.low != lo) or \
-                            any(action_space.high != hi):
+                    if np.any(action_space.low != lo) or \
+                            np.any(action_space.high != hi):
                         raise UnsupportedSpaceException(
                             "The Box space has non-matching low/high value(s)."
                             " Make sure that all low/high values are the same "

@@ -1075,6 +1075,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "tests/test_model_catalog",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_model_catalog.py"]
+)
+
+py_test(
     name = "test_convtranspose2d_stack",
     tags = ["models"],
     size = "small",
@@ -1220,13 +1227,6 @@ py_test(
     tags = ["tests_dir", "tests_dir_A"],
     size = "large",
     srcs = ["tests/test_attention_net_learning.py"]
-)
-
-py_test(
-    name = "tests/test_catalog",
-    tags = ["tests_dir", "tests_dir_C"],
-    size = "medium",
-    srcs = ["tests/test_catalog.py"]
 )
 
 py_test(
