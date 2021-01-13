@@ -5,8 +5,10 @@ if TYPE_CHECKING:
     from ray import NodeID
     from ray import PlacementGroupID
 
+
 class ClientWorkerPropertyAPI:
     """Emulates the properties of the ray.worker object for the client"""
+
     def __init__(self, worker):
         assert worker is not None
         self.worker = worker
