@@ -192,7 +192,7 @@ class ModelCatalog:
             dist_cls = _global_registry.get(RLLIB_ACTION_DIST,
                                             action_dist_name)
             return ModelCatalog._get_multi_action_distribution(
-                dist_cls, action_space, {}, framework)
+                dist_cls, action_space, config, framework)
 
         # Dist_type is given directly as a class.
         elif type(dist_type) is type and \
