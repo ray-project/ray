@@ -243,8 +243,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Track the cumulative backlog of all workers requesting a lease to this raylet.
   std::unordered_map<SchedulingClass, int> backlog_tracker_;
 
+  /// TODO(Shanly): Remove `worker_pool_` and `leased_workers_` and make them as
+  /// parameters of methods if necessary once we remove the legacy scheduler.
   WorkerPoolInterface &worker_pool_;
-
   std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> &leased_workers_;
 
   /// Determine whether a task should be immediately dispatched,
