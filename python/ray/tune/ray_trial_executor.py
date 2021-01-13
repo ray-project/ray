@@ -250,6 +250,11 @@ class RayTrialExecutor(TrialExecutor):
             ready, _ = ray.wait([ready_fut], timeout=0)
             if not ready:
                 return None
+            if not ray.get(ready):
+                # Schedule new future
+                self._committed_placement_groups[
+                    trial] = placement_group, placement_group.ready()
+                return None
             # The trainable actor always lives on the first bundle
             full_actor_class = _actor_cls.options(
                 placement_group=placement_group,

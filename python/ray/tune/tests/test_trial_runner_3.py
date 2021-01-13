@@ -1,3 +1,4 @@
+import time
 from collections import Counter
 import os
 import pickle
@@ -8,9 +9,12 @@ import unittest
 from unittest.mock import patch
 
 import ray
+from ray.cluster_utils import Cluster
 from ray.rllib import _register_all
 
-from ray.tune import TuneError
+from ray import tune
+from ray.tune import Callback, TuneError
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
@@ -21,6 +25,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
+from ray.util import placement_group, placement_group_table
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -919,6 +924,69 @@ class ResourcesTest(unittest.TestCase):
         jsoned = resources_to_json(original)
         new_resource = json_to_resources(jsoned)
         self.assertEqual(original, new_resource)
+
+
+class TrialRunnerPlacementGroupTest(unittest.TestCase):
+    def setUp(self):
+        self.head_cpus = 8
+        self.head_gpus = 4
+        self.head_custom = 16
+
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": self.head_cpus,
+                "num_gpus": self.head_gpus,
+                "resources": {
+                    "custom": self.head_custom
+                },
+                "_system_config": {
+                    "num_heartbeats_timeout": 10
+                }
+            })
+        # Pytest doesn't play nicely with imports
+        _register_all()
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testPlacementGroupRequests(self):
+        """In this test we try to start 10 trials but only have resources
+        for 2. Placement groups should still be created and PENDING."""
+
+        def train(config):
+            time.sleep(1)
+            tune.report(metric=0)
+
+        def placement_group_factory():
+            head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
+            child_bundle = {"custom": 1}
+
+            return placement_group([head_bundle, child_bundle, child_bundle])
+
+        trial_executor = RayTrialExecutor()
+
+        this = self
+
+        class _TestCallback(Callback):
+            def on_step_end(self, iteration, trials, **info):
+                if iteration == 1:
+                    this.assertEqual(len(trials), 10)
+                    this.assertEqual(
+                        len(trial_executor._committed_placement_groups), 10)
+                tbl = placement_group_table()
+                print("STEP", iteration,
+                      [tbl[pg]["state"] for pg in sorted(tbl)])
+
+        tune.run(
+            train,
+            resources_per_trial=placement_group_factory,
+            num_samples=10,
+            trial_executor=trial_executor,
+            callbacks=[_TestCallback()])
 
 
 if __name__ == "__main__":

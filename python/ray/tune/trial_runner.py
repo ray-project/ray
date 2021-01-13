@@ -385,17 +385,10 @@ class TrialRunner:
                     # come up, and we would want to start the trial then.
                     queue_time = self._pending_trial_queue_times.setdefault(
                         trial.trial_id, time.time())
-                    if time.time(
-                    ) - queue_time < TUNE_TRIAL_STARTUP_GRACE_PERIOD:
+                    now = time.time()
+                    if now - queue_time < TUNE_TRIAL_STARTUP_GRACE_PERIOD:
                         return False, True
                     return False, False
-
-        pending_trials = [t for t in self._trials if t.status == Trial.PENDING]
-        num_pending_trials = len(pending_trials)
-        while num_pending_trials < self._max_pending_trials:
-            if not self._update_trial_queue(blocking=False):
-                break
-            num_pending_trials += 1
 
         may_handle_events = True
         process_events_timeout = None
@@ -414,9 +407,17 @@ class TrialRunner:
             success, in_grace_period = _try_start_trial(next_trial)
             if success:
                 may_handle_events = False
-            else:
-                if in_grace_period:
-                    process_events_timeout = 0.1
+            elif in_grace_period:
+                process_events_timeout = 0.1
+
+        # If we have fewer pending trials than we'd like, create them
+        # here (this could trigger autoscaling behavior)
+        pending_trials = [t for t in self._trials if t.status == Trial.PENDING]
+        num_pending_trials = len(pending_trials)
+        while num_pending_trials < self._max_pending_trials:
+            if not self._update_trial_queue(blocking=False):
+                break
+            num_pending_trials += 1
 
         # If the next trial was pending or no new next trial was created,
         # also try to start all other pending trials
