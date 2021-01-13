@@ -70,7 +70,7 @@ configuration option limits the maximum possible batch size sent to the backend.
     wait for :mod:`batch_wait_timeout <ray.serve.BackendConfig>`
     seconds to wait for a full batch to arrive. The default wait is ``0s`` to
     minimize query latency. You can increase the timeout to improve throughput
-    and increase utilization.
+    and increase utilization at the cost of some additional latency.
 
 .. literalinclude:: ../../../../python/ray/serve/examples/doc/tutorial_batch.py
     :start-after: __doc_deploy_begin__
