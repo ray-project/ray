@@ -485,6 +485,10 @@ build() {
   if need_wheels; then
     build_wheels
   fi
+
+  local ray_version
+  ray_version="$(ray --version)"
+  echo "Ray version ${ray_version}"
 }
 
 _main() {
