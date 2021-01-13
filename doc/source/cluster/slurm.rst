@@ -66,13 +66,12 @@ proper resources. In this example, we ask for at least 5 CPUs and 5 GB of memory
   ### Modify this according to your Ray workload.
   #SBATCH --cpus-per-task=5
   #SBATCH --mem-per-cpu=1GB
-
   ### Similarly, you can also specify the number of GPUs per node.
   ### Modify this according to your Ray workload.
   #SBATCH --gpus-per-task=1
 
 
-You can also add other optional flags to your sbatch headers.
+You can also add other optional flags to your sbatch directives.
 
 
 Loading your environment
@@ -94,26 +93,11 @@ Obtain the head IP address
 
 Next, we'll want to obtain a hostname and a node IP address for the head node. This way, when we start worker nodes, we'll be able to properly connect to the right head node.
 
-.. code-block:: bash
+.. literalinclude:: /cluster/examples/slurm-basic.sh
+   :language: bash
+   :start-after: __doc_head_address_start__
+   :end-before: __doc_head_address_end__
 
-  # Getting the node names
-  nodes=$(scontrol show hostnames $SLURM_JOB_NODELIST)
-  nodes_array=($nodes)
-
-  head_node=${nodes_array[0]}
-  head_node_ip=$(srun --nodes=1 --ntasks=1 -w $head_node hostname --ip-address)
-
-  # if we detect a space character in the head node IP, we'll
-  # convert it to an ipv4 address. This step is optional.
-  if [[ $head_node_ip == *" "* ]]; then
-    IFS=' ' read -ra ADDR <<<"$head_node_ip"
-    if [[ ${#ADDR[0]} -gt 16 ]]; then
-      head_node_ip=${ADDR[1]}
-    else
-      head_node_ip=${ADDR[0]}
-    fi
-    echo "IPV6 address detected. We split the IPV4 address as $head_node_ip"
-  fi
 
 
 Starting the Ray head node
@@ -128,17 +112,10 @@ and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
 more resources than allocated. We also need to explictly
 indicate the ``node-ip-address`` for the Ray head runtime:
 
-.. code-block:: bash
-
-  port=6379
-  ip_head=$head_node_ip:$port
-  export ip_head
-  echo "IP Head: $ip_head"
-
-  echo "Starting HEAD at $head_node"
-  srun --nodes=1 --ntasks=1 -w $head_node \
-    ray start --head --node-ip-address=$head_node_ip --port=$port \
-    --num-cpus ${SLURM_CPUS_PER_TASK} --num-gpus ${SLURM_GPUS_PER_TASK} --block &
+.. literalinclude:: /cluster/examples/slurm-basic.sh
+   :language: bash
+   :start-after: __doc_head_ray_start__
+   :end-before: __doc_head_ray_end__
 
 By backgrounding the above srun task, we can proceed to start the Ray worker runtimes.
 
@@ -147,38 +124,26 @@ Starting the Ray worker nodes
 
 Below, we do the same thing, but for each worker. Make sure the Ray head and Ray worker processes are not started on the same node.
 
-.. code-block:: bash
-
-  # optional, though may be useful in certain versions of Ray < 1.0.
-  sleep 10
-
-  # number of nodes other than the head node
-  worker_num=$(($SLURM_JOB_NUM_NODES - 1))
-
-  for ((i = 1; i <= $worker_num; i++)); do
-    node_i=${nodes_array[$i]}
-    echo "Starting WORKER $i at $node_i"
-    srun --nodes=1 --ntasks=1 -w $node_i \
-      ray start --address $ip_head --block \
-      --num-cpus ${SLURM_CPUS_PER_TASK} --num-gpus ${SLURM_GPUS_PER_TASK} &
-    sleep 5
-  done
+.. literalinclude:: /cluster/examples/slurm-basic.sh
+   :language: bash
+   :start-after: __doc_worker_ray_start__
+   :end-before: __doc_worker_ray_end__
 
 Submitting your script
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Finally, you can invoke your Python script:
 
-.. code-block:: bash
-
-  python -u your-script.py
+.. literalinclude:: /cluster/examples/slurm-basic.sh
+   :language: bash
+   :start-after: __doc_script_start__
 
 
 Python-interface SLURM scripts
 ------------------------------
 
 [Contributed by @pengzhenghao] Below, we provide a helper utility (:ref:`slurm-launch.py <slurm-launch>`) to auto-generate SLURM scripts and launch.
-``slurm-launch.py`` uses an underlying template (:ref:`slurm-template.txt <slurm-template>`) and fills out placeholders given user input.
+``slurm-launch.py`` uses an underlying template (:ref:`slurm-template.sh <slurm-template>`) and fills out placeholders given user input.
 
 You can feel free to copy both files into your cluster for use. Feel free to also open any PRs for contributions to improve this script!
 
@@ -208,7 +173,7 @@ There are other options you can use when calling ``python slurm-launch.py``:
 * ``--partition`` (``-p``): The partition you wish to use. Default: "", will use user's default partition.
 * ``--load-env``: The command to setup your environment. For example: ``module load cuda/10.1``. Default: "".
 
-Note that the :ref:`slurm-template.txt <slurm-template>` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
+Note that the :ref:`slurm-template.sh <slurm-template>` is compatible with both IPV4 and IPV6 ip address of the computing nodes.
 
 Implementation
 ~~~~~~~~~~~~~~

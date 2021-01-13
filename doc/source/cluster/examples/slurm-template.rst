@@ -2,7 +2,7 @@
 
 .. _slurm-template:
 
-slurm-template.txt
-~~~~~~~~~~~~~~~~~~
+slurm-template.sh
+~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: /cluster/examples/slurm-template.txt
+.. literalinclude:: /cluster/examples/slurm-template.sh
