@@ -296,7 +296,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         return state
 
     def set_state(self, state):
-        self.__dict__.update(copy.deepcopy(state))
+        self.__dict__.update(state)
         for iterator in self._iterators:
             self._trial_generator = itertools.chain(self._trial_generator,
                                                     iterator)
