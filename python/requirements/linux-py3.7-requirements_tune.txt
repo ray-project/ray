@@ -17,7 +17,9 @@ argon2-cffi==20.1.0
 async-generator==1.10
     # via nbclient
 atari-py==0.2.6
-    # via gym
+    # via
+    #   -c ../requirements.txt
+    #   gym
 attrs==20.3.0
     # via
     #   cmd2
@@ -25,7 +27,7 @@ attrs==20.3.0
     #   pytest
 autocfg==0.0.6
     # via gluoncv
-autogluon.core==0.0.16b20210112
+autogluon.core==0.0.16b20210113
     # via gluoncv
 autograd==1.3
     # via autogluon.core
@@ -45,9 +47,14 @@ bcrypt==3.2.0
     # via paramiko
 bleach==3.2.1
     # via nbconvert
-boto3==1.16.52
-    # via autogluon.core
-botocore==1.19.52
+bokeh==2.2.3
+    # via dask
+boto3==1.16.53
+    # via
+    #   -c ../requirements.txt
+    #   autogluon.core
+    #   smart-open
+botocore==1.19.53
     # via
     #   boto3
     #   s3transfer
@@ -73,6 +80,7 @@ chardet==4.0.0
     # via requests
 click==7.1.2
     # via
+    #   -c ../requirements.txt
     #   databricks-cli
     #   distributed
     #   flask
@@ -83,6 +91,7 @@ cliff==3.5.0
     # via optuna
 cloudpickle==1.6.0
     # via
+    #   dask
     #   distributed
     #   gym
     #   hyperopt
@@ -95,7 +104,9 @@ cmaes==0.7.0
 cmd2==1.4.0
     # via cliff
 colorama==0.4.4
-    # via cmd2
+    # via
+    #   -c ../requirements.txt
+    #   cmd2
 colorlog==4.6.2
     # via optuna
 configparser==5.0.1
@@ -111,12 +122,14 @@ cryptography==3.3.1
     #   paramiko
 cycler==0.10.0
     # via matplotlib
-cython==0.29.21
+cython==0.29.0
     # via
+    #   -c ../requirements.txt
     #   autogluon.core
     #   configspace
-dask==2020.12.0
+dask[complete]==2020.12.0
     # via
+    #   -c ../requirements.txt
     #   autogluon.core
     #   distributed
 databricks-cli==0.14.1
@@ -136,9 +149,13 @@ defusedxml==0.6.0
 dill==0.3.3
     # via autogluon.core
 distributed==2020.12.0
-    # via autogluon.core
+    # via
+    #   autogluon.core
+    #   dask
 dm-tree==0.1.5
-    # via tensorflow-probability
+    # via
+    #   -c ../requirements.txt
+    #   tensorflow-probability
 docker-pycreds==0.4.0
     # via wandb
 docker==4.4.1
@@ -150,13 +167,18 @@ entrypoints==0.3
     #   mlflow
     #   nbconvert
 filelock==3.0.12
-    # via transformers
+    # via
+    #   -c ../requirements.txt
+    #   transformers
 flask==1.1.2
     # via
+    #   -c ../requirements.txt
     #   mlflow
     #   prometheus-flask-exporter
 fsspec==0.8.5
-    # via pytorch-lightning
+    # via
+    #   dask
+    #   pytorch-lightning
 future==0.18.2
     # via
     #   autograd
@@ -191,11 +213,15 @@ graphviz==0.8.4
     #   autogluon.core
     #   mxnet
 grpcio==1.34.0
-    # via tensorboard
+    # via
+    #   -c ../requirements.txt
+    #   tensorboard
 gunicorn==20.0.4
     # via mlflow
 gym[atari]==0.18.0
-    # via -r requirements_tune.in
+    # via
+    #   -c ../requirements.txt
+    #   -r requirements_tune.in
 h5py==3.1.0
     # via
     #   -r requirements_tune.in
@@ -216,8 +242,6 @@ importlib-metadata==3.4.0
     #   pluggy
     #   pytest
     #   stevedore
-iniconfig==1.1.1
-    # via pytest
 ipykernel==5.4.3
     # via
     #   ipywidgets
@@ -247,6 +271,7 @@ jedi==0.18.0
 jinja2==2.11.2
     # via
     #   ax-platform
+    #   bokeh
     #   flask
     #   nbconvert
     #   notebook
@@ -261,7 +286,9 @@ joblib==1.0.0
     #   scikit-learn
     #   scikit-optimize
 jsonschema==3.2.0
-    # via nbformat
+    # via
+    #   -c ../requirements.txt
+    #   nbformat
 jupyter-client==6.1.11
     # via
     #   ipykernel
@@ -289,9 +316,13 @@ keras==2.4.3
 kiwisolver==1.3.1
     # via matplotlib
 kubernetes==12.0.1
-    # via -r requirements_tune.in
+    # via
+    #   -c ../requirements.txt
+    #   -r requirements_tune.in
 lightgbm==3.1.1
     # via -r requirements_tune.in
+locket==0.2.0
+    # via partd
 mako==1.1.3
     # via alembic
 markdown==3.3.3
@@ -310,8 +341,12 @@ mistune==0.8.4
     # via nbconvert
 mlflow==1.13.1
     # via -r requirements_tune.in
+more-itertools==8.6.0
+    # via pytest
 msgpack==1.0.2
-    # via distributed
+    # via
+    #   -c ../requirements.txt
+    #   distributed
 msrest==0.6.19
     # via azure-storage-blob
 mxnet==1.7.0.post1
@@ -333,22 +368,27 @@ nest-asyncio==1.4.3
 netifaces==0.10.9
     # via hpbandster
 networkx==2.5
-    # via hyperopt
+    # via
+    #   -c ../requirements.txt
+    #   hyperopt
 nevergrad==0.4.2.post5
     # via -r requirements_tune.in
-notebook==6.1.6
+notebook==6.2.0
     # via
     #   jupyter
     #   widgetsnbextension
 numpy==1.19.5
     # via
+    #   -c ../requirements.txt
     #   atari-py
     #   autogluon.core
     #   autograd
     #   bayesian-optimization
+    #   bokeh
     #   cma
     #   cmaes
     #   configspace
+    #   dask
     #   decord
     #   dragonfly-opt
     #   gluoncv
@@ -392,13 +432,16 @@ optuna==2.3.0
 packaging==20.8
     # via
     #   bleach
+    #   bokeh
     #   optuna
     #   pytest
     #   transformers
-pandas==1.2.0
+pandas==1.0.5
     # via
+    #   -c ../requirements.txt
     #   autogluon.core
     #   ax-platform
+    #   dask
     #   gluoncv
     #   mlflow
     #   statsmodels
@@ -410,6 +453,8 @@ paramz==0.9.5
     # via gpy
 parso==0.8.1
     # via jedi
+partd==1.1.0
+    # via dask
 patsy==0.5.1
     # via statsmodels
 pbr==5.5.1
@@ -417,11 +462,15 @@ pbr==5.5.1
     #   cliff
     #   stevedore
 pexpect==4.8.0
-    # via ipython
+    # via
+    #   -c ../requirements.txt
+    #   ipython
 pickleshare==0.7.5
     # via ipython
-pillow==7.2.0
+pillow==7.2.0 ; platform_system != "Windows"
     # via
+    #   -c ../requirements.txt
+    #   bokeh
     #   gluoncv
     #   gym
     #   matplotlib
@@ -436,6 +485,7 @@ prettytable==0.7.2
     # via cliff
 prometheus-client==0.9.0
     # via
+    #   -c ../requirements.txt
     #   notebook
     #   prometheus-flask-exporter
 prometheus-flask-exporter==0.18.1
@@ -448,6 +498,7 @@ prompt-toolkit==3.0.10
     #   jupyter-console
 protobuf==3.14.0
     # via
+    #   -c ../requirements.txt
     #   mlflow
     #   tensorboard
     #   tensorboardx
@@ -476,6 +527,7 @@ pyglet==1.5.0
     # via gym
 pygments==2.7.4
     # via
+    #   -c ../requirements.txt
     #   ipython
     #   jupyter-console
     #   jupyterlab-pygments
@@ -497,13 +549,15 @@ pyrsistent==0.17.3
     # via jsonschema
 pytest-remotedata==0.3.2
     # via -r requirements_tune.in
-pytest==6.2.1
+pytest==5.4.3
     # via
+    #   -c ../requirements.txt
     #   autogluon.core
     #   pytest-remotedata
 python-dateutil==2.8.1
     # via
     #   alembic
+    #   bokeh
     #   botocore
     #   jupyter-client
     #   kubernetes
@@ -523,7 +577,9 @@ pytz==2020.5
     # via pandas
 pyyaml==5.3.1
     # via
+    #   -c ../requirements.txt
     #   autocfg
+    #   bokeh
     #   cliff
     #   dask
     #   distributed
@@ -557,6 +613,7 @@ requests-oauthlib==1.3.0
     #   msrest
 requests==2.25.1
     # via
+    #   -c ../requirements.txt
     #   autogluon.core
     #   azure-core
     #   databricks-cli
@@ -581,6 +638,7 @@ sacremoses==0.0.43
     # via transformers
 scikit-learn==0.22.2
     # via
+    #   -c ../requirements.txt
     #   -r requirements_tune.in
     #   autogluon.core
     #   ax-platform
@@ -594,6 +652,7 @@ scikit-optimize==0.8.1
     #   autogluon.core
 scipy==1.4.1
     # via
+    #   -c ../requirements.txt
     #   autogluon.core
     #   ax-platform
     #   bayesian-optimization
@@ -667,8 +726,10 @@ six==1.15.0
     #   tensorflow-probability
     #   wandb
     #   websocket-client
-smart_open==4.0.1
-    # via -r requirements_tune.in
+smart_open[s3]==4.0.1
+    # via
+    #   -c ../requirements.txt
+    #   -r requirements_tune.in
 smmap==3.0.4
     # via gitdb
 sortedcontainers==2.3.0
@@ -687,7 +748,9 @@ stevedore==3.3.0
 subprocess32==3.5.4
     # via wandb
 tabulate==0.8.7
-    # via databricks-cli
+    # via
+    #   -c ../requirements.txt
+    #   databricks-cli
 tblib==1.7.0
     # via distributed
 tensorboard-plugin-wit==1.7.0
@@ -695,7 +758,9 @@ tensorboard-plugin-wit==1.7.0
 tensorboard==2.4.0
     # via pytorch-lightning
 tensorboardx==2.1
-    # via gluoncv
+    # via
+    #   -c ../requirements.txt
+    #   gluoncv
 tensorflow-probability==0.11.1
     # via -r requirements_tune.in
 terminado==0.9.2
@@ -706,10 +771,11 @@ timm==0.3.2
     # via -r requirements_tune.in
 tokenizers==0.8.1.rc2
     # via transformers
-toml==0.10.2
-    # via pytest
 toolz==0.11.1
-    # via distributed
+    # via
+    #   dask
+    #   distributed
+    #   partd
 torch==1.7.0+cpu ; sys_platform != "darwin"
     # via
     #   -r requirements_tune.in
@@ -726,6 +792,7 @@ torchvision==0.8.1+cpu ; sys_platform != "darwin"
 tornado==6.1
     # via
     #   autogluon.core
+    #   bokeh
     #   distributed
     #   ipykernel
     #   jupyter-client
@@ -758,6 +825,7 @@ typeguard==2.10.0
     # via ax-platform
 typing-extensions==3.7.4.3
     # via
+    #   bokeh
     #   importlib-metadata
     #   nevergrad
     #   torch
@@ -777,6 +845,7 @@ wcwidth==0.2.5
     # via
     #   cmd2
     #   prompt-toolkit
+    #   pytest
 webencodings==0.5.1
     # via bleach
 websocket-client==0.57.0
@@ -785,6 +854,7 @@ websocket-client==0.57.0
     #   kubernetes
 werkzeug==1.0.1
     # via
+    #   -c ../requirements.txt
     #   flask
     #   tensorboard
 wheel==0.36.2
