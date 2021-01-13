@@ -16,13 +16,13 @@ client = serve.start()
 
 
 def model_one(request):
-    print("Model 1 called with data ", request.args.get("data"))
+    print("Model 1 called with data ", request.query_params.get("data"))
     return random()
 
 
 def model_two(request):
-    print("Model 2 called with data ", request.args.get("data"))
-    return request.args.get("data")
+    print("Model 2 called with data ", request.query_params.get("data"))
+    return request.query_params.get("data")
 
 
 class ComposedModel:
@@ -32,8 +32,8 @@ class ComposedModel:
         self.model_two = client.get_handle("model_two")
 
     # This method can be called concurrently!
-    async def __call__(self, flask_request):
-        data = flask_request.data
+    async def __call__(self, starlette_request):
+        data = await starlette_request.body()
 
         score = await self.model_one.remote(data=data)
         if score > 0.5:

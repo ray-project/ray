@@ -1,6 +1,11 @@
 name: CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore:
+      # Don't run CI for Dependabot branch pushes.
+      - "dependabot/**"
+  pull_request:
 
 env:
   # Git GITHUB_... variables are useful for translating Travis environment variables

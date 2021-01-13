@@ -28,7 +28,10 @@ class MultiAgentEpisode:
         episode_id (int): Unique id identifying this trajectory.
         agent_rewards (dict): Summed rewards broken down by agent.
         custom_metrics (dict): Dict where the you can add custom metrics.
-        user_data (dict): Dict that you can use for temporary storage.
+        user_data (dict): Dict that you can use for temporary storage. E.g.
+            in between two custom callbacks referring to the same episode.
+        hist_data (dict): Dict mapping str keys to List[float] for storage of
+            per-timestep float data throughout the episode.
 
     Use case 1: Model-based rollouts in multi-agent:
         A custom compute_actions() function in a policy can inspect the

@@ -4,6 +4,7 @@ import tempfile
 import time
 
 import ray
+from ray.test_utils import wait_for_condition
 from ray import serve
 from ray.serve.config import BackendConfig, ReplicaConfig
 
@@ -53,9 +54,11 @@ def test_controller_failure(serve_instance):
     client.create_backend("controller_failure:v2", function)
     client.set_traffic("controller_failure", {"controller_failure:v2": 1.0})
 
-    for _ in range(10):
+    def check_controller_failure():
         response = request_with_retries("/controller_failure", timeout=30)
-        assert response.text == "hello2"
+        return response.text == "hello2"
+
+    wait_for_condition(check_controller_failure)
 
     def function(_):
         return "hello3"
@@ -124,7 +127,7 @@ def test_worker_restart(serve_instance):
     client = serve_instance
 
     class Worker1:
-        def __call__(self):
+        def __call__(self, *args):
             return os.getpid()
 
     client.create_backend("worker_failure:v1", Worker1)
@@ -176,7 +179,7 @@ def test_worker_replica_failure(serve_instance):
                 while True:
                     pass
 
-        def __call__(self):
+        def __call__(self, *args):
             pass
 
     temp_path = os.path.join(tempfile.gettempdir(),
@@ -223,8 +226,9 @@ def test_create_backend_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.create_backend.remote("my_backend", backend_config,
-                                             replica_config))
+            controller.wait_for_goal.remote(
+                controller.create_backend.remote("my_backend", backend_config,
+                                                 replica_config)))
 
     assert len(ray.get(controller.get_all_backends.remote())) == 1
     client.create_endpoint(
@@ -245,8 +249,9 @@ def test_create_endpoint_idempotent(serve_instance):
 
     for i in range(10):
         ray.get(
-            controller.create_endpoint.remote(
-                "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"]))
+            controller.wait_for_goal.remote(
+                controller.create_endpoint.remote(
+                    "my_endpoint", {"my_backend": 1.0}, "/my_route", ["GET"])))
 
     assert len(ray.get(controller.get_all_endpoints.remote())) == 1
     assert requests.get("http://127.0.0.1:8000/my_route").text == "hello"

@@ -70,24 +70,33 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                                                                     gcs_client_))
               : std::dynamic_pointer_cast<ObjectDirectoryInterface>(
                     std::make_shared<ObjectDirectory>(main_service, gcs_client_))),
-      object_manager_(main_service, self_node_id_, object_manager_config,
-                      object_directory_,
-                      [this](const ObjectID &object_id, const std::string &spilled_url,
-                             std::function<void(const ray::Status &)> callback) {
-                        node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
-                            object_id, spilled_url, callback);
-                      },
-                      [this](int64_t num_bytes_to_spill, int64_t min_bytes_to_spill) {
-                        return node_manager_.GetLocalObjectManager().SpillObjectsOfSize(
-                            num_bytes_to_spill, min_bytes_to_spill);
-                      },
-                      [this]() {
-                        // Post on the node manager's event loop since this
-                        // will be called from the plasma store thread.
-                        main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
-                      }),
+      object_manager_(
+          main_service, self_node_id_, object_manager_config, object_directory_,
+          [this](const ObjectID &object_id, const std::string &spilled_url,
+                 std::function<void(const ray::Status &)> callback) {
+            node_manager_.GetLocalObjectManager().AsyncRestoreSpilledObject(
+                object_id, spilled_url, callback);
+          },
+          [this]() {
+            // This callback is called from the plasma store thread.
+            // NOTE: It means the local object manager should be thread-safe.
+            main_service_.post([this]() {
+              node_manager_.GetLocalObjectManager().SpillObjectUptoMaxThroughput();
+            });
+            return node_manager_.GetLocalObjectManager().IsSpillingInProgress();
+          },
+          [this]() {
+            // Post on the node manager's event loop since this
+            // callback is called from the plasma store thread.
+            // This will help keep node manager lock-less.
+            main_service_.post([this]() { node_manager_.TriggerGlobalGC(); });
+          }),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
-                    gcs_client_, object_directory_),
+                    gcs_client_, object_directory_,
+                    [this](const ObjectID &object_id) {
+                      // It is used by local_object_store.
+                      return object_manager_.IsPlasmaObjectSpillable(object_id);
+                    }),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -120,19 +129,20 @@ void Raylet::Stop() {
 ray::Status Raylet::RegisterGcs() {
   auto register_callback = [this](const Status &status) {
     RAY_CHECK_OK(status);
-    RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.node_manager_port() << " object manager at "
-                   << self_node_info_.node_manager_address() << ":"
-                   << self_node_info_.object_manager_port() << ", hostname "
-                   << self_node_info_.node_manager_hostname();
+    RAY_LOG(INFO) << "Raylet of id, " << self_node_id_
+                  << " started. Raylet consists of node_manager and object_manager."
+                  << " node_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.node_manager_port()
+                  << " object_manager address: " << self_node_info_.node_manager_address()
+                  << ":" << self_node_info_.object_manager_port()
+                  << " hostname: " << self_node_info_.node_manager_address();
 
     // Add resource information.
     const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
-    std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;
+    std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> resources;
     for (const auto &resource_pair :
          node_manager_config.resource_config.GetResourceMap()) {
-      auto resource = std::make_shared<gcs::ResourceTableData>();
+      auto resource = std::make_shared<rpc::ResourceTableData>();
       resource->set_resource_capacity(resource_pair.second);
       resources.emplace(resource_pair.first, resource);
     }
