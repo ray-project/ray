@@ -1,6 +1,9 @@
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
+    from ray import JobID
+    from ray import NodeID
+    from ray import PlacementGroupID
 
 class ClientWorkerPropertyAPI:
     """Emulates the properties of the ray.worker object for the client"""
@@ -14,27 +17,32 @@ class ClientWorkerPropertyAPI:
         from ray.runtime_context import RuntimeContext
         return RuntimeContext(self)
 
+    def _fetch_runtime_context(self):
+        import ray.core.generated.ray_client_pb2 as ray_client_pb2
+        return self.worker.get_cluster_info(
+            ray_client_pb2.ClusterInfoType.RUNTIME_CONTEXT)
+
     @property
     def mode(self):
         from ray.worker import SCRIPT_MODE
         return SCRIPT_MODE
 
     @property
-    def current_job_id(self):
-        pass
+    def current_job_id(self) -> "JobID":
+        from ray import JobID
+        return JobID(self._fetch_runtime_context().job_id)
 
     @property
-    def current_node_id(self):
-        pass
+    def current_node_id(self) -> "NodeID":
+        from ray import NodeID
+        return NodeID(self._fetch_runtime_context().node_id)
 
     @property
-    def current_task_id(self):
-        pass
+    def placement_group_id(self) -> "PlacementGroupID":
+        from ray import PlacementGroupID
+        return PlacementGroupID(
+            self._fetch_runtime_context().placement_group_id)
 
     @property
-    def placement_group_id(self):
-        pass
-
-    @property
-    def should_capture_child_tasks_in_placement_group(self):
-        pass
+    def should_capture_child_tasks_in_placement_group(self) -> bool:
+        return self._fetch_runtime_context().capture_client_tasks

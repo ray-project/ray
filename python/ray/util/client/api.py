@@ -233,13 +233,14 @@ class ClientAPI:
         return self.worker.get_cluster_info(
             ray_client_pb2.ClusterInfoType.AVAILABLE_RESOURCES)
 
+
     def get_runtime_context(self):
         """Return a Ray RuntimeContext describing the state on the server
 
         Returns:
             A RuntimeContext wrapping a client making get_cluster_info calls.
         """
-        return ClientWorkerPropertyAPI(self).build_runtime_context()
+        return ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
     def _internal_kv_initialized(self) -> bool:
         """Hook for internal_kv._internal_kv_initialized."""
