@@ -89,7 +89,7 @@ def get_cluster_owner_reference(
         "kind": cluster_resource["kind"],
         "blockOwnerDeletion": True,
         "controller": True,
-        "name": cluster_resource["name"],
+        "name": cluster_resource["metadata"]["name"],
         "uid": cluster_resource["metadata"]["uid"]
     }
 
