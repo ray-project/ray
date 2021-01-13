@@ -857,7 +857,7 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
 
 def test_get_non_existing_named_actor(ray_start_regular_shared):
     with pytest.raises(ValueError):
-        bad = ray.get_actor("non_existing_actor")
+        _ = ray.get_actor("non_existing_actor")
 
 
 @pytest.mark.skip(
