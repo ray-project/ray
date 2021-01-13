@@ -1,11 +1,11 @@
 import logging
 
 import ray
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import apply_grad_clipping, \
     vf_preds_fetches, ValueNetworkMixin
 from ray.rllib.utils.framework import try_import_torch
@@ -354,7 +354,7 @@ MAMLTorchPolicy = build_policy_class(
     stats_fn=maml_stats,
     optimizer_fn=maml_optimizer_fn,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,

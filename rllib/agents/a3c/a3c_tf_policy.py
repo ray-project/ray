@@ -3,14 +3,30 @@
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import ValueNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.postprocessing import compute_advantages, \
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_ops import explained_variance
 
 tf1, tf, tfv = try_import_tf()
+
+
+def postprocess_advantages(policy,
+                           sample_batch,
+                           other_agent_batches=None,
+                           episode=None):
+
+    # Stub serving backward compatibility.
+    deprecation_warning(
+        old="rllib.agents.a3c.a3c_tf_policy.postprocess_advantages",
+        new="rllib.evaluation.postprocessing.compute_gae_for_sample_batch",
+        error=False)
+
+    return compute_gae_for_sample_batch(policy, sample_batch,
+                                        other_agent_batches, episode)
 
 
 class A3CLoss:
@@ -44,26 +60,6 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
                           policy.config["vf_loss_coeff"],
                           policy.config["entropy_coeff"])
     return policy.loss.total_loss
-
-
-def postprocess_advantages(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
-    completed = sample_batch[SampleBatch.DONES][-1]
-    if completed:
-        last_r = 0.0
-    else:
-        next_state = []
-        for i in range(policy.num_state_tensors()):
-            next_state.append(sample_batch["state_out_{}".format(i)][-1])
-        last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                               sample_batch[SampleBatch.ACTIONS][-1],
-                               sample_batch[SampleBatch.REWARDS][-1],
-                               *next_state)
-    return compute_advantages(
-        sample_batch, last_r, policy.config["gamma"], policy.config["lambda"],
-        policy.config["use_gae"], policy.config["use_critic"])
 
 
 def add_value_function_fetch(policy):
@@ -111,7 +107,7 @@ A3CTFPolicy = build_tf_policy(
     stats_fn=stats,
     grad_stats_fn=grad_stats,
     gradients_fn=clip_gradients,
-    postprocess_fn=postprocess_advantages,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_action_fetches_fn=add_value_function_fetch,
     before_loss_init=setup_mixins,
     mixins=[ValueNetworkMixin, LearningRateSchedule])

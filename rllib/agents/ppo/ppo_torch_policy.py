@@ -7,9 +7,9 @@ import numpy as np
 from typing import Dict, List, Type, Union
 
 import ray
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
+    Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
@@ -295,7 +295,7 @@ PPOTorchPolicy = build_policy_class(
     loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=postprocess_ppo_gae,
+    postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     before_loss_init=setup_mixins,
