@@ -50,6 +50,7 @@ DEFAULT_CONFIG = with_common_config({
         "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
     },
+    #
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.
     "normalize_actions": True,

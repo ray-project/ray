@@ -6,12 +6,14 @@ import gym
 from gym.spaces import Box, Discrete
 from functools import partial
 import logging
+import numpy as np
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
+from ray.rllib.agents.ddpg.noop_model import NoopModel, TorchNoopModel
 from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
@@ -56,18 +58,26 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     """
     # With separate state-preprocessor (before obs+action concat).
     if config["use_state_preprocessor"]:
-        num_outputs = 256  # Flatten last Conv2D to this many nodes.
+        #num_outputs = 256  # Flatten last Conv2D to this many nodes.
+        default_model = None  # Custom model or catalog picks default one.
+        num_outputs = None
     # No separate state-preprocessor: concat obs+actions right away.
     else:
-        num_outputs = 0
+        default_model = TorchNoopModel if config["framework"] == "torch" \
+            else NoopModel
+        num_outputs = int(np.product(obs_space.shape))
+        #num_outputs = 0
         # No state preprocessor: fcnet_hiddens should be empty.
-        if config["model"]["fcnet_hiddens"]:
-            logger.warning(
-                "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
-                " will be set to an empty list! Any hidden layer sizes are "
-                "defined via `policy_model.fcnet_hiddens` and "
-                "`Q_model.fcnet_hiddens`.")
-            config["model"]["fcnet_hiddens"] = []
+        #if config["model"]["fcnet_hiddens"]:
+        #    if not config["Q_model"].get("fcnet_hiddens") and \
+        #            not config["policy_model"].get("fcnet_hiddens"):
+        #        logger.warning(
+        #            "When not using a state-preprocessor with SAC, "
+        #            "`config[model][fcnet_hiddens]` will be set to an empty "
+        #            "list! Hidden layer sizes should be defined via "
+        #            "`policy_model.fcnet_hiddens` and "
+        #            "`Q_model.fcnet_hiddens`.")
+        #    config["model"]["fcnet_hiddens"] = []
 
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
@@ -80,6 +90,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
         framework=config["framework"],
         model_interface=SACTorchModel
         if config["framework"] == "torch" else SACTFModel,
+        default_model=default_model,
         name="sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],
@@ -101,6 +112,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
         framework=config["framework"],
         model_interface=SACTorchModel
         if config["framework"] == "torch" else SACTFModel,
+        default_model=default_model,
         name="target_sac_model",
         actor_hidden_activation=config["policy_model"]["fcnet_activation"],
         actor_hiddens=config["policy_model"]["fcnet_hiddens"],

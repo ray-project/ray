@@ -358,19 +358,26 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
     Returns:
         Tuple[LocalOptimizer]: The local optimizers to use for policy training.
     """
+    all_vars = policy.model.variables()
+    policy_vars = policy.model.policy_variables()
+    critic_vars = policy.model.q_variables()
+
+    #TODO: make it configurable, whether policy- or critic optim should update
+    # state-preprocessor variables (or both!).
+    # for now: policy optim does this.
     policy.actor_optim = torch.optim.Adam(
-        params=policy.model.policy_variables(),
+        params=list(set(all_vars) - set(critic_vars)),#policy.model.policy_variables(),
         lr=config["optimization"]["actor_learning_rate"],
         eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
     )
 
-    critic_split = len(policy.model.q_variables())
+    critic_split = len(critic_vars)
     if config["twin_q"]:
         critic_split //= 2
 
     policy.critic_optims = [
         torch.optim.Adam(
-            params=policy.model.q_variables()[:critic_split],
+            params=critic_vars[:critic_split],
             lr=config["optimization"]["critic_learning_rate"],
             eps=1e-7,  # to match tf.keras.optimizers.Adam's epsilon default
         )
@@ -378,7 +385,7 @@ def optimizer_fn(policy: Policy, config: TrainerConfigDict) -> \
     if config["twin_q"]:
         policy.critic_optims.append(
             torch.optim.Adam(
-                params=policy.model.q_variables()[critic_split:],
+                params=critic_vars[critic_split:],
                 lr=config["optimization"]["critic_learning_rate"],
                 eps=1e-7,  # to match tf.keras.optimizers.Adam's eps default
             ))

@@ -52,7 +52,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -69,10 +69,11 @@ class TestSAC(unittest.TestCase):
         config["learning_starts"] = 0
         config["prioritized_replay"] = True
         num_iterations = 1
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="torch"):#TODO
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                    "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
+                    #"Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
+                    "MsPacmanNoFrameskip-v4"
             ]:
                 print("Env={}".format(env))
                 config["use_state_preprocessor"] = \
