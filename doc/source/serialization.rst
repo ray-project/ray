@@ -48,7 +48,7 @@ Serialization notes
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
 Customized Serialization
-____________________
+________________________
 
 Sometimes you may want to customize your serialization process because
 the default serializer used by Ray (pickle5 + cloudpickle) does
