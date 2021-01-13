@@ -217,8 +217,10 @@ class ModelCatalog:
                     else GaussianSquashedGaussian
                 if np.any(action_space.bounded_below &
                           action_space.bounded_above):
-                    if any(action_space.low != action_space.low[0]) or \
-                            any(action_space.high != action_space.high[0]):
+                    lo = np.min(action_space.low)
+                    hi = np.max(action_space.high)
+                    if any(action_space.low != lo) or \
+                            any(action_space.high != hi):
                         raise UnsupportedSpaceException(
                             "The Box space has non-matching low/high value(s)."
                             " Make sure that all low/high values are the same "
@@ -226,10 +228,7 @@ class ModelCatalog:
                             "the different dimensions must have different "
                             "low/high values, try splitting up your space into"
                             " a Tuple or Dict space.")
-                    dist_cls = partial(
-                        cls,
-                        low=action_space.low[0],
-                        high=action_space.high[0])
+                    dist_cls = partial(cls, low=lo, high=hi)
                     num_inputs = cls.required_model_output_shape(
                         action_space, config)
                     return dist_cls, num_inputs
