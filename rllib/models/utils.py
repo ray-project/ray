@@ -149,6 +149,7 @@ def get_initializer(name, framework="tf"):
 class Synchronizable:
     """Interface for classes requiring instance-level locking for methods.
     """
+
     def __init__(self):
         self.synchronized_lock = threading.RLock()
 

@@ -33,7 +33,8 @@ class ModelV2:
                value_function() -> V(s)
     """
 
-    def __init__(self, obs_space: gym.spaces.Space, action_space: gym.spaces.Space, num_outputs: int,
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str, framework: str):
         """Initializes a ModelV2 object.
 
@@ -230,11 +231,11 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state
 
-    def call_with_value(
-            self,
-            input_dict: Dict[str, TensorType],
-            state: List[Any] = None,
-            seq_lens: TensorType = None) -> (TensorType, TensorType, List[TensorType]):
+    def call_with_value(self,
+                        input_dict: Dict[str, TensorType],
+                        state: List[Any] = None,
+                        seq_lens: TensorType = None
+                        ) -> (TensorType, TensorType, List[TensorType]):
         """Used if both model's output and -value are required (thread safe).
         """
         model_out, state = self.__call__(input_dict, state, seq_lens)
@@ -261,8 +262,10 @@ class ModelV2:
         return ret
 
     @PublicAPI
-    def from_batch_with_value(self, train_batch: SampleBatch,
-                              is_training: bool = True) -> (TensorType, TensorType, List[TensorType]):
+    def from_batch_with_value(self,
+                              train_batch: SampleBatch,
+                              is_training: bool = True
+                              ) -> (TensorType, TensorType, List[TensorType]):
         """Calls model and its value function in a thread-safe manner.
 
         All this does is unpack the tensor batch to call this model with the
@@ -275,7 +278,8 @@ class ModelV2:
         while "state_in_{}".format(i) in train_batch:
             states.append(train_batch["state_in_{}".format(i)])
             i += 1
-        ret = self.call_with_value(train_batch, states, train_batch.get("seq_lens"))
+        ret = self.call_with_value(train_batch, states,
+                                   train_batch.get("seq_lens"))
 
         del train_batch["is_training"]
         return ret

@@ -79,7 +79,9 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin:
     def _value(self, obs):
-        _, value, _ = self.model.call_with_value({"obs": torch.Tensor([obs]).to(self.device)}, [], [1])
+        _, value, _ = self.model.call_with_value({
+            "obs": torch.Tensor([obs]).to(self.device)
+        }, [], [1])
         return value[0]
 
 
