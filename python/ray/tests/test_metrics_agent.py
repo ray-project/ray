@@ -299,6 +299,21 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
             assert "Attempt to register measure" not in line
 
 
+def test_custom_metrics_tag_validation(ray_start_regular_shared):
+    with pytest.raises(TypeError):
+        Count("name", tag_keys="a")
+    with pytest.raises(TypeError):
+        Count("name", tag_keys=(1, ))
+
+    metric = Count("name", tag_keys=("a", ))
+    with pytest.raises(ValueError):
+        metric.set_default_tags({"a": "1", "c": "2"})
+    with pytest.raises(TypeError):
+        metric.set_default_tags({"a": 1})
+    with pytest.raises(TypeError):
+        metric.record(1.0, {"a": 1})
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))
