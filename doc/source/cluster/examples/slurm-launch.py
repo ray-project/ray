@@ -11,13 +11,13 @@ import time
 from pathlib import Path
 
 template_file = Path(__file__) / "slurm-template.txt"
-JOB_NAME = "{{JOB_NAME}}"
-NUM_NODES = "{{NUM_NODES}}"
-NUM_GPUS_PER_NODE = "{{NUM_GPUS_PER_NODE}}"
-PARTITION_OPTION = "{{PARTITION_OPTION}}"
-COMMAND_PLACEHOLDER = "{{COMMAND_PLACEHOLDER}}"
-GIVEN_NODE = "{{GIVEN_NODE}}"
-LOAD_ENV = "{{LOAD_ENV}}"
+JOB_NAME = "${JOB_NAME}"
+NUM_NODES = "${NUM_NODES}"
+NUM_GPUS_PER_NODE = "${NUM_GPUS_PER_NODE}"
+PARTITION_OPTION = "${PARTITION_OPTION}"
+COMMAND_PLACEHOLDER = "${COMMAND_PLACEHOLDER}"
+GIVEN_NODE = "${GIVEN_NODE}"
+LOAD_ENV = "${LOAD_ENV}"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
