@@ -7,9 +7,11 @@ import inspect
 import threading
 import time
 import uuid
-from collections import defaultdict, deque, Mapping, Sequence
+from collections import defaultdict, deque
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from threading import Thread
+from typing import Optional
 
 import numpy as np
 import ray
@@ -123,10 +125,16 @@ class warn_if_slow:
     """
 
     DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
+    DEFAULT_MESSAGE = "The `{name}` operation took {duration:.3f} s, " \
+                      "which may be a performance bottleneck."
 
-    def __init__(self, name, threshold=None):
+    def __init__(self,
+                 name: str,
+                 threshold: Optional[float] = None,
+                 message: Optional[str] = None):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
 
     def __enter__(self):
@@ -137,10 +145,9 @@ class warn_if_slow:
         now = time.time()
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
-            _duration = now - self.start
+            duration = now - self.start
             logger.warning(
-                f"The `{self.name}` operation took {_duration:.3f} s, "
-                "which may be a performance bottleneck.")
+                self.message.format(name=self.name, duration=duration))
 
 
 class Tee(object):

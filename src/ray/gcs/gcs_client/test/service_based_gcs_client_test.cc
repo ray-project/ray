@@ -516,7 +516,7 @@ class ServiceBasedGcsClientTest : public ::testing::Test {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe) {
+      const gcs::ItemCallback<rpc::WorkerTableData> &subscribe) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
@@ -960,8 +960,7 @@ TEST_F(ServiceBasedGcsClientTest, TestStats) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerInfo) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));
@@ -1217,8 +1216,7 @@ TEST_F(ServiceBasedGcsClientTest, TestTaskTableResubscribe) {
 TEST_F(ServiceBasedGcsClientTest, TestWorkerTableResubscribe) {
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
-  auto on_subscribe = [&worker_failure_count](const WorkerID &worker_id,
-                                              const rpc::WorkerTableData &result) {
+  auto on_subscribe = [&worker_failure_count](const rpc::WorkerTableData &result) {
     ++worker_failure_count;
   };
   ASSERT_TRUE(SubscribeToWorkerFailures(on_subscribe));

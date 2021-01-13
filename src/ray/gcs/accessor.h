@@ -33,12 +33,6 @@ class ActorInfoAccessor {
  public:
   virtual ~ActorInfoAccessor() = default;
 
-  /// Get all actor specification from GCS synchronously.
-  ///
-  /// \param actor_table_data_list The container to hold the actor specification.
-  /// \return Status
-  virtual Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) = 0;
-
   /// Get actor specification from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
@@ -692,7 +686,7 @@ class WorkerInfoAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Report a worker failure to GCS asynchronously.
