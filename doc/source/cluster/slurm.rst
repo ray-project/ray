@@ -67,7 +67,8 @@ proper resources. In this example, we ask for at least 5 CPUs and 5 GB of memory
   #SBATCH --cpus-per-task=5
   #SBATCH --mem-per-cpu=1GB
   ### Similarly, you can also specify the number of GPUs per node.
-  ### Modify this according to your Ray workload.
+  ### Modify this according to your Ray workload. Sometimes this
+  ### should be 'gres' instead.
   #SBATCH --gpus-per-task=1
 
 
