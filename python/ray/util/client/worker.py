@@ -38,7 +38,7 @@ class Worker:
                  conn_str: str = "",
                  secure: bool = False,
                  metadata: List[Tuple[str, str]] = None,
-                 connection_retries=3):
+                 connection_retries: int = 3):
         """Initializes the worker side grpc client.
 
         Args:
