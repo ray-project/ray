@@ -23,6 +23,7 @@ def memory_summary(node_manager_address=None, node_manager_port=None):
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
 <<<<<<< HEAD
+<<<<<<< HEAD
     if (node_manager_address is None or node_manager_port is None):
         raylet = ray.nodes()[0]
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
@@ -33,6 +34,12 @@ def memory_summary(node_manager_address=None, node_manager_port=None):
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                         ray.nodes()[0]["NodeManagerPort"])
 >>>>>>> Access memory info in ray memory via GlobalStateAccessor rather than calling ray.init()
+=======
+    if (node_manager_address is None or node_manager_port is None):
+        raylet = ray.nodes()[0]
+        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                        raylet["NodeManagerPort"])
+>>>>>>> Modify ray status cli so that it doesn't start a new job via ray.init()
     else:
         raylet_address = "{}:{}".format(node_manager_address,
                                         node_manager_port)

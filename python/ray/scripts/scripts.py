@@ -20,10 +20,15 @@ from ray.autoscaler._private.commands import (
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
 <<<<<<< HEAD
+<<<<<<< HEAD
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 =======
 >>>>>>> Access memory info in ray memory via GlobalStateAccessor rather than calling ray.init()
+=======
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
+>>>>>>> Modify ray status cli so that it doesn't start a new job via ray.init()
 from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
@@ -1372,6 +1377,7 @@ def memory(address, redis_password):
     state = GlobalState()
     state._initialize_global_state(address, redis_password)
 <<<<<<< HEAD
+<<<<<<< HEAD
     raylet = state.node_table()[0]
     print(
         ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
@@ -1383,6 +1389,12 @@ def memory(address, redis_password):
             node_table[0]["NodeManagerAddress"],
             node_table[0]["NodeManagerPort"]))
 >>>>>>> Access memory info in ray memory via GlobalStateAccessor rather than calling ray.init()
+=======
+    raylet = state.node_table()[0]
+    print(
+        ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
+                                                 raylet["NodeManagerPort"]))
+>>>>>>> Modify ray status cli so that it doesn't start a new job via ray.init()
 
 
 @cli.command()
