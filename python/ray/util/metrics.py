@@ -72,14 +72,19 @@ class Metric:
         """
         assert self._metric is not None
         final_tags = {}
+        tags_copy = tags.copy()
         for tag_key in self._tag_keys:
             # Prefer passed tags over default tags.
             if tags is not None and tag_key in tags:
-                final_tags[tag_key] = tags[tag_key]
+                final_tags[tag_key] = tags_copy.pop(tag_key)
             elif tag_key in self._default_tags:
                 final_tags[tag_key] = self._default_tags[tag_key]
             else:
                 raise ValueError(f"Missing value for tag key {tag_key}.")
+
+        if len(tags_copy) > 0:
+            raise ValueError(
+                f"Unrecognized tag keys: {list(tags_copy.keys())}.")
 
         self._metric.record(value, tags=final_tags)
 
