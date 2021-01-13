@@ -131,11 +131,6 @@ ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status ServiceBasedActorInfoAccessor::GetAll(
-    std::vector<ActorTableData> *actor_table_data_list) {
-  return Status::Invalid("Not implemented");
-}
-
 Status ServiceBasedActorInfoAccessor::AsyncGetStates(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorStates> &callback) {
   RAY_LOG(DEBUG) << "Getting actor states, actor id = " << actor_id

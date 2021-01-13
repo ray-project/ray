@@ -12,6 +12,7 @@ from ray.util.placement_group import (
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
+from ray._private.client_mode_hook import client_mode_hook
 from ray import cross_language
 from ray.util.inspect import (
     is_function_or_method,
@@ -22,6 +23,7 @@ from ray.util.inspect import (
 logger = logging.getLogger(__name__)
 
 
+@client_mode_hook
 def method(*args, **kwargs):
     """Annotate an actor method.
 
