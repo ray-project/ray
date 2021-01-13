@@ -70,11 +70,10 @@ def parse_resource_demands(resource_load_by_shape):
 
 
 class Monitor:
-    """A monitor for Ray processes.
+    """Autoscaling monitor.
 
-    The monitor is in charge of cleaning up the tables in the global state
-    after processes have died. The monitor is currently not responsible for
-    detecting component failures.
+    This process periodically collects stats from the GCS and triggers
+    autoscaler updates.
 
     Attributes:
         redis: A connection to the Redis server.
