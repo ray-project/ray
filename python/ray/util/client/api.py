@@ -240,9 +240,13 @@ class ClientAPI:
         """Hook for internal_kv._internal_kv_get."""
         return self.worker.internal_kv_get(as_bytes(key))
 
-    def _internal_kv_put(self, key: bytes, value: bytes) -> bool:
+    def _internal_kv_put(self,
+                         key: bytes,
+                         value: bytes,
+                         overwrite: bool = False) -> bool:
         """Hook for internal_kv._internal_kv_put."""
-        return self.worker.internal_kv_put(as_bytes(key), as_bytes(value))
+        return self.worker.internal_kv_put(
+            as_bytes(key), as_bytes(value), overwrite)
 
     def _internal_kv_del(self, key: bytes) -> None:
         """Hook for internal_kv._internal_kv_del."""

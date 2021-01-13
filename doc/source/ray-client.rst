@@ -21,7 +21,7 @@ This runs ``ray.init()`` with default options and exposes the client gRPC port a
 From here, another Ray script can access that server from a networked machine with ``ray.util.connect()``
 
 .. code-block:: python
-   
+
    import ray
    import ray.util
 
@@ -36,7 +36,6 @@ From here, another Ray script can access that server from a networked machine wi
    #....
   
 When the client disconnects, any object or actor references held by the server on behalf of the client are dropped, as if directly disconnecting from the cluster.
-
 
 ============
 Known issues
