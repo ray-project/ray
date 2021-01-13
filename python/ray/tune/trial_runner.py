@@ -118,7 +118,10 @@ class TrialRunner:
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._pending_trial_queue_times = {}
-        self._max_pending_trials = 1  # Can be updated in `self.add_trial()`
+
+        # Setting this to 0 still allows adding one new (pending) trial,
+        # but it will prevent us from trying to fill the trial list
+        self._max_pending_trials = 0  # Can be updated in `self.add_trial()`
 
         self._metric = metric
 
@@ -397,6 +400,7 @@ class TrialRunner:
 
         may_handle_events = True
         process_events_timeout = None
+        pending_trials_processed = 0
 
         # This will get the next trial we should start. This might block
         # and wait for the trial queue to be replenished
@@ -404,6 +408,9 @@ class TrialRunner:
         next_trial = self._get_next_trial()  # blocking
         if next_trial:
             next_trial_old_status = next_trial.status
+
+            if next_trial_old_status == Trial.PENDING:
+                pending_trials_processed += 1
 
             success, in_grace_period = _try_start_trial(next_trial)
             if success:
@@ -415,19 +422,19 @@ class TrialRunner:
         # If the next trial was pending or no new next trial was created,
         # also try to start all other pending trials
         if next_trial_old_status == Trial.PENDING or not next_trial:
-            # Try to start all pending trials
-            # Note that the number of pending trials is limited by
-            # `self._max_pending_trials`
-            pending_trials_processed = 0
             # Loop through self._trials as we might have new trials
             for pending_trial in self._trials:
+                if pending_trials_processed >= self._max_pending_trials:
+                    # We may have more pending trials than we want if we're
+                    # resuming an experiment. In that case we only try
+                    # to start at most that many trials.
+                    break
+
                 if pending_trial.status != Trial.PENDING:
                     continue
 
                 if pending_trial is next_trial:
-                    # We already tried to start this trial. Note it might
-                    # be still pending if we're waiting for resources
-                    # to become available.
+                    # We already tried to start this trial.
                     continue
 
                 success, in_grace_period = _try_start_trial(pending_trial)
@@ -438,17 +445,13 @@ class TrialRunner:
                         process_events_timeout = 0.1
 
                 pending_trials_processed += 1
-                if pending_trials_processed >= self._max_pending_trials:
-                    # We may have more pending trials than we want if we're
-                    # resuming an experiment. In that case we only try
-                    # to start at most that many trials.
-                    break
 
-        if may_handle_events and self.trial_executor.get_running_trials():
-            # Might be blocking
-            self._process_events(timeout=process_events_timeout)
-        else:
-            self.trial_executor.on_no_available_trials(self)
+        if may_handle_events:
+            if self.trial_executor.get_running_trials():
+                # Might be blocking
+                self._process_events(timeout=process_events_timeout)
+            else:
+                self.trial_executor.on_no_available_trials(self)
 
         self._stop_experiment_if_needed()
 
