@@ -19,6 +19,8 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
 from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
@@ -1366,11 +1368,10 @@ def memory(address, redis_password):
         address = services.get_ray_address_to_use_or_die()
     state = GlobalState()
     state._initialize_global_state(address, redis_password)
-    node_table = state.node_table()
+    raylet = state.node_table()[0]
     print(
-        ray.internal.internal_api.memory_summary(
-            node_table[0]["NodeManagerAddress"],
-            node_table[0]["NodeManagerPort"]))
+        ray.internal.internal_api.memory_summary(raylet["NodeManagerAddress"],
+                                                 raylet["NodeManagerPort"]))
 
 
 @cli.command()
@@ -1379,13 +1380,21 @@ def memory(address, redis_password):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def status(address):
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
-    print(debug_status())
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    print(debug_status(status, error))
 
 
 @cli.command(hidden=True)

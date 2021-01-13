@@ -22,10 +22,10 @@ def memory_summary(node_manager_address=None, node_manager_port=None):
 
     # We can ask any Raylet for the global memory info, that Raylet internally
     # asks all nodes in the cluster for memory stats.
-    if (node_manager_address is None and node_manager_port is None):
+    if (node_manager_address is None or node_manager_port is None):
         raylet = ray.nodes()[0]
         raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                        ray.nodes()[0]["NodeManagerPort"])
+                                        raylet["NodeManagerPort"])
     else:
         raylet_address = "{}:{}".format(node_manager_address,
                                         node_manager_port)
