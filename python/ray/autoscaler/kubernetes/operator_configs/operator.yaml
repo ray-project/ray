@@ -33,8 +33,10 @@ spec:
   serviceAccountName: ray-operator-serviceaccount
   containers:
   - name: ray
-    imagePullPolicy: Always
-    image: rayproject/ray:nightly
+    imagePullPolicy: IfNotPresent
+    #imagePullPolicy: Always
+    image: ray-dev:latest
+    #image: rayproject/ray:nightly
     command: ["ray-operator"]
     env:
     - name: RAY_OPERATOR_POD_NAMESPACE

@@ -39,15 +39,6 @@ PROVIDER_CONFIG = {
 
 root_logger = logging.getLogger("ray")
 root_logger.setLevel(logging.getLevelName("DEBUG"))
-"""
-ownerReferences:
-  - apiVersion: apps/v1
-    controller: true
-    blockOwnerDeletion: true
-    kind: ReplicaSet
-    name: my-repset
-    uid: d9607e19-f88f-11e6-a518-42010a800195
-"""
 
 
 def config_path(cluster_name: str) -> str:
@@ -102,7 +93,6 @@ def get_cluster_owner_reference(cluster_name: str,
     return {
         "apiVersion": "apps/v1",
         "controller": True,
-        "blockOwnerDeletion": True,
         "kind": "RayCluster",
         "name": cluster_name,
         "uid": cluster_uid
