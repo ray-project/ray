@@ -419,12 +419,12 @@ class BackendState:
             if (not desired_info or
                     desired_info.backend_config.num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self.goals.get(backend_tag))
+                completed_goals.append(self.backend_goals.get(backend_tag))
 
             # Check for a non-zero number of backends
             if desired_info and existing_info and desired_info.backend_config.\
                     num_replicas == len(existing_info):
-                completed_goals.append(self.goals.get(backend_tag))
+                completed_goals.append(self.backend_goals.get(backend_tag))
         return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
