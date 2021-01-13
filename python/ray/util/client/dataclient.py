@@ -75,9 +75,11 @@ class DataClient:
                 # Gracefully shutting down
                 logger.info("Cancelling data channel")
             elif e.code() == grpc.StatusCode.UNAVAILABLE:
-                # TODO(barakmich): The server may have dropped. In theory, we can retry, as per
-                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html
-                # but in practice we may need to think about the correct semantics here.
+                # TODO(barakmich): The server may have
+                # dropped. In theory, we can retry, as per
+                # https://grpc.github.io/grpc/core/md_doc_statuscodes.html but
+                # in practice we may need to think about the correct semantics
+                # here.
                 logger.info("Server disconnected from data channel")
             else:
                 logger.error(
