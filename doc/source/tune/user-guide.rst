@@ -688,6 +688,8 @@ These are the environment variables Ray Tune currently considers:
   experiment state is checkpointed. If not set this will default to ``10``.
 * **TUNE_MAX_LEN_IDENTIFIER**: Maximum length of trial subdirectory names (those
   with the parameter values in them)
+* **TUNE_MAX_PENDING_TRIALS_PG**: Maximum number of pending trials when placement groups are used. Defaults
+  to ``1000``.
 * **TUNE_RESULT_DIR**: Directory where Ray Tune trial results are stored. If this
   is not set, ``~/ray_results`` will be used.
 * **TUNE_RESULT_BUFFER_LENGTH**: Ray Tune can buffer results from trainables before they are passed

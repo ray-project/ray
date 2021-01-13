@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 from datetime import datetime
@@ -12,6 +12,7 @@ import warnings
 from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
+from ray.tune.resources import PlacementGroupFactory
 from ray.tune.stopper import NoopStopper
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
@@ -31,7 +32,9 @@ MAX_DEBUG_TRIALS = 20
 # Seconds we wait for a trial to come up before we make blocking calls
 # to process events
 TUNE_TRIAL_STARTUP_GRACE_PERIOD = float(
-    os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", "10."))
+    os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
+# Maximum number of pending trials when using placement groups
+TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +118,7 @@ class TrialRunner:
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
         self._pending_trial_queue_times = {}
+        self._max_pending_trials = 1  # Can be updated in `self.add_trial()`
 
         self._metric = metric
 
@@ -149,6 +153,7 @@ class TrialRunner:
         self._trials = []
         self._cached_trial_decisions = {}
         self._queued_trial_decisions = {}
+
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
         self._local_checkpoint_dir = local_checkpoint_dir
@@ -356,23 +361,20 @@ class TrialRunner:
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
-        next_trial = self._get_next_trial()  # blocking
-        may_handle_events = True
-        process_events_timeout = None
-        if next_trial is not None:
+
+        def _try_start_trial(trial: Trial) -> Tuple[bool, bool]:
             with warn_if_slow("start_trial"):
-                if self.trial_executor.start_trial(next_trial):
+                if self.trial_executor.start_trial(trial):
                     self._callbacks.on_trial_start(
                         iteration=self._iteration,
                         trials=self._trials,
-                        trial=next_trial)
+                        trial=trial)
                     # If we successfully started a new trial, only process
                     # events in the next iteration of step(). This is to
                     # make sure we first start all required trials before
                     # we wait for their results
-                    may_handle_events = False
-                    self._pending_trial_queue_times.pop(
-                        next_trial.trial_id, None)
+                    self._pending_trial_queue_times.pop(trial.trial_id, None)
+                    return True, False
                 else:
                     # If trial startup wasn't successful (e.g. because the
                     # placement group is still pending), we'll process
@@ -380,10 +382,67 @@ class TrialRunner:
                     # for processing events, as the placement groups might
                     # come up, and we would want to start the trial then.
                     queue_time = self._pending_trial_queue_times.setdefault(
-                        next_trial.trial_id, time.time())
+                        trial.trial_id, time.time())
                     if time.time(
                     ) - queue_time < TUNE_TRIAL_STARTUP_GRACE_PERIOD:
+                        return False, True
+                    return False, False
+
+        pending_trials = [t for t in self._trials if t.status == Trial.PENDING]
+        num_pending_trials = len(pending_trials)
+        while num_pending_trials < self._max_pending_trials:
+            if not self._update_trial_queue(blocking=False):
+                break
+            num_pending_trials += 1
+
+        may_handle_events = True
+        process_events_timeout = None
+
+        # This will get the next trial we should start. This might block
+        # and wait for the trial queue to be replenished
+        next_trial_old_status = None
+        next_trial = self._get_next_trial()  # blocking
+        if next_trial:
+            next_trial_old_status = next_trial.status
+
+            success, in_grace_period = _try_start_trial(next_trial)
+            if success:
+                may_handle_events = False
+            else:
+                if in_grace_period:
+                    process_events_timeout = 0.1
+
+        # If the next trial was pending or no new next trial was created,
+        # also try to start all other pending trials
+        if next_trial_old_status == Trial.PENDING or not next_trial:
+            # Try to start all pending trials
+            # Note that the number of pending trials is limited by
+            # `self._max_pending_trials`
+            pending_trials_processed = 0
+            # Loop through self._trials as we might have new trials
+            for pending_trial in self._trials:
+                if pending_trial.status != Trial.PENDING:
+                    continue
+
+                if pending_trial is next_trial:
+                    # We already tried to start this trial. Note it might
+                    # be still pending if we're waiting for resources
+                    # to become available.
+                    continue
+
+                success, in_grace_period = _try_start_trial(pending_trial)
+                if success:
+                    may_handle_events = False
+                else:
+                    if in_grace_period:
                         process_events_timeout = 0.1
+
+                pending_trials_processed += 1
+                if pending_trials_processed >= self._max_pending_trials:
+                    # We may have more pending trials than we want if we're
+                    # resuming an experiment. In that case we only try
+                    # to start at most that many trials.
+                    break
 
         if may_handle_events and self.trial_executor.get_running_trials():
             # Might be blocking
@@ -439,6 +498,9 @@ class TrialRunner:
         Args:
             trial (Trial): Trial to queue.
         """
+        if isinstance(trial.resources, PlacementGroupFactory):
+            self._max_pending_trials = TUNE_MAX_PENDING_TRIALS_PG
+
         self._trials.append(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
@@ -913,7 +975,8 @@ class TrialRunner:
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
 
-    def _update_trial_queue(self, blocking=False, timeout=600):
+    def _update_trial_queue(self, blocking: bool = False,
+                            timeout: int = 600) -> bool:
         """Adds next trials to queue if possible.
 
         Note that the timeout is currently unexposed to the user.
@@ -922,6 +985,8 @@ class TrialRunner:
             blocking (bool): Blocks until either a trial is available
                 or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
+
+        Returns: Boolean indicating if a new trial was created or not.
         """
         trial = self._search_alg.next_trial()
         if blocking and not trial:
@@ -937,6 +1002,9 @@ class TrialRunner:
 
         if trial:
             self.add_trial(trial)
+            return True
+
+        return False
 
     def request_stop_trial(self, trial):
         self._stop_queue.append(trial)
