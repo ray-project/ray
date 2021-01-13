@@ -15,7 +15,7 @@ py_test(
  size="small",
  srcs = ["simple_tune.py"],
  deps = [":xgb_lib"],
- tags = ["exlcusive"]
+ tags = ["exclusive"]
 )
 
 # This is a dummy test dependency that causes the above tests to be
