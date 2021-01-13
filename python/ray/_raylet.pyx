@@ -914,7 +914,7 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         if object_ref is None:
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
+                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
                              metadata, data_size, contained_ids,
                              c_object_id, data))
         else:
@@ -1008,7 +1008,8 @@ cdef class CoreWorker:
             else:
                 with nogil:
                     if object_ref is None:
-                        check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
                                         c_object_id,
                                         pin_object))
                     else:

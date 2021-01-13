@@ -910,9 +910,10 @@ Status CoreWorker::Put(const RayObject &object,
   return Status::OK();
 }
 
-Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                          const std::vector<ObjectID> &contained_object_ids,
-                          ObjectID *object_id, std::shared_ptr<Buffer> *data) {
+Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
+                               const size_t data_size,
+                               const std::vector<ObjectID> &contained_object_ids,
+                               ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::FromIndex(worker_context_.GetCurrentTaskID(),
                                    worker_context_.GetNextPutIndex());
   reference_counter_->AddOwnedObject(*object_id, contained_object_ids, rpc_address_,
@@ -949,7 +950,7 @@ Status CoreWorker::CreateExisting(const std::shared_ptr<Buffer> &metadata,
   }
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
+Status CoreWorker::SealOwned(const ObjectID &object_id, bool pin_object) {
   auto status = SealExisting(object_id, pin_object);
   if (!status.ok()) {
     reference_counter_->RemoveOwnedObject(object_id);
