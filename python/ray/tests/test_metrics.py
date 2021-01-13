@@ -1,5 +1,6 @@
 import os
 import grpc
+import pytest
 import requests
 import time
 
@@ -9,6 +10,7 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.test_utils import (RayTestTimeoutException,
                             wait_until_succeeded_without_exception)
+from ray.util.metrics import Count
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -140,7 +142,20 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             test_prometheus_endpoint, (requests.exceptions.ConnectionError, ))
 
 
+def test_application_metrics_missing_tag(ray_start_regular):
+    metric = Count("metric_name", tag_keys=("a", "b"))
+    metric.set_default_tags({"a": "1"})
+
+    metric.record(1.0, {"b": "2"})
+    metric.record(1.0, {"a": "1", "b": "2"})
+
+    with pytest.raises(ValueError):
+        metric.record(1.0)
+
+    with pytest.raises(ValueError):
+        metric.record(1.0, {"a": "2"})
+
+
 if __name__ == "__main__":
     import sys
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
