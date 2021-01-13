@@ -90,11 +90,8 @@ def try_reload_log_state(provider_config: Dict[str, Any],
         return reload_log_state(log_state)
 
 
-def debug_status(status=None, error=None) -> str:
+def debug_status(status, error) -> str:
     """Return a debug string for the autoscaler."""
-    if status is None and error is None:
-        status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
-        error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     if not status:
         status = "No cluster status."
     else:
