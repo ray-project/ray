@@ -33,12 +33,12 @@ BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 60.0  # seconds
 TRIAL_CLEANUP_THRESHOLD = 100
-TUNE_MAX_COMMITTED_PLACEMENT_GROUPS = 1000
 TUNE_RESULT_BUFFER_LENGTH = int(os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
 TUNE_RESULT_BUFFER_MIN_TIME_S = float(
     os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
 TUNE_RESULT_BUFFER_MAX_TIME_S = float(
     os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.))
+TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 
 
 class _ActorClassCache:
@@ -229,8 +229,8 @@ class RayTrialExecutor(TrialExecutor):
                 self._trial_cleanup.add(
                     trial,
                     actor=self._cached_actor,
-                    placement_group=self._committed_placement_groups.get(trial)
-                    [0])
+                    placement_group=self._committed_placement_groups.get(
+                        trial, [None])[0])
                 if trial in self._committed_placement_groups:
                     del self._committed_placement_groups[trial]
             self._cached_actor = None
@@ -676,7 +676,7 @@ class RayTrialExecutor(TrialExecutor):
         """
         if isinstance(resources, PlacementGroupFactory):
             return len(self._committed_placement_groups) <= \
-                   TUNE_MAX_COMMITTED_PLACEMENT_GROUPS
+                   TUNE_MAX_PENDING_TRIALS_PG
 
         self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,

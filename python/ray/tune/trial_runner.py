@@ -14,7 +14,8 @@ from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.resources import PlacementGroupFactory
 from ray.tune.stopper import NoopStopper
-from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.ray_trial_executor import RayTrialExecutor, \
+    TUNE_MAX_PENDING_TRIALS_PG
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
@@ -33,8 +34,6 @@ MAX_DEBUG_TRIALS = 20
 # to process events
 TUNE_TRIAL_STARTUP_GRACE_PERIOD = float(
     os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
-# Maximum number of pending trials when using placement groups
-TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
 
 logger = logging.getLogger(__name__)
 
