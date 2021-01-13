@@ -59,6 +59,12 @@ class Metric:
         Returns:
             Metric: it returns the instance itself.
         """
+        for key, val in default_tags.items():
+            if key not in self._tag_keys:
+                raise ValueError(f"Unrecognized tag key {key}.")
+            if not isinstance(val, str):
+                raise TypeError(f"Tag value must be str, got {type_val}.")
+
         self._default_tags = default_tags
         return self
 
