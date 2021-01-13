@@ -5,8 +5,8 @@ import logging
 import pickle
 import platform
 import os
-from typing import Callable, Any, List, Dict, Tuple, Union, Optional, \
-    TYPE_CHECKING, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
+    TYPE_CHECKING, Union
 
 import ray
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
@@ -395,11 +395,22 @@ class RolloutWorker(ParallelIteratorWorker):
                 if clip_rewards is None:
                     clip_rewards = True
 
+                # framestacking via trajectory view API is enabled.
+                num_framestacks = model_config.get("num_framestacks", 0)
+                if not policy_config["_use_trajectory_view_api"]:
+                    model_config["num_framestacks"] = num_framestacks = 0
+                elif num_framestacks == "auto":
+                    model_config["num_framestacks"] = num_framestacks = 4
+                framestack_traj_view = num_framestacks > 1
+                # Deprecated way of framestacking is used.
+                framestack = model_config.get("framestack") is True
+
                 def wrap(env):
                     env = wrap_deepmind(
                         env,
                         dim=model_config.get("dim"),
-                        framestack=model_config.get("framestack"))
+                        framestack=framestack,
+                        framestack_via_traj_view_api=framestack_traj_view)
                     if monitor_path:
                         from gym import wrappers
                         env = wrappers.Monitor(env, monitor_path, resume=True)
@@ -1071,27 +1082,33 @@ class RolloutWorker(ParallelIteratorWorker):
                 obs_space = preprocessor.observation_space
             else:
                 preprocessors[name] = NoPreprocessor(obs_space)
-            if isinstance(obs_space, gym.spaces.Dict) or \
-                    isinstance(obs_space, gym.spaces.Tuple):
+
+            if isinstance(obs_space, (gym.spaces.Dict, gym.spaces.Tuple)):
                 raise ValueError(
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
-            if tf1 and tf1.executing_eagerly():
-                if hasattr(cls, "as_eager"):
-                    cls = cls.as_eager()
-                    if policy_config.get("eager_tracing"):
-                        cls = cls.with_tracing()
-                elif not issubclass(cls, TFPolicy):
-                    pass  # could be some other type of policy
-                else:
-                    raise ValueError("This policy does not support eager "
-                                     "execution: {}".format(cls))
-            if tf1:
+            # Tf.
+            framework = policy_config.get("framework", "tf")
+            if framework in ["tf2", "tf", "tfe"]:
+                assert tf1
+                if framework in ["tf2", "tfe"]:
+                    assert tf1.executing_eagerly()
+                    if hasattr(cls, "as_eager"):
+                        cls = cls.as_eager()
+                        if policy_config.get("eager_tracing"):
+                            cls = cls.with_tracing()
+                    elif not issubclass(cls, TFPolicy):
+                        pass  # could be some other type of policy
+                    else:
+                        raise ValueError("This policy does not support eager "
+                                         "execution: {}".format(cls))
                 with tf1.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)
+            # non-tf.
             else:
                 policy_map[name] = cls(obs_space, act_space, merged_conf)
+
         if self.worker_index == 0:
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))

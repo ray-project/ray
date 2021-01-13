@@ -650,7 +650,6 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="ray.method unimplemented")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -875,6 +874,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [

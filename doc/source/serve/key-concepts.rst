@@ -19,8 +19,8 @@ Backends
 Backends define the implementation of your business logic or models that will handle requests when queries come in to :ref:`serve-endpoint`.
 In order to support seamless scalability backends can have many replicas, which are individual processes running in the Ray cluster to handle requests.
 To define a backend, first you must define the "handler" or the business logic you'd like to respond with.
-The handler should take as input a `Starlette Request object <https://www.starlette.io/requests/>`_ and return any JSON-serializable object as output.  For a more customizable response type, the handler may return a 
-`Starlette Response object <https://www.starlette.io/responses/>`_.  
+The handler should take as input a `Starlette Request object <https://www.starlette.io/requests/>`_ and return any JSON-serializable object as output.  For a more customizable response type, the handler may return a
+`Starlette Response object <https://www.starlette.io/responses/>`_.
 
 A backend is defined using :mod:`client.create_backend <ray.serve.api.Client.create_backend>`, and the implementation can be defined as either a function or a class.
 Use a function when your response is stateless and a class when you might need to maintain some state (like a model).
