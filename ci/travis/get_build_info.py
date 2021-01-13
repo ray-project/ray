@@ -32,6 +32,9 @@ def gha_get_self_url():
                 requests.get(run_url).json()["check_runs"][0]["html_url"])
             return html_url
 
+    # Return a fallback url
+    return "https://github.com/ray-project/ray/actions"
+
 
 def get_build_env():
     if os.environ.get("GITHUB_ACTION"):

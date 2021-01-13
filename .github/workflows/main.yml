@@ -90,9 +90,7 @@ jobs:
         . ./ci/travis/ci.sh test_core
         . ./ci/travis/ci.sh test_wheels
     - name: Upload test result
-      # TODO: re-enable this before merge
-      if: always()
-      # if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
+      if: github.repository == 'ray-project/ray' && github.event_name != 'pull_request'
       shell: bash -e -o pipefail -l {0}
       env:
         # TODO: upload this secret to github
