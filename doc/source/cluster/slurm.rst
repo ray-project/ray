@@ -34,10 +34,10 @@ See :ref:`slurm-basic.sh <slurm-basic>` for an end-to-end example.
 
 .. _ray-slurm-headers:
 
-sbatch headers
-~~~~~~~~~~~~~~
+sbatch directives
+~~~~~~~~~~~~~~~~~
 
-In your sbatch script, you'll want to add headers to provide context for your job to SLURM.
+In your sbatch script, you'll want to add `directives to provide context <https://slurm.schedmd.com/sbatch.html>`__ for your job to SLURM.
 
 .. code-block:: bash
 
