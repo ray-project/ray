@@ -190,10 +190,6 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::GetAllActorInfoReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleUpdateActorInfo(const rpc::UpdateActorInfoRequest &request,
-                             rpc::UpdateActorInfoReply *reply,
-                             rpc::SendReplyCallback send_reply_callback) override;
-
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.

@@ -92,17 +92,6 @@ message GetAllActorInfoReply {
   repeated ActorTableData actor_table_data = 2;
 }
 
-message UpdateActorInfoRequest {
-  // ID of this actor.
-  bytes actor_id = 1;
-  // Data of actor.
-  ActorTableData actor_table_data = 2;
-}
-
-message UpdateActorInfoReply {
-  GcsStatus status = 1;
-}
-
 // Service for actor info access.
 service ActorInfoGcsService {
   // Register actor to gcs service.
@@ -115,8 +104,6 @@ service ActorInfoGcsService {
   rpc GetNamedActorInfo(GetNamedActorInfoRequest) returns (GetNamedActorInfoReply);
   // Get information of all actor from GCS Service.
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
-  // Update actor info in GCS Service.
-  rpc UpdateActorInfo(UpdateActorInfoRequest) returns (UpdateActorInfoReply);
 }
 
 message RegisterNodeRequest {
