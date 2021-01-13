@@ -16,6 +16,7 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,26 @@ DEFAULT_CONFIG = with_common_config({
     # Use two Q-networks (instead of one) for action-value estimation.
     # Note: Each Q-network will have its own target network.
     "twin_q": True,
-    # Use a e.g. conv2D state preprocessing network before concatenating the
-    # resulting (feature) vector with the action input for the input to
-    # the Q-networks.
-    "use_state_preprocessor": False,
+
+    # Use a default or custom observation pre-processing network before
+    # concatenating the resulting (feature) vector with the action input for
+    # the input to the Q-networks.
+    #"use_observation_pre_network": False,
+    # Deprecated: Use `use_observation_pre_network` instead.
+    #"use_state_preprocessor": DEPRECATED_VALUE,
+    # Whether to share the observation pre-network between policy- and
+    # Q-models. If False, a copy is created automatically and the two networks
+    # are completely independent from each other. If True, the pre-network
+    # part will be used by both policy- and Q-models.
+    #"share_observation_pre_network": False,
+    # Whether the critic optimizer (optimizing the Q-network) should also train
+    # the pre-network. If False and `share_observation_pre_network=False`,
+    # this will result in an error.
+    #"critic_optim_trains_observation_pre_network": True,
+    # Whether the actor optimizer (optimizing the policy-network) should also
+    # train the pre-network. If False and
+    # `share_observation_pre_network=False`, this will result in an error.
+    #"actor_optim_trains_observation_pre_network": True,
     # Model options for the Q network(s).
     "Q_model": {
         "fcnet_activation": "relu",
@@ -149,11 +166,38 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
+    model_config = config["model"]
+
+    #if config["use_state_preprocessor"] != DEPRECATED_VALUE:
+    #    deprecation_warning(
+    #        old="use_state_preprocessor",
+    #        new="use_observation_pre_network",
+    #        error=False)
+    #    config["use_observation_pre_network"] = \
+    #        config["use_state_preprocessor"]
+
+    #if model_config.get("custom_model"):
+    #    logger.warning(
+    #        "Setting use_observation_pre_network=True since a custom model "
+    #        "was specified.")
+    #    config["use_observation_pre_network"] = True
+
+    #if config["use_observation_pre_network"]:
+    #    if not config["share_observation_pre_network"] and (
+    #            not config["critic_optim_trains_observation_pre_network"] or
+    #            not config["actor_optim_trains_observation_pre_network"]):
+    #        raise ValueError(
+    #            "If `share_observation_pre_network=False`, both "
+    #            "`critic_optim_trains_observation_pre_network` and "
+    #            "`actor_optim_trains_observation_pre_network` must be True! "
+    #            "Otherwise, the pre-network(s) would never get updated.")
+
+    #    if not config["critic_optim_trains_observation_pre_network"] and not \
+    #            config["actor_optim_trains_observation_pre_network"]:
+    #        raise ValueError(
+    #            "One of `critic_optim_trains_observation_pre_network` or "
+    #            "`actor_optim_trains_observation_pre_network` must be True! "
+    #            "Otherwise, the pre-network(s) would never get updated.")
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")

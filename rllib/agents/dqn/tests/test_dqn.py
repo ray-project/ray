@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check, check_compute_single_action, \
 class TestDQN(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -22,11 +22,11 @@ class TestDQN(unittest.TestCase):
         config["num_workers"] = 2
         num_iterations = 1
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks="torch"):#TODO
             # Double-dueling DQN.
             print("Double-dueling")
             plain_config = config.copy()
-            trainer = dqn.DQNTrainer(config=plain_config, env="CartPole-v0")
+            trainer = dqn.DQNTrainer(config=plain_config, env="MsPacmanNoFrameskip-v4")#"CartPole-v0")
             for i in range(num_iterations):
                 results = trainer.train()
                 print(results)
