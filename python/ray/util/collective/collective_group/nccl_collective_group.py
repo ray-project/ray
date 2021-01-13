@@ -4,22 +4,18 @@ import time
 
 import ray
 import cupy
-from cupy.cuda.nccl import groupStart, groupEnd
-from cupy.cuda import Device, Event, Stream, runtime, get_current_stream
+
 from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.collective_group.base_collective_group \
     import BaseGroup
 from ray.util.collective.const import get_nccl_store_name
 from ray.util.collective.types import AllReduceOptions, \
     BarrierOptions, Backend, ReduceOptions, BroadcastOptions, \
-    AllGatherOptions, ReduceScatterOptions
+    AllGatherOptions, ReduceScatterOptions, SendOptions, \
+    RecvOptions
+
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
-# TODO(Hao):
-# (1) stream management, instead of using the default stream,
-#     using a dedicate stream
-# (2) communicator management and support num_gpus > 2 per actor.
 
 
 class Rendezvous:
@@ -32,13 +28,17 @@ class Rendezvous:
     process.
 
     Args:
-        group_name (str): the unique user-specified group name.
+        store_key (str): the unique store key, usually as a concatanation
+                         of group_name and communicator key.
+                         See `get_nccl_communicator` for more details.
     """
 
-    def __init__(self, group_name):
-        if not group_name:
-            raise ValueError("Invalid group name.")
-        self._group_name = group_name
+    def __init__(self, store_key):
+        if not store_key:
+            raise ValueError("Invalid store key. The store key is normally a concatenation of "
+                             "the 'group_name' and the 'communicator key'. See the docstring "
+                             "of `get_nccl_communicator` for more details.")
+        self._store_key = store_key
         self._store_name = None
         self._store = None
 
@@ -54,7 +54,7 @@ class Rendezvous:
         if timeout_s <= 0:
             raise ValueError("The 'timeout' argument must be positive. "
                              "Got '{}'.".format(timeout_s))
-        self._store_name = get_nccl_store_name(self._group_name)
+        self._store_name = get_nccl_store_name(self._store_key)
         timeout_delta = datetime.timedelta(seconds=timeout_s)
         elapsed = datetime.timedelta(seconds=0)
         start_time = datetime.datetime.now()
@@ -87,7 +87,7 @@ class Rendezvous:
         Args:
             timeout_s: timeout in seconds.
         Return:
-            str: the NCCLUniqueID if successful.
+            uid (str): the NCCLUniqueID if successful.
         """
         if not self._store:
             raise ValueError("Rendezvous store is not setup.")
@@ -113,481 +113,477 @@ class NCCLGroup(BaseGroup):
         """Init an NCCL collective group."""
         super(NCCLGroup, self).__init__(world_size, rank, group_name)
 
-        # TODO(Hao): fix this cache to accommodate `_dev_comm_map` below.
-        self._collective_comm_cache = None
-        self._p2p_comm_cache = {}
-        self._p2p_stream_cache = {}
+        # communicator and stream cache.
+        self._dev_comm_map = {}
+        self._dev_streams_map = {}
+
+        # record the used GPU IDs.
+        self._used_gpu_indices = set()
 
         if nccl_util.get_nccl_build_version() < 2000:
             raise RuntimeError("NCCL in Ray requires NCCL >= 2.0.")
-        # TODO(Hao): check version here
         if nccl_util.get_nccl_runtime_version() < 2704:
             logger.warning("NCCL send/recv calls requires NCCL>=2.7.4")
 
-        # Setup a tensor for barrier calls
-        self._barrier_tensor = cupy.array([1])
-
-        self._dev_comm_map = {}
-
-        # check the stream correctness.
-        self._dev_streams_map = {}
-
     def destroy_group(self):
         """Destroy the group and release NCCL communicators."""
-
-        # if self._collective_comm_cache:
-        #     self.barrier()
-        #     # We also need a barrier call here.
-        #     stream = self._get_cuda_stream()
-        #     stream.synchronize()
-        #     # destroy the communicator
-        #     self._collective_comm_cache.destroy()
-        #     self._collective_comm_cache = None
-        #
-        #     if self.rank == 0:
-        #         self._destroy_store(self.group_name)
-
         if len(self._dev_comm_map.keys()) > 0:
-            self.barrier()
-            # destroy the streams and communicator
+
+            # TODO(Hao): check this barrier call
+            # self.barrier()
+
+            # Destroy the communicators and streams.
+            for comm_key, comms in self._dev_comm_map.items():
+                for c in comms:
+                    c.destroy()
+                self._dev_comm_map[comm_key] = None
+
             #for _, streams in self._dev_streams_map.items():
             #    for stream in streams:
             #        runtime.streamDestroy(stream.ptr)
-            for _, comms in self._dev_comm_map.items():
-                for c in comms:
-                    c.destroy()
 
+        if self.rank == 0:
+            for comm_key in self._dev_comm_map:
+                assert not self._dev_comm_map[comm_key]
+                group_key = self._generate_group_key(comm_key)
+                self._destroy_store(group_key)
         self._barrier_tensor = None
         self._dev_comm_map = None
         self._dev_streams_map = None
-
-        if self._p2p_comm_cache:
-            for key, comm in self._p2p_comm_cache.items():
-                comm.destroy()
-                min_rank, max_rank = self._parse_p2p_group_key(key)
-                if self.rank == min_rank:
-                    self._destroy_store(key)
-                self._p2p_comm_cache[key] = None
-            for key in list(self._p2p_comm_cache.keys()):
-                del self._p2p_comm_cache[key]
-            self._p2p_comm_cache = None
-
-       # if self._p2p_stream_cache:
-        #    for _, stream in self._p2p_stream_cache.items():
-        #        runtime.streamDestroy(stream.ptr)
-        #        self._p2p_stream_cache[key] = None
-        #    for key in list(self._p2p_stream_cache.keys()):
-        #        del self._p2p_stream_cache[key]
         super(NCCLGroup, self).destroy_group()
 
     @classmethod
     def backend(cls):
         return Backend.NCCL
 
-    # TODO (Hao): change all collective/p2p calls to accept a list of tensors.
-    def allreduce(self, tensor, allreduce_options=AllReduceOptions()):
-        """AllReduce the tensor across the collective group following options.
+    def allreduce(self, tensors, allreduce_options=AllReduceOptions()):
+        """AllReduce tensors across the collective group following options.
 
         Args:
-            tensor(list): the list of tensor to be reduced. The length of the 
-                          list is the num_gpus used in this process.
-            allreduce_options:
+            tensors (List): the list of tensors to be reduced. Each tensor must
+                            reside on one GPU of the current process.
+            allreduce_options: allreduce options.
 
         Returns:
+            None
         """
-        devices = nccl_util.get_devices(tensor)
-        key = nccl_util.get_key_from_devices(devices)
-        comms = self._get_nccl_communicator(devices)
-        # comm = self._get_nccl_collective_communicator()
-        reduce_op = nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp)
-
-        # First wait for current tensor allocation stream
-        streams = self._dev_streams_map[key]
-        self._sync_streams()
-        # for non-blocking calls of all-reduce
-        groupStart()
-        for i in range(len(tensor)):
-            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
-            ptr = nccl_util.get_tensor_ptr(tensor[i])
-            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
-            # in-place allreduce
-            comms[i].allReduce(ptr, ptr, n_elems, dtype, reduce_op, streams[i].ptr)
-        groupEnd()
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allReduce(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                nccl_util.get_nccl_reduce_op(allreduce_options.reduceOp),
+                stream.ptr)
+        self._collective(tensors, tensors, collective_fn)
 
     def barrier(self, barrier_options=BarrierOptions()):
         """Blocks until all processes reach this barrier.
 
         Args:
-            barrier_options:
-
-        Returns:
-        """
-        self.allreduce(self._barrier_tensor)
-
-    def reduce(self, tensor, reduce_options=ReduceOptions()):
-        """Reduce tensor to a destination process following options.
-
-        Args:
-            tensor(list): the list of tensor to be reduced.
-            reduce_options: reduce options
+            barrier_options: barrier options.
 
         Returns:
             None
         """
-        devices = nccl_util.get_devices(tensor)
-        key = nccl_util.get_key_from_devices(devices)
-        comms = self._get_nccl_communicator(devices)
-        # comm = self._get_nccl_collective_communicator()
-        reduce_op = nccl_util.get_nccl_reduce_op(reduce_options.reduceOp)
+        # Get the device list.
+        if self._used_gpu_indices:
+            devices = list(self._used_gpu_indices)
+        else:
+            devices = [i for i in range(nccl_util.get_num_gpus())]
+        barrier_tensors = [None] * len(devices)
+        for i, d in enumerate(devices):
+            with nccl_util.Device(d):
+                barrier_tensors[i] = cupy.array([1])
+        self.allreduce(barrier_tensors)
 
-        # First wait for current tensor allocation stream
-        streams = self._dev_streams_map[key]
-        self._sync_streams()
-       
-        # compute the actual root rank
-        root_rank = reduce_options.root_rank
-        root_tensor = reduce_options.root_tensor
-        _root_rank = root_rank * len(tensor) + root_tensor
-        # for non-blocking calls of all-reduce
-        groupStart()
-        for i in range(len(tensor)):
-            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
-            ptr = nccl_util.get_tensor_ptr(tensor[i])
-            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
-            # in-place allreduce
-            comms[i].reduce(ptr, ptr, n_elems, dtype, reduce_op, _root_rank,
-                    streams[i].ptr)
-        groupEnd()
-        
-    def broadcast(self, tensor, broadcast_options=BroadcastOptions()):
-        """Broadcast tensor to all other processes following options.
+    def reduce(self, tensors, reduce_options=ReduceOptions()):
+        """Reduce tensors to a destination gpu following options.
 
         Args:
-            tensor(list): the list of tensor to be broadcasted.
+            tensors (List): the list of tensors to be reduced, each tensor
+                            must reside on one gpu of the current process.
+            reduce_options: reduce options.
+
+        Returns:
+            None
+        """
+        root_rank = len(tensors) * reduce_options.root_rank \
+            + reduce_options.root_tensor
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduce(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                nccl_util.get_nccl_reduce_op(reduce_options.reduceOp),
+                root_rank, stream.ptr)
+
+        self._collective(tensors, tensors, collective_fn)
+
+    def broadcast(self, tensors, broadcast_options=BroadcastOptions()):
+        """Broadcast tensors to all other gpus following options.
+
+        Args:
+            tensors (List): tensors to be broadcast or received.
             broadcast_options: broadcast options.
 
         Returns:
             None
         """
-        devices = nccl_util.get_devices(tensor)
-        key = nccl_util.get_key_from_devices(devices)
-        comms = self._get_nccl_communicator(devices)
-        # First wait for current tensor allocation stream
-        streams = self._dev_streams_map[key]
-        self._sync_streams()
-       
-        # compute the actual root rank
-        root_rank = broadcast_options.root_rank
-        root_tensor = broadcast_options.root_tensor
-        _root_rank = root_rank * len(tensor) + root_tensor
-        # for non-blocking calls of all-reduce
-        groupStart()
-        for i in range(len(tensor)):
-            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
-            ptr = nccl_util.get_tensor_ptr(tensor[i])
-            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
-            # in-place allreduce
-            comms[i].broadcast(ptr, ptr, n_elems, dtype, _root_rank,
-                    streams[i].ptr)
-        groupEnd()
+        root_rank = len(tensors) * broadcast_options.root_rank \
+            + broadcast_options.root_tensor
+
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.broadcast(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor),
+                root_rank, stream.ptr)
+
+        self._collective(tensors, tensors, collective_fn)
 
     def allgather(self,
-                  tensor_list,
-                  tensor,
+                  tensor_lists,
+                  tensors,
                   allgather_options=AllGatherOptions()):
-        """Allgather tensors across the group into a list of tensors.
+        """Allgather tensors across gpus into a list of tensors.
 
         Args:
-            tensor_list(list(list(tensor))): the tensor list to store
-                                             the results.
-            tensor(list): the list of tensor to be allgather-ed across
-                          the group.
+            tensor_lists (List[List[Tensor]]): the lists of tensors to store the results.
+            tensors: the list of tensors to allgather across the group. Each
+                     tensor must reside on gpu of the current process.
             allgather_options: allgather options.
 
         Returns:
             None
         """
-        _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
-        
-        devices = nccl_util.get_devices(tensor)
-        key = nccl_util.get_key_from_devices(devices)
-        comms = self._get_nccl_communicator(devices)
-        streams = self._dev_streams_map[key]
-        self._sync_streams()
 
-        flattened_list = [None] * len(tensor)
-        groupStart()
-        for i in range(len(tensor)):
-            dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
-            send_ptr = nccl_util.get_tensor_ptr(tensor[i])
-            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
-            flattened = _flatten_for_scatter_gather(tensor_list[i], copy=False)
-            flattened_list[i] = flattened
-            recv_ptr = nccl_util.get_tensor_ptr(flattened)
-            comms[i].allGather(send_ptr, recv_ptr, n_elems, dtype, streams[i].ptr)
-        groupEnd()
-        for i in range(len(tensor)):
-            for j, t in enumerate(tensor_list[i]):
-                nccl_util.copy_tensor(t, flattened_list[i][j])
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.allGather(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(input_tensor),
+                nccl_util.get_nccl_tensor_dtype(input_tensor), stream.ptr)
+
+        _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
+        output_flattened = [_flatten_for_scatter_gather(tensor_list, copy=False)
+                            for tensor_list in tensor_lists]
+
+        def postprocess_fn(stream):
+            # TODO(Hao): designate a copy stream.
+            for i, tensor_list in enumerate(tensor_lists):
+                for j, tensor in enumerate(tensor_list):
+                    nccl_util.copy_tensor(tensor, output_flattened[i][j])
+
+        self._collective(
+            tensors,
+            output_flattened,
+            collective_fn,
+            postprocess_fn=postprocess_fn)
 
     def reducescatter(self,
-                      tensor,
-                      tensor_list,
+                      tensors,
+                      tensor_lists,
                       reducescatter_options=ReduceScatterOptions()):
-        """Reducescatter a list of tensors across the group.
+        """Reduce the scatter a list of tensors across the group.
 
         Args:
-            tensor(list(tensor)): the output after reducescatter (could be unspecified).
-            tensor_list(list(list(tensor))): the list of tensor to be reduce and scattered.
-            reducescatter_options: reducescatter options.
+            tensors (List): the output tensors (could be unspecified), each located
+                            on one GPU of the current process.
+            tensor_lists (List[List]): the list of tensors to be reduced then
+                                       scattered.
+            reducescatter_options: reduce-scatter options.
 
         Returns:
             None
         """
-        _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list)
 
-        devices = nccl_util.get_devices(tensor)
-        key = nccl_util.get_key_from_devices(devices)
-        comms = self._get_nccl_communicator(devices)
-        # First wait for current tensor allocation stream
-        streams = self._dev_streams_map[key]
-        self._sync_streams()
+        def collective_fn(input_tensor, output_tensor, comm, stream):
+            comm.reduceScatter(
+                nccl_util.get_tensor_ptr(input_tensor),
+                nccl_util.get_tensor_ptr(output_tensor),
+                nccl_util.get_tensor_n_elements(output_tensor),
+                nccl_util.get_nccl_tensor_dtype(output_tensor),
+                nccl_util.get_nccl_reduce_op(reducescatter_options.reduceOp),
+                stream.ptr)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor[0])
-        reduce_op = nccl_util.get_nccl_reduce_op(
-            reducescatter_options.reduceOp)
-        flattened_list = [None] * len(tensor)
-        for i in range(len(tensor)):
-            flattened_list[i] = _flatten_for_scatter_gather(tensor_list[i], copy=True)
+        _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists)
+        input_flattened = [_flatten_for_scatter_gather(tensor_list, copy=False)
+                           for tensor_list in tensor_lists]
 
-        groupStart()
-        for i in range(len(tensor)):
-            send_ptr = nccl_util.get_tensor_ptr(flattened_list[i])
-            recv_ptr = nccl_util.get_tensor_ptr(tensor[i])
-            n_elems = nccl_util.get_tensor_n_elements(tensor[i])
-            comms[i].reduceScatter(send_ptr, recv_ptr, n_elems, dtype, reduce_op,
-                               streams[i].ptr)
-        groupEnd()
+        def preprocess_fn(stream):
+            # TODO(Hao): designate a copy stream.
+            for i, tensor_list in enumerate(tensor_lists):
+                for j, tensor in enumerate(tensor_list):
+                    nccl_util.copy_tensor(input_flattened[i][j], tensor)
 
-    def send(self, tensor, dst_rank, dst_index):
-        """Send tensor to a destination process in the group.
+        self._collective(
+            input_flattened,
+            tensors,
+            collective_fn,
+            preprocess_fn=preprocess_fn)
+
+    def send(self, tensors, send_options=SendOptions()):
+        """Send a tensor to a destination gpu in the group.
 
         Args:
-            tensor: the tensor to send.
-            dst_rank: the rank of the destination process.
-            dst_index: the index at the destination
+            tensors (List): the tensor to send.
+            send_options: send options.
+
         Returns:
             None
         """
 
-        # check whether send/recv is available
-        if nccl_util.get_nccl_runtime_version() < 2704:
-            raise RuntimeError("send is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(
-                                   nccl_util.get_nccl_runtime_version()))
-        src_index = nccl_util.get_devices([tensor])
-        src_index = src_index[0]
-        comm, peer_p2p_rank, key = self._get_nccl_p2p_communicator_and_info(
-                           self.rank, src_index, dst_rank, dst_index)
-        stream = self._p2p_stream_cache[key]
+        def p2p_fn(tensor, comm, stream, peer):
+            comm.send(
+                nccl_util.get_tensor_ptr(tensor),
+                nccl_util.get_tensor_n_elements(tensor),
+                nccl_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        comm.send(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
+        self._point2point(tensors, p2p_fn,
+                          send_options.dst_rank, send_options.dst_gpu_index)
 
-    def recv(self, tensor, src_rank, src_index):
-        """Receive tensor from a source process in the group.
+    def recv(self, tensors, recv_options=RecvOptions()):
+        """Receive a tensor from a source gpu in the group.
 
         Args:
-            tensor: the received tensor.
-            src_rank: the rank of the source process.
+            tensors (List): the received tensor.
+            recv_options: Receive options.
 
         Returns:
             None
         """
-        if nccl_util.get_nccl_runtime_version() < 2704:
-            raise RuntimeError("recv is not available requires NCCL >= 2.7.4. "
-                               "Got '{}'.".format(
-                                   nccl_util.get_nccl_runtime_version()))
-        dst_index = nccl_util.get_devices([tensor])
-        dst_index = dst_index[0]
-        
-        comm, peer_p2p_rank, key = self._get_nccl_p2p_communicator_and_info(
-                           src_rank, src_index, self.rank, dst_index)
-        stream = self._p2p_stream_cache[key]
 
-        dtype = nccl_util.get_nccl_tensor_dtype(tensor)
-        ptr = nccl_util.get_tensor_ptr(tensor)
-        n_elems = nccl_util.get_tensor_n_elements(tensor)
-        comm.recv(ptr, n_elems, dtype, peer_p2p_rank, stream.ptr)
-        
-    def _get_nccl_collective_communicator(self):
-        """Create or retrieve a cached NCCL communicator.
+        def p2p_fn(tensor, comm, stream, peer):
+            comm.recv(
+                nccl_util.get_tensor_ptr(tensor),
+                nccl_util.get_tensor_n_elements(tensor),
+                nccl_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
+
+        self._point2point(tensors, p2p_fn,
+                          recv_options.src_rank, recv_options.src_gpu_index)
+
+    def _get_nccl_collective_communicator(self, comm_key, device_list):
+        """Create or retrieve an NCCL communicator from cache.
+
+        If the communicator is found in cache, return the communicator. If not,
+        a communicator and a stream will be created and put in cache.
+
+        Args:
+            comm_key (str): the key to query the communicator cache.
+            device_list (List): a list of GPU devices participating into the collective.
 
         Returns:
-            communicator
+            communicator: the NCCL communicator corresponded to the devices.
         """
-        # TODO(Hao): implement a thin wrapper
-        if not self._collective_comm_cache:
-            # create the communicator
-            if self.rank == 0:
-                group_uid = self._generate_nccl_uid(self.group_name)
-            else:
-                rendezvous = Rendezvous(self.group_name)
-                rendezvous.meet()
-                group_uid = rendezvous.get_nccl_id()
-            self._collective_comm_cache = \
-                nccl_util.create_nccl_communicator(self.world_size,
-                                                   group_uid,
-                                                   self.rank)
-        return self._collective_comm_cache
+        if not comm_key:
+            raise RuntimeError("Got empty communicator key.")
+        for d in device_list:
+            self._used_gpu_indices.add(d)
 
-    def _get_nccl_communicator(self, devices):
-        """
-        Create or use a cached NCCL communicator for the collective task.
+        if comm_key in self._dev_comm_map:
+            return self._dev_comm_map[comm_key]
 
-        """
-        # TODO(Hao): later change this to use device keys and query from cache.
-        # TODO(Hao): implement a thin wrapper
-        # try to find from cache
-        key = nccl_util.get_key_from_devices(devices)
-        if key in self._dev_comm_map.keys():
-            return self._dev_comm_map[key]
-        else:  # create a new one and cache
-            _group_name = self.group_name + key
-            if self.rank == 0:
-                uid = nccl_util.get_nccl_unique_id()
-                _store_name = get_nccl_store_name(_group_name)
-                from ray.util.collective.util import NCCLUniqueIDStore
-                store = NCCLUniqueIDStore.options(
-                    name=_store_name, lifetime="detached").remote(_store_name)
-                ray.wait([store.set_id.remote(uid)])
-
-            rendezvous = Rendezvous(_group_name)
+        group_key = self._generate_group_key(comm_key)
+        if self.rank == 0:
+            nccl_uid = self._generate_nccl_uid(group_key)
+        else:
+            rendezvous = Rendezvous(group_key)
             rendezvous.meet()
             nccl_uid = rendezvous.get_nccl_id()
-            _world_size = len(devices) * self.world_size
-            comms = []
 
-            nccl_streams = []
-            # for non-blocking communicator creation
-            groupStart()
-            for i in range(len(devices)):
-                _rank = self.rank * len(devices) + i
-                from cupy.cuda import Device
-                with Device(devices[i]):
-                    comm = nccl_util.create_nccl_communicator(
-                        _world_size, nccl_uid, _rank)
-                    stream = cupy.cuda.Stream.null #Stream(non_blocking=True)
-                comms.append(comm)
-                nccl_streams.append(stream)
-            groupEnd()
+        # Now create the communicators
+        actual_world_size = len(device_list) * self.world_size
+        comms = [] * len(device_list)
+        streams = [] * len(device_list)
+        nccl_util.groupStart()
+        for i, device in enumerate(device_list):
+            actual_rank = self.rank * len(device_list) + i
+            with nccl_util.Device(device):
+                comms[i] = nccl_util.create_nccl_communicator(
+                    actual_world_size, nccl_uid, actual_rank)
+                streams[i] = cupy.cuda.Stream.null
+                # Stream(non_blocking=True)
+        nccl_util.groupEnd()
 
-        # cache the result
-        # FIXME: Consider whether to add a lock here or not, I feel like pytorch
-        # needs to handle this because they are relatively lower level, we shouldnt
-        # need to worry about this. if so,eed to figure out how to add Lock, threading? Asyncio?
-        self._dev_comm_map[key] = comms
-        self._dev_streams_map[key] = nccl_streams
+        # TODO(Dacheng): Consider to add a lock here for `_dev_comm_map`? threading? asyncio?
+        self._dev_comm_map[comm_key] = comms
+        self._dev_streams_map[comm_key] = streams
         return comms
 
+    @staticmethod
     def _sync_streams(self):
         """Let Nccl streams wait for current streams for every device."""
         # FIXME: This behavior is different from nccl document. It seems like
         # cupy allocate tensors on null streams.
         cupy.cuda.Stream.null.synchronize()
 
-    def _get_nccl_p2p_communicator_and_info(self, src_rank, src_index, dst_rank, dst_index):
+    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank):
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Args:
-            src_rank (int): source rank.
-            src_index (int): GPU index at source rank
-            dst_rank (int): destination rank.
-            dst_index (int): GPU index at destination rank
-
-
+            comm_key (str):
+            my_gpu_idx (int):
+            peer_rank (int):
         Returns:
             communicator
         """
-        if src_rank < dst_rank:
-            my_rank = 0 if self.rank == src_rank else 1
-            min_str = str(src_rank) + "." + str(src_index)
-            max_str = str(dst_rank) + "." + str(dst_index)
-        elif scr_rank > dst_rank:
-            my_rank = 0 if self.rank == dst_rank else 1
-            min_str = str(dst_rank) + "." + str(dst_index)
-            max_str = str(src_rank) + "." + str(src_index)
+        if comm_key in self._dev_comm_map:
+            return self._dev_comm_map[comm_key]
+
+        group_key = self._generate_group_key(comm_key)
+        my_p2p_rank = 0 if self.rank < peer_rank else 1
+        if my_p2p_rank == 0:
+            nccl_uid = self._generate_nccl_uid(group_key)
         else:
-           raise RuntimeError(f"Sending data to the same machine.")
-        p2p_group_key = self._generate_p2p_group_key(min_str, max_str)
-        comm = self._p2p_comm_cache.get(p2p_group_key)
-        if not comm:
-            if my_rank == 0:
-                group_uid = self._generate_nccl_uid(p2p_group_key)
-            else:
-                rendezvous = Rendezvous(p2p_group_key)
-                rendezvous.meet()
-                group_uid = rendezvous.get_nccl_id()
-            my_device = src_index if self.rank == src_rank else dst_index
-            with Device(my_device):
-                comm = nccl_util.create_nccl_communicator(2, group_uid, my_rank)
-                stream =  cupy.cuda.Stream.null #Stream(non_blocking=True)
-            self._p2p_comm_cache[p2p_group_key] = comm
-            self._p2p_stream_cache[p2p_group_key] = stream
-        
-        peer_rank = 1 if my_rank == 0 else 0
-        return comm, peer_rank, p2p_group_key
+            rendezvous = Rendezvous(group_key)
+            rendezvous.meet()
+            nccl_uid = rendezvous.get_nccl_id()
 
-    def _generate_p2p_group_key(self, min_str, max_str):
-        return self.group_name + "_" + min_str + "_" + max_str
+        with nccl_util.Device(my_gpu_idx):
+            comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
+            stream = cupy.cuda.Stream.null
+            # Stream(non_blocking=True)
+        self._dev_comm_map[comm_key] = [comm]
+        self._dev_streams_map[comm_key] = [stream]
+        return [comm]
 
+    def _generate_group_key(self, comm_key):
+        """Generate a unique key used to initialize the KV store.
+
+        The group key is a concatenation of the communicator key and
+        the group name, following: [comm_key]@[group_name].
+        """
+        return comm_key + "@" + self.group_name
+
+    # TODO(Why?)
     @staticmethod
     def _parse_p2p_group_key(key):
         strs = key.split("_")
         return int(strs[-2].split(".")[0]), int(strs[-1].split(".")[0])
 
+    # @staticmethod
+    # def _parse_p2p_group_key(key):
+    #     strs = key.split("_")
+    #     return int(strs[-2]), int(strs[-1])
+
     @staticmethod
-    def _destroy_store(group_name):
-        store_name = get_nccl_store_name(group_name)
+    def _destroy_store(group_key):
+        """Destroy the KV store (Ray named actor).
+
+        Args:
+            group_key (str): the unique key to retrieve the KV store.
+
+        Returns:
+            None
+        """
+        store_name = get_nccl_store_name(group_key)
         store = ray.get_actor(store_name)
         # ray.get([store.__ray_terminate__.remote()])
         ray.kill(store)
 
-    def _generate_nccl_uid(self, name):
-        """Generate an NCCL UID by calling the NCCL API.
+    def _generate_nccl_uid(self, key):
+        """Generate an NCCL unique ID for initializing communicators.
+
+        The method will also create a KV store using Ray named actor and store
+        the NCCLUniqueID in the store. The store needs to be garbage collected
+        when destroying the collective group.
 
         Args:
-            name: the name of the collective group.
+            key (str): the key of the .
 
         Returns:
-            str: NCCL uid.
+            NCCLUniqueID (str): NCCL unique ID.
         """
         group_uid = nccl_util.get_nccl_unique_id()
-        store_name = get_nccl_store_name(name)
+        store_name = get_nccl_store_name(key)
         # Avoid a potential circular dependency in ray/actor.py
         from ray.util.collective.util import NCCLUniqueIDStore
         store = NCCLUniqueIDStore.options(
             name=store_name, lifetime="detached").remote(store_name)
-        ray.wait([store.set_id.remote(group_uid)])
+        ray.get([store.set_id.remote(group_uid)])
         return group_uid
 
-    @staticmethod
-    def _get_cuda_stream():
-        """Obtain an idle stream from a stream pool for the collective task."""
-        # TODO: implement a simple stream manager.
-        return cupy.cuda.Stream.null
+    def _collective(self,
+                    input_tensors,
+                    output_tensors,
+                    collective_fn,
+                    preprocess_fn=None,
+                    postprocess_fn=None):
+        """A method to encapsulate all collective calls.
 
-    # Note(Hao): too many bipolate code -- make some abstractions here.
-    def _collective(self, *args):
-        """TODO(Hao)"""
-        """Method to encapsulate all collective calls"""
-        pass
+        Args:
+            input_tensors: the list of the input tensors.
+            output_tensors: the list of the output tensors.
+            collective_fn: the collective function call.
+            preprocess_fn: preprocess procedures before collective calls.
+            postprocess_fn: postprocess procedures after collective calls.
 
-    def _point2point(self, *args):
-        """TODO(Hao)"""
-        pass
+        Returns:
+            None
+        """
+        _check_gpu_tensors(input_tensors)
+        _check_gpu_tensors(output_tensors)
+
+        devices = nccl_util.get_tensor_device_list(input_tensors)
+        key = _get_comm_key_from_devices(devices)
+        comms = self._get_nccl_collective_communicator(key, devices)
+        streams = self._dev_streams_map[key]
+
+        # TODO(Hao): sync streams and events
+        self._sync_streams()
+
+        # Make the collective call
+        if preprocess_fn:
+            preprocess_fn(streams)
+        nccl_util.groupStart()
+        for i, tensor in enumerate(input_tensors):
+            collective_fn(tensor, output_tensors[i], comms[i], streams[i])
+        nccl_util.groupEnd()
+        if postprocess_fn:
+            postprocess_fn(streams)
+
+    def _point2point(self,
+                     tensors,
+                     p2p_fn,
+                     peer_rank: int,
+                     peer_gpu_idx: int):
+        """A method to encapsulate all peer-to-peer calls (i.e., send/recv).
+
+        Args:
+            tensors: the tensor to send or receive.
+            p2p_fn: the p2p function call.
+            peer_rank (int): the rank of the peer process.
+            peer_gpu_idx (int): the index of the gpu on the peer process.
+
+        Returns:
+            None
+        """
+        # check send/recv availability.
+        if nccl_util.get_nccl_runtime_version() < 2704:
+            raise RuntimeError("P2p send/recv requires NCCL >= 2.7.4. "
+                               "Got '{}'.".format(
+                                   nccl_util.get_nccl_runtime_version()))
+        _check_gpu_tensors(tensors)
+
+        # we currently only single device to single device send/recv.
+        assert len(tensors) == 1
+        my_gpu_idx = nccl_util.get_tensor_device(tensors[0])
+        comm_key = _get_comm_key_send_recv(self.rank, my_gpu_idx,
+                                           peer_rank, peer_gpu_idx)
+        comms = self._get_nccl_p2p_communicator(comm_key, my_gpu_idx, peer_rank)
+        streams = self._dev_streams_map[comm_key]
+
+        # TODO(Hao): sync streams and events
+        self._sync_streams()
+
+        # We have made sure that self.rank != peer_rank during API check.
+        peer_p2p_rank = 0 if self.rank > peer_rank else 1
+        for i, tensor in enumerate(tensors):
+            p2p_fn(tensors[i], comms[i], streams[i], peer_p2p_rank)
 
 
 def _flatten_for_scatter_gather(tensor_list, copy=False):
@@ -606,43 +602,125 @@ def _flatten_for_scatter_gather(tensor_list, copy=False):
     # note we need a cupy dtype here.
     dtype = nccl_util.get_cupy_tensor_dtype(t)
     buffer_shape = [len(tensor_list)] + nccl_util.get_tensor_shape(t)
-    device = nccl_util.get_devices(t)[0]
-    with Device(device):
+    device = nccl_util.get_tensor_device(t)
+    with nccl_util.Device(device):
         buffer = cupy.empty(buffer_shape, dtype=dtype)
     if copy:
         for i, tensor in enumerate(tensor_list):
             nccl_util.copy_tensor(buffer[i], tensor)
     return buffer
 
-def _check_inputs_compatibility_for_scatter_gather(tensor, tensor_list):
-    """Check the compatibility between tensor input and tensor list inputs."""
-    if not tensor_list:
-        raise RuntimeError("Got empty list of tensors.")
-    dtype = nccl_util.get_nccl_tensor_dtype(tensor[0])
-    shape = nccl_util.get_tensor_shape(tensor[0])
-    for i in range(len(tensor_list)):
 
-        _dtype = nccl_util.get_nccl_tensor_dtype(tensor[i])
-        _shape = nccl_util.get_tensor_shape(tensor[i])
-
-        if _dtype != dtype:
+def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
+    """Check the compatibility between tensor input and tensor list input."""
+    if not tensors or not isinstance(tensors, list):
+        raise RuntimeError("The first argument 'tensors' expects a list of tensors.")
+    if not tensor_lists or not isinstance(tensor_lists, list):
+        raise RuntimeError("The second argument 'tensor_lists' "
+                           "expects a list of tensor list.")
+    dtype = nccl_util.get_nccl_tensor_dtype(tensors[0])
+    shape = nccl_util.get_tensor_shape(tensors[0])
+    for i, tensor_list in enumerate(tensor_lists):
+        # check all tensor in `tensors` match.
+        dt = nccl_util.get_nccl_tensor_dtype(tensors[i])
+        if dt != dtype:
             raise RuntimeError("All tensor operands to scatter/gather must "
-                                "have the same dtype. Got '{}' and '{}'"
-                                "".format(_dype, dtype))
-        if _shape != shape:
+                               "have the same dtype. Got '{}' and '{}'."
+                               .format(dt, dtype))
+        # Note: typically CCL libraries only requires they have the same
+        # number of elements; Here we make it more strict -- we require
+        # exact shape match.
+        s = nccl_util.get_tensor_shape(tensors[i])
+        if s != shape:
             raise RuntimeError("All tensor operands to scatter/gather must "
-                                "have the same shape.")
-        for t in tensor_list[i]:
+                               "have the same shape. Got '{}' and '{}'."
+                               .format(s, shape))
+        # check all tensors in `tensor_lists` match.
+        for t in tensor_lists[i]:
             # check dtype
             dt = nccl_util.get_nccl_tensor_dtype(t)
             if dt != dtype:
                 raise RuntimeError("All tensor operands to scatter/gather must "
-                                   "have the same dtype. Got '{}' and '{}'"
-                                   "".format(dt, dtype))
-            # Note: typically CCL libraries only requires they have the same
-            # number of elements;
-            # Here we make it more strict -- we require exact shape match.
-            if nccl_util.get_tensor_shape(t) != shape:
+                                   "have the same dtype. Got '{}' and '{}'."
+                                   .format(dt, dtype))
+            s = nccl_util.get_tensor_shape(t)
+            if s != shape:
                 raise RuntimeError("All tensor operands to scatter/gather must "
-                                   "have the same shape.")
+                                   "have the same shape. Got '{}' and '{}'."
+                                   .format(s, shape))
 
+def _check_gpu_tensors(tensors):
+    """Check all tensors are distributed on different GPUs."""
+    if not tensors or not isinstance(tensors, list):
+        raise RuntimeError("'tensors' must be a nonempty list.")
+    if len(tensors) > nccl_util.get_num_gpus():
+        raise RuntimeError("Tensor list cannot be larger than the number"
+                           "of available GPUs. Got {} > {}."
+                           .format(len(tensors), nccl_util.get_num_gpus()))
+    t0 = tensors[0]
+    dt = nccl_util.get_nccl_tensor_dtype(t0)
+    s = nccl_util.get_tensor_shape(t0)
+    d = nccl_util.get_tensor_device(t0)
+    for i, t in enumerate(tensors):
+        if i == 0:
+            continue
+        # We need to check the following:
+        # (1) tensor is cuda (already checked during API)
+        # (2) tensor dtype
+        # (3) tensor shape match
+        # (4) each tensor is on a different GPU
+        dtype = nccl_util.get_nccl_tensor_dtype(t)
+        if dt != dtype:
+            raise RuntimeError("Tensors must have identical dtype. Got: '{}'."
+                               .format(dtype))
+        shape = nccl_util.get_tensor_shape(t)
+        if s != shape:
+            raise RuntimeError("Tensor must have identical shape. Got: '{}'."
+                               .format(shape))
+        device = nccl_util.get_tensor_device(t)
+        if device == d:
+            raise RuntimeError("Tensor must be on distinct GPUs.")
+
+
+def _get_comm_key_from_devices(devices):
+    """Return a key from a list of devices for collective calls.
+
+    For example, if the tensors are on gpus 0, 1, 2, 3,
+    then the key would be "0,1,2,3".
+
+    Args:
+        devices(list): a list of GPU device indices
+
+    Returns:
+        str: a string represents the key to query the communicator cache.
+
+    """
+    return ",".join([str(d) for d in devices])
+
+
+def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
+    """Return a key given source and destination ranks for p2p tasks.
+
+    The p2p key is in the format of [min_rank]_[gpu_index]:[max_rank]_[gpu_index].
+
+    Args:
+        my_rank (int): the rank of the source process.
+        my_gpu_idx (int): the index of the source gpu on the source process.
+        peer_rank (int): the rank of the destination process.
+        peer_gpu_idx (int): the index of the destination gpu on the destination process.
+
+    Returns:
+        comm_key (str): a string key to query the communication cache.
+    """
+    if my_rank < peer_rank:
+        lower_key = str(my_rank) + "_" + str(my_gpu_idx)
+        higher_key = str(peer_rank) + "_" + str(peer_gpu_idx)
+    elif my_rank > peer_rank:
+        lower_key = str(peer_rank) + "_" + str(peer_gpu_idx)
+        higher_key = str(my_rank) + "_" + str(my_gpu_idx)
+    else:
+        raise RuntimeError("Sending data to the same machine: "
+                           "my_rank: '{}', peer_rank: '{}'."
+                           .format(my_rank, peer_rank))
+    comm_key = lower_key + ":" + higher_key
+    return comm_key

@@ -807,6 +807,13 @@ void ObjectManager::RecordMetrics() const {
   stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
 }
 
+void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {
+  auto stats = reply->mutable_store_stats();
+  stats->set_object_store_bytes_used(used_memory_);
+  stats->set_object_store_bytes_avail(config_.object_store_memory);
+  stats->set_num_local_objects(local_objects_.size());
+}
+
 void ObjectManager::Tick(const boost::system::error_code &e) {
   RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: " << e
                 << ". Please file a bug report on here: "

@@ -1,23 +1,3 @@
-"""
-Ray operator for Kubernetes.
-
-Reads ray cluster config from a k8s ConfigMap, starts a ray head node pod using
-create_or_update_cluster(), then runs an autoscaling loop in the operator pod
-executing this script. Writes autoscaling logs to the directory
-/root/ray-operator-logs.
-
-In this setup, the ray head node does not run an autoscaler. It is important
-NOT to supply an --autoscaling-config argument to head node's ray start command
-in the cluster config when using this operator.
-
-To run, first create a ConfigMap named ray-operator-configmap from a ray
-cluster config. Then apply the manifest at python/ray/autoscaler/kubernetes/operator_configs/operator_config.yaml
-
-For example:
-kubectl create namespace raytest
-kubectl -n raytest create configmap ray-operator-configmap --from-file=python/ray/autoscaler/kubernetes/operator_configs/test_cluster_config.yaml
-kubectl -n raytest apply -f python/ray/autoscaler/kubernetes/operator_configs/operator_config.yaml
-""" # noqa
 import logging
 import multiprocessing as mp
 import os

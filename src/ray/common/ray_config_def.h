@@ -363,3 +363,8 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 /// When it is true, manual (force) spilling is not available.
 /// TODO(sang): Fix it.
 RAY_CONFIG(bool, automatic_object_deletion_enabled, true)
+
+/* Configuration parameters for locality-aware scheduling. */
+/// Whether to enable locality-aware leasing. If enabled, then Ray will consider task
+/// dependency locality when choosing a worker for leasing.
+RAY_CONFIG(bool, locality_aware_leasing_enabled, true)

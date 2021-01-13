@@ -20,7 +20,6 @@ package io.ray.streaming.state.backend;
 
 import static io.ray.streaming.state.config.ConfigKey.DELIMITER;
 
-
 import io.ray.streaming.state.config.ConfigKey;
 import io.ray.streaming.state.keystate.desc.AbstractStateDescriptor;
 import io.ray.streaming.state.serialization.KeyMapStoreSerializer;
@@ -29,9 +28,7 @@ import io.ray.streaming.state.store.KeyValueStore;
 import java.io.Serializable;
 import java.util.Map;
 
-/**
- * This class is the abstract class for different kinds of StateBackend.
- */
+/** This class is the abstract class for different kinds of StateBackend. */
 public abstract class AbstractStateBackend implements Serializable {
 
   protected final Map<String, String> config;

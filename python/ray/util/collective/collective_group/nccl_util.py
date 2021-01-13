@@ -3,9 +3,13 @@ import numpy
 try:
     import cupy
     from cupy.cuda import nccl
+    from cupy.cuda import Device
+    #, Event, Stream, runtime, get_current_stream
     from cupy.cuda.nccl import get_version
     from cupy.cuda.nccl import get_build_version
     from cupy.cuda.nccl import NcclCommunicator
+    from cupy.cuda.nccl import groupStart
+    from cupy.cuda.nccl import groupEnd
 except ImportError:
     raise ImportError("NCCL in Ray requires Cupy being available!")
 
@@ -74,6 +78,12 @@ if torch_available():
     }
 
 
+# TODO (Hao): (check this only returns the visible GPUs on this actor.)
+def get_num_gpus():
+    """Returns the number of compute-capable GPUs."""
+    return cupy.cuda.runtime.getDeviceCount()
+
+
 def get_nccl_build_version():
     return get_build_version()
 
@@ -90,14 +100,12 @@ def create_nccl_communicator(world_size, nccl_unique_id, rank):
     """Create an NCCL communicator using NCCL APIs.
 
     Args:
-        world_size (int): the number of processes of this communcator group.
+        world_size (int): the number of processes of this communicator group.
         nccl_unique_id (str): the NCCLUniqueID for this group.
         rank (int): the rank of this process.
     Returns:
         comm (nccl.ncclComm_t): an NCCL communicator.
     """
-    # TODO(Hao): make this inside the NCCLComm class,
-    #  and implement the abort method. Make it RAII.
     comm = NcclCommunicator(world_size, nccl_unique_id, rank)
     return comm
 
@@ -194,6 +202,25 @@ def get_tensor_strides(tensor):
                      "cupy.ndarray.".format(type(tensor)))
 
 
+def get_tensor_device(tensor):
+    """Return the GPU index of a tensor."""
+    if isinstance(tensor, cupy.ndarray):
+        try:
+            device = tensor.device.id
+        except AttributeError as e:
+            raise RuntimeError("Got an exception {}. The tensor is not on "
+                               "a valid GPU.".format(e))
+    elif torch_available():
+        if isinstance(tensor, torch.Tensor):
+            device = tensor.device.index
+            if not device:
+                raise RuntimeError("The tensor is not on a valid GPU.")
+    else:
+        raise ValueError("Unsupported tensor type. "
+                         "Got: {}.".format(type(tensor)))
+    return device
+
+
 def copy_tensor(dst_tensor, src_tensor):
     """Copy the content from src_tensor to dst_tensor.
 
@@ -230,30 +257,26 @@ def copy_tensor(dst_tensor, src_tensor):
                          .format(type(dst_tensor), type(src_tensor)))
 
 
-def get_devices(inputs):
-    """Returns a list of devices (ints) from the inputs"""
-    devices = [0] * len(inputs)
-    for i in range(len(inputs)):
-        if isinstance(inputs[i], cupy.ndarray):
-            try:
-                devices[i] = inputs[i].device.id
-            except AttributeError as e:
-                raise RuntimeError("not all inputs on a GPU device.")
-        elif torch_available() and isinstance(inputs[i], torch.Tensor):
-            index = inputs[i].device.index
-            if index is None:
-                raise RuntimeError("not all inputs on a GPU device.")
-        else:
-            ValueError("Unsupported tensor type. "
-                         "Got: {}.".format(type(inputs)))
+def get_tensor_device_list(tensors):
+    """Returns the gpu devices of the list of input tensors.
+
+    Args:
+        tensors(list): a list of tensors, each locates on a GPU.
+
+    Returns:
+        list: the list of GPU devices.
+
+    """
+    if not isinstance(tensors, list):
+        raise RuntimeError("Expect a list of tensors each locates on a GPU device. "
+                           "Got: '{}'.".format(type(tensors)))
+    devices = [0] * len(tensors)
+    for i, tensor in enumerate(tensors):
+        devices[i] = get_tensor_device(tensor)
     return devices
 
 
-def get_key_from_devices(devices):
-    """Return key from a list of devices"""
-    return ", ".join([str(d) for d in devices])
-
-
+# TODO(Hao): check below
 # def check_single_tensor_input(tensor):
 #     """Check if the tensor is with a supported type."""
 #     if isinstance(tensor, numpy.ndarray):
