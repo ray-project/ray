@@ -75,8 +75,8 @@ class TestSAC(unittest.TestCase):
                     "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
             ]:
                 print("Env={}".format(env))
-                config["use_state_preprocessor"] = \
-                    env == "MsPacmanNoFrameskip-v4"
+                #config["use_state_preprocessor"] = \
+                #    env == "MsPacmanNoFrameskip-v4"
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()

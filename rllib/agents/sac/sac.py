@@ -39,7 +39,7 @@ DEFAULT_CONFIG = with_common_config({
     # Use a e.g. conv2D state preprocessing network before concatenating the
     # resulting (feature) vector with the action input for the input to
     # the Q-networks.
-    "use_state_preprocessor": False,
+    #"use_state_preprocessor": False,
     # Model options for the Q network(s).
     "Q_model": {
         "fcnet_activation": "relu",
@@ -148,11 +148,11 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
+    #if config["model"].get("custom_model"):
+    #    logger.warning(
+    #        "Setting use_state_preprocessor=True since a custom model "
+    #        "was specified.")
+    #    config["use_state_preprocessor"] = True
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")

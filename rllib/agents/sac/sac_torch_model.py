@@ -16,17 +16,14 @@ torch, nn = try_import_torch()
 class SACTorchModel(TorchModelV2, nn.Module):
     """Extension of the standard TorchModelV2 for SAC.
 
-    Instances of this Model get created via wrapping this class around another
-    default- or custom model (inside
-    rllib/agents/sac/sac_torch_policy.py::build_sac_model). Doing so simply
-    adds this class' methods (`get_q_values`, etc..) to the wrapped model, such
-    that the wrapped model can be used by the SAC algorithm.
+    For using a custom model, simply sub-class this class and implement the
+    methods: `get_q_values(obs, actions)`, `get_twin_q_values(obs, actions)`,
+    and `get_policy_output(obs)`.
 
     Data flow:
-        `obs` -> forward() -> `model_out`
-        `model_out` -> get_policy_output() -> pi(actions|obs)
-        `model_out`, `actions` -> get_q_values() -> Q(s, a)
-        `model_out`, `actions` -> get_twin_q_values() -> Q_twin(s, a)
+        `obs` -> get_policy_output() -> pi(actions|obs)
+        `obs`, `actions` -> get_q_values() -> Q(s, a)
+        `obs`, `actions` -> get_twin_q_values() -> Q_twin(s, a)
     """
 
     def __init__(self,
