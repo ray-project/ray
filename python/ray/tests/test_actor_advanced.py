@@ -1093,6 +1093,42 @@ def test_actor_resource_demand(shutdown_only):
     global_state_accessor.disconnect()
 
 
+def test_kill_pending_actor():
+    cluster = ray.init()
+    global_state_accessor = GlobalStateAccessor(
+        cluster["redis_address"], ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    global_state_accessor.connect()
+
+    @ray.remote(resources={"WORKER": 1.0})
+    class PendingActor:
+        pass
+
+    # kill actor with `no_restart=True`.
+    actor1 = PendingActor.remote()
+    ray.kill(actor1, no_restart=True) # Do not wait until it starts.
+    def condition1():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 0:
+            return True
+        return False
+    wait_for_condition(condition1, timeout=10)
+
+    # kill actor with `no_restart=False`.
+    actor2 = PendingActor.remote()
+    ray.kill(actor2, no_restart=False) # Do not wait until it starts.
+    def condition2():
+        message = global_state_accessor.get_all_resource_usage()
+        resource_usages = ray.gcs_utils.ResourceUsageBatchData.FromString(message)
+        if len(resource_usages.resource_load_by_shape.resource_demands) == 1:
+            return True
+        return False
+    wait_for_condition(condition2, timeout=10)
+
+    global_state_accessor.disconnect()
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     # Test suite is timing out. Disable on windows for now.

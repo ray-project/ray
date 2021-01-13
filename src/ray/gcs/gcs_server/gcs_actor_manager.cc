@@ -430,6 +430,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   auto it = registered_actors_.find(actor_id);
   RAY_CHECK(it != registered_actors_.end())
       << "Tried to destroy actor that does not exist " << actor_id;
+  const auto &task_id = it->second->GetCreationTaskSpecification().TaskId();
   it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
   AddDestroyedActorToCache(it->second);
@@ -495,8 +496,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
           // it doesn't responds, and the actor should be still in leasing state.
           // NOTE: We will cancel outstanding lease request by calling
           // `raylet_client->CancelWorkerLease`.
-          const auto &task_id =
-              TaskID::FromBinary(actor->GetActorTableData().task_spec().task_id());
           gcs_actor_scheduler_->CancelOnLeasing(node_id, actor_id, task_id);
         }
       }
