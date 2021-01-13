@@ -65,6 +65,7 @@ class Worker:
             conn_attempts += 1
             try:
                 grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                break
             except grpc.FutureTimeoutError:
                 if conn_attempts >= connection_retries:
                     raise ConnectionError("ray client connection timeout")
