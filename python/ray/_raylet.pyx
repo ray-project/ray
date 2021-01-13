@@ -734,7 +734,7 @@ cdef void get_py_stack(c_string* stack_out) nogil:
         while frame and len(msg_frames) < 4:
             filename = frame.f_code.co_filename
             # Decode Ray internal frames to add annotations.
-            if filename.endswith("ray/worker.py"):
+            if filename.endswith("ray/api.py"):
                 if frame.f_code.co_name == "put":
                     msg_frames = ["(put object) "]
             elif filename.endswith("ray/workers/default_worker.py"):
