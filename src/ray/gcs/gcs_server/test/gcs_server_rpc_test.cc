@@ -81,17 +81,6 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    std::promise<bool> promise;
-    client_->RegisterActorInfo(
-        request,
-        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
     std::promise<bool> promise;
     client_->UpdateActorInfo(request, [&promise](const Status &status,

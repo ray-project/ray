@@ -126,10 +126,6 @@ class ActorInfoGcsServiceHandler {
                                      GetAllActorInfoReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
-                                       RegisterActorInfoReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
                                      UpdateActorInfoReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
@@ -156,7 +152,6 @@ class ActorInfoGrpcService : public GrpcService {
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetNamedActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetAllActorInfo);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo);
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo);
   }
 
