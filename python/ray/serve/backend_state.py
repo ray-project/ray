@@ -120,6 +120,18 @@ class BackendState:
     def get_backend(self, backend_tag: BackendTag) -> Optional[BackendInfo]:
         return self.backends.get(backend_tag)
 
+    def _set_backend_goal(self, backend_tag: BackendTag,
+                          backend_info: BackendInfo) -> None:
+        existing_goal_id = self.backend_goals.get(backend_tag)
+        new_goal_id = self._goal_manager.create_goal()
+
+        if backend_info is not None:
+            self.backends[backend_tag] = backend_info
+
+        self.backend_goals[backend_tag] = new_goal_id
+
+        return new_goal_id, existing_goal_id
+
     def create_backend(self, backend_tag: BackendTag,
                        backend_config: BackendConfig,
                        replica_config: ReplicaConfig) -> Optional[GoalId]:
