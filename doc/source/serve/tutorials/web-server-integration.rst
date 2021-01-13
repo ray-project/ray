@@ -37,7 +37,7 @@ Now you can query your web server, for example by running the following in anoth
 .. code-block:: bash
 
   curl "http://127.0.0.1:8000/generate?query=Hello%20friend%2C%20how"
-  
+
 The terminal should then print the generated text:
 
 .. code-block:: bash
@@ -66,7 +66,7 @@ Here's how to run this example:
 
 1. Run ``ray start --head`` to start a local Ray cluster in the background.
 
-2. In the directory where the example files are saved, run ``python deploy_serve.py`` to deploy our Ray Serve endpoint.  
+2. In the directory where the example files are saved, run ``python deploy_serve.py`` to deploy our Ray Serve endpoint.
 
 .. note::
   Because we have omitted the keyword argument ``route`` in ``client.create_endpoint()``, our endpoint will not be exposed over HTTP by Ray Serve.

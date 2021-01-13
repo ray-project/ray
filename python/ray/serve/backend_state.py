@@ -122,7 +122,7 @@ class BackendState:
     def num_pending_goals(self) -> int:
         return len(self.pending_goals)
 
-    async def wait_for_goal(self, goal_id: GoalId) -> None:
+    async def wait_for_goal(self, goal_id: GoalId) -> bool:
         start = time.time()
         if goal_id not in self.pending_goals:
             logger.debug(f"Goal {goal_id} not found")
@@ -131,6 +131,7 @@ class BackendState:
         await event.wait()
         logger.debug(
             f"Waiting for goal {goal_id} took {time.time() - start} seconds")
+        return True
 
     def _complete_goal(self, goal_id: GoalId) -> None:
         logger.debug(f"Completing goal {goal_id}")
@@ -455,13 +456,13 @@ class BackendState:
             if (not desired_info or
                     desired_info.backend_config.num_replicas == 0) and \
                     (not existing_info or len(existing_info) == 0):
-                completed_goals.append(self.goals[backend_tag])
+                completed_goals.append(self.goals.get(backend_tag))
 
             # Check for a non-zero number of backends
             if desired_info and existing_info and desired_info.backend_config.\
                     num_replicas == len(existing_info):
-                completed_goals.append(self.goals[backend_tag])
-        return completed_goals
+                completed_goals.append(self.goals.get(backend_tag))
+        return [goal for goal in completed_goals if goal]
 
     async def update(self) -> bool:
         for goal_id in self._completed_goals():
