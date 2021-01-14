@@ -157,7 +157,7 @@ If you want to utilize a multi-node cluster in slurm:
 
     python slurm-launch.py --exp-name test --command "python your_file.py" --num-nodes 3
 
-If you want to specify the computing nodes, just use the same node name in ``sinfo`` command:
+If you want to specify the computing node(s), just use the same node name(s) in the same format of the output of ``sinfo`` command:
 
 .. code-block:: bash
 
@@ -201,6 +201,5 @@ Here are some community-contributed templates for using SLURM with Ray:
 .. _`YASPI`: https://github.com/albanie/yaspi
 
 .. _`Convenient python interface`: https://github.com/pengzhenghao/use-ray-with-slurm
-
 
 
