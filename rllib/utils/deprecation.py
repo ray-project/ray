@@ -1,5 +1,4 @@
 import logging
-from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -9,18 +8,15 @@ logger = logging.getLogger(__name__)
 DEPRECATED_VALUE = -1
 
 
-def deprecation_warning(
-        old: str,
-        new: Optional[str] = None,
-        error: Optional[Union[bool, Exception]] = None) -> None:
-    """Warns (via the `logger` object) or throws a deprecation warning/error.
+def deprecation_warning(old, new=None, error=None):
+    """
+    Logs (via the `logger` object) or throws a deprecation warning/error.
 
     Args:
         old (str): A description of the "thing" that is to be deprecated.
         new (Optional[str]): A description of the new "thing" that replaces it.
-        error (Optional[Union[bool, Exception]]): Whether or which exception to
-            throw. If True, throw ValueError. If False, just warn.
-            If Exception, throw that Exception.
+        error (Optional[Union[bool,Exception]]): Whether or which exception to
+            throw. If True, throw ValueError.
     """
     msg = "`{}` has been deprecated.{}".format(
         old, (" Use `{}` instead.".format(new) if new else ""))

@@ -674,6 +674,7 @@ void ClusterTaskManager::Dispatch(
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Dispatching task " << task_spec.TaskId();
   // Pass the contact info of the worker to use.
+  reply->set_worker_pid(worker->GetProcess().GetId());
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
