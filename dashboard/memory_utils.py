@@ -57,6 +57,7 @@ class ReferenceType:
     CAPTURED_IN_OBJECT = "CAPTURED_IN_OBJECT"
     UNKNOWN_STATUS = "UNKNOWN_STATUS"
 
+
 def get_sorting_type(sort_by: str):
     """Translate string input into SortingType instance"""
     sort_by = sort_by.upper()
