@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+import numpy as np
 
 import ray
 from ray.cluster_utils import Cluster
@@ -25,7 +26,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
-from ray.util import placement_group, placement_group_table
+from ray.util import placement_group
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -928,6 +929,7 @@ class ResourcesTest(unittest.TestCase):
 
 class TrialRunnerPlacementGroupTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
         self.head_cpus = 8
         self.head_gpus = 4
         self.head_custom = 16
@@ -953,13 +955,17 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         self.cluster.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def testPlacementGroupRequests(self):
+    def testPlacementGroupRequests(self, scheduled=10):
         """In this test we try to start 10 trials but only have resources
-        for 2. Placement groups should still be created and PENDING."""
+        for 2. Placement groups should still be created and PENDING.
+
+        Eventually they should be scheduled sequentially (i.e. in pairs
+        of two)."""
 
         def train(config):
             time.sleep(1)
-            tune.report(metric=0)
+            now = time.time()
+            tune.report(end=now - config["start_time"])
 
         def placement_group_factory():
             head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
@@ -974,19 +980,89 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         class _TestCallback(Callback):
             def on_step_end(self, iteration, trials, **info):
                 if iteration == 1:
-                    this.assertEqual(len(trials), 10)
+                    this.assertEqual(len(trials), scheduled)
                     this.assertEqual(
-                        len(trial_executor._committed_placement_groups), 10)
-                tbl = placement_group_table()
-                print("STEP", iteration,
-                      [tbl[pg]["state"] for pg in sorted(tbl)])
+                        len(trial_executor._committed_placement_groups),
+                        scheduled)
 
-        tune.run(
+        start = time.time()
+        out = tune.run(
             train,
+            config={"start_time": start},
             resources_per_trial=placement_group_factory,
             num_samples=10,
             trial_executor=trial_executor,
             callbacks=[_TestCallback()])
+
+        trial_end_times = sorted([t.last_result["end"] for t in out.trials])
+        print("Trial end times:", trial_end_times)
+        max_diff = trial_end_times[-1] - trial_end_times[0]
+
+        # Not all trials have been run in parallel
+        self.assertGreater(max_diff, 5)
+
+        # Some trials should have run in parallel
+        self.assertLess(max_diff, 10)
+
+    @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    @patch("ray.tune.ray_trial_executor.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    def testPlacementGroupLimitedRequests(self):
+        """Assert that maximum number of placement groups is enforced."""
+        self.testPlacementGroupRequests(scheduled=6)
+
+    def testPlacementGroupDistributedTraining(self):
+        """Run distributed training using placement groups.
+
+        Each trial requests 4 CPUs and starts 4 remote training workers.
+        """
+
+        def placement_group_factory():
+            head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
+            child_bundle = {"CPU": 1}
+
+            return placement_group(
+                [head_bundle, child_bundle, child_bundle, child_bundle])
+
+        @ray.remote
+        class TrainingActor:
+            def train(self, val):
+                time.sleep(1)
+                return val
+
+        def train(config):
+            base = config["base"]
+            actors = [TrainingActor.remote() for _ in range(4)]
+            futures = [
+                actor.train.remote(base + 2 * i)
+                for i, actor in enumerate(actors)
+            ]
+            results = ray.get(futures)
+
+            end = time.time() - config["start_time"]
+            tune.report(avg=np.mean(results), end=end)
+
+        start = time.time()
+        out = tune.run(
+            train,
+            config={
+                "start_time": start,
+                "base": tune.grid_search(list(range(0, 100, 10)))
+            },
+            resources_per_trial=placement_group_factory,
+            num_samples=1)
+
+        avgs = sorted([t.last_result["avg"] for t in out.trials])
+        self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
+
+        trial_end_times = sorted([t.last_result["end"] for t in out.trials])
+        print("Trial end times:", trial_end_times)
+        max_diff = trial_end_times[-1] - trial_end_times[0]
+
+        # Not all trials have been run in parallel
+        self.assertGreater(max_diff, 5)
+
+        # Some trials should have run in parallel
+        self.assertLess(max_diff, 10)
 
 
 if __name__ == "__main__":

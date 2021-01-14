@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 
+from ray.tune.resources import PlacementGroupFactory
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
@@ -165,6 +166,8 @@ class TrialExecutor:
         if self._queue_trials:
             return
         for trial in trial_runner.get_trials():
+            if isinstance(trial.resources, PlacementGroupFactory):
+                return
             if trial.status == Trial.PENDING:
                 if not self.has_resources(trial.resources):
                     resource_string = trial.resources.summary_string()
