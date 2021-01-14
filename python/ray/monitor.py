@@ -12,7 +12,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
-    AUTOSCALER_EVENT_LOG_ENABLED
+    AUTOSCALER_EVENTS
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
@@ -280,7 +280,7 @@ class Monitor:
                     self.last_avail_resources = avail_resources
 
                 # TODO(ekl) make the logging frequency configurable
-                if AUTOSCALER_EVENT_LOG_ENABLED:
+                if AUTOSCALER_EVENTS:
                     for msg in self.event_summarizer.summary():
                         logger.info(":event_summary:{}".format(msg))
                     self.event_summarizer.clear()
