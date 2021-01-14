@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
   RayConfig::instance().initialize(config_map);
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "1.1.0.dev0"},
+      {ray::stats::VersionKey, "1.2.0.dev0"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
@@ -74,7 +74,8 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
   gcs_server_config.grpc_server_port = gcs_server_port;
-  gcs_server_config.grpc_server_thread_num = 1;
+  gcs_server_config.grpc_server_thread_num =
+      RayConfig::instance().gcs_server_rpc_server_thread_num();
   gcs_server_config.redis_address = redis_address;
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.redis_password = redis_password;

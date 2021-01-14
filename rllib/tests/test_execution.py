@@ -16,7 +16,7 @@ from ray.rllib.execution.train_ops import TrainOneStep, ComputeGradients, \
     AverageGradients
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
     ReplayActor
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.util.iter import LocalIterator, from_range
 from ray.util.iter_metrics import SharedMetrics
 
@@ -151,10 +151,10 @@ def test_concat_batches(ray_start_regular_shared):
 def test_standardize(ray_start_regular_shared):
     workers = make_workers(0)
     a = ParallelRollouts(workers, mode="async")
-    b = a.for_each(StandardizeFields(["t"]))
+    b = a.for_each(StandardizeFields([SampleBatch.EPS_ID]))
     batch = next(b)
-    assert abs(np.mean(batch["t"])) < 0.001, batch
-    assert abs(np.std(batch["t"]) - 1.0) < 0.001, batch
+    assert abs(np.mean(batch[SampleBatch.EPS_ID])) < 0.001, batch
+    assert abs(np.std(batch[SampleBatch.EPS_ID]) - 1.0) < 0.001, batch
 
 
 def test_async_grads(ray_start_regular_shared):
@@ -173,8 +173,8 @@ def test_train_one_step(ray_start_regular_shared):
     b = a.for_each(TrainOneStep(workers))
     batch, stats = next(b)
     assert isinstance(batch, SampleBatch)
-    assert "default_policy" in stats
-    assert "learner_stats" in stats["default_policy"]
+    assert DEFAULT_POLICY_ID in stats
+    assert "learner_stats" in stats[DEFAULT_POLICY_ID]
     counters = a.shared_metrics.get().counters
     assert counters["num_steps_sampled"] == 100, counters
     assert counters["num_steps_trained"] == 100, counters

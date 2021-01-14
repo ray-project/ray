@@ -11,7 +11,7 @@ Available Algorithms - Overview
 =================== ========== ======================= ================== =========== =============================================================
 Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 =================== ========== ======================= ================== =========== =============================================================
-`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`A2C, A3C`_         tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `ARS`_              tf + torch **Yes**                 **Yes**            No
 `BC`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `ES`_               tf + torch **Yes**                 **Yes**            No
@@ -20,13 +20,14 @@ Algorithm           Frameworks Discrete Actions        Continuous Actions Multi-
 `Dreamer`_          torch      No                      **Yes**            No          `+RNN`_
 `DQN`_, `Rainbow`_  tf + torch **Yes** `+parametric`_  No                 **Yes**
 `APEX-DQN`_         tf + torch **Yes** `+parametric`_  No                 **Yes**
-`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`IMPALA`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `MAML`_             tf + torch No                      **Yes**            No
 `MARWIL`_           tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 `MBMPO`_            torch      No                      **Yes**            No
-`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
-`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Transformer`_, `+autoreg`_
+`PG`_               tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
+`PPO`_, `APPO`_     tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_, `+LSTM auto-wrapping`_, `+Attention`_, `+autoreg`_
 `SAC`_              tf + torch **Yes**                 **Yes**            **Yes**
+`SlateQ`_           torch      **Yes**                 No                 No
 `LinUCB`_, `LinTS`_ torch      **Yes** `+parametric`_  No                 **Yes**
 `AlphaZero`_        torch      **Yes** `+parametric`_  No                 No
 =================== ========== ======================= ================== =========== =============================================================
@@ -50,7 +51,7 @@ Exploration-based plug-ins (can be combined with any algo)
 ============================= ========== ======================= ================== =========== =====================
 Algorithm                     Frameworks Discrete Actions        Continuous Actions Multi-Agent Model Support
 ============================= ========== ======================= ================== =========== =====================
-`Curiosity`_                  torch      **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
+`Curiosity`_                  tf + torch **Yes** `+parametric`_  **Yes**            **Yes**     `+RNN`_
 ============================= ========== ======================= ================== =========== =====================
 
 .. _`A2C, A3C`: rllib-algorithms.html#a3c
@@ -60,9 +61,9 @@ Algorithm                     Frameworks Discrete Actions        Continuous Acti
 .. _`+LSTM auto-wrapping`: rllib-models.html#built-in-models
 .. _`+parametric`: rllib-models.html#variable-length-parametric-action-spaces
 .. _`Rainbow`: rllib-algorithms.html#dqn
-.. _`+RNN`: rllib-models.html#recurrent-models
+.. _`+RNN`: rllib-models.html#rnns
 .. _`TD3`: rllib-algorithms.html#ddpg
-.. _`+Transformer`: rllib-models.html#attention-networks
+.. _`+Attention`: rllib-models.html#attention
 
 High-throughput architectures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -262,7 +263,7 @@ Deep Deterministic Policy Gradients (DDPG, TD3)
 -----------------------------------------------
 |pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1509.02971>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ddpg/ddpg.py>`__
-DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/latest/algorithms/td3.html>`__ are available as ``TD3``.
+DDPG is implemented similarly to DQN (below). The algorithm can be scaled by increasing the number of workers or using Ape-X. The improvements from `TD3 <https://spinningup.openai.com/en/master/algorithms/td3.html>`__ are available as ``TD3``.
 
 .. figure:: dqn-arch.svg
 
@@ -471,7 +472,12 @@ RLlib's MBMPO implementation is a Dyna-styled model-based RL method that learns 
 
 Additional statistics are logged in MBMPO. Each MBMPO iteration corresponds to multiple MAML iterations, and ``MAMLIter$i$_DynaTrajInner_$j$_episode_reward_mean`` measures the agent's returns across the dynamics models at iteration ``i`` of MAML and step ``j`` of inner adaptation. Examples can be seen `here <https://github.com/ray-project/rl-experiments/tree/master/mbmpo>`__.
 
-Tuned examples: `HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__, `Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__
+Tuned examples (continuous actions):
+`Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/pendulum-mbmpo.yaml>`__,
+`HalfCheetah <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/halfcheetah-mbmpo.yaml>`__,
+`Hopper <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/hopper-mbmpo.yaml>`__,
+Tuned examples (discrete actions):
+`CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/mbmpo/cartpole-mbmpo.yaml>`__
 
 **MuJoCo results @100K steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
@@ -514,6 +520,24 @@ Cheetah-Run    640             ~800
 **Dreamer-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../rllib/agents/dreamer/dreamer.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+.. _slateq:
+
+SlateQ
+-------
+|pytorch|
+`[paper] <https://storage.googleapis.com/pub-tools-public-publication-data/pdf/9f91de1fa0ac351ecb12e4062a37afb896aa1463.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/slateq/slateq.py>`__
+
+SlateQ is a model-free RL method that builds on top of DQN and generates recommendation slates for recommender system environments. Since these types of environments come with large combinatorial action spaces, SlateQ mitigates this by decomposing the Q-value into single-item Q-values and solves the decomposed objective via mixing integer programming and deep learning optimization. SlateQ can be evaluated on Google's RecSim `environment <https://github.com/google-research/recsim>`__. `An RLlib wrapper for RecSim can be found here < <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__.
+
+RecSim environment wrapper: `Google RecSim <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/recsim_wrapper.py>`__
+
+**SlateQ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/agents/slateq/slateq.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

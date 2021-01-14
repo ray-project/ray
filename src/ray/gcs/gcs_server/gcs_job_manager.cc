@@ -94,7 +94,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
     RAY_CHECK_OK(status);
     auto job_id = JobID::FromBinary(job_table_data->job_id());
     jobs_.emplace(job_id, job_table_data);
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
+      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                        job_table_data->SerializeAsString(), nullptr));
     RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                   << ", driver pid = " << driver_pid;
@@ -244,9 +244,12 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
     return Status::Invalid(ss.str());
   }
 
-  auto node_info = gcs_node_manager_->GetAliveNode(driver_client_id);
-  job_table_data->set_driver_hostname(node_info->node_manager_hostname());
-  job_table_data->set_driver_ip_address(node_info->node_manager_address());
+  auto maybe_node = gcs_node_manager_->GetAliveNode(driver_client_id);
+  if (maybe_node.has_value()) {
+    auto node = maybe_node.value();
+    job_table_data->set_driver_hostname(node->node_manager_hostname());
+    job_table_data->set_driver_ip_address(node->node_manager_address());
+  }
   job_table_data->set_raylet_id(driver_client_id.Binary());
 
   RAY_LOG(INFO) << "Submitting job, job id = " << job_id << ", config is "
@@ -369,7 +372,7 @@ Status GcsJobManager::UpdateJobStateToDead(std::shared_ptr<JobTableData> job_tab
   job_table_data->set_is_dead(true);
   auto on_done = [this, callback, job_id, job_table_data](const Status &status) {
     RAY_CHECK_OK(status);
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                        job_table_data->SerializeAsString(), nullptr));
     ClearJobInfos(job_id);
     if (callback) {

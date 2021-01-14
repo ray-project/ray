@@ -1,13 +1,15 @@
 """ Code adapted from https://github.com/ikostrikov/pytorch-a3c"""
 import numpy as np
-from typing import List
+from typing import Union, Tuple, Any, List
 
-from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
 
-def normc_initializer(std=1.0):
+def normc_initializer(std: float = 1.0) -> Any:
     def initializer(tensor):
         tensor.data.normal_(0, 1)
         tensor.data *= std / torch.sqrt(
@@ -16,7 +18,9 @@ def normc_initializer(std=1.0):
     return initializer
 
 
-def same_padding(in_size, filter_size, stride_size):
+def same_padding(in_size: Tuple[int, int], filter_size: Tuple[int, int],
+                 stride_size: Union[int, Tuple[int, int]]
+                 ) -> (Union[int, Tuple[int, int]], Tuple[int, int]):
     """Note: Padding is added to match TF conv2d `same` padding. See
     www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 
@@ -58,15 +62,31 @@ class SlimConv2d(nn.Module):
 
     def __init__(
             self,
-            in_channels,
-            out_channels,
-            kernel,
-            stride,
-            padding,
+            in_channels: int,
+            out_channels: int,
+            kernel: Union[int, Tuple[int, int]],
+            stride: Union[int, Tuple[int, int]],
+            padding: Union[int, Tuple[int, int]],
             # Defaulting these to nn.[..] will break soft torch import.
-            initializer="default",
-            activation_fn="default",
-            bias_init=0):
+            initializer: Any = "default",
+            activation_fn: Any = "default",
+            bias_init: float = 0):
+        """Creates a standard Conv2d layer, similar to torch.nn.Conv2d
+
+            Args:
+                in_channels(int): Number of input channels
+                out_channels (int): Number of output channels
+                kernel (Union[int, Tuple[int, int]]): If int, the kernel is
+                    a tuple(x,x). Elsewise, the tuple can be specified
+                stride (Union[int, Tuple[int, int]]): Controls the stride
+                    for the cross-correlation. If int, the stride is a
+                    tuple(x,x). Elsewise, the tuple can be specified
+                padding (Union[int, Tuple[int, int]]): Controls the amount
+                    of implicit zero-paddings during the conv operation
+                initializer (Any): Initializer function for kernel weights
+                activation_fn (Any): Activation function at the end of layer
+                bias_init (float): Initalize bias weights to bias_init const
+        """
         super(SlimConv2d, self).__init__()
         layers = []
         # Padding layer.
@@ -91,7 +111,7 @@ class SlimConv2d(nn.Module):
         # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: TensorType) -> TensorType:
         return self._model(x)
 
 
@@ -99,15 +119,25 @@ class SlimFC(nn.Module):
     """Simple PyTorch version of `linear` function"""
 
     def __init__(self,
-                 in_size,
-                 out_size,
-                 initializer=None,
-                 activation_fn=None,
-                 use_bias=True,
-                 bias_init=0.0):
+                 in_size: int,
+                 out_size: int,
+                 initializer: Any = None,
+                 activation_fn: Any = None,
+                 use_bias: bool = True,
+                 bias_init: float = 0.0):
+        """Creates a standard FC layer, similar to torch.nn.Linear
+
+        Args:
+            in_size(int): Input size for FC Layer
+            out_size (int): Output size for FC Layer
+            initializer (Any): Initializer function for FC layer weights
+            activation_fn (Any): Activation function at the end of layer
+            use_bias (bool): Whether to add bias weights or not
+            bias_init (float): Initalize bias weights to bias_init const
+        """
         super(SlimFC, self).__init__()
         layers = []
-        # Actual Conv2D layer (including correct initialization logic).
+        # Actual nn.Linear layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)
@@ -122,20 +152,20 @@ class SlimFC(nn.Module):
         # Put everything in sequence.
         self._model = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: TensorType) -> TensorType:
         return self._model(x)
 
 
 class AppendBiasLayer(nn.Module):
     """Simple bias appending layer for free_log_std."""
 
-    def __init__(self, num_bias_vars):
+    def __init__(self, num_bias_vars: int):
         super().__init__()
         self.log_std = torch.nn.Parameter(
             torch.as_tensor([0.0] * num_bias_vars))
         self.register_parameter("log_std", self.log_std)
 
-    def forward(self, x):
+    def forward(self, x: TensorType) -> TensorType:
         out = torch.cat(
             [x, self.log_std.unsqueeze(0).repeat([len(x), 1])], axis=1)
         return out

@@ -1,11 +1,16 @@
 import numpy as np
+from typing import Dict, List
+import gym
 
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.utils import get_filter_config
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 _, nn = try_import_torch()
 
@@ -13,8 +18,10 @@ _, nn = try_import_torch()
 class VisionNetwork(TorchModelV2, nn.Module):
     """Generic vision network."""
 
-    def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+    def __init__(self, obs_space: gym.spaces.Space,
+                 action_space: gym.spaces.Space, num_outputs: int,
+                 model_config: ModelConfigDict, name: str):
+
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
 
@@ -33,9 +40,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # a n x (1,1) Conv2D).
         self.last_layer_is_flattened = False
         self._logits = None
+        self.traj_view_framestacking = False
 
         layers = []
-        (w, h, in_channels) = obs_space.shape
+        # Perform Atari framestacking via traj. view API.
+        if model_config.get("num_framestacks") != "auto" and \
+                model_config.get("num_framestacks", 0) > 1:
+            (w, h) = obs_space.shape
+            in_channels = model_config["num_framestacks"]
+            self.traj_view_framestacking = True
+        else:
+            (w, h, in_channels) = obs_space.shape
+
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
             padding, out_size = same_padding(in_size, kernel, [stride, stride])
@@ -108,7 +124,11 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 activation_fn=None)
         else:
             vf_layers = []
-            (w, h, in_channels) = obs_space.shape
+            if self.traj_view_framestacking:
+                (w, h) = obs_space.shape
+                in_channels = model_config["num_framestacks"]
+            else:
+                (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
             for out_channels, kernel, stride in filters[:-1]:
                 padding, out_size = same_padding(in_size, kernel,
@@ -147,9 +167,27 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # Holds the current "base" output (before logits layer).
         self._features = None
 
+        # Optional: framestacking obs/new_obs for Atari.
+        if self.traj_view_framestacking:
+            from_ = model_config["num_framestacks"] - 1
+            self.view_requirements[SampleBatch.OBS].shift = \
+                "-{}:0".format(from_)
+            self.view_requirements[SampleBatch.OBS].shift_from = -from_
+            self.view_requirements[SampleBatch.OBS].shift_to = 0
+            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
+                data_col=SampleBatch.OBS,
+                shift="-{}:1".format(from_ - 1),
+                space=self.view_requirements[SampleBatch.OBS].space,
+            )
+
     @override(TorchModelV2)
-    def forward(self, input_dict, state, seq_lens):
-        self._features = input_dict["obs"].float().permute(0, 3, 1, 2)
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+        self._features = input_dict["obs"].float()
+        # No framestacking:
+        if not self.traj_view_framestacking:
+            self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:
@@ -173,7 +211,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
             return conv_out, state
 
     @override(TorchModelV2)
-    def value_function(self):
+    def value_function(self) -> TensorType:
         assert self._features is not None, "must call forward() first"
         if self._value_branch_separate:
             value = self._value_branch_separate(self._features)
@@ -188,7 +226,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 features = self._features
             return self._value_branch(features).squeeze(1)
 
-    def _hidden_layers(self, obs):
+    def _hidden_layers(self, obs: TensorType) -> TensorType:
         res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
         res = res.squeeze(3)
         res = res.squeeze(2)

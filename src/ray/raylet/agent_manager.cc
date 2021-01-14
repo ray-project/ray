@@ -82,12 +82,12 @@ void AgentManager::InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data,
     if (status.ok()) {
       if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
         // Update job resource so that the driver/worker could lease worker from raylet.
-        gcs::NodeInfoAccessor::ResourceMap resources;
+        gcs::NodeResourceInfoAccessor::ResourceMap resources;
         auto resource = std::make_shared<rpc::ResourceTableData>();
         resource->set_resource_capacity(kMaxResourceCapacity);
         auto resource_name = JOB_RESOURCE_PREFIX + absl::AsciiStrToUpper(job_id.Hex());
         resources.emplace(std::move(resource_name), std::move(resource));
-        RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(options_.node_id,
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(options_.node_id,
                                                                resources, nullptr));
         if (start_driver) {
           auto it = starting_drivers_.find(job_id);
@@ -180,6 +180,7 @@ void AgentManager::StartAgent() {
   // Set node id to agent.
   ProcessEnvironment env;
   env.insert({"RAY_NODE_ID", options_.node_id.Hex()});
+  env.insert({"RAY_RAYLET_PID", std::to_string(getpid())});
   Process child(argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.

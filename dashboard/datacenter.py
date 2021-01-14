@@ -80,7 +80,8 @@ class DataOrganizer:
         job_workers = {}
         node_workers = {}
         core_worker_stats = {}
-        for node_id in DataSource.nodes.keys():
+        # await inside for loop, so we create a copy of keys().
+        for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
                 job_id = worker["jobId"]
@@ -96,6 +97,9 @@ class DataOrganizer:
     @classmethod
     async def get_node_workers(cls, node_id):
         workers = []
+        node_ip = DataSource.node_id_to_ip[node_id]
+        node_logs = DataSource.ip_and_pid_to_logs.get(node_ip, {})
+        node_errs = DataSource.ip_and_pid_to_errors.get(node_ip, {})
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
@@ -110,6 +114,8 @@ class DataOrganizer:
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
+            worker["logCount"] = len(node_logs.get(str(pid), []))
+            worker["errorCount"] = len(node_errs.get(str(pid), []))
             worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE)
@@ -140,8 +146,9 @@ class DataOrganizer:
 
         node_stats.pop("coreWorkersStats", None)
 
+        view_data = node_stats.get("viewData", [])
         ray_stats = cls._extract_view_data(
-            node_stats["viewData"],
+            view_data,
             {"object_store_used_memory", "object_store_available_memory"})
 
         node_info = node_physical_stats
@@ -152,7 +159,7 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Merge actors to node physical stats
-        node_info["actors"] = await cls.get_node_actors(node_id)
+        node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
         node_info["workers"] = DataSource.node_workers.get(node_id, [])
         node_info["logCount"] = node_log_count
@@ -197,22 +204,6 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_node_actors(cls, node_id):
-        node_actors = DataSource.node_actors.get(node_id, {})
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in node_actors.items()
-        }
-
-    @classmethod
-    async def get_job_actors(cls, job_id):
-        job_actors = DataSource.job_actors.get(job_id, {})
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in job_actors.items()
-        }
-
-    @classmethod
     async def get_all_actors(cls):
         return {
             actor_id: await cls._get_actor(actor)
@@ -235,24 +226,21 @@ class DataOrganizer:
         pid = core_worker_stats.get("pid")
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
-        actor_process_gpu_stats = None
+        actor_process_gpu_stats = []
         if pid:
-            for process_stats in node_physical_stats.get("workers"):
+            for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
                     actor_process_stats = process_stats
                     break
 
-            for gpu_stats in node_physical_stats.get("gpus"):
+            for gpu_stats in node_physical_stats.get("gpus", []):
                 for process in gpu_stats.get("processes", []):
                     if process["pid"] == pid:
-                        actor_process_gpu_stats = gpu_stats
+                        actor_process_gpu_stats.append(gpu_stats)
                         break
-                if actor_process_gpu_stats is not None:
-                    break
 
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
-
         return actor
 
     @classmethod

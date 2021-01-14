@@ -6,7 +6,7 @@ This file defines the distributed Trainer class for the soft actor critic
 algorithm.
 See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#sac
+Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#sac
 """
 
 import logging

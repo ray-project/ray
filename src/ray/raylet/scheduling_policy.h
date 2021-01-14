@@ -40,26 +40,15 @@ class SchedulingPolicy {
   /// producing a mapping of tasks to raylets.
   ///
   /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster. For all client IDs in the returned
+  /// information for some subset of the cluster. For all node IDs in the returned
   /// placement map, the corresponding SchedulingResources::resources_load_ is
   /// incremented by the aggregate resource demand of the tasks assigned to it.
-  /// \param local_client_id The ID of the node manager that owns this
+  /// \param local_node_id The ID of the node manager that owns this
   /// SchedulingPolicy object.
   /// \return Scheduling decision, mapping tasks to raylets for placement.
   std::unordered_map<TaskID, NodeID> Schedule(
       std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-      const NodeID &local_client_id);
-
-  /// \param cluster_resources: a set of cluster resources containing resource and load
-  /// information for some subset of the cluster.
-  /// \param local_client_id The ID of the node manager that owns this
-  /// SchedulingPolicy object.
-  /// \param bundle_spec the description of a bundle which include the resource the bundle
-  /// need. \return If this bundle can be scheduled in this node, return true; else return
-  /// false.
-  bool ScheduleBundle(std::unordered_map<NodeID, SchedulingResources> &cluster_resources,
-                      const NodeID &local_client_id,
-                      const ray::BundleSpecification &bundle_spec);
+      const NodeID &local_node_id);
 
   /// \brief Given a set of cluster resources, try to spillover infeasible tasks.
   ///

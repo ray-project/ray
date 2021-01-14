@@ -18,7 +18,7 @@
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
-constexpr size_t kUniqueIDSize = 20;
+constexpr size_t kUniqueIDSize = 28;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.

@@ -9,7 +9,7 @@ Getting Started with Ray
 Check out :ref:`gentle-intro` to learn more about Ray and its ecosystem of libraries that enable things like distributed hyperparameter tuning,
 reinforcement learning, and distributed training.
 
-Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
+Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (functions) and Actors (Classes) to allow you to parallelize your code.
 
 .. tabs::
   .. group-tab:: Python
@@ -112,6 +112,20 @@ Ray provides Python and Java API. And Ray uses Tasks (functions) and Actors (Cla
           }
         }
 
+  .. group-tab:: C++ (EXPERIMENTAL)
+
+    | The C++ Ray API is currently experimental with limited support. You can track its development `here <https://github.com/ray-project/ray/milestone/17>`__ and report issues on GitHub.
+    | Run the following commands to get started:
+    | - Build ray from source with *bazel* as shown `here <https://docs.ray.io/en/master/development.html#building-ray-full>`__.
+    | - Run `"cd ray/cpp"`.
+    | - Run `"cp dev_BUILD.bazel BUILD.bazel"`.
+    | - Modify `src/ray/example/example.cc`.
+    | - Run `"ray stop"`.
+    | - Run `"bazel build //cpp:all"`.
+    | - Run `"bazel run //cpp:example"`.
+
+    .. literalinclude:: ../../cpp/src/ray/example/example.cc
+       :language: cpp
 
 You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
@@ -174,6 +188,7 @@ Papers
 ------
 
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
+- `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
 - `Tune paper`_
 
@@ -183,6 +198,7 @@ Papers
 - `Ray HotOS paper`_
 
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
@@ -257,6 +273,7 @@ Papers
    rllib-env.rst
    rllib-models.rst
    rllib-algorithms.rst
+   rllib-sample-collection.rst
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
@@ -272,6 +289,7 @@ Papers
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
    raysgd/raysgd_dataset.rst
+   raysgd/raysgd_ptl.rst
    raysgd/raysgd_tune.rst
    raysgd/raysgd_ref.rst
 
@@ -283,8 +301,10 @@ Papers
    multiprocessing.rst
    joblib.rst
    iter.rst
+   xgboost-ray.rst
    dask-on-ray.rst
    mars-on-ray.rst
+   ray-client.rst
 
 .. toctree::
    :hidden:

@@ -25,6 +25,7 @@ from ray.tune.syncer import CloudSyncer, SyncerCallback, get_node_syncer
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.utils._mock_trainable import MyTrainableClass
 from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MockNodeSyncer, mock_storage_client,
                                  MOCK_REMOTE_DIR)
@@ -75,6 +76,7 @@ class _PerTrialSyncerCallback(SyncerCallback):
 def start_connected_cluster():
     # Start the Ray processes.
     cluster = _start_new_cluster()
+    os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -97,6 +99,7 @@ def start_connected_emptyhead_cluster():
     _register_all()
     register_trainable("__fake_remote", MockRemoteTrainer)
     register_trainable("__fake_durable", MockDurableTrainer)
+    os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -746,7 +749,6 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
     local_checkpoint_dir = os.path.join(dirpath, "experiment")
-    from ray.tune.examples.async_hyperband_example import MyTrainableClass
     from ray.tune import register_trainable
     register_trainable("trainable", MyTrainableClass)
 
@@ -770,6 +772,8 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
             if trials and len(trials) >= 10:
                 break
         time.sleep(.5)
+    else:
+        raise ValueError(f"Didn't generate enough trials: {len(trials)}")
 
     if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError(
@@ -792,8 +796,10 @@ def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
             runner = TrialRunner(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
+
             if len(trials) == 0:
                 continue  # nonblocking script hasn't resumed yet, wait
+
             reached = True
             assert len(trials) >= 10
             assert len(trials) <= 20

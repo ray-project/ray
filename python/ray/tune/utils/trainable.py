@@ -2,11 +2,14 @@ import glob
 import io
 import logging
 import shutil
+from typing import Dict, Any
 
 import pandas as pd
-import pickle
+import ray.cloudpickle as pickle
 import os
 
+import ray
+from ray.util import placement_group
 from six import string_types
 
 logger = logging.getLogger(__name__)
@@ -159,3 +162,51 @@ class TrainableUtil:
         chkpt_df = pd.DataFrame(
             iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
         return chkpt_df
+
+
+class PlacementGroupUtil:
+    @staticmethod
+    def get_remote_worker_options(
+            num_workers, num_cpus_per_worker, num_gpus_per_worker,
+            num_workers_per_host,
+            timeout_s) -> (Dict[str, Any], placement_group):
+        """ Returns the option for remote workers.
+
+        Args:
+            num_workers (int): Number of training workers to include in
+                world.
+            num_cpus_per_worker (int): Number of CPU resources to reserve
+                per training worker.
+            num_gpus_per_worker (int): Number of GPU resources to reserve
+                per training worker.
+            num_workers_per_host: Optional[int]: Number of workers to
+                colocate per host.
+            timeout_s (Optional[int]): Seconds before the torch process group
+                times out. Useful when machines are unreliable. Defaults
+                to 60 seconds. This value is also reused for triggering
+                placement timeouts if forcing colocation.
+
+
+        Returns:
+            type(Dict[Str, Any]): option that contains CPU/GPU count of
+                the remote worker and the placement group information.
+            pg(placement_group): return a reference to the placement group
+        """
+        pg = None
+        options = dict(
+            num_cpus=num_cpus_per_worker, num_gpus=num_gpus_per_worker)
+        if num_workers_per_host:
+            num_hosts = int(num_workers / num_workers_per_host)
+            cpus_per_node = num_cpus_per_worker * num_workers_per_host
+            gpus_per_node = \
+                num_gpus_per_worker * num_workers_per_host
+            bundle = {"CPU": cpus_per_node, "GPU": gpus_per_node}
+
+            all_bundles = [bundle] * num_hosts
+            pg = placement_group(all_bundles, strategy="STRICT_SPREAD")
+            logger.debug("Waiting for placement_group to start.")
+            ray.get(pg.ready(), timeout=timeout_s)
+            logger.debug("Placement_group started.")
+            options["placement_group"] = pg
+
+        return options, pg

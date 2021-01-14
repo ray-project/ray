@@ -9,11 +9,13 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, \
+    TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -59,7 +61,8 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
-        self.inference_view_requirements = {
+        # Basic view requirement for all models: Use the observation as input.
+        self.view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
@@ -237,20 +240,15 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = {
-            "obs": train_batch[SampleBatch.CUR_OBS],
-            "is_training": is_training,
-        }
-        if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        input_dict = train_batch.copy()
+        input_dict["is_training"] = is_training
         states = []
         i = 0
-        while "state_in_{}".format(i) in train_batch:
-            states.append(train_batch["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+        ret = self.__call__(input_dict, states, input_dict.get("seq_lens"))
+        return ret
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
@@ -283,7 +281,7 @@ class ModelV2:
 
         Args:
             as_dict(bool): Whether variables should be returned as dict-values
-                (using descriptive keys).
+                (using descriptive str keys).
 
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
@@ -318,18 +316,72 @@ class ModelV2:
         """
         return self.time_major is True
 
+    # TODO: (sven) Experimental method.
+    def get_input_dict(self, sample_batch,
+                       index: Union[int, str] = "last") -> ModelInputDict:
+        """Creates single ts input-dict at given index from a SampleBatch.
 
-class NullContextManager:
-    """No-op context manager"""
+        Args:
+            sample_batch (SampleBatch): A single-trajectory SampleBatch object
+                to generate the compute_actions input dict from.
+            index (Union[int, str]): An integer index value indicating the
+                position in the trajectory for which to generate the
+                compute_actions input dict. Set to "last" to generate the dict
+                at the very end of the trajectory (e.g. for value estimation).
+                Note that "last" is different from -1, as "last" will use the
+                final NEXT_OBS as observation input.
 
-    def __init__(self):
-        pass
+        Returns:
+            ModelInputDict: The (single-timestep) input dict for ModelV2 calls.
+        """
+        last_mappings = {
+            SampleBatch.OBS: SampleBatch.NEXT_OBS,
+            SampleBatch.PREV_ACTIONS: SampleBatch.ACTIONS,
+            SampleBatch.PREV_REWARDS: SampleBatch.REWARDS,
+        }
 
-    def __enter__(self):
-        pass
+        input_dict = {}
+        for view_col, view_req in self.view_requirements.items():
+            # Create batches of size 1 (single-agent input-dict).
+            data_col = view_req.data_col or view_col
+            if index == "last":
+                data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
+                if view_req.shift_from is not None:
+                    data = sample_batch[view_col][-1]
+                    traj_len = len(sample_batch[data_col])
+                    missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
+                    input_dict[view_col] = np.array([
+                        np.concatenate([
+                            data, sample_batch[data_col][-missing_at_end:]
+                        ])[from_:to_]
+                    ])
+                # Single index.
+                else:
+                    data = sample_batch[data_col][-1]
+                    input_dict[view_col] = np.array([data])
+            else:
+                # Index range.
+                if isinstance(index, tuple):
+                    data = sample_batch[data_col][index[0]:index[1] + 1
+                                                  if index[1] != -1 else None]
+                    input_dict[view_col] = np.array([data])
+                # Single index.
+                else:
+                    input_dict[view_col] = sample_batch[data_col][
+                        index:index + 1 if index != -1 else None]
 
-    def __exit__(self, *args):
-        pass
+        # Add valid `seq_lens`, just in case RNNs need it.
+        input_dict["seq_lens"] = np.array([1], dtype=np.int32)
+
+        return input_dict
 
 
 @DeveloperAPI
@@ -394,9 +446,7 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
-    if (isinstance(space, gym.spaces.Dict)
-            or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, Repeated)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -410,7 +460,9 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     prep.shape[0], obs.shape))
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v.value for v in obs.shape[:-1]]
+            batch_dims = [
+                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
+            ]
             batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])

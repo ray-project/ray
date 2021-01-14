@@ -110,8 +110,12 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        self._state_inputs = self.model.get_initial_state()
+        self._is_recurrent = len(self._state_inputs) > 0
+        # Auto-update model's inference view requirements, if recurrent.
+        self._update_model_view_requirements_from_init_state()
         # Combine view_requirements for Model and Policy.
-        self.view_requirements.update(self.model.inference_view_requirements)
+        self.view_requirements.update(self.model.view_requirements)
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -164,18 +168,8 @@ class TorchPolicy(Policy):
                 convert_to_torch_tensor(s, self.device)
                 for s in (state_batches or [])
             ]
-            actions, state_out, extra_fetches, logp = \
-                self._compute_action_helper(
-                    input_dict, state_batches, seq_lens, explore, timestep)
-
-            # Action-logp and action-prob.
-            if logp is not None:
-                logp = convert_to_non_torch_type(logp)
-                extra_fetches[SampleBatch.ACTION_PROB] = np.exp(logp)
-                extra_fetches[SampleBatch.ACTION_LOGP] = logp
-
-            return convert_to_non_torch_type((actions, state_out,
-                                              extra_fetches))
+            return self._compute_action_helper(input_dict, state_batches,
+                                               seq_lens, explore, timestep)
 
     @override(Policy)
     def compute_actions_from_input_dict(
@@ -200,17 +194,8 @@ class TorchPolicy(Policy):
             seq_lens = np.array([1] * len(input_dict["obs"])) \
                 if state_batches else None
 
-            actions, state_out, extra_fetches, logp = \
-                self._compute_action_helper(
-                    input_dict, state_batches, seq_lens, explore, timestep)
-
-            # Leave outputs as is (torch.Tensors): Action-logp and action-prob.
-            if logp is not None:
-                extra_fetches[SampleBatch.ACTION_PROB] = torch.exp(logp)
-                extra_fetches[SampleBatch.ACTION_LOGP] = logp
-
-            return convert_to_non_torch_type((actions, state_out,
-                                              extra_fetches))
+            return self._compute_action_helper(input_dict, state_batches,
+                                               seq_lens, explore, timestep)
 
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
@@ -220,14 +205,18 @@ class TorchPolicy(Policy):
             Tuple:
                 - actions, state_out, extra_fetches, logp.
         """
+        self._is_recurrent = state_batches is not None and state_batches != []
+        # Switch to eval mode.
+        if self.model:
+            self.model.eval()
+
         if self.action_sampler_fn:
             action_dist = dist_inputs = None
-            state_out = state_batches
             actions, logp, state_out = self.action_sampler_fn(
                 self,
                 self.model,
                 input_dict,
-                state_out,
+                state_batches,
                 explore=explore,
                 timestep=timestep)
         else:
@@ -274,10 +263,16 @@ class TorchPolicy(Policy):
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
 
+        # Action-logp and action-prob.
+        if logp is not None:
+            extra_fetches[SampleBatch.ACTION_PROB] = \
+                torch.exp(logp.float())
+            extra_fetches[SampleBatch.ACTION_LOGP] = logp
+
         # Update our global timestep by the batch size.
         self.global_timestep += len(input_dict[SampleBatch.CUR_OBS])
 
-        return actions, state_out, extra_fetches, logp
+        return convert_to_non_torch_type((actions, state_out, extra_fetches))
 
     @override(Policy)
     @DeveloperAPI
@@ -336,6 +331,13 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+        # Set Model to train mode.
+        if self.model:
+            self.model.train()
+        # Callback handling.
+        self.callbacks.on_learn_on_batch(
+            policy=self, train_batch=postprocessed_batch)
+
         # Compute gradients (will calculate all losses and `backward()`
         # them to get the grads).
         grads, fetches = self.compute_gradients(postprocessed_batch)
@@ -352,15 +354,21 @@ class TorchPolicy(Policy):
     @DeveloperAPI
     def compute_gradients(self,
                           postprocessed_batch: SampleBatch) -> ModelGradients:
-        # Get batch ready for RNNs, if applicable.
+
         pad_batch_to_sequences_of_same_size(
             postprocessed_batch,
             max_seq_len=self.max_seq_len,
             shuffle=False,
             batch_divisibility_req=self.batch_divisibility_req,
+            view_requirements=self.view_requirements,
         )
 
+        # Mark the batch as "is_training" so the Model can use this
+        # information.
+        postprocessed_batch["is_training"] = True
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+
+        # Calculate the actual policy loss.
         loss_out = force_list(
             self._loss(self, self.model, self.dist_class, train_batch))
 
@@ -376,6 +384,7 @@ class TorchPolicy(Policy):
 
         assert len(loss_out) == len(self._optimizers)
 
+        # assert not any(torch.isnan(l) for l in loss_out)
         fetches = self.extra_compute_grad_fetches()
 
         # Loop through all optimizers.
@@ -383,6 +392,7 @@ class TorchPolicy(Policy):
 
         all_grads = []
         for i, opt in enumerate(self._optimizers):
+            # Erase gradients in all vars of this optimizer.
             opt.zero_grad()
             # Recompute gradients of loss over all variables.
             loss_out[i].backward(retain_graph=(i < len(self._optimizers) - 1))
@@ -450,7 +460,7 @@ class TorchPolicy(Policy):
     @override(Policy)
     @DeveloperAPI
     def is_recurrent(self) -> bool:
-        return len(self.model.get_initial_state()) > 0
+        return self._is_recurrent
 
     @override(Policy)
     @DeveloperAPI
@@ -619,15 +629,11 @@ class LearningRateSchedule:
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
-        super(LearningRateSchedule, self).on_global_var_update(global_vars)
+        super().on_global_var_update(global_vars)
         self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
-
-    @override(TorchPolicy)
-    def optimizer(self):
         for opt in self._optimizers:
             for p in opt.param_groups:
                 p["lr"] = self.cur_lr
-        return self._optimizers
 
 
 @DeveloperAPI

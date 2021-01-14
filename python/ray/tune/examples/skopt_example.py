@@ -1,10 +1,9 @@
-"""This test checks that Skopt is functional.
+"""This example demonstrates the usage of Skopt with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
 import time
 
-import ray
 from ray import tune
 from ray.tune.suggest import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
@@ -12,6 +11,7 @@ from ray.tune.suggest.skopt import SkOptSearch
 
 
 def evaluation_fn(step, width, height):
+    time.sleep(0.1)
     return (0.1 + width * step / 100)**(-1) + height * 0.1
 
 
@@ -24,7 +24,6 @@ def easy_objective(config):
         intermediate_score = evaluation_fn(step, width, height)
         # Feed the score back back to Tune.
         tune.report(iterations=step, mean_loss=intermediate_score)
-        time.sleep(0.1)
 
 
 if __name__ == "__main__":
@@ -34,18 +33,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init()
 
     # The config will be automatically converted to SkOpt's search space
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
-            "steps": 100,
-            "width": tune.uniform(0, 20),
-            "height": tune.uniform(-100, 100),
-            "activation": tune.choice(["relu", "tanh"])
-        }
-    }
 
     # Optional: Pass the parameter space yourself
     # space = {
@@ -54,7 +43,18 @@ if __name__ == "__main__":
     #     "activation": ["relu", "tanh"]
     # }
 
-    previously_run_params = [[10, 0, "relu"], [15, -20, "tanh"]]
+    previously_run_params = [
+        {
+            "width": 10,
+            "height": 0,
+            "activation": "relu"  # Activation will be relu
+        },
+        {
+            "width": 15,
+            "height": -20,
+            "activation": "tanh"  # Activation will be tanh
+        }
+    ]
     known_rewards = [-189, -1144]
 
     algo = SkOptSearch(
@@ -66,11 +66,18 @@ if __name__ == "__main__":
 
     scheduler = AsyncHyperBandScheduler()
 
-    tune.run(
+    analysis = tune.run(
         easy_objective,
         metric="mean_loss",
         mode="min",
         name="skopt_exp_with_warmstart",
         search_alg=algo,
         scheduler=scheduler,
-        **tune_kwargs)
+        num_samples=10 if args.smoke_test else 50,
+        config={
+            "steps": 100,
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100),
+            "activation": tune.choice(["relu", "tanh"])
+        })
+    print("Best hyperparameters found were: ", analysis.best_config)

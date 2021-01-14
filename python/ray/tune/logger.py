@@ -5,7 +5,7 @@ import numpy as np
 import os
 import yaml
 
-from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, Type
+from typing import Iterable, TYPE_CHECKING, Dict, List, Optional, TextIO, Type
 
 import ray.cloudpickle as cloudpickle
 
@@ -75,37 +75,6 @@ class Logger:
 class NoopLogger(Logger):
     def on_result(self, result):
         pass
-
-
-class MLFLowLogger(Logger):
-    """MLFlow logger.
-
-    Requires the experiment configuration to have a MLFlow Experiment ID
-    or manually set the proper environment variables.
-
-    """
-
-    def _init(self):
-        logger_config = self.config.get("logger_config", {})
-        from mlflow.tracking import MlflowClient
-        client = MlflowClient(
-            tracking_uri=logger_config.get("mlflow_tracking_uri"),
-            registry_uri=logger_config.get("mlflow_registry_uri"))
-        run = client.create_run(logger_config.get("mlflow_experiment_id"))
-        self._run_id = run.info.run_id
-        for key, value in self.config.items():
-            client.log_param(self._run_id, key, value)
-        self.client = client
-
-    def on_result(self, result: Dict):
-        for key, value in result.items():
-            if not isinstance(value, float):
-                continue
-            self.client.log_metric(
-                self._run_id, key, value, step=result.get(TRAINING_ITERATION))
-
-    def close(self):
-        self.client.set_terminated(self._run_id)
 
 
 class JsonLogger(Logger):
@@ -199,8 +168,8 @@ class TBXLogger(Logger):
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
 
-    # NoneType is not supported on the last TBX release yet.
-    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list,
+                     type(None))
 
     def _init(self):
         try:
@@ -364,21 +333,60 @@ class UnifiedLogger(Logger):
             _logger.flush()
 
 
-class ExperimentLogger(Callback):
+class LoggerCallback(Callback):
+    """Base class for experiment-level logger callbacks
+
+    This base class defines a general interface for logging events,
+    like trial starts, restores, ends, checkpoint saves, and receiving
+    trial results.
+
+    Callbacks implementing this interface should make sure that logging
+    utilities are cleaned up properly on trial termination, i.e. when
+    ``log_trial_end`` is received. This includes e.g. closing files.
+    """
+
     def log_trial_start(self, trial: "Trial"):
-        raise NotImplementedError
+        """Handle logging when a trial starts.
+
+        Args:
+            trial (Trial): Trial object.
+        """
+        pass
 
     def log_trial_restore(self, trial: "Trial"):
-        raise NotImplementedError
+        """Handle logging when a trial restores.
+
+        Args:
+            trial (Trial): Trial object.
+        """
+        pass
 
     def log_trial_save(self, trial: "Trial"):
-        raise NotImplementedError
+        """Handle logging when a trial saves a checkpoint.
+
+        Args:
+            trial (Trial): Trial object.
+        """
+        pass
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
-        raise NotImplementedError
+        """Handle logging when a trial reports a result.
+
+        Args:
+            trial (Trial): Trial object.
+            result (dict): Result dictionary.
+        """
+        pass
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
-        raise NotImplementedError
+        """Handle logging when a trial ends.
+
+        Args:
+            trial (Trial): Trial object.
+            failed (bool): True if the Trial finished gracefully, False if
+                it failed (e.g. when it raised an exception).
+        """
+        pass
 
     def on_trial_result(self, iteration: int, trials: List["Trial"],
                         trial: "Trial", result: Dict, **info):
@@ -405,7 +413,7 @@ class ExperimentLogger(Callback):
         self.log_trial_end(trial, failed=True)
 
 
-class LegacyExperimentLogger(ExperimentLogger):
+class LegacyLoggerCallback(LoggerCallback):
     """Supports logging to trial-specific `Logger` classes.
 
     Previously, Ray Tune logging was handled via `Logger` classes that have
@@ -453,6 +461,253 @@ class LegacyExperimentLogger(ExperimentLogger):
         for logger_class, trial_loggers in self._class_trial_loggers.items():
             if trial in trial_loggers:
                 trial_loggers[trial].close()
+
+
+class JsonLoggerCallback(LoggerCallback):
+    """Logs trial results in json format.
+
+    Also writes to a results file and param.json file when results or
+    configurations are updated. Experiments must be executed with the
+    JsonLoggerCallback to be compatible with the ExperimentAnalysis tool.
+    """
+
+    def __init__(self):
+        self._trial_configs: Dict["Trial", Dict] = {}
+        self._trial_files: Dict["Trial", TextIO] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        if trial in self._trial_files:
+            self._trial_files[trial].close()
+
+        # Update config
+        self.update_config(trial, trial.config)
+
+        # Make sure logdir exists
+        trial.init_logdir()
+        local_file = os.path.join(trial.logdir, EXPR_RESULT_FILE)
+        self._trial_files[trial] = open(local_file, "at")
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        if trial not in self._trial_files:
+            self.log_trial_start(trial)
+        json.dump(result, self._trial_files[trial], cls=SafeFallbackEncoder)
+        self._trial_files[trial].write("\n")
+        self._trial_files[trial].flush()
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        if trial not in self._trial_files:
+            return
+
+        self._trial_files[trial].close()
+        del self._trial_files[trial]
+
+    def update_config(self, trial: "Trial", config: Dict):
+        self._trial_configs[trial] = config
+
+        config_out = os.path.join(trial.logdir, EXPR_PARAM_FILE)
+        with open(config_out, "w") as f:
+            json.dump(
+                self._trial_configs[trial],
+                f,
+                indent=2,
+                sort_keys=True,
+                cls=SafeFallbackEncoder)
+
+        config_pkl = os.path.join(trial.logdir, EXPR_PARAM_PICKLE_FILE)
+        with open(config_pkl, "wb") as f:
+            cloudpickle.dump(self._trial_configs[trial], f)
+
+
+class CSVLoggerCallback(LoggerCallback):
+    """Logs results to progress.csv under the trial directory.
+
+    Automatically flattens nested dicts in the result dict before writing
+    to csv:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    """
+
+    def __init__(self):
+        self._trial_continue: Dict["Trial", bool] = {}
+        self._trial_files: Dict["Trial", TextIO] = {}
+        self._trial_csv: Dict["Trial", csv.DictWriter] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        if trial in self._trial_files:
+            self._trial_files[trial].close()
+
+        # Make sure logdir exists
+        trial.init_logdir()
+        local_file = os.path.join(trial.logdir, EXPR_PROGRESS_FILE)
+        self._trial_continue[trial] = os.path.exists(local_file)
+        self._trial_files[trial] = open(local_file, "at")
+        self._trial_csv[trial] = None
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        if trial not in self._trial_files:
+            self.log_trial_start(trial)
+
+        tmp = result.copy()
+        tmp.pop("config", None)
+        result = flatten_dict(tmp, delimiter="/")
+
+        if not self._trial_csv[trial]:
+            self._trial_csv[trial] = csv.DictWriter(self._trial_files[trial],
+                                                    result.keys())
+            if not self._trial_continue[trial]:
+                self._trial_csv[trial].writeheader()
+
+        self._trial_csv[trial].writerow({
+            k: v
+            for k, v in result.items()
+            if k in self._trial_csv[trial].fieldnames
+        })
+        self._trial_files[trial].flush()
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        if trial not in self._trial_files:
+            return
+
+        del self._trial_csv[trial]
+        self._trial_files[trial].close()
+        del self._trial_files[trial]
+
+
+class TBXLoggerCallback(LoggerCallback):
+    """TensorBoardX Logger.
+
+    Note that hparams will be written only after a trial has terminated.
+    This logger automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+    """
+
+    # NoneType is not supported on the last TBX release yet.
+    VALID_HPARAMS = (str, bool, np.bool8, int, np.integer, float, list)
+
+    def __init__(self):
+        try:
+            from tensorboardX import SummaryWriter
+            self._summary_writer_cls = SummaryWriter
+        except ImportError:
+            if log_once("tbx-install"):
+                logger.info(
+                    "pip install 'ray[tune]' to see TensorBoard files.")
+            raise
+        self._trial_writer: Dict["Trial", SummaryWriter] = {}
+        self._trial_result: Dict["Trial", Dict] = {}
+
+    def log_trial_start(self, trial: "Trial"):
+        if trial in self._trial_writer:
+            self._trial_writer[trial].close()
+        trial.init_logdir()
+        self._trial_writer[trial] = self._summary_writer_cls(
+            trial.logdir, flush_secs=30)
+        self._trial_result[trial] = {}
+
+    def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
+        if trial not in self._trial_writer:
+            self.log_trial_start(trial)
+
+        step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+
+        tmp = result.copy()
+        for k in [
+                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
+        ]:
+            if k in tmp:
+                del tmp[k]  # not useful to log these
+
+        flat_result = flatten_dict(tmp, delimiter="/")
+        path = ["ray", "tune"]
+        valid_result = {}
+
+        for attr, value in flat_result.items():
+            full_attr = "/".join(path + [attr])
+            if (isinstance(value, tuple(VALID_SUMMARY_TYPES))
+                    and not np.isnan(value)):
+                valid_result[full_attr] = value
+                self._trial_writer[trial].add_scalar(
+                    full_attr, value, global_step=step)
+            elif ((isinstance(value, list) and len(value) > 0)
+                  or (isinstance(value, np.ndarray) and value.size > 0)):
+                valid_result[full_attr] = value
+
+                # Must be video
+                if isinstance(value, np.ndarray) and value.ndim == 5:
+                    self._trial_writer[trial].add_video(
+                        full_attr, value, global_step=step, fps=20)
+                    continue
+
+                try:
+                    self._trial_writer[trial].add_histogram(
+                        full_attr, value, global_step=step)
+                # In case TensorboardX still doesn't think it's a valid value
+                # (e.g. `[[]]`), warn and move on.
+                except (ValueError, TypeError):
+                    if log_once("invalid_tbx_value"):
+                        logger.warning(
+                            "You are trying to log an invalid value ({}={}) "
+                            "via {}!".format(full_attr, value,
+                                             type(self).__name__))
+
+        self._trial_result[trial] = valid_result
+        self._trial_writer[trial].flush()
+
+    def log_trial_end(self, trial: "Trial", failed: bool = False):
+        if trial in self._trial_writer:
+            if trial and trial.evaluated_params and self._trial_result[trial]:
+                flat_result = flatten_dict(
+                    self._trial_result[trial], delimiter="/")
+                scrubbed_result = {
+                    k: value
+                    for k, value in flat_result.items()
+                    if isinstance(value, tuple(VALID_SUMMARY_TYPES))
+                }
+                self._try_log_hparams(trial, scrubbed_result)
+            self._trial_writer[trial].close()
+            del self._trial_writer[trial]
+            del self._trial_result[trial]
+
+    def _try_log_hparams(self, trial: "Trial", result: Dict):
+        # TBX currently errors if the hparams value is None.
+        flat_params = flatten_dict(trial.evaluated_params)
+        scrubbed_params = {
+            k: v
+            for k, v in flat_params.items()
+            if isinstance(v, self.VALID_HPARAMS)
+        }
+
+        removed = {
+            k: v
+            for k, v in flat_params.items()
+            if not isinstance(v, self.VALID_HPARAMS)
+        }
+        if removed:
+            logger.info(
+                "Removed the following hyperparameter values when "
+                "logging to tensorboard: %s", str(removed))
+
+        from tensorboardX.summary import hparams
+        try:
+            experiment_tag, session_start_tag, session_end_tag = hparams(
+                hparam_dict=scrubbed_params, metric_dict=result)
+            self._trial_writer[trial].file_writer.add_summary(experiment_tag)
+            self._trial_writer[trial].file_writer.add_summary(
+                session_start_tag)
+            self._trial_writer[trial].file_writer.add_summary(session_end_tag)
+        except Exception:
+            logger.exception("TensorboardX failed to log hparams. "
+                             "This may be due to an unsupported type "
+                             "in the hyperparameter values.")
+
+
+# Maintain backwards compatibility.
+from ray.tune.integration.mlflow import MLflowLogger as _MLflowLogger  # noqa: E402, E501
+MLflowLogger = _MLflowLogger
+# The capital L is a typo, but needs to remain for backwards compatibility.
+MLFLowLogger = _MLflowLogger
 
 
 def pretty_print(result):

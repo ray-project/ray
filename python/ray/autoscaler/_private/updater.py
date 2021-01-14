@@ -22,6 +22,7 @@ from ray.autoscaler._private.event_system import (CreateClusterEvent,
 
 logger = logging.getLogger(__name__)
 
+NUM_SETUP_STEPS = 7
 READY_CHECK_INTERVAL = 5
 
 
@@ -225,7 +226,8 @@ class NodeUpdater:
 
     def wait_ready(self, deadline):
         with cli_logger.group(
-                "Waiting for SSH to become available", _numbered=("[]", 1, 6)):
+                "Waiting for SSH to become available",
+                _numbered=("[]", 1, NUM_SETUP_STEPS)):
             with LogTimer(self.log_prefix + "Got remote shell"):
 
                 cli_logger.print("Running `{}` as a test.", cf.bold("uptime"))
@@ -252,10 +254,18 @@ class NodeUpdater:
                         # however threading this configuration state
                         # is a pain and I'm leaving it for later
 
-                        retry_str = str(e)
+                        retry_str = "(" + str(e) + ")"
                         if hasattr(e, "cmd"):
+                            if isinstance(e.cmd, str):
+                                cmd_ = e.cmd
+                            elif isinstance(e.cmd, list):
+                                cmd_ = " ".join(e.cmd)
+                            else:
+                                logger.debug(f"e.cmd type ({type(e.cmd)}) not "
+                                             "list or str.")
+                                cmd_ = str(e.cmd)
                             retry_str = "(Exit Status {}): {}".format(
-                                e.returncode, " ".join(e.cmd))
+                                e.returncode, cmd_)
 
                         cli_logger.print(
                             "SSH still not available {}, "
@@ -282,8 +292,12 @@ class NodeUpdater:
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
             # When resuming from a stopped instance the runtime_hash may be the
             # same, but the container will not be started.
-            self.cmd_runner.run_init(
-                as_head=self.is_head_node, file_mounts=self.file_mounts)
+            init_required = self.cmd_runner.run_init(
+                as_head=self.is_head_node,
+                file_mounts=self.file_mounts,
+                sync_run_yet=False)
+            if init_required:
+                node_tags[TAG_RAY_RUNTIME_CONFIG] += "-invalidate"
 
         # runtime_hash will only change whenever the user restarts
         # or updates their cluster with `get_or_create_head_node`
@@ -296,7 +310,7 @@ class NodeUpdater:
             cli_logger.print(
                 "Configuration already up to date, "
                 "skipping file mounts, initalization and setup commands.",
-                _numbered=("[]", "2-5", 6))
+                _numbered=("[]", "2-6", NUM_SETUP_STEPS))
 
         else:
             cli_logger.print(
@@ -306,7 +320,8 @@ class NodeUpdater:
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
             cli_logger.labeled_value("New status", STATUS_SYNCING_FILES)
-            self.sync_file_mounts(self.rsync_up, step_numbers=(2, 6))
+            self.sync_file_mounts(
+                self.rsync_up, step_numbers=(1, NUM_SETUP_STEPS))
 
             # Only run setup commands if runtime_hash has changed because
             # we don't want to run setup_commands every time the head node
@@ -320,7 +335,7 @@ class NodeUpdater:
                 if self.initialization_commands:
                     with cli_logger.group(
                             "Running initialization commands",
-                            _numbered=("[]", 3, 5)):
+                            _numbered=("[]", 4, NUM_SETUP_STEPS)):
                         global_event_system.execute_callback(
                             CreateClusterEvent.run_initialization_cmd)
                         with LogTimer(
@@ -353,14 +368,20 @@ class NodeUpdater:
                 else:
                     cli_logger.print(
                         "No initialization commands to run.",
-                        _numbered=("[]", 3, 6))
-                self.cmd_runner.run_init(
-                    as_head=self.is_head_node, file_mounts=self.file_mounts)
+                        _numbered=("[]", 4, NUM_SETUP_STEPS))
+                with cli_logger.group(
+                        "Initalizing command runner",
+                        # todo: fix command numbering
+                        _numbered=("[]", 5, NUM_SETUP_STEPS)):
+                    self.cmd_runner.run_init(
+                        as_head=self.is_head_node,
+                        file_mounts=self.file_mounts,
+                        sync_run_yet=True)
                 if self.setup_commands:
                     with cli_logger.group(
                             "Running setup commands",
                             # todo: fix command numbering
-                            _numbered=("[]", 4, 6)):
+                            _numbered=("[]", 6, NUM_SETUP_STEPS)):
                         global_event_system.execute_callback(
                             CreateClusterEvent.run_setup_cmd)
                         with LogTimer(
@@ -395,10 +416,12 @@ class NodeUpdater:
                                         "Setup command failed.")
                 else:
                     cli_logger.print(
-                        "No setup commands to run.", _numbered=("[]", 4, 6))
+                        "No setup commands to run.",
+                        _numbered=("[]", 6, NUM_SETUP_STEPS))
 
         with cli_logger.group(
-                "Starting the Ray runtime", _numbered=("[]", 6, 6)):
+                "Starting the Ray runtime", _numbered=("[]", 7,
+                                                       NUM_SETUP_STEPS)):
             global_event_system.execute_callback(
                 CreateClusterEvent.start_ray_runtime)
             with LogTimer(

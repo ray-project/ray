@@ -73,10 +73,15 @@ import ray
 from ray import tune
 from ray.rllib.evaluation.metrics import collect_episodes, summarize_episodes
 from ray.rllib.examples.env.simple_corridor import SimpleCorridor
+from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument("--torch", action="store_true")
+parser.add_argument("--as-test", action="store_true")
+parser.add_argument("--stop-iters", type=int, default=50)
+parser.add_argument("--stop-timesteps", type=int, default=20000)
+parser.add_argument("--stop-reward", type=float, default=0.7)
 parser.add_argument("--no-custom-eval", action="store_true")
 
 
@@ -169,9 +174,15 @@ if __name__ == "__main__":
     }
 
     stop = {
-        "training_iteration": 10,
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
     }
 
-    tune.run("PG", config=config, stop=stop)
+    results = tune.run("PG", config=config, stop=stop, verbose=1)
 
+    # Check eval results (from eval workers using the custom function),
+    # not results from the regular workers.
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward, evaluation=True)
     ray.shutdown()

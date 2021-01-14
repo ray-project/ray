@@ -47,7 +47,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0.0):
     observation = env.reset()
     for _ in range(timestep_limit or max_timestep_limit):
         ac, _, _ = policy.compute_actions(
-            observation, add_noise=add_noise, update=True)
+            [observation], add_noise=add_noise, update=True)
         ac = ac[0]
         observation, r, done, _ = env.step(ac)
         if offset != 0.0:
@@ -118,9 +118,9 @@ class ESTFPolicy(Policy):
                         add_noise=False,
                         update=True,
                         **kwargs):
-        # Batch is given as list of one.
-        if isinstance(observation, list) and len(observation) == 1:
-            observation = observation[0]
+        # Squeeze batch dimension (we always calculate actions for only a
+        # single obs).
+        observation = observation[0]
         observation = self.preprocessor.transform(observation)
         observation = self.observation_filter(observation[None], update=update)
         # `actions` is a list of (component) batches.

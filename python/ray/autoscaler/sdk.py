@@ -10,13 +10,14 @@ from ray.autoscaler._private import commands
 from ray.autoscaler._private.event_system import (  # noqa: F401
     CreateClusterEvent,  # noqa: F401
     global_event_system)
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
 def create_or_update_cluster(cluster_config: Union[dict, str],
                              *,
                              no_restart: bool = False,
                              restart_only: bool = False,
-                             no_config_cache: bool = False) -> None:
+                             no_config_cache: bool = False) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json.
 
     Args:
@@ -70,6 +71,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
                    *,
                    cmd: Optional[str] = None,
                    run_env: str = "auto",
+                   tmux: bool = False,
+                   stop: bool = False,
                    no_config_cache: bool = False,
                    port_forward: Optional[commands.Port_forward] = None,
                    with_output: bool = False) -> Optional[str]:
@@ -81,6 +84,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
         cmd (str): the command to run, or None for a no-op command.
         run_env (str): whether to run the command on the host or in a
             container. Select between "auto", "host" and "docker".
+        tmux (bool): whether to run in a tmux session
+        stop (bool): whether to stop the cluster after command run
         no_config_cache (bool): Whether to disable the config cache and fully
             resolve all environment settings from the Cloud provider again.
         port_forward ( (int,int) or list[(int,int)]): port(s) to forward.
@@ -95,8 +100,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
             cmd=cmd,
             run_env=run_env,
             screen=False,
-            tmux=False,
-            stop=False,
+            tmux=tmux,
+            stop=stop,
             start=False,
             override_cluster_name=None,
             no_config_cache=no_config_cache,
@@ -106,8 +111,8 @@ def run_on_cluster(cluster_config: Union[dict, str],
 
 def rsync(cluster_config: Union[dict, str],
           *,
-          source: str,
-          target: str,
+          source: Optional[str],
+          target: Optional[str],
           down: bool,
           ip_address: str = None,
           use_internal_ip: bool = False,
@@ -178,18 +183,28 @@ def get_worker_node_ips(cluster_config: Union[dict, str]) -> List[str]:
 
 def request_resources(num_cpus: Optional[int] = None,
                       bundles: Optional[List[dict]] = None) -> None:
-    """Remotely request some CPU or GPU resources from the autoscaler.
+    """Command the autoscaler to scale to accommodate the specified requests.
 
-    This function is to be called e.g. on a node before submitting a bunch of
-    ray.remote calls to ensure that resources rapidly become available.
+    The cluster will immediately attempt to scale to accommodate the requested
+    resources, bypassing normal upscaling speed constraints. This takes into
+    account existing resource usage.
+
+    For example, suppose you call ``request_resources(num_cpus=100)`` and
+    there are 45 currently running tasks, each requiring 1 CPU. Then, enough
+    nodes will be added so up to 100 tasks can run concurrently. It does
+    **not** add enough nodes so that 145 tasks can run.
+
+    This call is only a hint to the autoscaler. The actual resulting cluster
+    size may be slightly larger or smaller than expected depending on the
+    internal bin packing algorithm and max worker count restrictions.
 
     Args:
         num_cpus (int): Scale the cluster to ensure this number of CPUs are
             available. This request is persistent until another call to
-            request_resources() is made.
+            request_resources() is made to override.
         bundles (List[ResourceDict]): Scale the cluster to ensure this set of
             resource shapes can fit. This request is persistent until another
-            call to request_resources() is made.
+            call to request_resources() is made to override.
 
     Examples:
         >>> # Request 1000 CPUs.
@@ -200,6 +215,32 @@ def request_resources(num_cpus: Optional[int] = None,
         >>> request_resources(bundles=[{"CPU": 1}, {"CPU": 1}, {"CPU": 1}])
     """
     return commands.request_resources(num_cpus, bundles)
+
+
+def configure_logging(log_style: Optional[str] = None,
+                      color_mode: Optional[str] = None,
+                      verbosity: Optional[int] = None):
+    """Configures logging for cluster command calls.
+
+    Args:
+        log_style (str): If 'pretty', outputs with formatting and color.
+            If 'record', outputs record-style without formatting.
+            'auto' defaults to 'pretty', and disables pretty logging
+            if stdin is *not* a TTY. Defaults to "auto".
+        color_mode (str):
+            Can be "true", "false", or "auto".
+
+            Enables or disables `colorful`.
+
+            If `color_mode` is "auto", is set to `not stdout.isatty()`
+        vebosity (int):
+            Output verbosity (0, 1, 2, 3).
+
+            Low verbosity will disable `verbose` and `very_verbose` messages.
+
+    """
+    cli_logger.configure(
+        log_style=log_style, color_mode=color_mode, verbosity=verbosity)
 
 
 @contextmanager

@@ -43,6 +43,10 @@ from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import format_info_string, \
+    format_info_string_no_node_types
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,14 @@ def debug_status() -> str:
         status = "No cluster status."
     else:
         status = status.decode("utf-8")
+        as_dict = json.loads(status)
+        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
+        if "autoscaler_report" in as_dict:
+            autoscaler_summary = AutoscalerSummary(
+                **as_dict["autoscaler_report"])
+            status = format_info_string(lm_summary, autoscaler_summary)
+        else:
+            status = format_info_string_no_node_types(lm_summary)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -135,7 +147,7 @@ def create_or_update_cluster(config_file: str,
                              override_cluster_name: Optional[str] = None,
                              no_config_cache: bool = False,
                              redirect_command_output: Optional[bool] = False,
-                             use_login_shells: bool = True) -> None:
+                             use_login_shells: bool = True) -> Dict[str, Any]:
     """Create or updates an autoscaling Ray cluster from a config json."""
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
@@ -215,6 +227,7 @@ def create_or_update_cluster(config_file: str,
     try_logging_config(config)
     get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name)
+    return config
 
 
 CONFIG_CACHE_VERSION = 1
@@ -259,7 +272,6 @@ def _bootstrap_config(config: Dict[str, Any],
                 "This is normal if cluster launcher was updated.\n"
                 "Config will be re-resolved.",
                 config_cache.get("_version", "none"), CONFIG_CACHE_VERSION)
-    validate_config(config)
 
     importer = _NODE_PROVIDERS.get(config["provider"]["type"])
     if not importer:
@@ -270,6 +282,21 @@ def _bootstrap_config(config: Dict[str, Any],
 
     cli_logger.print("Checking {} environment settings",
                      _PROVIDER_PRETTY_NAMES.get(config["provider"]["type"]))
+    try:
+        config = provider_cls.fillout_available_node_types_resources(config)
+    except Exception as exc:
+        if cli_logger.verbosity > 2:
+            logger.exception("Failed to autodetect node resources.")
+        else:
+            cli_logger.warning(
+                f"Failed to autodetect node resources: {str(exc)}. "
+                "You can see full stack trace with higher verbosity.")
+
+    # NOTE: if `resources` field is missing, validate_config for providers
+    # other than AWS and Kubernetes will fail (the schema error will ask the
+    # user to manually fill the resources) as we currently support autofilling
+    # resources for AWS and Kubernetes only.
+    validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 
     if not no_config_cache:
@@ -290,8 +317,8 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    config = prepare_config(config)
-    validate_config(config)
+
+    config = _bootstrap_config(config)
 
     cli_logger.confirm(yes, "Destroying cluster.", _abort=True)
 
@@ -350,17 +377,21 @@ def teardown_cluster(config_file: str, yes: bool, workers_only: bool,
 
     def run_docker_stop(node, container_name):
         try:
-            exec_cluster(
-                config_file,
-                cmd=f"docker stop {container_name}",
-                run_env="host",
-                screen=False,
-                tmux=False,
-                stop=False,
-                start=False,
-                override_cluster_name=override_cluster_name,
-                port_forward=None,
-                with_output=False)
+            updater = NodeUpdaterThread(
+                node_id=node,
+                provider_config=config["provider"],
+                provider=provider,
+                auth_config=config["auth"],
+                cluster_name=config["cluster_name"],
+                file_mounts=config["file_mounts"],
+                initialization_commands=[],
+                setup_commands=[],
+                ray_start_commands=[],
+                runtime_hash="",
+                file_mounts_contents_hash="",
+                is_head_node=False,
+                docker_config=config.get("docker"))
+            _exec(updater, cmd=f"docker stop {container_name}", run_env="host")
         except Exception:
             cli_logger.warning(f"Docker stop failed on {node}")
 
@@ -472,7 +503,7 @@ def warn_about_bad_start_command(start_commands: List[str]) -> None:
 
 
 def get_or_create_head_node(config: Dict[str, Any],
-                            config_file: str,
+                            printable_config_file: str,
                             no_restart: bool,
                             restart_only: bool,
                             yes: bool,
@@ -486,7 +517,6 @@ def get_or_create_head_node(config: Dict[str, Any],
                                                 config["cluster_name"]))
 
     config = copy.deepcopy(config)
-    config_file = os.path.abspath(config_file)
     head_node_tags = {
         TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
     }
@@ -530,13 +560,18 @@ def get_or_create_head_node(config: Dict[str, Any],
                 _abort=True)
 
     cli_logger.newline()
-
     # TODO(ekl) this logic is duplicated in node_launcher.py (keep in sync)
     head_node_config = copy.deepcopy(config["head_node"])
+    head_node_resources = None
     if "head_node_type" in config:
-        head_node_tags[TAG_RAY_USER_NODE_TYPE] = config["head_node_type"]
-        head_node_config.update(config["available_node_types"][config[
-            "head_node_type"]]["node_config"])
+        head_node_type = config["head_node_type"]
+        head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
+        head_config = config["available_node_types"][head_node_type]
+        head_node_config.update(head_config["node_config"])
+
+        # Not necessary to keep in sync with node_launcher.py
+        # Keep in sync with autoscaler.py _node_resources
+        head_node_resources = head_config.get("resources")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     if head_node is None or provider.node_tags(head_node).get(
@@ -658,6 +693,7 @@ def get_or_create_head_node(config: Dict[str, Any],
             runtime_hash=runtime_hash,
             file_mounts_contents_hash=file_mounts_contents_hash,
             is_head_node=True,
+            node_resources=head_node_resources,
             rsync_options={
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter")
@@ -687,13 +723,15 @@ def get_or_create_head_node(config: Dict[str, Any],
 
     cli_logger.newline()
     with cli_logger.group("Useful commands"):
+        printable_config_file = os.path.abspath(printable_config_file)
         cli_logger.print("Monitor autoscaling with")
         cli_logger.print(
-            cf.bold("  ray exec {}{} {}"), config_file, modifiers,
+            cf.bold("  ray exec {}{} {}"), printable_config_file, modifiers,
             quote(monitor_str))
 
         cli_logger.print("Connect to a terminal on the cluster head:")
-        cli_logger.print(cf.bold("  ray attach {}{}"), config_file, modifiers)
+        cli_logger.print(
+            cf.bold("  ray attach {}{}"), printable_config_file, modifiers)
 
         remote_shell_str = updater.cmd_runner.remote_shell_command_str()
         cli_logger.print("Get a remote shell to the cluster manually:")
@@ -951,8 +989,9 @@ def rsync(config_file: str,
 
         if source and target:
             # print rsync progress for single file rsync
-            cmd_output_util.set_output_redirected(False)
-            set_rsync_silent(False)
+            if cli_logger.verbosity > 0:
+                cmd_output_util.set_output_redirected(False)
+                set_rsync_silent(False)
             rsync(source, target, is_file_mount)
         else:
             updater.sync_file_mounts(rsync)
@@ -1023,7 +1062,7 @@ def _get_worker_nodes(config: Dict[str, Any],
 
 
 def _get_head_node(config: Dict[str, Any],
-                   config_file: str,
+                   printable_config_file: str,
                    override_cluster_name: Optional[str],
                    create_if_needed: bool = False) -> str:
     provider = _get_node_provider(config["provider"], config["cluster_name"])
@@ -1038,13 +1077,16 @@ def _get_head_node(config: Dict[str, Any],
     elif create_if_needed:
         get_or_create_head_node(
             config,
-            config_file,
+            printable_config_file=printable_config_file,
             restart_only=False,
             no_restart=False,
             yes=True,
             override_cluster_name=override_cluster_name)
         return _get_head_node(
-            config, config_file, override_cluster_name, create_if_needed=False)
+            config,
+            printable_config_file,
+            override_cluster_name,
+            create_if_needed=False)
     else:
         raise RuntimeError("Head node of cluster ({}) not found!".format(
             config["cluster_name"]))

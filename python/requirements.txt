@@ -5,13 +5,12 @@
 # In short, if you change it here, PLEASE also change it in setup.py.
 #
 # setup.py install_requires
-aiohttp
+aiohttp==3.7
 aioredis
 click >= 7.0
 colorama
 colorful
 filelock
-google
 gpustat
 grpcio >= 1.28.1
 jsonschema
@@ -39,6 +38,7 @@ tensorboardX
 uvicorn
 pydantic<1.7
 dataclasses; python_version < '3.7'
+starlette
 
 # Requirements for running tests
 blist; platform_system != "Windows"
@@ -55,8 +55,10 @@ moto
 mypy
 networkx
 numba
+# higher version of llvmlite breaks windows
+llvmlite==0.34.0
 openpyxl
-pettingzoo>=1.4.0
+pexpect
 Pillow; platform_system != "Windows"
 pygments
 pytest==5.4.3

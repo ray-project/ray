@@ -7,9 +7,11 @@ import inspect
 import threading
 import time
 import uuid
-from collections import defaultdict, deque, Mapping, Sequence
+from collections import defaultdict, deque
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from threading import Thread
+from typing import Optional
 
 import numpy as np
 import ray
@@ -115,18 +117,24 @@ def get_pinned_object(pinned_id):
 
 
 class warn_if_slow:
-    """Prints a warning if a given operation is slower than 100ms.
+    """Prints a warning if a given operation is slower than 500ms.
 
     Example:
         >>> with warn_if_slow("some_operation"):
         ...    ray.get(something)
     """
 
-    DEFAULT_THRESHOLD = 0.5
+    DEFAULT_THRESHOLD = float(os.environ.get("TUNE_WARN_THRESHOLD_S", 0.5))
+    DEFAULT_MESSAGE = "The `{name}` operation took {duration:.3f} s, " \
+                      "which may be a performance bottleneck."
 
-    def __init__(self, name, threshold=None):
+    def __init__(self,
+                 name: str,
+                 threshold: Optional[float] = None,
+                 message: Optional[str] = None):
         self.name = name
         self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.message = message or self.DEFAULT_MESSAGE
         self.too_slow = False
 
     def __enter__(self):
@@ -137,10 +145,9 @@ class warn_if_slow:
         now = time.time()
         if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
             self.too_slow = True
+            duration = now - self.start
             logger.warning(
-                "The `%s` operation took %s seconds to complete, "
-                "which may be a performance bottleneck.", self.name,
-                now - self.start)
+                self.message.format(name=self.name, duration=duration))
 
 
 class Tee(object):
@@ -223,7 +230,7 @@ def deep_update(original,
         if isinstance(original.get(k), dict) and isinstance(value, dict):
             # Check old type vs old one. If different, override entire value.
             if k in override_all_if_type_changes and \
-                    "type" in value and "type" in original[k] and \
+                "type" in value and "type" in original[k] and \
                     value["type"] != original[k]["type"]:
                 original[k] = value
             # Allowed key -> ok to add new subkeys.
@@ -268,14 +275,15 @@ def flatten_dict(dt, delimiter="/", prevent_delimiter=False):
 
 def unflatten_dict(dt, delimiter="/"):
     """Unflatten dict. Does not support unflattening lists."""
-    out = defaultdict(dict)
+    dict_type = type(dt)
+    out = dict_type()
     for key, val in dt.items():
         path = key.split(delimiter)
         item = out
         for k in path[:-1]:
-            item = item[k]
+            item = item.setdefault(k, dict_type())
         item[path[-1]] = val
-    return dict(out)
+    return out
 
 
 def unflattened_lookup(flat_key, lookup, delimiter="/", **kwargs):
