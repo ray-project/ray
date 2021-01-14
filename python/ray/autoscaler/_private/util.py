@@ -314,6 +314,8 @@ def format_pg(pg):
 def get_usage_report(lm_summary):
     usage_lines = []
     for resource, (used, total) in lm_summary.usage.items():
+        if "node:" in resource:
+            continue  # Skip the per-node resource.
         line = f" {used}/{total} {resource}"
         if resource in ["memory", "object_store_memory"]:
             to_GiB = ray.ray_constants.MEMORY_RESOURCE_UNIT_BYTES / 2**30
