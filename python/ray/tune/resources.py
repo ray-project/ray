@@ -176,6 +176,8 @@ class Resources(
 
 
 class PlacementGroupFactory:
+    """Wrapper class to identify placement group factory methods."""
+
     def __init__(self, factory):
         self._factory = factory
 
@@ -192,7 +194,7 @@ def json_to_resources(data: Union[None, str, Callable, PlacementGroupFactory]):
     if isinstance(data, PlacementGroupFactory):
         return data
     elif callable(data):
-        # Callables should be converted into PlacementGroupFactories
+        # Callables should be converted to PlacementGroupFactories
         return PlacementGroupFactory(data)
 
     for k in data:
