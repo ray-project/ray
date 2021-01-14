@@ -166,20 +166,6 @@ class Monitor:
             except Exception:
                 logger.exception("Error parsing resource requests")
 
-    def autoscaler_resource_request_handler(self, _, data):
-        """Handle a notification of a resource request for the autoscaler.
-
-        This channel and method are only used by the manual
-        `ray.autoscaler.sdk.request_resources` api.
-
-        Args:
-            channel: unused
-            data: a resource request as JSON, e.g. {"CPU": 1}
-        """
-
-        resource_request = json.loads(data)
-        self.load_metrics.set_resource_requests(resource_request)
-
     def update_raylet_map(self, _append_port=False):
         """Updates internal raylet map.
 
@@ -205,6 +191,7 @@ class Monitor:
             self.update_raylet_map()
             self.update_load_metrics()
             self.update_resource_requests()
+            self.update_event_summary()
             status = {
                 "load_metrics_report": self.load_metrics.summary()._asdict()
             }
@@ -215,15 +202,6 @@ class Monitor:
                 self.autoscaler.update()
                 status[
                     "autoscaler_report"] = self.autoscaler.summary()._asdict()
-
-                # Periodically emit event summaries.
-                avail_resources = self.load_metrics.resources_avail_summary()
-                if avail_resources != self.last_avail_resources:
-                    self.event_summarizer.add(
-                        "Resized to {}.",
-                        quantity=avail_resources,
-                        aggregate=lambda a, b: b)
-                    self.last_avail_resources = avail_resources
 
                 for msg in self.event_summarizer.summary():
                     logger.info(":event_summary:{}".format(msg))
@@ -237,6 +215,16 @@ class Monitor:
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
+
+    def update_event_summary(self):
+        # Periodically emit event summaries.
+        avail_resources = self.load_metrics.resources_avail_summary()
+        if avail_resources != self.last_avail_resources:
+            self.event_summarizer.add(
+                "Resized to {}.",
+                quantity=avail_resources,
+                aggregate=lambda a, b: b)
+            self.last_avail_resources = avail_resources
 
     def destroy_autoscaler_workers(self):
         """Cleanup the autoscaler, in case of an exception in the run() method.
