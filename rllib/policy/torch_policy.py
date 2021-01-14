@@ -3,6 +3,7 @@ import gym
 import logging
 import numpy as np
 import time
+import threading
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -110,6 +111,7 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+        self._lock = threading.Lock()
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
         # Auto-update model's inference view requirements, if recurrent.
@@ -206,6 +208,9 @@ class TorchPolicy(Policy):
                 - actions, state_out, extra_fetches, logp.
         """
         self._is_recurrent = state_batches is not None and state_batches != []
+
+        self._lock.acquire()
+
         # Switch to eval mode.
         if self.model:
             self.model.eval()
@@ -259,6 +264,8 @@ class TorchPolicy(Policy):
         extra_fetches = self.extra_action_out(input_dict, state_batches,
                                               self.model, action_dist)
 
+        self._lock.release()
+
         # Action-dist inputs.
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
@@ -306,6 +313,8 @@ class TorchPolicy(Policy):
                 for s in (state_batches or [])
             ]
 
+            self._lock.acquire()
+
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
 
@@ -325,12 +334,18 @@ class TorchPolicy(Policy):
 
             action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+
+            self._lock.release()
+
             return log_likelihoods
 
     @override(Policy)
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+
+        self._lock.acquire()
+
         # Set Model to train mode.
         if self.model:
             self.model.train()
@@ -348,6 +363,9 @@ class TorchPolicy(Policy):
 
         if self.model:
             fetches["model"] = self.model.metrics()
+
+        self._lock.release()
+
         return fetches
 
     @override(Policy)
@@ -367,6 +385,8 @@ class TorchPolicy(Policy):
         # information.
         postprocessed_batch["is_training"] = True
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
+
+        self._lock.acquire()
 
         # Calculate the actual policy loss.
         loss_out = force_list(
@@ -426,6 +446,8 @@ class TorchPolicy(Policy):
                             p.grad /= self.distributed_world_size
 
                 grad_info["allreduce_latency"] += time.time() - start
+
+        self._lock.release()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
