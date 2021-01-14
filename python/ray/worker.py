@@ -927,26 +927,46 @@ def print_to_stdstream(data):
     print_worker_logs(data, print_file)
 
 
+def filter_autoscaler_events(lines):
+    # Print out autoscaler events only, ignoring other messages.
+    for line in lines:
+        if ":event_summary:" in line:
+            yield line.split(":event_summary:")[1]
+
+
 def print_worker_logs(data, print_file):
+    def prefix_for(data):
+        if data["pid"] in ["autoscaler", "raylet"]:
+            return ""
+        else:
+            return "pid="
+
     def color_for(data):
         if data["pid"] == "raylet":
             return colorama.Fore.YELLOW
+        elif data["pid"] == "autoscaler":
+            return colorama.Style.BRIGHT + colorama.Fore.CYAN
         else:
             return colorama.Fore.CYAN
 
+    if data["pid"] == "autoscaler":
+        lines = filter_autoscaler_events(data["lines"])
+    else:
+        lines = data["lines"]
+
     if data["ip"] == data["localhost"]:
-        for line in data["lines"]:
+        for line in lines:
             print(
-                "{}{}(pid={}){} {}".format(colorama.Style.DIM, color_for(data),
-                                           data["pid"],
-                                           colorama.Style.RESET_ALL, line),
+                "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
+                                         prefix_for(data), data["pid"],
+                                         colorama.Style.RESET_ALL, line),
                 file=print_file)
     else:
-        for line in data["lines"]:
+        for line in lines:
             print(
-                "{}{}(pid={}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), data["pid"],
-                    data["ip"], colorama.Style.RESET_ALL, line),
+                "{}{}({}{}, ip={}){} {}".format(
+                    colorama.Style.DIM, color_for(data), prefix_for(data),
+                    data["pid"], data["ip"], colorama.Style.RESET_ALL, line),
                 file=print_file)
 
 

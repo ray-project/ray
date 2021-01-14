@@ -190,6 +190,15 @@ class LoadMetrics:
     def get_pending_placement_groups(self):
         return self.pending_placement_groups
 
+    def resources_avail_summary(self):
+        total_resources = reduce(add_resources,
+                                 self.static_resources_by_ip.values()
+                                 ) if self.static_resources_by_ip else {}
+        out = "{} CPUs".format(total_resources.get("CPU", 0))
+        if "GPU" in total_resources:
+            out += ", {} GPUs".format(total_resources["GPU"])
+        return out
+
     def summary(self):
         available_resources = reduce(add_resources,
                                      self.dynamic_resources_by_ip.values()

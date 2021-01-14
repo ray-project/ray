@@ -12,6 +12,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -109,15 +110,20 @@ class Monitor:
         self.raylet_id_to_ip_map = {}
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        self.last_avail_resources = None
+        self.event_summarizer = EventSummarizer()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(
                 autoscaling_config,
                 self.load_metrics,
-                prefix_cluster_info=prefix_cluster_info)
+                prefix_cluster_info=prefix_cluster_info,
+                event_summarizer=self.event_summarizer)
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
             self.autoscaling_config = None
+
+        logger.info("Monitor: Started")
 
     def __del__(self):
         """Destruct the monitor object."""
@@ -250,11 +256,27 @@ class Monitor:
 
         # Handle messages from the subscription channels.
         while True:
+            self.event_summarizer.add(
+                "autoscaler message {}",
+                quantity=1,
+                aggregate=lambda a, b: a + b)
             self.update_raylet_map()
             self.update_load_metrics()
             status = {
                 "load_metrics_report": self.load_metrics.summary()._asdict()
             }
+
+            # Periodically emit event summaries.
+            avail_resources = self.load_metrics.resources_avail_summary()
+            if avail_resources != self.last_avail_resources:
+                self.event_summarizer.add(
+                    "{} currently allocated",
+                    quantity=avail_resources,
+                    aggregate=lambda a, b: b)
+                self.last_avail_resources = avail_resources
+            for msg in self.event_summarizer.summary():
+                logger.info(":event_summary:{}".format(msg))
+            self.event_summarizer.clear()
 
             # Process autoscaling actions
             if self.autoscaler:
