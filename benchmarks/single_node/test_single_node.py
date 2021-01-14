@@ -97,17 +97,17 @@ def test_many_queued_tasks():
         assert ray.get(ref) is None
 
 def test_large_object():
-    # int is 4 bytes
-    num_elements = MAX_RAY_GET_SIZE // 4
-
+    print("Generating object")
+    obj = np.zeros(MAX_RAY_GET_SIZE, dtype=np.int8)
     print("Putting object")
-    ref = ray.put([2**31 for _ in range(num_elements)])
+    ref = ray.put(obj)
+    del obj
     print("Getting object")
     big_obj = ray.get(ref)
 
-    print("Verifying object")
-    for val in tqdm(big_obj):
-        assert val == 2**31
+    assert big_obj[0] == 0
+    assert big_obj[-1] == 0
+
 
 
 ray.init(address="auto")

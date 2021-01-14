@@ -11,14 +11,16 @@ All distributed tests are run with the maximum number of nodes.
 | # nodes in cluster (with trivial task workload) | N/A |
 
 
-## Single node (worker) tests.
+## Single Node Benchmarks.
+
+All single node benchmarks are run on a single m4.16xlarge.
 
 | Dimension | Quantity |
 | --------- | -------- |
 | # of objects returned from a single task | 10000 |
 | # of plasma objects in a single `ray.get` call | 10000 |
 | # of tasks queued on a single node | 1,000,000 |
-| Maximum `ray.get` object size | 100GiB (TODO) |
+| Maximum `ray.get` numpy object size | 100GiB (TODO) |
 
 
 

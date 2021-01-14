@@ -37,3 +37,7 @@ setup_commands:
   - pip install numpy tqdm
 
 idle_timeout_minutes: 5
+
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --object-store-memory=128000000000 --autoscaling-config=~/ray_bootstrap_config.yaml
