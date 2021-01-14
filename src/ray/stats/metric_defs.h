@@ -36,11 +36,11 @@ static Histogram GcsLatency("gcs_latency",
 /// Raylet Metrics
 ///
 static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.", "pcs",
+                                    "The available resources on this node.", "",
                                     {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
-                                "The total resources on this node.", "pcs",
+                                "The total resources on this node.", "",
                                 {ResourceNameKey});
 
 static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
@@ -101,11 +101,11 @@ static Count UnintentionalWorkerFailures(
     "unintentional_worker_failures_total",
     "Number of worker failures that are not intentional. For example, worker failures "
     "due to system related errors.",
-    "worker_failures");
+    "");
 
 static Count NodeFailureTotal(
     "node_failure_total", "Number of node failures that have happened in the cluster.",
-    "node_failures.");
+    "");
 
 static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
                            "actors");

@@ -9,7 +9,7 @@ from ray.test_utils import (
     RayTestTimeoutException, check_call_ray, run_string_as_driver,
     run_string_as_driver_nonblocking, wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit, wait_for_condition, kill_process_by_name,
-    Semaphore, init_error_pubsub, get_error_message, new_scheduler_enabled)
+    Semaphore, init_error_pubsub, get_error_message)
 
 
 def test_remote_raylet_cleanup(ray_start_cluster):
@@ -139,7 +139,6 @@ print("success")
     assert "success" in out
 
 
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_driver_exiting_quickly(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
@@ -305,7 +304,6 @@ ray.get([a.log.remote(), f.remote()])
         "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
     indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="hangs")
 def test_drivers_release_resources(call_ray_start):
     address = call_ray_start
 
@@ -743,10 +741,10 @@ ray.get(main_wait.release.remote())
     driver1_out_split = driver1_out.split("\n")
     driver2_out_split = driver2_out.split("\n")
 
-    assert driver1_out_split[0][-1] == "1"
-    assert driver1_out_split[1][-1] == "2"
-    assert driver2_out_split[0][-1] == "3"
-    assert driver2_out_split[1][-1] == "4"
+    assert driver1_out_split[0][-1] == "1", driver1_out_split
+    assert driver1_out_split[1][-1] == "2", driver1_out_split
+    assert driver2_out_split[0][-1] == "3", driver2_out_split
+    assert driver2_out_split[1][-1] == "4", driver2_out_split
 
 
 if __name__ == "__main__":

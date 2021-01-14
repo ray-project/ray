@@ -4,10 +4,10 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
+from ray.autoscaler.sdk import request_resources
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.test_utils import generate_system_config_map, SignalActor, \
-    new_scheduler_enabled
+from ray.test_utils import generate_system_config_map, SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -69,15 +69,20 @@ def setup_monitor(address):
     monitor = Monitor(
         address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     monitor.update_raylet_map(_append_port=True)
-    monitor.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
     return monitor
 
 
 def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
+    request_resources(num_cpus=42)
+
     while True:
         monitor.update_load_metrics()
-        monitor.process_messages()
+        monitor.update_resource_requests()
         resource_usage = monitor.load_metrics._get_resource_usage()
+
+        # Check resource request propagation.
+        req = monitor.load_metrics.resource_requests
+        assert req == [{"CPU": 1}] * 42, req
 
         if "memory" in resource_usage[0]:
             del resource_usage[0]["memory"]
@@ -118,7 +123,6 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         "num_cpus": 2,
     }],
     indirect=True)
-@pytest.mark.skipif(new_scheduler_enabled(), reason="fails")
 def test_heartbeats_single(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -146,7 +150,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(signal.send.remote())
     ray.get(work_handle)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class Actor:
         def work(self, signal):
             wait_signal = signal.wait.remote()
@@ -160,6 +164,7 @@ def test_heartbeats_single(ray_start_cluster_head):
 
     test_actor = Actor.remote()
     work_handle = test_actor.work.remote(signal)
+    time.sleep(1)  # Time for actor to get placed and the method to start.
 
     verify_load_metrics(monitor, ({"CPU": 1.0}, {"CPU": total_cpus}))
 
@@ -185,6 +190,23 @@ def test_wait_for_nodes(ray_start_cluster_head):
     cluster.remove_node(worker2)
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
+
+
+@pytest.mark.parametrize(
+    "call_ray_start", [
+        "ray start --head --ray-client-server-port 20000 " +
+        "--min-worker-port=0 --max-worker-port=0 --port 0"
+    ],
+    indirect=True)
+def test_ray_client(call_ray_start):
+    from ray.util.client import ray
+    ray.connect("localhost:20000")
+
+    @ray.remote
+    def f():
+        return "hello client"
+
+    assert ray.get(f.remote()) == "hello client"
 
 
 if __name__ == "__main__":

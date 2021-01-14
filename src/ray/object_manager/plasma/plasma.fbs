@@ -23,6 +23,7 @@ enum MessageType:long {
   PlasmaDisconnectClient = 0,
   // Create a new object.
   PlasmaCreateRequest,
+  PlasmaCreateRetryRequest,
   PlasmaCreateReply,
   PlasmaAbortRequest,
   PlasmaAbortReply,
@@ -81,15 +82,14 @@ enum PlasmaError:int {
   ObjectNonexistent,
   // Trying to create an object but there isn't enough space in the store.
   OutOfMemory,
-  // Trying to create an object but there isn't enough space in the store.
-  // However, objects are currently being spilled to make enough space. The
-  // client should try again soon, and there will be enough space (assuming the
-  // space is not taken by another client).
-  TransientOutOfMemory,
   // Trying to delete an object but it's not sealed.
   ObjectNotSealed,
   // Trying to delete an object but it's in use.
   ObjectInUse,
+  // An unexpected error occurred during object creation, such as trying to get
+  // the result of the same request twice. This is most likely due to a system
+  // bug in the plasma store or caller.
+  UnexpectedError,
 }
 
 // Plasma store messages
@@ -141,14 +141,22 @@ table PlasmaCreateRequest {
   owner_port: int;
   // Unique id for the owner worker.
   owner_worker_id: string;
-  // Whether to evict other objects to make room for this one.
-  evict_if_full: bool;
   // The size of the object's data in bytes.
   data_size: ulong;
   // The size of the object's metadata in bytes.
   metadata_size: ulong;
   // Device to create buffer on.
   device_num: int;
+  // Try the creation request immediately. If this is not possible (due to
+  // out-of-memory), the error will be returned immediately to the client.
+  try_immediately: bool;
+}
+
+table PlasmaCreateRetryRequest {
+  // ID of the object to be created.
+  object_id: string;
+  // The ID of the request to retry.
+  request_id: uint64;
 }
 
 table CudaHandle {
@@ -158,6 +166,9 @@ table CudaHandle {
 table PlasmaCreateReply {
   // ID of the object that was created.
   object_id: string;
+  // The client should retry the request if this is > 0. This
+  // is the request ID to include in the retry.
+  retry_with_request_id: uint64;
   // The object that is returned with this reply.
   plasma_object: PlasmaObjectSpec;
   // Error that occurred for this call.

@@ -6,6 +6,9 @@
 .. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
     :target: https://forms.gle/9TSdDYUgxYs8SA9e8
 
+.. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
+    :target: https://discuss.ray.io/
+
 |
 
 
@@ -155,7 +158,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install "ray[rllib]"  # also recommended: ray[debug]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 
@@ -298,13 +301,13 @@ Getting Involved
 ----------------
 
 - `Community Slack`_: Join our Slack workspace.
-- `GitHub Discussions`_: For discussions about development, questions about usage, and feature requests.
+- `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
-.. _`GitHub Discussions`: https://github.com/ray-project/ray/discussions
+.. _`Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/

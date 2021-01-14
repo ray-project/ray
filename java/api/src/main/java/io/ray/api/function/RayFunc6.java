@@ -2,9 +2,7 @@
 
 package io.ray.api.function;
 
-/**
- * Functional interface for a remote function that has 6 parameters.
- */
+/** Functional interface for a remote function that has 6 parameters. */
 @FunctionalInterface
 public interface RayFunc6<T0, T1, T2, T3, T4, T5, R> extends RayFuncR<R> {
 

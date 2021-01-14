@@ -16,7 +16,6 @@ class SkipConnection(tf.keras.layers.Layer if tf else object):
     def __init__(self,
                  layer: Any,
                  fan_in_layer: Optional[Any] = None,
-                 add_memory: bool = False,
                  **kwargs):
         """Initializes a SkipConnection keras layer object.
 

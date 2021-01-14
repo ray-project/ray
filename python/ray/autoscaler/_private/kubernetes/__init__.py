@@ -5,6 +5,7 @@ _configured = False
 _core_api = None
 _auth_api = None
 _extensions_beta_api = None
+_custom_objects_api = None
 
 
 def _load_config():
@@ -43,6 +44,15 @@ def extensions_beta_api():
         _extensions_beta_api = kubernetes.client.ExtensionsV1beta1Api()
 
     return _extensions_beta_api
+
+
+def custom_objects_api():
+    global _custom_objects_api
+    if _custom_objects_api is None:
+        _load_config()
+        _custom_objects_api = kubernetes.client.CustomObjectsApi()
+
+    return _custom_objects_api
 
 
 log_prefix = "KubernetesNodeProvider: "

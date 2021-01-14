@@ -7,10 +7,8 @@ from collections import defaultdict
 import os
 
 import pytest
-from ray.serve.context import TaskContext
 
 import ray
-from ray.serve.config import BackendConfig
 from ray.serve.controller import TrafficPolicy
 from ray.serve.router import Query, ReplicaSet, RequestMetadata, Router
 from ray.serve.utils import get_random_letters
@@ -34,12 +32,13 @@ def mock_task_runner():
             self.query = None
             self.queries = []
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             if isinstance(request, bytes):
                 request = Query.ray_deserialize(request)
             self.query = request
             self.queries.append(request)
-            return "DONE"
+            return b"", "DONE"
 
         def get_recent_call(self):
             return self.query
@@ -59,45 +58,6 @@ def mock_task_runner():
 @pytest.fixture
 def task_runner_mock_actor():
     yield mock_task_runner()
-
-
-@pytest.fixture
-def mock_controller():
-    @ray.remote(num_cpus=0)
-    class MockControllerActor:
-        def __init__(self):
-            from ray.serve.long_poll import LongPollerHost
-            self.host = LongPollerHost()
-            self.backend_replicas = defaultdict(list)
-            self.backend_configs = dict()
-            self.clear()
-
-        def clear(self):
-            self.host.notify_changed("worker_handles", {})
-            self.host.notify_changed("traffic_policies", {})
-            self.host.notify_changed("backend_configs", {})
-
-        async def listen_for_change(self, snapshot_ids):
-            return await self.host.listen_for_change(snapshot_ids)
-
-        def set_traffic(self, endpoint, traffic_policy):
-            self.host.notify_changed("traffic_policies",
-                                     {endpoint: traffic_policy})
-
-        def add_new_replica(self,
-                            backend_tag,
-                            runner_actor,
-                            backend_config=BackendConfig()):
-            self.backend_replicas[backend_tag].append(runner_actor)
-            self.backend_configs[backend_tag] = backend_config
-
-            self.host.notify_changed(
-                "worker_handles",
-                self.backend_replicas,
-            )
-            self.host.notify_changed("backend_configs", self.backend_configs)
-
-    yield MockControllerActor.remote()
 
 
 async def test_simple_endpoint_backend_pair(ray_instance, mock_controller,
@@ -236,10 +196,11 @@ async def test_replica_set(ray_instance):
     class MockWorker:
         _num_queries = 0
 
+        @ray.method(num_returns=2)
         async def handle_request(self, request):
             self._num_queries += 1
             await signal.wait.remote()
-            return "DONE"
+            return b"", "DONE"
 
         async def num_queries(self):
             return self._num_queries
@@ -252,9 +213,7 @@ async def test_replica_set(ray_instance):
 
     # Send two queries. They should go through the router but blocked by signal
     # actors.
-    query = Query([], {}, TaskContext.Python,
-                  RequestMetadata("request-id", "endpoint",
-                                  TaskContext.Python))
+    query = Query([], {}, RequestMetadata("request-id", "endpoint"))
     first_ref = await rs.assign_replica(query)
     second_ref = await rs.assign_replica(query)
 

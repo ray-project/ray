@@ -48,7 +48,7 @@ worker_nodes:
 
 setup_commands:
     - conda install setuptools=45.1.0=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
-    - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+    - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
     - pip install -U ray[tune]
     - pip install tensorflow-gpu==2.1.0
 

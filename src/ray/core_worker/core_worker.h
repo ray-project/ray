@@ -23,6 +23,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
@@ -30,8 +31,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/gcs/subscription_executor.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -61,7 +61,7 @@ struct CoreWorkerOptions {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
+      const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerOptions()
@@ -81,6 +81,7 @@ struct CoreWorkerOptions {
         gc_collect(nullptr),
         spill_objects(nullptr),
         restore_spilled_objects(nullptr),
+        delete_spilled_objects(nullptr),
         get_lang_stack(nullptr),
         kill_main(nullptr),
         ref_counting_enabled(false),
@@ -138,8 +139,11 @@ struct CoreWorkerOptions {
   /// Application-language callback to spill objects to external storage.
   std::function<std::vector<std::string>(const std::vector<ObjectID> &)> spill_objects;
   /// Application-language callback to restore objects from external storage.
-  std::function<void(const std::vector<ObjectID> &, const std::vector<std::string> &)>
+  std::function<int64_t(const std::vector<ObjectID> &, const std::vector<std::string> &)>
       restore_spilled_objects;
+  /// Application-language callback to delete objects from external storage.
+  std::function<void(const std::vector<std::string> &, rpc::WorkerType)>
+      delete_spilled_objects;
   /// Language worker callback to get the current call stack.
   std::function<void(std::string *)> get_lang_stack;
   // Function that tries to interrupt the currently running Python thread.
@@ -194,7 +198,7 @@ struct CoreWorkerOptions {
 /// thread with a worker. You can obtain the worker ID via
 /// `CoreWorkerProcess::GetCoreWorker()->GetWorkerID()`. Currently a Java worker process
 /// starts multiple workers by default, but can be configured to start only 1 worker by
-/// overwriting the internal config `num_workers_per_process_java`.
+/// speicifying `num_java_workers_per_process` in the job config.
 ///
 /// If only 1 worker is started (either because the worker type is driver, or the
 /// `num_workers` in `CoreWorkerOptions` is set to 1), all threads will be automatically
@@ -560,18 +564,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
   Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
-              const int64_t timeout_ms, std::vector<bool> *results);
+              const int64_t timeout_ms, std::vector<bool> *results, bool fetch_local);
 
   /// Delete a list of objects from the plasma object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
-  /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects.
   /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
-                bool delete_creating_tasks);
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
@@ -603,29 +604,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status PushError(const JobID &job_id, const std::string &type,
                    const std::string &error_message, double timestamp);
 
-  /// Request raylet backend to prepare a checkpoint for an actor.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
-  /// \return Status.
-  Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                ActorCheckpointID *checkpoint_id);
-
-  /// Notify raylet backend that an actor was resumed from a checkpoint.
-  ///
-  /// \param[in] actor_id ID of the actor.
-  /// \param[in] checkpoint_id ID of the checkpoint from which the actor was resumed.
-  /// \return Status.
-  Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
-                                          const ActorCheckpointID &checkpoint_id);
-
   /// Sets a resource with the specified capacity and client id
   /// \param[in] resource_name Name of the resource to be set.
   /// \param[in] capacity Capacity of the resource.
-  /// \param[in] client_Id NodeID where the resource is to be set.
+  /// \param[in] node_id NodeID where the resource is to be set.
   /// \return Status
   Status SetResource(const std::string &resource_name, const double capacity,
-                     const NodeID &client_id);
+                     const NodeID &node_id);
 
   /// Request an object to be spilled to external storage.
   /// \param[in] object_ids The objects to be spilled.
@@ -644,12 +629,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] max_retires max number of retry when the task fails.
   /// \param[in] placement_options placement group options.
   /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
+  /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
   void SubmitTask(const RayFunction &function,
                   const std::vector<std::unique_ptr<TaskArg>> &args,
                   const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
                   int max_retries, BundleID placement_options,
-                  bool placement_group_capture_child_tasks);
+                  bool placement_group_capture_child_tasks,
+                  const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
@@ -686,6 +674,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status OK if succeed. TimedOut if request to GCS server times out.
   /// NotFound if placement group is already removed or doesn't exist.
   Status RemovePlacementGroup(const PlacementGroupID &placement_group_id);
+
+  /// Wait for a placement group until ready asynchronously.
+  /// Returns once the placement group is created or the timeout expires.
+  ///
+  /// \param placement_group The id of a placement group to wait for.
+  /// \param timeout_seconds Timeout in seconds.
+  /// \return Status OK if the placement group is created. TimedOut if request to GCS
+  /// server times out. NotFound if placement group is already removed or doesn't exist.
+  Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                 int timeout_seconds);
 
   /// Submit an actor task.
   ///
@@ -788,7 +786,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] actor_id The actor handle to get.
   /// \return Status::Invalid if we don't have this actor handle.
-  const ActorHandle *GetActorHandle(const ActorID &actor_id) const;
+  std::shared_ptr<const ActorHandle> GetActorHandle(const ActorID &actor_id) const;
 
   /// Get a handle to a named actor.
   ///
@@ -796,9 +794,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] name The name of the actor whose handle to get.
   /// \param[out] actor_handle A handle to the requested actor.
-  /// \return The raw pointer to the actor handle if found, nullptr otherwise.
+  /// \return The shared_ptr to the actor handle if found, nullptr otherwise.
   /// The second pair contains the status of getting a named actor handle.
-  std::pair<const ActorHandle *, Status> GetNamedActorHandle(const std::string &name);
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandle(
+      const std::string &name);
 
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
@@ -889,6 +888,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleRestoreSpilledObjects(const rpc::RestoreSpilledObjectsRequest &request,
                                    rpc::RestoreSpilledObjectsReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  // Delete objects from external storage.
+  void HandleDeleteSpilledObjects(const rpc::DeleteSpilledObjectsRequest &request,
+                                  rpc::DeleteSpilledObjectsReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
 
   // Make the this worker exit.
   void HandleExit(const rpc::ExitRequest &request, rpc::ExitReply *reply,
@@ -988,7 +992,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status KillActorLocalMode(const ActorID &actor_id);
 
   /// Get a handle to a named actor for local mode.
-  std::pair<const ActorHandle *, Status> GetNamedActorHandleLocalMode(
+  std::pair<std::shared_ptr<const ActorHandle>, Status> GetNamedActorHandleLocalMode(
       const std::string &name);
 
   /// Get the values of the task arguments for the executor. Values are

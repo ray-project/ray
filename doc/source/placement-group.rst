@@ -1,6 +1,8 @@
 Placement Groups
 ================
 
+.. _ray-placement-group-doc-ref:
+
 Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling). They can be then used to schedule Ray tasks and actors to be packed as close as possible for locality (PACK), or spread apart (SPREAD).
 
 Here are some use cases:
@@ -9,6 +11,7 @@ Here are some use cases:
 - **Maximizing data locality**: You'd like to place or schedule your tasks and actors close to your data to avoid object transfer overheads.
 - **Load balancing**: To improve application availability and avoid resource overload, you'd like to place your actors or tasks into different physical machines as much as possible.
 
+To learn more about production use cases, check out the :ref:`examples <ray-placement-group-examples-ref>`.
 
 Key Concepts
 ------------
@@ -65,7 +68,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
   ready, unready = ray.wait([pg.ready()], timeout=0)
 
   # You can look at placement group states using this API.
-  pprint(placement_group_table(pg))
+  print(placement_group_table(pg))
 
 Infeasible placement groups will be pending until resources are available. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
@@ -121,7 +124,6 @@ Let's create a placement group. Recall that each bundle is a collection of resou
 
   - "CPU" will correspond with `num_cpus` as used in `ray.remote`
   - "GPU" will correspond with `num_gpus` as used in `ray.remote`
-  - "MEM" will correspond with `memory` as used in `ray.remote`
   - Other resources will correspond with `resources` as used in `ray.remote`.
 
   Once the placement group reserves resources, original resources are unavailable until the placement group is removed. For example:
@@ -179,6 +181,7 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
   gpu_actors = [GPUActor.options(
           placement_group=pg,
           # This is the index from the original list.
+          # This index is set to -1 by default, which means any available bundle.
           placement_group_bundle_index=0) # Index of gpu_bundle is 0.
       .remote() for _ in range(2)]
 
@@ -186,16 +189,47 @@ Now let's define an actor that uses GPU. We'll also define a task that use ``ext
   extra_resource_actors = [extra_resource_task.options(
           placement_group=pg,
           # This is the index from the original list.
+          # This index is set to -1 by default, which means any available bundle.
           placement_group_bundle_index=1) # Index of extra_resource_bundle is 1.
       .remote() for _ in range(2)]
 
 Now, you can guarantee all gpu actors and extra_resource tasks are located on the same node
 because they are scheduled on a placement group with the STRICT_PACK strategy.
 
-Note that you must remove the placement group once you are finished with your application.
-Workers of actors and tasks that are scheduled on placement group will be all killed.
+.. note::
 
-.. warning:: Do not lose the reference to the placement group - you will not be able to remove it. This behavior will change in a later release.
+  In order to fully utilize resources pre-reserved by the placement group,
+  Ray automatically schedules children tasks/actors to the same placement group as its parent.
+
+  .. code-block:: python
+
+    # Create a placement group with the STRICT_SPREAD strategy.
+    pg = placement_group([{"CPU": 2}, {"CPU": 2}], strategy="STRICT_SPREAD")
+    ray.get(pg.ready())
+
+    @ray.remote
+    def child():
+        pass
+
+    @ray.remote
+    def parent():
+        # The child task is scheduled with the same placement group as its parent
+        # although child.options(placement_group=pg).remote() wasn't called.
+        ray.get(child.remote())
+
+    ray.get(parent.options(placement_group=pg).remote())
+
+  To avoid it, you should specify `options(placement_group=None)` in a child task/actor remote call.
+
+  .. code-block:: python
+
+    @ray.remote
+    def parent():
+        # In this case, the child task won't be
+        # scheduled with the parent's placement group.
+        ray.get(child.options(placement_group=None).remote())
+
+Note that you can anytime remove the placement group to clean up resources.
 
 .. code-block:: python
 
@@ -218,16 +252,32 @@ Workers of actors and tasks that are scheduled on placement group will be all ki
 
   ray.shutdown()
 
+Tips for Using Placement Groups
+-------------------------------
+- Learn the :ref:`lifecycle <ray-placement-group-lifecycle-ref>` of placement groups.
+- Learn the :ref:`fault tolerance <ray-placement-group-ft-ref>` of placement groups.
+- See more :ref:`examples <ray-placement-group-examples-ref>` to learn real world use cases of placement group APIs.
+
 Lifecycle
 ---------
 
-When placement group is first created, the request is sent to the GCS. The GCS reserve resources to nodes based on its scheduling strategy. Ray guarantees the atomic creation of placement group.
+.. _ray-placement-group-lifecycle-ref:
 
-Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
+**Creation**: When placement groups are first created, the request is sent to the GCS. The GCS sends resource reservation requests to nodes based on its scheduling strategy. Ray guarantees placement groups are placed atomically.
 
-If nodes that contain some bundles of a placement group die, bundles will be rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic", but once it is created, there could be partial placement groups.
+**Autoscaling**: Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
-Placement groups are tolerant to worker nodes failures (bundles on dead nodes are rescheduled). However, placement groups are currently unable to tolerate head node failures (GCS failures).
+**Cleanup**: Placement groups are automatically removed when the job that created the placement group is finished. The only exception is that it is created by detached actors. In this case, placement groups fate-share with the detached actors.
+
+
+Fault Tolerance
+---------------
+
+.. _ray-placement-group-ft-ref:
+
+If nodes that contain some bundles of a placement group die, all the bundles will be rescheduled on different nodes by GCS. This means that the initial creation of placement group is "atomic", but once it is created, there could be partial placement groups.
+
+Placement groups are tolerant to worker nodes failures (bundles on dead nodes are rescheduled). However, placement groups are currently unable to tolerate head node failures (GCS failures), which is a single point of failure of Ray.
 
 API Reference
 -------------

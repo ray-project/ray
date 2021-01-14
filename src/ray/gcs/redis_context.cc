@@ -304,7 +304,7 @@ Status ConnectWithoutRetries(const std::string &address, int port,
       oss << "Could not allocate Redis context.";
     } else if (newContext->err) {
       oss << "Could not establish connection to Redis " << address << ":" << port
-          << " (context.err = " << newContext->err << ")";
+          << " (context.err = " << newContext->err << ").";
     }
     return Status::RedisError(errorMessage);
   }
@@ -332,18 +332,9 @@ Status ConnectWithRetries(const std::string &address, int port,
                      << errorMessage;
       break;
     }
-    if (*context == nullptr) {
-      RAY_LOG(WARNING) << "Could not allocate Redis context, will retry in "
-                       << RayConfig::instance().redis_db_connect_wait_milliseconds()
-                       << " milliseconds.";
-    }
-    if ((*context)->err) {
-      RAY_LOG(WARNING) << "Could not establish connection to Redis " << address << ":"
-                       << port << " (context.err = " << (*context)->err
-                       << "), will retry in "
-                       << RayConfig::instance().redis_db_connect_wait_milliseconds()
-                       << " milliseconds.";
-    }
+    RAY_LOG(WARNING) << errorMessage << " Will retry in "
+                     << RayConfig::instance().redis_db_connect_wait_milliseconds()
+                     << " milliseconds. Each retry takes about two minutes.";
     // Sleep for a little.
     std::this_thread::sleep_for(std::chrono::milliseconds(
         RayConfig::instance().redis_db_connect_wait_milliseconds()));
@@ -431,7 +422,7 @@ Status RedisContext::RunArgvAsync(const std::vector<std::string> &args,
   return status;
 }
 
-Status RedisContext::SubscribeAsync(const NodeID &client_id,
+Status RedisContext::SubscribeAsync(const NodeID &node_id,
                                     const TablePubsub pubsub_channel,
                                     const RedisCallback &redisCallback,
                                     int64_t *out_callback_index) {
@@ -444,7 +435,7 @@ Status RedisContext::SubscribeAsync(const NodeID &client_id,
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   Status status = Status::OK();
-  if (client_id.IsNil()) {
+  if (node_id.IsNil()) {
     // Subscribe to all messages.
     std::string redis_command = "SUBSCRIBE %d";
     status = async_redis_subscribe_context_->RedisAsyncCommand(
@@ -456,7 +447,7 @@ Status RedisContext::SubscribeAsync(const NodeID &client_id,
     status = async_redis_subscribe_context_->RedisAsyncCommand(
         reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
         reinterpret_cast<void *>(callback_index), redis_command.c_str(), pubsub_channel,
-        client_id.Data(), client_id.Size());
+        node_id.Data(), node_id.Size());
   }
 
   return status;

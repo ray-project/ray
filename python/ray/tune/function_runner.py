@@ -509,8 +509,9 @@ class FunctionRunner(Trainable):
         try:
             err_tb_str = self._error_queue.get(
                 block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError(("Trial raised an exception. Traceback:\n{}"
-                             .format(err_tb_str)))
+            raise TuneError(
+                ("Trial raised an exception. Traceback:\n{}".format(err_tb_str)
+                 ))
         except queue.Empty:
             pass
 
@@ -627,6 +628,7 @@ def with_parameters(fn, **kwargs):
         parameter_registry.put(prefix + k, v)
 
     use_checkpoint = detect_checkpoint_function(fn)
+    keys = list(kwargs.keys())
 
     def inner(config, checkpoint_dir=None):
         fn_kwargs = {}
@@ -638,7 +640,7 @@ def with_parameters(fn, **kwargs):
                           or default
             fn_kwargs["checkpoint_dir"] = default
 
-        for k in kwargs:
+        for k in keys:
             fn_kwargs[k] = parameter_registry.get(prefix + k)
         fn(config, **fn_kwargs)
 
@@ -648,6 +650,10 @@ def with_parameters(fn, **kwargs):
         def _inner(config):
             inner(config, checkpoint_dir=None)
 
+        if hasattr(fn, "__mixins__"):
+            _inner.__mixins__ = fn.__mixins__
         return _inner
 
+    if hasattr(fn, "__mixins__"):
+        inner.__mixins__ = fn.__mixins__
     return inner

@@ -74,7 +74,8 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
         new_class_id = pickle.dumps(pickle.loads(class_id))
         if new_class_id == class_id:
             # We appear to have reached a fix point, so use this as the ID.
-            return hashlib.sha1(new_class_id).digest()
+            return hashlib.shake_128(new_class_id).digest(
+                ray_constants.ID_SIZE)
         class_id = new_class_id
 
     # We have not reached a fixed point, so we may end up with a different
@@ -82,7 +83,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     # same class definition being exported many many times.
     logger.warning(
         f"WARNING: Could not produce a deterministic class ID for class {cls}")
-    return hashlib.sha1(new_class_id).digest()
+    return hashlib.shake_128(new_class_id).digest(ray_constants.ID_SIZE)
 
 
 def object_ref_deserializer(reduced_obj_ref, owner_address):
@@ -219,10 +220,10 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
-    def _deserialize_msgpack_data(self, data, metadata):
+    def _deserialize_msgpack_data(self, data, metadata_fields):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
+        if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
@@ -240,23 +241,25 @@ class SerializationContext:
 
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
-            if metadata in [
+            metadata_fields = metadata.split(b",")
+            if metadata_fields[0] in [
                     ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                     ray_constants.OBJECT_METADATA_TYPE_PYTHON
             ]:
-                return self._deserialize_msgpack_data(data, metadata)
+                return self._deserialize_msgpack_data(data, metadata_fields)
             # Check if the object should be returned as raw bytes.
-            if metadata == ray_constants.OBJECT_METADATA_TYPE_RAW:
+            if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            elif metadata == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
-                obj = self._deserialize_msgpack_data(data, metadata)
+            elif metadata_fields[
+                    0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return actor_handle_deserializer(obj)
             # Otherwise, return an exception object based on
             # the error type.
             try:
-                error_type = int(metadata)
+                error_type = int(metadata_fields[0])
             except Exception:
                 raise Exception(f"Can't deserialize object: {object_ref}, "
                                 f"metadata: {metadata}")
@@ -265,7 +268,7 @@ class SerializationContext:
             # TODO (kfstorm): exception serialization should be language
             # independent.
             if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
-                obj = self._deserialize_msgpack_data(data, metadata)
+                obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()

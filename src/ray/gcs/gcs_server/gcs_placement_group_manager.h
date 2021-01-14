@@ -130,12 +130,12 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param io_context The event loop to run the monitor on.
   /// \param scheduler Used to schedule placement group creation tasks.
   /// \param gcs_table_storage Used to flush placement group data to storage.
-  /// \param gcs_node_manager Reference of GcsNodeManager.
+  /// \param gcs_resource_manager Reference of GcsResourceManager.
   explicit GcsPlacementGroupManager(
       boost::asio::io_context &io_context,
       std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
       std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      GcsNodeManager &gcs_node_manager);
+      GcsResourceManager &gcs_resource_manager);
 
   ~GcsPlacementGroupManager() = default;
 
@@ -154,6 +154,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   void HandleGetAllPlacementGroup(const rpc::GetAllPlacementGroupRequest &request,
                                   rpc::GetAllPlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleWaitPlacementGroupUntilReady(
+      const rpc::WaitPlacementGroupUntilReadyRequest &request,
+      rpc::WaitPlacementGroupUntilReadyReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register placement_group asynchronously.
   ///
@@ -276,6 +281,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   absl::flat_hash_map<PlacementGroupID, StatusCallback>
       placement_group_to_register_callback_;
 
+  /// Callback of `WaitPlacementGroupUntilReady` requests.
+  absl::flat_hash_map<PlacementGroupID, std::vector<StatusCallback>>
+      placement_group_to_create_callbacks_;
+
   /// All registered placement_groups (pending placement_groups are also included).
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<GcsPlacementGroup>>
       registered_placement_groups_;
@@ -299,8 +308,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// We should probably support concurrenet creation (or batching).
   PlacementGroupID scheduling_in_progress_id_ = PlacementGroupID::Nil();
 
-  /// Reference of GcsNodeManager.
-  GcsNodeManager &gcs_node_manager_;
+  /// Reference of GcsResourceManager.
+  GcsResourceManager &gcs_resource_manager_;
 
   // Debug info.
   enum CountType {
@@ -308,7 +317,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     REMOVE_PLACEMENT_GROUP_REQUEST = 1,
     GET_PLACEMENT_GROUP_REQUEST = 2,
     GET_ALL_PLACEMENT_GROUP_REQUEST = 3,
-    CountType_MAX = 4,
+    WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST = 4,
+    CountType_MAX = 5,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 };

@@ -143,7 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-# TODO(sven): Make this a TorchPolicy child via `build_torch_policy`.
+# TODO(sven): Make this a TorchPolicy child via `build_policy_class`.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -162,6 +162,7 @@ class QMixTorchPolicy(Policy):
         self.framework = "torch"
         super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
+        config["model"]["n_agents"] = self.n_agents
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False

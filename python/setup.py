@@ -58,7 +58,8 @@ ray_files = [
     "ray/streaming/_streaming.so",
 ]
 
-if BUILD_JAVA:
+if BUILD_JAVA or os.path.exists(
+        os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
 
 # These are the directories where automatically generated Python protobuf
@@ -94,10 +95,9 @@ ray_files += [
 # also update the matching section of requirements.txt
 # in this directory
 extras = {
-    "debug": [],
     "serve": [
         "uvicorn", "flask", "requests", "pydantic<1.7",
-        "dataclasses; python_version < '3.7'"
+        "dataclasses; python_version < '3.7'", "starlette"
     ],
     "tune": [
         "dataclasses; python_version < '3.7'", "pandas", "tabulate",
@@ -115,8 +115,6 @@ extras["rllib"] = extras["tune"] + [
     "pyyaml",
     "scipy",
 ]
-
-extras["streaming"] = []
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
@@ -270,7 +268,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle"]
+        pip_packages = ["psutil", "setproctitle==1.1.10"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -430,15 +428,15 @@ setuptools.setup(
     version=find_version("ray", "__init__.py"),
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    description=("A system for parallel and distributed Python that "
-                 "unifies the ML ecosystem."),
+    description=("Ray provides a simple, universal API for building "
+                 "distributed applications."),
     long_description=io.open(
         os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
         "r",
         encoding="utf-8").read(),
     url="https://github.com/ray-project/ray",
-    keywords=("ray distributed parallel machine-learning "
-              "reinforcement-learning deep-learning python"),
+    keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
+              "reinforcement-learning deep-learning serving python"),
     packages=setuptools.find_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
@@ -449,8 +447,10 @@ setuptools.setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli",
-            "ray-operator=ray.operator:main"
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.operator.operator:main",
+            "serve=ray.serve.scripts:cli",
         ]
     },
     include_package_data=True,

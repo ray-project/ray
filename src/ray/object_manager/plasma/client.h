@@ -22,31 +22,29 @@
 #include <string>
 #include <vector>
 
-#include "arrow/buffer.h"
-
+#include "ray/common/buffer.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
 
-using arrow::Buffer;
-
 namespace plasma {
 
+using ray::Buffer;
+using ray::SharedMemoryBuffer;
 using ray::Status;
 
 /// Object buffer data structure.
 struct ObjectBuffer {
   /// The data buffer.
-  std::shared_ptr<Buffer> data;
+  std::shared_ptr<SharedMemoryBuffer> data;
   /// The metadata buffer.
-  std::shared_ptr<Buffer> metadata;
+  std::shared_ptr<SharedMemoryBuffer> metadata;
   /// The device number.
   int device_num;
 };
 
-// TODO(suquark): Maybe we should not export plasma later?
-class RAY_EXPORT PlasmaClient {
+class PlasmaClient {
  public:
   PlasmaClient();
   ~PlasmaClient();
@@ -77,6 +75,54 @@ class RAY_EXPORT PlasmaClient {
   /// Create an object in the Plasma Store. Any metadata for this object must be
   /// be passed in when the object is created.
   ///
+  /// If this request cannot be fulfilled immediately, the client will be
+  /// returned a request ID, which it should use to retry the request.
+  ///
+  /// \param object_id The ID to use for the newly created object.
+  /// \param owner_address The address of the object's owner.
+  /// \param data_size The size in bytes of the space to be allocated for this
+  /// object's
+  ///        data (this does not include space used for metadata).
+  /// \param metadata The object's metadata. If there is no metadata, this
+  /// pointer should be NULL.
+  /// \param metadata_size The size in bytes of the metadata. If there is no
+  ///        metadata, this should be 0.
+  /// \param retry_with_request_id If the request is not yet fulfilled, this
+  ///        will be set to a unique ID with which the client should retry.
+  /// \param data The address of the newly created object will be written here.
+  /// \param device_num The number of the device where the object is being
+  ///        created.
+  ///        device_num = 0 corresponds to the host,
+  ///        device_num = 1 corresponds to GPU0,
+  ///        device_num = 2 corresponds to GPU1, etc.
+  /// \return The return status.
+  ///
+  /// The returned object must be released once it is done with.  It must also
+  /// be either sealed or aborted.
+  Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
+                int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
+                uint64_t *retry_with_request_id, std::shared_ptr<Buffer> *data,
+                int device_num = 0);
+
+  /// Retry a previous Create call using the returned request ID.
+  ///
+  /// \param object_id The ID to use for the newly created object.
+  /// \param request_id The request ID returned by the previous Create call.
+  /// \param metadata The object's metadata. If there is no metadata, this
+  /// pointer should be NULL.
+  /// \param retry_with_request_id If the request is not yet fulfilled, this
+  ///        will be set to a unique ID with which the client should retry.
+  /// \param data The address of the newly created object will be written here.
+  Status RetryCreate(const ObjectID &object_id, uint64_t request_id,
+                     const uint8_t *metadata, uint64_t *retry_with_request_id,
+                     std::shared_ptr<Buffer> *data);
+
+  /// Create an object in the Plasma Store. Any metadata for this object must be
+  /// be passed in when the object is created.
+  ///
+  /// The plasma store will attempt to fulfill this request immediately. If it
+  /// cannot be fulfilled immediately, an error will be returned to the client.
+  ///
   /// \param object_id The ID to use for the newly created object.
   /// \param owner_address The address of the object's owner.
   /// \param data_size The size in bytes of the space to be allocated for this
@@ -93,16 +139,14 @@ class RAY_EXPORT PlasmaClient {
   ///        device_num = 0 corresponds to the host,
   ///        device_num = 1 corresponds to GPU0,
   ///        device_num = 2 corresponds to GPU1, etc.
-  /// \param evict_if_full Whether to evict other objects to make space for
-  ///        this object.
   /// \return The return status.
   ///
   /// The returned object must be released once it is done with.  It must also
   /// be either sealed or aborted.
-  Status Create(const ObjectID &object_id, const ray::rpc::Address &owner_address,
-                int64_t data_size, const uint8_t *metadata, int64_t metadata_size,
-                std::shared_ptr<Buffer> *data, int device_num = 0,
-                bool evict_if_full = true);
+  Status TryCreateImmediately(const ObjectID &object_id,
+                              const ray::rpc::Address &owner_address, int64_t data_size,
+                              const uint8_t *metadata, int64_t metadata_size,
+                              std::shared_ptr<Buffer> *data, int device_num = 0);
 
   /// Get some objects from the Plasma Store. This function will block until the
   /// objects have all been created and sealed in the Plasma Store or the
@@ -227,13 +271,9 @@ class RAY_EXPORT PlasmaClient {
  private:
   friend class PlasmaBuffer;
   friend class PlasmaMutableBuffer;
-  FRIEND_TEST(TestPlasmaStore, GetTest);
-  FRIEND_TEST(TestPlasmaStore, LegacyGetTest);
-  FRIEND_TEST(TestPlasmaStore, AbortTest);
-
   bool IsInUse(const ObjectID &object_id);
 
-  class RAY_NO_EXPORT Impl;
+  class Impl;
   std::shared_ptr<Impl> impl_;
 };
 

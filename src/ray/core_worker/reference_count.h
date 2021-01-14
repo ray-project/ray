@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -50,7 +51,8 @@ class ReferenceCounterInterface {
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
 /// collection. This class is thread safe.
-class ReferenceCounter : public ReferenceCounterInterface {
+class ReferenceCounter : public ReferenceCounterInterface,
+                         public LocalityDataProviderInterface {
  public:
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
@@ -327,14 +329,15 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// available to fetch.
   ///
   /// \param[in] object_id The object to check.
+  /// \param[out] owned_by_us Whether this object is owned by us. The pinned_at
+  /// and spilled out-parameters are set if this is true.
   /// \param[out] pinned_at The node ID of the raylet at which this object is
   /// \param[out] spilled Whether this object has been spilled.
   /// pinned. Set to nil if the object is not pinned.
-  /// \return True if the object exists and is owned by us, false otherwise. We
-  /// return false here because a borrower should not know the pinned location
-  /// for an object.
-  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, NodeID *pinned_at,
-                                     bool *spilled) const LOCKS_EXCLUDED(mutex_);
+  /// \return True if the reference exists, false otherwise.
+  bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id, bool *owned_by_us,
+                                     NodeID *pinned_at, bool *spilled) const
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get and reset the objects that were pinned on the given node.  This
   /// method should be called upon a node failure, to determine which plasma
@@ -384,6 +387,9 @@ class ReferenceCounter : public ReferenceCounterInterface {
   /// This notifies the primary raylet that the object is safe to release and
   /// records that the object has been spilled to suppress reconstruction.
   void HandleObjectSpilled(const ObjectID &object_id);
+
+  /// Get locality data for object.
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id);
 
  private:
   struct Reference {

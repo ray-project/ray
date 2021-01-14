@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Any, Optional
 
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,33 @@ TensorType = TensorType
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = TensorStructType
+
+
+def try_import_jax(error=False):
+    """Tries importing JAX and FLAX and returns both modules (or Nones).
+
+    Args:
+        error (bool): Whether to raise an error if JAX/FLAX cannot be imported.
+
+    Returns:
+        Tuple: The jax- and the flax modules.
+
+    Raises:
+        ImportError: If error=True and JAX is not installed.
+    """
+    if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
+        logger.warning("Not importing JAX for test purposes.")
+        return None
+
+    try:
+        import jax
+        import flax
+    except ImportError as e:
+        if error:
+            raise e
+        return None, None
+
+    return jax, flax
 
 
 def try_import_tf(error=False):
@@ -61,6 +89,7 @@ def try_import_tf(error=False):
         tf1_module = tf_module.compat.v1
         if not was_imported:
             tf1_module.disable_v2_behavior()
+            tf1_module.enable_resource_variables()
     # No compat.v1 -> return tf as is.
     except AttributeError:
         tf1_module = tf_module
@@ -224,12 +253,13 @@ def get_variable(value,
     return value
 
 
-# TODO: (sven) move to models/utils.py
-def get_activation_fn(name, framework="tf"):
+# Deprecated: Use rllib.models.utils::get_activation_fn instead.
+def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
 
     Args:
-        name (str): One of "relu" (default), "tanh", "swish", or "linear".
+        name (Optional[str]): One of "relu" (default), "tanh", "swish", or
+            "linear" or None.
         framework (str): One of "tf" or "torch".
 
     Returns:
@@ -239,10 +269,14 @@ def get_activation_fn(name, framework="tf"):
     Raises:
         ValueError: If name is an unknown activation function.
     """
+    deprecation_warning(
+        "rllib/utils/framework.py::get_activation_fn",
+        "rllib/models/utils.py::get_activation_fn",
+        error=False)
     if framework == "torch":
         if name in ["linear", None]:
             return None
-        if name == "swish":
+        if name in ["swish", "silu"]:
             from ray.rllib.utils.torch_ops import Swish
             return Swish
         _, nn = try_import_torch()
@@ -250,9 +284,21 @@ def get_activation_fn(name, framework="tf"):
             return nn.ReLU
         elif name == "tanh":
             return nn.Tanh
+    elif framework == "jax":
+        if name in ["linear", None]:
+            return None
+        jax, flax = try_import_jax()
+        if name == "swish":
+            return jax.nn.swish
+        if name == "relu":
+            return jax.nn.relu
+        elif name == "tanh":
+            return jax.nn.hard_tanh
     else:
         if name in ["linear", None]:
             return None
+        if name == "swish":
+            name = "silu"
         tf1, tf, tfv = try_import_tf()
         fn = getattr(tf.nn, name, None)
         if fn is not None:

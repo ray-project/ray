@@ -150,6 +150,34 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
                 from None
 
 
+def continue_debug_session():
+    """Continue active debugging session.
+
+    This function will connect 'ray debug' to the right debugger
+    when a user is stepping between Ray tasks.
+    """
+    active_sessions = ray.experimental.internal_kv._internal_kv_list(
+        "RAY_PDB_")
+
+    for active_session in active_sessions:
+        if active_session.startswith(b"RAY_PDB_CONTINUE"):
+            print("Continuing pdb session in different process...")
+            key = b"RAY_PDB_" + active_session[len("RAY_PDB_CONTINUE_"):]
+            while True:
+                data = ray.experimental.internal_kv._internal_kv_get(key)
+                if data:
+                    session = json.loads(data)
+                    if "exit_debugger" in session:
+                        ray.experimental.internal_kv._internal_kv_del(key)
+                        return
+                    host, port = session["pdb_address"].split(":")
+                    ray.util.rpdb.connect_pdb_client(host, int(port))
+                    ray.experimental.internal_kv._internal_kv_del(key)
+                    continue_debug_session()
+                    return
+                time.sleep(1.0)
+
+
 @cli.command()
 @click.option(
     "--address",
@@ -158,12 +186,13 @@ def dashboard(cluster_config_file, cluster_name, port, remote_port):
     help="Override the address to connect to.")
 def debug(address):
     """Show all active breakpoints and exceptions in the Ray debugger."""
-    from telnetlib import Telnet
     if not address:
         address = services.get_ray_address_to_use_or_die()
     logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
+    ray.init(address=address, log_to_driver=False)
     while True:
+        continue_debug_session()
+
         active_sessions = ray.experimental.internal_kv._internal_kv_list(
             "RAY_PDB_")
         print("Active breakpoints:")
@@ -184,8 +213,7 @@ def debug(address):
                 ray.experimental.internal_kv._internal_kv_get(
                     active_sessions[index]))
             host, port = session["pdb_address"].split(":")
-            with Telnet(host, int(port)) as tn:
-                tn.interact()
+            ray.util.rpdb.connect_pdb_client(host, int(port))
 
 
 @cli.command()
@@ -250,6 +278,13 @@ def debug(address):
     required=False,
     help="a comma-separated list of open ports for workers to bind on. "
     "Overrides '--min-worker-port' and '--max-worker-port'.")
+@click.option(
+    "--ray-client-server-port",
+    required=False,
+    type=int,
+    default=None,
+    help="the port number the ray client server will bind on. If not set, "
+    "the ray client server will not be started.")
 @click.option(
     "--memory",
     required=False,
@@ -359,24 +394,11 @@ def debug(address):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
-    "--code-search-path",
-    default=None,
-    hidden=True,
-    type=str,
-    help="A list of directories or jar files separated by colon that specify "
-    "the search path for user code. This will be used as `CLASSPATH` in "
-    "Java and `PYTHONPATH` in Python.")
-@click.option(
     "--system-config",
     default=None,
     hidden=True,
     type=json.loads,
     help="Override system configuration defaults.")
-@click.option(
-    "--load-code-from-local",
-    is_flag=True,
-    default=False,
-    help="Specify whether load code from local file or GCS serialization.")
 @click.option(
     "--lru-evict",
     is_flag=True,
@@ -400,13 +422,13 @@ def debug(address):
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
-          min_worker_port, max_worker_port, worker_port_list, memory,
-          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_dashboard, dashboard_host, dashboard_port, block,
+          min_worker_port, max_worker_port, worker_port_list,
+          ray_client_server_port, memory, object_store_memory,
+          redis_max_memory, num_cpus, num_gpus, resources, head,
+          include_dashboard, dashboard_host, dashboard_port, block,
           plasma_directory, autoscaling_config, no_redirect_worker_output,
           no_redirect_output, plasma_store_socket_name, raylet_socket_name,
-          temp_dir, java_worker_options, load_code_from_local,
-          code_search_path, system_config, lru_evict,
+          temp_dir, java_worker_options, system_config, lru_evict,
           enable_object_reconstruction, metrics_export_port, log_style,
           log_color, verbose):
     """Start Ray processes manually on the local machine."""
@@ -445,6 +467,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         min_worker_port=min_worker_port,
         max_worker_port=max_worker_port,
         worker_port_list=worker_port_list,
+        ray_client_server_port=ray_client_server_port,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         gcs_server_port=gcs_server_port,
@@ -465,8 +488,6 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         java_worker_options=java_worker_options,
-        load_code_from_local=load_code_from_local,
-        code_search_path=code_search_path,
         _system_config=system_config,
         lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
@@ -537,6 +558,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         with cli_logger.group("Next steps"):
             cli_logger.print(
                 "To connect to this Ray runtime from another node, run")
+            # NOTE(kfstorm): Java driver rely on this line to get the address
+            # of the cluster. Please be careful when updating this line.
             cli_logger.print(
                 cf.bold("  ray start --address='{}'{}"), redis_address,
                 f" --redis-password='{redis_password}'"
@@ -632,7 +655,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "This command will now block until terminated by a signal.")
             cli_logger.print(
-                "Runing subprocesses are monitored and a message will be "
+                "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
 
         while True:
@@ -684,6 +707,7 @@ def stop(force, verbose, log_style, log_color):
         ["plasma_store", True],
         ["gcs_server", True],
         ["monitor.py", False],
+        ["ray.util.client.server", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker. TODO(mehrdadn): Fix for Windows
@@ -1273,7 +1297,7 @@ def stack():
     COMMAND = """
 pyspy=`which py-spy`
 if [ ! -e "$pyspy" ]; then
-    echo "ERROR: Please 'pip install py-spy' (or ray[debug]) first"
+    echo "ERROR: Please 'pip install py-spy' first"
     exit 1
 fi
 # Set IFS to iterate over lines instead of over words.

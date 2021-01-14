@@ -110,7 +110,7 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
-         const std::vector<ObjectID> &return_ids,
+         const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<ray::RayObject>> *results) {
         JNIEnv *env = GetJNIEnv();
         RAY_CHECK(java_task_executor);
@@ -280,7 +280,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, j
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
   auto full_name = GetActorFullName(global, native_actor_name);
 
-  const auto *actor_handle =
+  const auto actor_handle =
       ray::CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(full_name).first;
   ray::ActorID actor_id;
   if (actor_handle) {
