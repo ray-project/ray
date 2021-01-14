@@ -112,7 +112,7 @@ There are at least 3 ways to define your custom serialization process:
         A, serializer=custom_serializer, deserializer=custom_deserializer)
       ray.get(ray.put(A(1)))  # success!
 
-   NOTE: We manage the serializer on the 'caller' side. So for every Ray worker,
+   NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker,
    if you want to use the serializer, you need to register the serializer.
    If you register a new serializer for a class, the new serializer would replace
    the old serializer immediately in the worker. This API is also idempotent, there are
