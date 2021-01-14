@@ -12,7 +12,6 @@ from pytorch_lightning.tests.base import EvalModelTemplate
 path_here = os.path.abspath(os.path.dirname(__file__))
 path_root = os.path.abspath(os.path.join(path_here, '..', '..'))
 
-
 try:
     import horovod
     from horovod.common.util import nccl_built
@@ -57,11 +56,16 @@ def create_mock_executable():
     class MockExecutable:
         def __init__(self):
             sys.path.insert(0, os.path.abspath(path_root))
+
     return MockExecutable
 
 
-@mock.patch('pytorch_lightning.accelerators.horovod_ray_accelerator.get_executable_cls')
-@pytest.mark.skipif(platform.system() == "Windows", reason="Horovod is not supported on Windows")
+@mock.patch(
+    'pytorch_lightning.accelerators.horovod_ray_accelerator.get_executable_cls'
+)
+@pytest.mark.skipif(
+    platform.system() == "Windows",
+    reason="Horovod is not supported on Windows")
 def test_horovod_cpu(mock_executable_cls, tmpdir, ray_start_2_cpus):
     """Test Horovod running multi-process on CPU."""
     mock_executable_cls.return_value = create_mock_executable()
@@ -72,8 +76,7 @@ def test_horovod_cpu(mock_executable_cls, tmpdir, ray_start_2_cpus):
         limit_val_batches=10,
         num_processes=2,
         distributed_backend='horovod_ray',
-        progress_bar_refresh_rate=0
-    )
+        progress_bar_refresh_rate=0)
 
     model = EvalModelTemplate()
     tpipes.run_model_test(trainer_options, model)

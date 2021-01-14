@@ -8,12 +8,7 @@ from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
 
 ray.init()
 
-config = {
-    "layer_1": 32,
-    "layer_2": 64,
-    "lr": 1e-1,
-    "batch_size": 32
-}
+config = {"layer_1": 32, "layer_2": 64, "lr": 1e-1, "batch_size": 32}
 
 data_dir = "./mnist_data"
 model = LightningMNISTClassifier(config, data_dir)

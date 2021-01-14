@@ -14,6 +14,7 @@ def get_executable_cls():
     # We need to override this in tests to ensure test path is set correctly.
     return None
 
+
 class HorovodRayAccelerator(HorovodAccelerator):
     def __init__(self, trainer=None, cluster_environment=None):
         super().__init__(trainer, cluster_environment)
@@ -22,11 +23,11 @@ class HorovodRayAccelerator(HorovodAccelerator):
     def setup(self, model):
         self.trainer.use_horovod = True
         settings = RayExecutor.create_settings(timeout_s=30)
-        self.executor = RayExecutor(settings,
-                                    num_hosts=self.trainer.num_nodes,
-                                    num_slots=self.trainer.num_processes //
-                                              self.trainer.num_nodes,
-                                    use_gpu=self.trainer.on_gpu)
+        self.executor = RayExecutor(
+            settings,
+            num_hosts=self.trainer.num_nodes,
+            num_slots=self.trainer.num_processes // self.trainer.num_nodes,
+            use_gpu=self.trainer.on_gpu)
         self.trainer.model = model
         self.executor.start(executable_cls=get_executable_cls())
 
