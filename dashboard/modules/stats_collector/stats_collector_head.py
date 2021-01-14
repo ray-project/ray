@@ -230,6 +230,19 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                 actor_id = actor_table_data["actorId"]
                 job_id = actor_table_data["jobId"]
                 node_id = actor_table_data["address"]["rayletId"]
+                # If actor is not registered but udpated, we only update states
+                # related fields.
+                if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+                    old_actor_table_data = DataSource.actors[actor_id]
+                    old_actor_table_data["state"] = actor_table_data["state"]
+                    old_actor_table_data["address"] = actor_table_data[
+                        "address"]
+                    old_actor_table_data["max_restarts"] = actor_table_data[
+                        "max_restarts"]
+                    old_actor_table_data["timestamp"] = actor_table_data[
+                        "timestamp"]
+                    old_actor_table_data["pid"] = actor_table_data["pid"]
+                    actor_table_data = old_actor_table_data
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
                 # Update node actors.

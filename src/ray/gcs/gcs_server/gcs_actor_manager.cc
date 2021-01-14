@@ -284,9 +284,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
           // the actor state to DEAD to avoid race condition.
           return;
         }
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor->GetActorID().Hex(),
-                                           actor->GetActorTableData().SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor->GetActorID().Hex(),
+            GenActorDataOnlyWithStates(actor->GetActorTableData())->SerializeAsString(),
+            nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_register_callbacks_.
@@ -503,9 +504,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(), *actor_table_data,
       [this, actor_id, actor_table_data](Status status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                           actor_table_data->SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor_id.Hex(),
+            GenActorDataOnlyWithStates(*actor_table_data)->SerializeAsString(), nullptr));
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
       }));
@@ -676,7 +677,6 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     // between memory cache and storage.
     mutable_actor_table_data->set_num_restarts(num_restarts + 1);
     mutable_actor_table_data->set_state(rpc::ActorTableData::RESTARTING);
-    const auto actor_table_data = actor->GetActorTableData();
     // Make sure to reset the address before flushing to GCS. Otherwise,
     // GCS will mistakenly consider this lease request succeeds when restarting.
     actor->UpdateAddress(rpc::Address());
@@ -684,10 +684,11 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
-        [this, actor_id, actor_table_data](Status status) {
-          RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                             actor_table_data.SerializeAsString(),
-                                             nullptr));
+        [this, actor_id, mutable_actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_pub_sub_->Publish(
+              ACTOR_CHANNEL, actor_id.Hex(),
+              GenActorDataOnlyWithStates(*mutable_actor_table_data)->SerializeAsString(),
+              nullptr));
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
@@ -700,6 +701,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
+    mutable_actor_table_data->set_timestamp(current_sys_time_ms());
     // The backend storage is reliable in the future, so the status must be ok.
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, *mutable_actor_table_data,
@@ -712,7 +714,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
           }
           RAY_CHECK_OK(gcs_pub_sub_->Publish(
               ACTOR_CHANNEL, actor_id.Hex(),
-              mutable_actor_table_data->SerializeAsString(), nullptr));
+              GenActorDataOnlyWithStates(*mutable_actor_table_data)->SerializeAsString(),
+              nullptr));
         }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
@@ -753,9 +756,9 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id, actor_table_data,
       [this, actor_id, actor_table_data, actor](Status status) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(ACTOR_CHANNEL, actor_id.Hex(),
-                                           actor_table_data.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(gcs_pub_sub_->Publish(
+            ACTOR_CHANNEL, actor_id.Hex(),
+            GenActorDataOnlyWithStates(actor_table_data)->SerializeAsString(), nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_create_callbacks_.
@@ -764,6 +767,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
           for (auto &callback : iter->second) {
             callback(actor);
           }
+
           actor_to_create_callbacks_.erase(iter);
         }
       }));
