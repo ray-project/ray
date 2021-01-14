@@ -1,9 +1,10 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
@@ -148,6 +149,12 @@ class SACTFModel(TFModelV2):
         self.target_entropy = target_entropy
 
         self.register_variables([self.log_alpha])
+
+    @override(TFModelV2)
+    def forward(self, input_dict: Dict[str, TensorType],
+                state: List[TensorType],
+                seq_lens: TensorType) -> (TensorType, List[TensorType]):
+        return input_dict["obs_flat"], state
 
     def get_q_values(self,
                      model_out: TensorType,
