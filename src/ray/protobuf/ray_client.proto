@@ -151,11 +151,10 @@ message ClusterInfoResponse {
     map<string, double> table = 1;
   }
 
-  message RuntimeContext{
+  message RuntimeContext {
     bytes job_id = 1;
     bytes node_id = 2;
-    bytes placement_group_id = 3;
-    bool capture_client_tasks = 4;
+    bool capture_client_tasks = 3;
   }
 
   ClusterInfoType.TypeEnum type = 1;

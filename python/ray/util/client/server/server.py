@@ -89,8 +89,6 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 rtc = ray.get_runtime_context()
                 ctx.job_id = rtc.job_id.binary()
                 ctx.node_id = rtc.node_id.binary()
-                ctx.placement_group_id = \
-                    rtc.current_placement_group_id.binary()
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
             resp.runtime_context.CopyFrom(ctx)

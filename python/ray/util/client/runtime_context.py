@@ -3,7 +3,6 @@ if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
     from ray import JobID
     from ray import NodeID
-    from ray import PlacementGroupID
 
 
 class ClientWorkerPropertyAPI:
@@ -38,12 +37,6 @@ class ClientWorkerPropertyAPI:
     def current_node_id(self) -> "NodeID":
         from ray import NodeID
         return NodeID(self._fetch_runtime_context().node_id)
-
-    @property
-    def placement_group_id(self) -> "PlacementGroupID":
-        from ray import PlacementGroupID
-        return PlacementGroupID(
-            self._fetch_runtime_context().placement_group_id)
 
     @property
     def should_capture_child_tasks_in_placement_group(self) -> bool:
