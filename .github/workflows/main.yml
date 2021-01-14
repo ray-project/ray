@@ -93,10 +93,15 @@ jobs:
         . ./ci/travis/ci.sh init
         . ./ci/travis/ci.sh build
         . ./ci/travis/ci.sh upload_wheels || true
-        . ./ci/travis/ci.sh test_python
-        . ./ci/travis/ci.sh test_core
-        . ./ci/travis/ci.sh test_wheels
+
+        test_failed=false
+        . ./ci/travis/ci.sh test_python || test_failed=true
+        . ./ci/travis/ci.sh test_core || test_failed=true
+        . ./ci/travis/ci.sh test_wheels || test_failed=true
+
         if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then ./ci/travis/upload_build_info.sh; fi
+
+        if [ "${test_failed}" = true ]; then exit 1; else exit 0; fi
     - name: Run Clang Include-What-You-Use
       continue-on-error: true
       if: runner.os == 'Linux'
