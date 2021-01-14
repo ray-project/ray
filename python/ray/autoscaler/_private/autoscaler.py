@@ -198,7 +198,7 @@ class StandardAutoscaler:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating idle node.".format(node_id))
                 self.event_summarizer.add(
-                    "Removed {} nodes of type " + self._get_node_type(node_id)
+                    "Removing {} nodes of type " + self._get_node_type(node_id)
                     + " (idle).",
                     quantity=1,
                     aggregate=operator.add)
@@ -207,7 +207,7 @@ class StandardAutoscaler:
                 logger.info("StandardAutoscaler: "
                             "{}: Terminating outdated node.".format(node_id))
                 self.event_summarizer.add(
-                    "Removed {} nodes of type " + self._get_node_type(node_id)
+                    "Removing {} nodes of type " + self._get_node_type(node_id)
                     + " (outdated).",
                     quantity=1,
                     aggregate=operator.add)
@@ -225,8 +225,8 @@ class StandardAutoscaler:
             logger.info("StandardAutoscaler: "
                         "{}: Terminating unneeded node.".format(to_terminate))
             self.event_summarizer.add(
-                "Removed {} nodes of type " + self._get_node_type(to_terminate)
-                + " (max workers).",
+                "Removing {} nodes of type " +
+                self._get_node_type(to_terminate) + " (max workers).",
                 quantity=1,
                 aggregate=operator.add)
             nodes_to_terminate.append(to_terminate)
@@ -266,7 +266,7 @@ class StandardAutoscaler:
                     logger.error(f"StandardAutoscaler: {node_id}: Terminating "
                                  "failed to setup/initialize node.")
                     self.event_summarizer.add(
-                        "Removed {} nodes of type " +
+                        "Removing {} nodes of type " +
                         self._get_node_type(node_id) + " (setup failed).",
                         quantity=1,
                         aggregate=operator.add)
@@ -698,7 +698,7 @@ class StandardAutoscaler:
         logger.info(
             "StandardAutoscaler: Queue {} new nodes for launch".format(count))
         self.event_summarizer.add(
-            "Added {} nodes of type " + str(node_type) + ".",
+            "Adding {} nodes of type " + str(node_type) + ".",
             quantity=count,
             aggregate=operator.add)
         self.pending_launches.inc(node_type, count)
