@@ -20,7 +20,7 @@ All single node benchmarks are run on a single m4.16xlarge.
 | # of objects returned from a single task | 10000 |
 | # of plasma objects in a single `ray.get` call | 10000 |
 | # of tasks queued on a single node | 1,000,000 |
-| Maximum `ray.get` numpy object size | 100GiB (TODO) |
+| Maximum `ray.get` numpy object size | 100GiB |
 
 
 

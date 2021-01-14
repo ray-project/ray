@@ -112,10 +112,11 @@ def test_large_object():
 
 ray.init(address="auto")
 
-# test_many_returns()
-# print("Finished many returns")
-# test_ray_get_args()
-# print("Finished ray.get on many objects")
-# test_many_queued_tasks()
-# print("Finished queueing many tasks")
+test_many_returns()
+print("Finished many returns")
+test_ray_get_args()
+print("Finished ray.get on many objects")
+test_many_queued_tasks()
+print("Finished queueing many tasks")
 test_large_object()
+print("Done")
