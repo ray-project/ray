@@ -5,10 +5,9 @@ from unittest import mock
 
 import pytest
 import ray
-import torch
 
-import tests.base.develop_pipelines as tpipes
-from tests.base import EvalModelTemplate
+import pytorch_lightning.tests.base.develop_pipelines as tpipes
+from pytorch_lightning.tests.base import EvalModelTemplate
 
 path_here = os.path.abspath(os.path.dirname(__file__))
 path_root = os.path.abspath(os.path.join(path_here, '..', '..'))

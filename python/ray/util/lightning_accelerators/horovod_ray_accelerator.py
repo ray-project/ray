@@ -14,19 +14,19 @@ def get_executable_cls():
     # We need to override this in tests to ensure test path is set correctly.
     return None
 
-
 class HorovodRayAccelerator(HorovodAccelerator):
-    def __init__(self, trainer, cluster_environment=None):
+    def __init__(self, trainer=None, cluster_environment=None):
         super().__init__(trainer, cluster_environment)
         self.nickname = 'horovod_ray'
 
+    def setup(self, model):
+        self.trainer.use_horovod = True
         settings = RayExecutor.create_settings(timeout_s=30)
         self.executor = RayExecutor(settings,
                                     num_hosts=self.trainer.num_nodes,
-                                    num_slots=self.trainer.num_processes,
+                                    num_slots=self.trainer.num_processes //
+                                              self.trainer.num_nodes,
                                     use_gpu=self.trainer.on_gpu)
-
-    def setup(self, model):
         self.trainer.model = model
         self.executor.start(executable_cls=get_executable_cls())
 
@@ -43,13 +43,14 @@ class HorovodRayAccelerator(HorovodAccelerator):
     def train_remote(self):
         hvd.init()
         if self.trainer.on_gpu:
-            # Horovod assigns one local GPU per process
+            # Horovod assigns one local GPU per process.
             self.trainer.root_gpu = hvd.local_rank()
 
-        self.setup_worker(self.trainer.model)
-        results = self.train_worker()
+        # TODO: Make changes in PTL to clean this up.
+        super(HorovodRayAccelerator, self).setup(self.trainer.model)
+        results = super(HorovodRayAccelerator, self).train()
         if hvd.rank() != 0:
-            # Only want results from the first worker
+            # Only want results from the first worker.
             return None
 
         best_model_path = None
