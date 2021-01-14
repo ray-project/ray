@@ -37,6 +37,7 @@ def memory_summary():
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
     return reply.memory_summary + "\n" + store_stats_summary(reply)
 
+
 def node_stats():
     """Returns NodeStats object describing memory usage in the cluster."""
 
@@ -60,6 +61,7 @@ def node_stats():
         node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
         timeout=30.0)
     return node_stats
+
 
 def store_stats_summary(reply):
     """Returns formatted string describing object store stats in all nodes."""
@@ -88,6 +90,7 @@ def store_stats_summary(reply):
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
     return store_summary
+
 
 def free(object_refs, local_only=False):
     """Free a list of IDs from the in-process and plasma object stores.
