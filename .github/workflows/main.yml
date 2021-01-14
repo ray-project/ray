@@ -78,7 +78,7 @@ jobs:
           pip-${{ runner.os }}-
           pip-
     - name: Run CI script
-      shell: bash -e -o pipefail -l {0}
+      shell: bash -x -e -o pipefail -l {0}
       env:
         BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -91,6 +91,7 @@ jobs:
       run: |
         function clean_up() {
           echo "Performing cleanup"
+          echo "Test status is ${test_failed}"
           if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then ./ci/travis/upload_build_info.sh; fi
         }
         trap clean_up EXIT
