@@ -134,8 +134,10 @@ def request_resources(num_cpus: Optional[int] = None,
         to_request += [{"CPU": 1}] * num_cpus
     if bundles:
         to_request += bundles
-    _internal_kv_put(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-                     json.dumps(to_request), overwrite=True)
+    _internal_kv_put(
+        AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+        json.dumps(to_request),
+        overwrite=True)
 
 
 def create_or_update_cluster(config_file: str,
