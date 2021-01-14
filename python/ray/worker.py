@@ -944,8 +944,8 @@ def filter_autoscaler_events(lines):
         if ":event_summary:" in line:
             if not autoscaler_log_fyi_printed:
                 yield ("Tip: use `ray status` to view detailed "
-                       "autoscaling status. Set AUTOSCALER_EVENTS=0 "
-                       "to disable these messages.")
+                       "autoscaling status. To disable autoscaler event "
+                       "messages, you can set AUTOSCALER_EVENTS=0.")
                 autoscaler_log_fyi_printed = True
             yield line.split(":event_summary:")[1]
 
