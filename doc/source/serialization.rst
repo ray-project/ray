@@ -61,29 +61,29 @@ There are at least 3 ways to define your custom serialization process:
    function inside the corresponding class. This is commonly done
    by most Python libraries. Example code:
 
-.. code-block:: python
+   .. code-block:: python
 
-  import ray
-  import sqlite3
+     import ray
+     import sqlite3
 
-  ray.init()
+     ray.init()
 
-  class DBConnection:
-      def __init__(self, path):
-          self.path = path
-          self.conn = sqlite3.connect(path)
+     class DBConnection:
+         def __init__(self, path):
+             self.path = path
+             self.conn = sqlite3.connect(path)
 
-      # without '__reduce__', the instance is unserializable.
-      def __reduce__(self):
-          deserializer = DBConnection
-          serialized_data = (self.path,)
-          return deserializer, serialized_data
+         # without '__reduce__', the instance is unserializable.
+         def __reduce__(self):
+             deserializer = DBConnection
+             serialized_data = (self.path,)
+             return deserializer, serialized_data
 
-  original = DBConnection("/tmp/db")
-  print(original.conn)
+     original = DBConnection("/tmp/db")
+     print(original.conn)
 
-  copied = ray.get(ray.put(original))
-  print(copied.conn)
+     copied = ray.get(ray.put(original))
+     print(copied.conn)
 
 2. If you want to customize the serialization of a type of objects,
    but you cannot access or modify the corresponding class, you can
@@ -112,8 +112,17 @@ There are at least 3 ways to define your custom serialization process:
         A, serializer=custom_serializer, deserializer=custom_deserializer)
       ray.get(ray.put(A(1)))  # success!
 
+      # You can unregister the serializer at any time.
+      ray.util.unregister_serializer(A)
+      ray.get(ray.put(A(1)))  # fail!
+
+      # Nothing happens when unregister an unavailable serializer.
+      ray.util.unregister_serializer(A)
+
    NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker,
-   if you want to use the serializer, you need to register the serializer.
+   if you want to use the serializer, you need to register the serializer. Unregister
+   an serializer also only applies locally.
+
    If you register a new serializer for a class, the new serializer would replace
    the old serializer immediately in the worker. This API is also idempotent, there are
    no side effects caused by re-registering the same serializer.
@@ -121,29 +130,29 @@ There are at least 3 ways to define your custom serialization process:
 3. We also provide you an example, if you want to customize the serialization
    of a specific object:
 
-.. code-block:: python
+   .. code-block:: python
 
-  import threading
+     import threading
 
-  class A:
-      def __init__(self, x):
-          self.x = x
-          self.lock = threading.Lock()  # could not serialize!
+     class A:
+         def __init__(self, x):
+             self.x = x
+             self.lock = threading.Lock()  # could not serialize!
 
-  ray.get(ray.put(A(1)))  # fail!
+     ray.get(ray.put(A(1)))  # fail!
 
-  class SerializationHelperForA:
-      """A helper class for serialization."""
-      def __init__(self, a):
-          self.a = a
+     class SerializationHelperForA:
+         """A helper class for serialization."""
+         def __init__(self, a):
+             self.a = a
 
-      def __reduce__(self):
-          return A, (self.a.x,)
+         def __reduce__(self):
+             return A, (self.a.x,)
 
-  ray.get(ray.put(SerializationHelperForA(A(1))))  # success!
-  # the serializer only works for a specific object, not all A
-  # instances, so we still expect failure here.
-  ray.get(ray.put(A(1)))  # still fail!
+     ray.get(ray.put(SerializationHelperForA(A(1))))  # success!
+     # the serializer only works for a specific object, not all A
+     # instances, so we still expect failure here.
+     ray.get(ray.put(A(1)))  # still fail!
 
 
 Troubleshooting
