@@ -38,7 +38,7 @@ class Worker:
                  conn_str: str = "",
                  secure: bool = False,
                  metadata: List[Tuple[str, str]] = None,
-                 connection_retries=3):
+                 connection_retries: int = 3):
         """Initializes the worker side grpc client.
 
         Args:
@@ -65,6 +65,7 @@ class Worker:
             conn_attempts += 1
             try:
                 grpc.channel_ready_future(self.channel).result(timeout=timeout)
+                break
             except grpc.FutureTimeoutError:
                 if conn_attempts >= connection_retries:
                     raise ConnectionError("ray client connection timeout")
