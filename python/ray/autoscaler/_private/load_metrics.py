@@ -194,9 +194,9 @@ class LoadMetrics:
         total_resources = reduce(add_resources,
                                  self.static_resources_by_ip.values()
                                  ) if self.static_resources_by_ip else {}
-        out = "{} CPUs".format(total_resources.get("CPU", 0))
+        out = "{} CPUs".format(int(total_resources.get("CPU", 0)))
         if "GPU" in total_resources:
-            out += ", {} GPUs".format(total_resources["GPU"])
+            out += ", {} GPUs".format(int(total_resources["GPU"]))
         return out
 
     def summary(self):
