@@ -161,7 +161,7 @@ If you want to specify the computing node(s), just use the same node name(s) in 
 
 .. code-block:: bash
 
-    python slurm-launch.py --exp-name test --command "python your_file.py" --num-nodes 3 --node chpc-cn[003-005]
+    python slurm-launch.py --exp-name test --command "python your_file.py" --num-nodes 3 --node NODE_NAMES
 
 
 There are other options you can use when calling ``python slurm-launch.py``:
@@ -201,5 +201,4 @@ Here are some community-contributed templates for using SLURM with Ray:
 .. _`YASPI`: https://github.com/albanie/yaspi
 
 .. _`Convenient python interface`: https://github.com/pengzhenghao/use-ray-with-slurm
-
 
