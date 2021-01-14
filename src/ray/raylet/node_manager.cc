@@ -164,19 +164,20 @@ NodeManager::NodeManager(boost::asio::io_service &io_service, const NodeID &self
       agent_manager_service_(io_service, *agent_manager_service_handler_),
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
-      local_object_manager_(io_service_, RayConfig::instance().free_objects_batch_size(),
-                            RayConfig::instance().free_objects_period_milliseconds(),
-                            worker_pool_, gcs_client_->Objects(), worker_rpc_pool_,
-                            /* object_pinning_enabled */ config.object_pinning_enabled,
-                            /* automatic_object_deletion_enabled */
-                            config.automatic_object_deletion_enabled,
-                            /*max_io_workers*/ config.max_io_workers,
-                            /*min_spilling_size*/ config.min_spilling_size,
-                            [this](const std::vector<ObjectID> &object_ids) {
-                              object_manager_.FreeObjects(object_ids,
-                                                          /*local_only=*/false);
-                            },
-                            is_plasma_object_spillable),
+      local_object_manager_(
+          io_service_, RayConfig::instance().free_objects_batch_size(),
+          RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
+          gcs_client_->Objects(), worker_rpc_pool_,
+          /* object_pinning_enabled */ config.object_pinning_enabled,
+          /* automatic_object_deletion_enabled */
+          config.automatic_object_deletion_enabled,
+          /*max_io_workers*/ config.max_io_workers,
+          /*min_spilling_size*/ config.min_spilling_size,
+          [this](const std::vector<ObjectID> &object_ids) {
+            object_manager_.FreeObjects(object_ids,
+                                        /*local_only=*/false);
+          },
+          is_plasma_object_spillable),
       new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()),
       report_worker_backlog_(RayConfig::instance().report_worker_backlog()),
       last_local_gc_ns_(absl::GetCurrentTimeNanos()),
@@ -1228,10 +1229,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Register the new worker.
     auto status = worker_pool_.RegisterWorker(worker, pid, send_reply_callback);
     if (!status.ok()) {
-      // If the worker failed to register to Raylet, trigger task dispatching here to
-      // allow new worker processes to be started (if capped by
-      // maximum_startup_concurrency).
-      DispatchTasks(local_queues_.GetReadyTasksByClass());
+      if (new_scheduler_enabled_) {
+        ScheduleAndDispatch();
+      } else {
+        // If the worker failed to register to Raylet, trigger task dispatching here to
+        // allow new worker processes to be started (if capped by
+        // maximum_startup_concurrency).
+        DispatchTasks(local_queues_.GetReadyTasksByClass());
+      }
     }
   } else {
     // Register the new driver.
