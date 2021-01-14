@@ -54,10 +54,6 @@ def add_advantages(policy,
         policy.config["use_gae"], policy.config["use_critic"])
 
 
-def before_init(policy, obs_space, action_space, config):
-    policy._model_lock = threading.Lock()
-
-
 def model_value_predictions(policy, input_dict, state_batches, model,
                             action_dist):
     return {SampleBatch.VF_PREDS: model.value_function()}
@@ -97,7 +93,6 @@ A3CTorchPolicy = build_policy_class(
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,
     postprocess_fn=add_advantages,
-    before_init=before_init,
     extra_action_out_fn=model_value_predictions,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
