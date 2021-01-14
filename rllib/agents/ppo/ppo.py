@@ -62,7 +62,7 @@ DEFAULT_CONFIG = with_common_config({
     # Learning rate schedule.
     "lr_schedule": None,
     # Coefficient of the value function loss. IMPORTANT: you must tune this if
-    # you set vf_share_layers: True.
+    # you set vf_share_layers=True inside your model's config.
     "vf_loss_coeff": 1.0,
     # Coefficient of the entropy regularizer.
     "entropy_coeff": 0.0,
@@ -203,7 +203,8 @@ def warn_about_bad_reward_scales(config, result):
         scaled_vf_loss = (config["vf_loss_coeff"] *
                           learner_stats[DEFAULT_POLICY_ID]["vf_loss"])
         policy_loss = learner_stats[DEFAULT_POLICY_ID]["policy_loss"]
-        if config["vf_share_layers"] and scaled_vf_loss > 100:
+        if config.get("model", {}).get("vf_share_layers") and \
+                scaled_vf_loss > 100:
             logger.warning(
                 "The magnitude of your value function loss is extremely large "
                 "({}) compared to the policy loss ({}). This can prevent the "
