@@ -15,13 +15,14 @@ from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
 from ray.ray_logging import setup_component_logger
 from ray._raylet import GlobalStateAccessor
-
-import redis
+from ray.experimental.internal_kv import _internal_kv_put, \
+    _internal_kv_initialized, _internal_kv_get
 
 logger = logging.getLogger(__name__)
 
@@ -65,24 +66,17 @@ def parse_resource_demands(resource_load_by_shape):
     except Exception:
         logger.exception("Failed to parse resource demands.")
 
-    # Bound the total number of bundles to 2xMAX_RESOURCE_DEMAND_VECTOR_SIZE.
-    # This guarantees the resource demand scheduler bin packing algorithm takes
-    # a reasonable amount of time to run.
-    return waiting_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE], \
-        infeasible_bundles[:AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE]
+    return waiting_bundles, infeasible_bundles
 
 
 class Monitor:
-    """A monitor for Ray processes.
+    """Autoscaling monitor.
 
-    The monitor is in charge of cleaning up the tables in the global state
-    after processes have died. The monitor is currently not responsible for
-    detecting component failures.
+    This process periodically collects stats from the GCS and triggers
+    autoscaler updates.
 
     Attributes:
         redis: A connection to the Redis server.
-        primary_subscribe_client: A pubsub client for the Redis server.
-            This is used to receive notifications about failed components.
     """
 
     def __init__(self,
@@ -102,9 +96,6 @@ class Monitor:
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
         worker.mode = 0
-        # Setup subscriptions to the primary Redis server and the Redis shards.
-        self.primary_subscribe_client = self.redis.pubsub(
-            ignore_subscribe_messages=True)
         # Keep a mapping from raylet client ID to IP address to use
         # for updating the load metrics.
         self.raylet_id_to_ip_map = {}
@@ -123,26 +114,9 @@ class Monitor:
     def __del__(self):
         """Destruct the monitor object."""
         # We close the pubsub client to avoid leaking file descriptors.
-        try:
-            primary_subscribe_client = self.primary_subscribe_client
-        except AttributeError:
-            primary_subscribe_client = None
-        if primary_subscribe_client is not None:
-            primary_subscribe_client.close()
         if self.global_state_accessor is not None:
             self.global_state_accessor.disconnect()
             self.global_state_accessor = None
-
-    def subscribe(self, channel):
-        """Subscribe to the given channel on the primary Redis shard.
-
-        Args:
-            channel (str): The channel to subscribe to.
-
-        Raises:
-            Exception: An exception is raised if the subscription fails.
-        """
-        self.primary_subscribe_client.subscribe(channel)
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
@@ -173,6 +147,19 @@ class Monitor:
                 logger.warning(
                     f"Monitor: could not find ip for node {node_id}")
 
+    def update_resource_requests(self):
+        """Fetches resource requests from the internal KV and updates load."""
+        if not _internal_kv_initialized():
+            return
+        data = _internal_kv_get(
+            ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
+        if data:
+            try:
+                resource_request = json.loads(data)
+                self.load_metrics.set_resource_requests(resource_request)
+            except Exception:
+                logger.exception("Error parsing resource requests")
+
     def autoscaler_resource_request_handler(self, _, data):
         """Handle a notification of a resource request for the autoscaler.
 
@@ -184,49 +171,8 @@ class Monitor:
             data: a resource request as JSON, e.g. {"CPU": 1}
         """
 
-        if not self.autoscaler:
-            return
-
-        try:
-            self.autoscaler.request_resources(json.loads(data))
-        except Exception:
-            # We don't want this to kill the monitor.
-            traceback.print_exc()
-
-    def process_messages(self, max_messages=10000):
-        """Process all messages ready in the subscription channels.
-
-        This reads messages from the subscription channels and calls the
-        appropriate handlers until there are no messages left.
-
-        Args:
-            max_messages: The maximum number of messages to process before
-                returning.
-        """
-        subscribe_clients = [self.primary_subscribe_client]
-        for subscribe_client in subscribe_clients:
-            for _ in range(max_messages):
-                message = None
-                try:
-                    message = subscribe_client.get_message()
-                except redis.exceptions.ConnectionError:
-                    pass
-                if message is None:
-                    # Continue on to the next subscribe client.
-                    break
-
-                # Parse the message.
-                channel = message["channel"]
-                data = message["data"]
-
-                if (channel ==
-                        ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL):
-                    message_handler = self.autoscaler_resource_request_handler
-                else:
-                    assert False, "This code should be unreachable."
-
-                # Call the handler.
-                message_handler(channel, data)
+        resource_request = json.loads(data)
+        self.load_metrics.set_resource_requests(resource_request)
 
     def update_raylet_map(self, _append_port=False):
         """Updates internal raylet map.
@@ -247,25 +193,27 @@ class Monitor:
             self.raylet_id_to_ip_map[node_id] = ip_address
 
     def _run(self):
-        """Run the monitor.
+        """Run the monitor loop."""
 
-        This function loops forever, checking for messages about dead database
-        clients and cleaning up state accordingly.
-        """
-
-        self.subscribe(ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
-
-        # Handle messages from the subscription channels.
         while True:
+            self.update_raylet_map()
+            self.update_load_metrics()
+            self.update_resource_requests()
+            status = {
+                "load_metrics_report": self.load_metrics.summary()._asdict()
+            }
+
             # Process autoscaling actions
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
-                self.update_raylet_map()
-                self.update_load_metrics()
                 self.autoscaler.update()
+                status[
+                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
 
-            # Process a round of messages.
-            self.process_messages()
+            as_json = json.dumps(status)
+            if _internal_kv_initialized():
+                _internal_kv_put(
+                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

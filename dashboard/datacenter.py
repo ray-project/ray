@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 class GlobalSignals:
     node_info_fetched = Signal(dashboard_consts.SIGNAL_NODE_INFO_FETCHED)
     node_summary_fetched = Signal(dashboard_consts.SIGNAL_NODE_SUMMARY_FETCHED)
+    job_info_fetched = Signal(dashboard_consts.SIGNAL_JOB_INFO_FETCHED)
     worker_info_fetched = Signal(dashboard_consts.SIGNAL_WORKER_INFO_FETCHED)
 
 
@@ -22,6 +23,8 @@ class DataSource:
     # {actor id hex(str): actor table data(dict of ActorTableData
     # in gcs.proto)}
     actors = Dict()
+    # {job id hex(str): job table data(dict of JobTableData in gcs.proto)}
+    jobs = Dict()
     # {node id hex(str): dashboard agent [http port(int), grpc port(int)]}
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
@@ -77,7 +80,8 @@ class DataOrganizer:
         job_workers = {}
         node_workers = {}
         core_worker_stats = {}
-        for node_id in DataSource.nodes.keys():
+        # await inside for loop, so we create a copy of keys().
+        for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
                 job_id = worker["jobId"]
@@ -155,7 +159,7 @@ class DataOrganizer:
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         # Merge actors to node physical stats
-        node_info["actors"] = await cls.get_node_actors(node_id)
+        node_info["actors"] = DataSource.node_actors.get(node_id, {})
         # Update workers to node physical stats
         node_info["workers"] = DataSource.node_workers.get(node_id, [])
         node_info["logCount"] = node_log_count
@@ -198,22 +202,6 @@ class DataOrganizer:
             await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
-
-    @classmethod
-    async def get_node_actors(cls, node_id):
-        node_actors = DataSource.node_actors.get(node_id, {})
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in node_actors.items()
-        }
-
-    @classmethod
-    async def get_job_actors(cls, job_id):
-        job_actors = DataSource.job_actors.get(job_id, {})
-        return {
-            actor_id: await cls._get_actor(actor)
-            for actor_id, actor in job_actors.items()
-        }
 
     @classmethod
     async def get_all_actors(cls):

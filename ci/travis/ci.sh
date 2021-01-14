@@ -120,7 +120,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:redis_gcs_client_test
         -//:core_worker_test
         -//:event_test
         -//:gcs_pub_sub_test
@@ -129,7 +128,8 @@ test_core() {
       )
       ;;
   esac
-  bazel test --config=ci --build_tests_only -- "${args[@]}"
+  # shellcheck disable=SC2046
+  bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) -- "${args[@]}"
 }
 
 test_python() {
@@ -160,6 +160,7 @@ test_python() {
       -python/ray/tests:test_resource_demand_scheduler
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
+      -python/ray/tests:test_k8s_cluster_launcher
     )
   fi
   if [ 0 -lt "${#args[@]}" ]; then  # Any targets to test?
@@ -168,7 +169,8 @@ test_python() {
     # It's unclear to me if this should be necessary, but this is to make tests run for now.
     # Check why this issue doesn't arise on Linux/Mac.
     # Ideally importing ray.cloudpickle should import pickle5 automatically.
-    bazel test --config=ci --build_tests_only \
+    # shellcheck disable=SC2046
+    bazel test --config=ci --build_tests_only $(./scripts/bazel_export_options) \
       --test_env=PYTHONPATH="${PYTHONPATH-}${pathsep}${WORKSPACE_DIR}/python/ray/pickle5_files" -- \
       "${args[@]}";
   fi
@@ -176,7 +178,8 @@ test_python() {
 
 test_cpp() {
   bazel build --config=ci //cpp:all
-  bazel test --config=ci //cpp:all --build_tests_only
+  # shellcheck disable=SC2046
+  bazel test --config=ci $(./scripts/bazel_export_options) //cpp:all --build_tests_only
 }
 
 test_wheels() {
@@ -262,6 +265,11 @@ _bazel_build_before_install() {
   bazel build "${target}"
 }
 
+
+_bazel_build_protobuf() {
+  bazel build "//:install_py_proto"
+}
+
 install_ray() {
   # TODO(mehrdadn): This function should be unified with the one in python/build-wheel-windows.sh.
   (
@@ -296,7 +304,8 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      suppress_output "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+      # Remove suppress_output for now to avoid timeout
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       ;;
     msys*)
       keep_alive "${WORKSPACE_DIR}"/python/build-wheel-windows.sh
@@ -457,6 +466,8 @@ init() {
 build() {
   if [ "${LINT-}" != 1 ]; then
     _bazel_build_before_install
+  else
+    _bazel_build_protobuf
   fi
 
   if ! need_wheels; then

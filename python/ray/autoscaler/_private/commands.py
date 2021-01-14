@@ -20,14 +20,13 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray.experimental.internal_kv import _internal_kv_get
+from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.constants import \
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL
 from ray.autoscaler._private.util import validate_config, hash_runtime_conf, \
-    hash_launch_conf, prepare_config, DEBUG_AUTOSCALING_ERROR, \
-    DEBUG_AUTOSCALING_STATUS
+    hash_launch_conf, prepare_config
 from ray.autoscaler._private.providers import _get_node_provider, \
     _NODE_PROVIDERS, _PROVIDER_PRETTY_NAMES
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_LAUNCH_CONFIG, \
@@ -43,6 +42,10 @@ from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import format_info_string, \
+    format_info_string_no_node_types
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +89,20 @@ def try_reload_log_state(provider_config: Dict[str, Any],
         return reload_log_state(log_state)
 
 
-def debug_status() -> str:
+def debug_status(status, error) -> str:
     """Return a debug string for the autoscaler."""
-    status = _internal_kv_get(DEBUG_AUTOSCALING_STATUS)
-    error = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     if not status:
         status = "No cluster status."
     else:
         status = status.decode("utf-8")
+        as_dict = json.loads(status)
+        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
+        if "autoscaler_report" in as_dict:
+            autoscaler_summary = AutoscalerSummary(
+                **as_dict["autoscaler_report"])
+            status = format_info_string(lm_summary, autoscaler_summary)
+        else:
+            status = format_info_string_no_node_types(lm_summary)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -117,13 +126,13 @@ def request_resources(num_cpus: Optional[int] = None,
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
-    r = _redis()
     to_request = []
     if num_cpus:
         to_request += [{"CPU": 1}] * num_cpus
     if bundles:
         to_request += bundles
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
+    _internal_kv_put(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+                     json.dumps(to_request))
 
 
 def create_or_update_cluster(config_file: str,
@@ -280,9 +289,10 @@ def _bootstrap_config(config: Dict[str, Any],
                 f"Failed to autodetect node resources: {str(exc)}. "
                 "You can see full stack trace with higher verbosity.")
 
-    # NOTE: if `resources` field is missing, validate_config for non-AWS will
-    # fail (the schema error will ask the user to manually fill the resources)
-    # as we currently support autofilling resources for AWS instances only.
+    # NOTE: if `resources` field is missing, validate_config for providers
+    # other than AWS and Kubernetes will fail (the schema error will ask the
+    # user to manually fill the resources) as we currently support autofilling
+    # resources for AWS and Kubernetes only.
     validate_config(config)
     resolved_config = provider_cls.bootstrap_config(config)
 

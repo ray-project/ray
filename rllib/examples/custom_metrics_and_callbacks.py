@@ -28,6 +28,7 @@ class MyCallbacks(DefaultCallbacks):
                          episode: MultiAgentEpisode, env_index: int, **kwargs):
         print("episode {} (env-idx={}) started.".format(
             episode.episode_id, env_index))
+
         episode.user_data["pole_angles"] = []
         episode.hist_data["pole_angles"] = []
 

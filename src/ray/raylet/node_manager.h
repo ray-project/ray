@@ -35,7 +35,7 @@
 #include "ray/raylet/scheduling_policy.h"
 #include "ray/raylet/scheduling_queue.h"
 #include "ray/raylet/reconstruction_policy.h"
-#include "ray/raylet/task_dependency_manager.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/ordered_set.h"
@@ -104,6 +104,10 @@ struct NodeManagerConfig {
   std::unordered_map<std::string, std::string> raylet_config;
   // The time between record metrics in milliseconds, or -1 to disable.
   uint64_t record_metrics_period_ms;
+  // The number if max io workers.
+  int max_io_workers;
+  // The minimum object size that can be spilled by each spill operation.
+  int64_t min_spilling_size;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -115,7 +119,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   NodeManager(boost::asio::io_service &io_service, const NodeID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::GcsClient> gcs_client,
-              std::shared_ptr<ObjectDirectoryInterface> object_directory);
+              std::shared_ptr<ObjectDirectoryInterface> object_directory_,
+              std::function<bool(const ObjectID &)> is_plasma_object_spillable);
 
   /// Process a new client connection.
   ///
@@ -220,11 +225,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param id The ID of the node manager that sent the resources data.
   /// \param data The resources data including load information.
   /// \return Void.
-  void ResourceUsageAdded(const NodeID &id, const rpc::ResourcesData &data);
+  void UpdateResourceUsage(const NodeID &id, const rpc::ResourcesData &data);
+
   /// Handler for a resource usage batch notification from the GCS
   ///
   /// \param resource_usage_batch The batch of resource usage data.
-  void ResourceUsageBatchAdded(const ResourceUsageBatchData &resource_usage_batch);
+  void ResourceUsageBatchReceived(const ResourceUsageBatchData &resource_usage_batch);
 
   /// Methods for task scheduling.
 
@@ -234,18 +240,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task The task in question.
   /// \return Void.
   void EnqueuePlaceableTask(const Task &task);
-  /// This will treat a task removed from the local queue as if it had been
-  /// executed and failed. This is done by looping over the task return IDs and
-  /// for each ID storing an object that represents a failure in the object
-  /// store. When clients retrieve these objects, they will raise
-  /// application-level exceptions. State for the task will be cleaned up as if
-  /// it were any other task that had been assigned, executed, and removed from
-  /// the local queue.
-  ///
-  /// \param task The task to fail.
-  /// \param error_type The type of the error that caused this task to fail.
-  /// \return Void.
-  void TreatTaskAsFailed(const Task &task, const ErrorType &error_type);
   /// Mark the specified objects as failed with the given error type.
   ///
   /// \param error_type The type of the error that caused this task to fail.
@@ -296,28 +290,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// resource_map argument.
   /// \return Void.
   void ScheduleTasks(std::unordered_map<NodeID, SchedulingResources> &resource_map);
-
-  /// Make a placement decision for the resource_map and subtract original resources so
-  /// that the node is ready to commit (create) placement group resources.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  /// \return True is resources were successfully prepared. False otherwise.
-  bool PrepareBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                     const BundleSpecification &bundle_spec);
-
-  /// Make a placement decision for the resource_map.
-  ///
-  /// \param resource_map A mapping from node manager ID to an estimate of the
-  /// resources available to that node manager. Scheduling decisions will only
-  /// consider the local node manager and the node managers in the keys of the
-  /// resource_map argument.
-  /// \param bundle_spec Specification of bundle that will be prepared.
-  void CommitBundle(std::unordered_map<NodeID, SchedulingResources> &resource_map,
-                    const BundleSpecification &bundle_spec);
 
   /// Handle a task whose return value(s) must be reconstructed.
   ///
@@ -397,7 +369,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// arrive after the worker lease has been returned to the node manager.
   ///
   /// \param worker Shared ptr to the worker, or nullptr if lost.
-  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker);
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<WorkerInterface> &worker,
+                                   bool release_resources);
 
   /// Handle a direct call task that is unblocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -458,6 +431,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   /// \return Void.
   void ProcessSubmitTaskMessage(const uint8_t *message_data);
+
+  /// Process client message of NotifyDirectCallTaskBlocked
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessDirectCallTaskBlocked(const std::shared_ptr<ClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -694,8 +674,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The time that the last heartbeat was sent at. Used to make sure we are
   /// keeping up with heartbeats.
   uint64_t last_heartbeat_at_ms_;
-  /// Only the changed part will be included in resource usage if this is true.
-  const bool light_report_resource_usage_enabled_;
   /// The time that the last debug string was logged to the console.
   uint64_t last_debug_dump_at_ms_;
   /// The number of heartbeats that we should wait before sending the
@@ -716,8 +694,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   SchedulingPolicy scheduling_policy_;
   /// The reconstruction policy for deciding when to re-execute a task.
   ReconstructionPolicy reconstruction_policy_;
-  /// A manager to make waiting tasks's missing object dependencies available.
-  TaskDependencyManager task_dependency_manager_;
+  /// A manager to resolve objects needed by queued tasks and workers that
+  /// called `ray.get` or `ray.wait`.
+  DependencyManager dependency_manager_;
 
   std::unique_ptr<AgentManager> agent_manager_;
 
@@ -767,11 +746,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// on all local workers of this raylet.
   bool should_local_gc_ = false;
 
-  /// The last time local GC was triggered.
+  /// The last time local gc was run.
   int64_t last_local_gc_ns_ = 0;
 
   /// The interval in nanoseconds between local GC automatic triggers.
-  const int64_t local_gc_interval_ns_ = 10 * 60 * 1e9;
+  const int64_t local_gc_interval_ns_;
+
+  /// The min interval in nanoseconds between local GC runs (auto + memory pressure
+  /// triggered).
+  const int64_t local_gc_min_interval_ns_;
 
   /// These two classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

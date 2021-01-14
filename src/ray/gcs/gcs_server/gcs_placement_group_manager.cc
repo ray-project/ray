@@ -43,7 +43,7 @@ std::string GcsPlacementGroup::GetName() const {
 std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetBundles() const {
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> ret_bundles;
-  for (auto &bundle : bundles) {
+  for (const auto &bundle : bundles) {
     ret_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
   }
   return ret_bundles;
@@ -53,7 +53,7 @@ std::vector<std::shared_ptr<BundleSpecification>> GcsPlacementGroup::GetUnplaced
     const {
   const auto &bundles = placement_group_table_data_.bundles();
   std::vector<std::shared_ptr<BundleSpecification>> unplaced_bundles;
-  for (auto &bundle : bundles) {
+  for (const auto &bundle : bundles) {
     if (NodeID::FromBinary(bundle.node_id()).IsNil()) {
       unplaced_bundles.push_back(std::make_shared<BundleSpecification>(bundle));
     }
@@ -107,11 +107,11 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     boost::asio::io_context &io_context,
     std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    GcsNodeManager &gcs_node_manager)
+    GcsResourceManager &gcs_resource_manager)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_node_manager_(gcs_node_manager) {
+      gcs_resource_manager_(gcs_resource_manager) {
   Tick();
 }
 
@@ -537,7 +537,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       break;
     }
   }
-  gcs_node_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
+  gcs_resource_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
@@ -555,7 +555,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
       if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
           item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
         const auto &bundles = item.second.bundles();
-        for (auto &bundle : bundles) {
+        for (const auto &bundle : bundles) {
           if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
             node_to_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
           }
