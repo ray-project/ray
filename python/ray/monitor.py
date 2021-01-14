@@ -274,7 +274,7 @@ class Monitor:
                 avail_resources = self.load_metrics.resources_avail_summary()
                 if avail_resources != self.last_avail_resources:
                     self.event_summarizer.add(
-                        "{} currently allocated",
+                        "{} currently allocated.",
                         quantity=avail_resources,
                         aggregate=lambda a, b: b)
                     self.last_avail_resources = avail_resources

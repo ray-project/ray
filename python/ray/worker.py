@@ -937,12 +937,12 @@ def filter_autoscaler_events(lines):
 
     # Print out autoscaler events only, ignoring other messages.
     for line in lines:
-        if not autoscaler_log_fyi_printed:
-            yield ("Tip: use `ray status` to view the current cluster "
-                   "autoscaling status. Set AUTOSCALER_EVENTS=0 "
-                   "to disable these messages.")
-            autoscaler_log_fyi_printed = True
         if ":event_summary:" in line:
+            if not autoscaler_log_fyi_printed:
+                yield ("Tip: use `ray status` to view the current cluster "
+                       "autoscaling status. Set AUTOSCALER_EVENTS=0 "
+                       "to disable these messages.")
+                autoscaler_log_fyi_printed = True
             yield line.split(":event_summary:")[1]
 
 

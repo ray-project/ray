@@ -7,6 +7,9 @@ class EventSummarizer:
 
     def add(self, template: str, *, quantity: int,
             aggregate: Callable[[Any, Any], Any]) -> None:
+        # Enforce proper sentence structure.
+        if not template.endswith("."):
+            template += "."
         if template in self.events_by_key:
             self.events_by_key[template] = aggregate(
                 self.events_by_key[template], quantity)
