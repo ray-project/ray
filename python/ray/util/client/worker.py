@@ -278,6 +278,8 @@ class Worker:
             # translate from a proto map to a python dict
             output_dict = {k: v for k, v in resp.resource_table.table.items()}
             return output_dict
+        elif resp.WhichOneof("response_type") == "runtime_context":
+            return resp.runtime_context
         return json.loads(resp.json)
 
     def internal_kv_get(self, key: bytes) -> bytes:
