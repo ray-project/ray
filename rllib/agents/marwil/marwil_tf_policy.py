@@ -81,13 +81,6 @@ def postprocess_advantages(policy,
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
-        if log_once("marwil_failed_batch_mode_check"):
-            logger.warning(
-                "Found a done=False at the end of the SampleBatch during "
-                "postprocessing! Please check your input data and make sure "
-                "each line represents one complete episode "
-                "(batch_mode=complete_episodes).")
-
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
