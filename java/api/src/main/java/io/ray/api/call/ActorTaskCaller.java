@@ -25,11 +25,10 @@ public class ActorTaskCaller<R> {
    * Execute an java actor method remotely and return an object reference to the result object in
    * the object store.
    *
-   * @return an object reference to an object in the object store.
+   * <p>Returns an object reference to an object in the object store.
    */
   @SuppressWarnings("unchecked")
   public ObjectRef<R> remote() {
     return Ray.internal().callActor(actor, func, args);
   }
-
 }

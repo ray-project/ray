@@ -17,7 +17,7 @@ from ray.test_utils import client_test_enabled
 from ray.test_utils import RayTestTimeoutException
 
 if client_test_enabled():
-    from ray.experimental.client import ray
+    from ray.util.client import ray
 else:
     import ray
 
@@ -354,6 +354,8 @@ def test_illegal_api_calls(ray_start_regular):
         ray.get(3)
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="grpc interaction with releasing resources")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.

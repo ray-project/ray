@@ -4,6 +4,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/worker.h"
 #include "ray/raylet/worker_pool.h"
@@ -46,14 +47,13 @@ class ClusterTaskManager {
   /// \param self_node_id: ID of local node.
   /// \param cluster_resource_scheduler: The resource scheduler which contains
   /// the state of the cluster.
-  /// \param fulfills_dependencies_func: Returns true if all of a task's
-  /// dependencies are fulfilled.
+  /// \param task_dependency_manager_ Used to fetch task's dependencies.
   /// \param is_owner_alive: A callback which returns if the owner process is alive
   /// (according to our ownership model).
   /// \param gcs_client: A gcs client.
   ClusterTaskManager(const NodeID &self_node_id,
                      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
-                     std::function<bool(const Task &)> fulfills_dependencies_func,
+                     TaskDependencyManagerInterface &task_dependency_manager,
                      std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
                      NodeInfoGetter get_node_info,
                      std::function<void(const Task &)> announce_infeasible_task);
@@ -111,14 +111,12 @@ class ClusterTaskManager {
   void FillPendingActorInfo(rpc::GetNodeStatsReply *reply) const;
 
   /// Populate the relevant parts of the heartbeat table. This is intended for
-  /// sending raylet <-> gcs heartbeats. In particular, this should fill in
+  /// sending resource usage of raylet to gcs. In particular, this should fill in
   /// resource_load and resource_load_by_shape.
   ///
-  /// \param light_report_resource_usage_enabled Only send changed fields if true.
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  void FillResourceUsage(bool light_report_resource_usage_enabled,
-                         std::shared_ptr<rpc::ResourcesData> data) const;
+  void FillResourceUsage(std::shared_ptr<rpc::ResourcesData> data) const;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -145,8 +143,8 @@ class ClusterTaskManager {
 
   const NodeID &self_node_id_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// Function to make task dependencies to be local.
-  std::function<bool(const Task &)> fulfills_dependencies_func_;
+  /// Class to make task dependencies to be local.
+  TaskDependencyManagerInterface &task_dependency_manager_;
   /// Function to check if the owner is alive on a given node.
   std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive_;
   /// Function to get the node information of a given node id.
@@ -163,10 +161,20 @@ class ClusterTaskManager {
 
   /// Queue of lease requests that should be scheduled onto workers.
   /// Tasks move from scheduled | waiting -> dispatch.
+  /// Tasks can also move from dispatch -> waiting if one of their arguments is
+  /// evicted.
+  /// All tasks in this map that have dependencies should be registered with
+  /// the dependency manager, in case a dependency gets evicted while the task
+  /// is still queued.
   std::unordered_map<SchedulingClass, std::deque<Work>> tasks_to_dispatch_;
 
   /// Tasks waiting for arguments to be transferred locally.
   /// Tasks move from waiting -> dispatch.
+  /// Tasks can also move from dispatch -> waiting if one of their arguments is
+  /// evicted.
+  /// All tasks in this map that have dependencies should be registered with
+  /// the dependency manager, so that they can be moved to dispatch once their
+  /// dependencies are local.
   absl::flat_hash_map<TaskID, Work> waiting_tasks_;
 
   /// Queue of lease requests that are infeasible.
@@ -192,6 +200,8 @@ class ClusterTaskManager {
 
   void AddToBacklogTracker(const Task &task);
   void RemoveFromBacklogTracker(const Task &task);
+
+  friend class ClusterTaskManagerTest;
 };
 }  // namespace raylet
 }  // namespace ray

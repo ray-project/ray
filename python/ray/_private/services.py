@@ -373,7 +373,7 @@ def address_to_ip(address):
     return ":".join([ip_address] + address_parts[1:])
 
 
-def get_node_ip_address(address="8.8.8.8:53"):
+def node_ip_address_from_perspective(address):
     """IP address by which the local node can be reached *from* the `address`.
 
     Args:
@@ -383,9 +383,6 @@ def get_node_ip_address(address="8.8.8.8:53"):
     Returns:
         The IP address by which the local node can be reached from the address.
     """
-    if ray.worker._global_node is not None:
-        return ray.worker._global_node.node_ip_address
-
     ip_address, port = address.split(":")
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -407,6 +404,12 @@ def get_node_ip_address(address="8.8.8.8:53"):
         s.close()
 
     return node_ip_address
+
+
+def get_node_ip_address(address="8.8.8.8:53"):
+    if ray.worker._global_node is not None:
+        return ray.worker._global_node.node_ip_address
+    return node_ip_address_from_perspective(address)
 
 
 def create_redis_client(redis_address, password=None):
@@ -1807,6 +1810,41 @@ def start_monitor(redis_address,
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_MONITOR,
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
+        fate_share=fate_share)
+    return process_info
+
+
+def start_ray_client_server(redis_address,
+                            ray_client_server_port,
+                            stdout_file=None,
+                            stderr_file=None,
+                            redis_password=None,
+                            fate_share=None):
+    """Run the server process of the Ray client.
+
+    Args:
+        ray_client_server_port (int): Port the Ray client server listens on.
+        stdout_file: A file handle opened for writing to redirect stdout to. If
+            no redirection should happen, then this should be None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
+        redis_password (str): The password of the redis server.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    command = [
+        sys.executable, "-m", "ray.util.client.server",
+        "--redis-address=" + str(redis_address),
+        "--port=" + str(ray_client_server_port)
+    ]
+    if redis_password:
+        command.append("--redis-password=" + redis_password)
+    process_info = start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share)

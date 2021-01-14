@@ -8,9 +8,7 @@ import io.ray.streaming.python.PythonFunction.FunctionInterface;
 import io.ray.streaming.python.PythonOperator;
 import io.ray.streaming.python.PythonPartition;
 
-/**
- * Represents a python DataStream returned by a key-by operation.
- */
+/** Represents a python DataStream returned by a key-by operation. */
 @SuppressWarnings("unchecked")
 public class PythonKeyDataStream extends PythonDataStream implements PythonStream {
 
@@ -33,8 +31,7 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   /**
    * Apply a reduce function to this stream.
    *
-   * @param func The reduce function.
-   * @return A new DataStream.
+   * @param func The reduce function. Returns A new DataStream.
    */
   public PythonDataStream reduce(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);
@@ -51,5 +48,4 @@ public class PythonKeyDataStream extends PythonDataStream implements PythonStrea
   public KeyDataStream<Object, Object> asJavaStream() {
     return new KeyDataStream(this);
   }
-
 }

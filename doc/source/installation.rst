@@ -229,6 +229,7 @@ Installing from ``pip`` should be sufficient for most Ray users.
 However, should you need to build from source, follow :ref:`these instructions for building <building-ray>` Ray.
 
 
+.. _docker-images:
 
 Docker Source Images
 --------------------
@@ -242,7 +243,7 @@ Most users should pull a Docker image from the `Ray Docker Hub. <https://hub.doc
 Image releases are `tagged` using the following format:
 
 
-.. list-table:: 
+.. list-table::
    :widths: 25 50
    :header-rows: 1
 
@@ -254,13 +255,13 @@ Image releases are `tagged` using the following format:
      - A specific Ray release.
    * - nightly
      - The most recent Ray build (the most recent commit on Github ``master``)
-   * - Git SHA 
+   * - Git SHA
      - A specific nightly build (uses a SHA from the Github ``master``).
 
 
 Each tag has `variants` that add or change functionality:
 
-.. list-table:: 
+.. list-table::
    :widths: 16 40
    :header-rows: 1
 
@@ -313,7 +314,7 @@ Start out by launching the deployment container.
   docker run --shm-size=<shm-size> -t -i rayproject/ray
 
 Replace ``<shm-size>`` with a limit appropriate for your system, for example
-``512M`` or ``2G``. A good estimate for this is to use roughly 30% of your available memory (this is 
+``512M`` or ``2G``. A good estimate for this is to use roughly 30% of your available memory (this is
 what Ray uses internally for its Object Store). The ``-t`` and ``-i`` options here are required to support
 interactive use of the container.
 

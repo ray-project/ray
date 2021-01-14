@@ -256,17 +256,14 @@ def build_eager_tf_policy(name,
                     framework=self.framework,
                 )
             # Auto-update model's inference view requirements, if recurrent.
-            self._update_model_inference_view_requirements_from_init_state()
+            self._update_model_view_requirements_from_init_state()
 
             self.exploration = self._create_exploration()
-            self._state_in = [
-                tf.convert_to_tensor([s])
-                for s in self.model.get_initial_state()
-            ]
+            self._state_inputs = self.model.get_initial_state()
+            self._is_recurrent = len(self._state_inputs) > 0
 
             # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(
-                self.model.inference_view_requirements)
+            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
@@ -375,6 +372,8 @@ def build_eager_tf_policy(name,
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
+            self._is_recurrent = \
+                state_batches is not None and state_batches != []
             self._state_in = state_batches or []
 
             if not tf1.executing_eagerly():
@@ -552,11 +551,11 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def is_recurrent(self):
-            return len(self._state_in) > 0
+            return self._is_recurrent
 
         @override(Policy)
         def num_state_tensors(self):
-            return len(self._state_in)
+            return len(self._state_inputs)
 
         @override(Policy)
         def get_initial_state(self):

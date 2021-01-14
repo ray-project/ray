@@ -31,21 +31,10 @@
 
 #include <boost/asio.hpp>
 
-#include "arrow/buffer.h"
-
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
 #include "ray/object_manager/plasma/shared_memory.h"
-
-#ifdef PLASMA_CUDA
-#include "arrow/gpu/cuda_api.h"
-
-using arrow::cuda::CudaBuffer;
-using arrow::cuda::CudaBufferWriter;
-using arrow::cuda::CudaContext;
-using arrow::cuda::CudaDeviceManager;
-#endif
 
 namespace fb = plasma::flatbuf;
 
@@ -54,56 +43,20 @@ namespace plasma {
 using fb::MessageType;
 using fb::PlasmaError;
 
-using arrow::MutableBuffer;
-
-// ----------------------------------------------------------------------
-// GPU support
-
-#ifdef PLASMA_CUDA
-
-namespace {
-
-struct GpuProcessHandle {
-  /// Pointer to CUDA buffer that is backing this GPU object.
-  std::shared_ptr<CudaBuffer> ptr;
-  /// Number of client using this GPU object.
-  int client_count;
-};
-
-// This is necessary as IPC handles can only be mapped once per process.
-// Thus if multiple clients in the same process get the same gpu object,
-// they need to access the same mapped CudaBuffer.
-std::unordered_map<ObjectID, GpuProcessHandle *> gpu_object_map;
-std::mutex gpu_mutex;
-
-// Return a new CudaBuffer pointing to the same data as the GpuProcessHandle,
-// but able to persist after the original IPC-backed buffer is closed
-// (ARROW-5924).
-std::shared_ptr<Buffer> MakeBufferFromGpuProcessHandle(GpuProcessHandle *handle) {
-  return std::make_shared<CudaBuffer>(handle->ptr->address(), handle->ptr->size(),
-                                      handle->ptr->context());
-}
-
-}  // namespace
-
-#endif
-
 // ----------------------------------------------------------------------
 // PlasmaBuffer
 
 /// A Buffer class that automatically releases the backing plasma object
 /// when it goes out of scope. This is returned by Get.
-class RAY_NO_EXPORT PlasmaBuffer : public Buffer {
+class RAY_NO_EXPORT PlasmaBuffer : public SharedMemoryBuffer {
  public:
   ~PlasmaBuffer();
 
   PlasmaBuffer(std::shared_ptr<PlasmaClient::Impl> client, const ObjectID &object_id,
                const std::shared_ptr<Buffer> &buffer)
-      : Buffer(buffer, 0, buffer->size()), client_(client), object_id_(object_id) {
-    if (buffer->is_mutable()) {
-      is_mutable_ = true;
-    }
-  }
+      : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+        client_(client),
+        object_id_(object_id) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -113,11 +66,11 @@ class RAY_NO_EXPORT PlasmaBuffer : public Buffer {
 /// A mutable Buffer class that keeps the backing data alive by keeping a
 /// PlasmaClient shared pointer. This is returned by Create. Release will
 /// be called in the associated Seal call.
-class RAY_NO_EXPORT PlasmaMutableBuffer : public MutableBuffer {
+class RAY_NO_EXPORT PlasmaMutableBuffer : public SharedMemoryBuffer {
  public:
   PlasmaMutableBuffer(std::shared_ptr<PlasmaClient::Impl> client, uint8_t *mutable_data,
                       int64_t data_size)
-      : MutableBuffer(mutable_data, data_size), client_(client) {}
+      : SharedMemoryBuffer(mutable_data, data_size), client_(client) {}
 
  private:
   std::shared_ptr<PlasmaClient::Impl> client_;
@@ -245,22 +198,11 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
   std::unordered_set<ObjectID> deletion_cache_;
   /// A mutex which protects this class.
   std::recursive_mutex client_mutex_;
-
-#ifdef PLASMA_CUDA
-  /// Cuda Device Manager.
-  arrow::cuda::CudaDeviceManager *manager_;
-#endif
 };
 
 PlasmaBuffer::~PlasmaBuffer() { RAY_UNUSED(client_->Release(object_id_)); }
 
-PlasmaClient::Impl::Impl() : store_capacity_(0) {
-#ifdef PLASMA_CUDA
-  auto maybe_manager = CudaDeviceManager::Instance();
-  DCHECK_OK(maybe_manager.status());
-  manager_ = *maybe_manager;
-#endif
-}
+PlasmaClient::Impl::Impl() : store_capacity_(0) {}
 
 PlasmaClient::Impl::~Impl() {}
 
@@ -360,28 +302,10 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // from the transfer.
     if (metadata != NULL) {
       // Copy the metadata to the buffer.
-      memcpy((*data)->mutable_data() + object.data_size, metadata, object.metadata_size);
+      memcpy((*data)->Data() + object.data_size, metadata, object.metadata_size);
     }
   } else {
-#ifdef PLASMA_CUDA
-    std::shared_ptr<CudaContext> context;
-    ARROW_ASSIGN_OR_RAISE(context, manager_->GetContext(device_num - 1));
-    GpuProcessHandle *handle = new GpuProcessHandle();
-    handle->client_count = 2;
-    ARROW_ASSIGN_OR_RAISE(handle->ptr, context->OpenIpcBuffer(*object.ipc_handle));
-    {
-      std::lock_guard<std::mutex> lock(gpu_mutex);
-      gpu_object_map[object_id] = handle;
-    }
-    if (metadata != NULL) {
-      // Copy the metadata to the buffer.
-      CudaBufferWriter writer(handle->ptr);
-      RAY_RETURN_NOT_OK(writer.WriteAt(object.data_size, metadata, metadata_size));
-    }
-    *data = MakeBufferFromGpuProcessHandle(handle);
-#else
-    RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
-#endif
+    RAY_LOG(FATAL) << "GPU is not enabled.";
   }
 
   // Increment the count of the number of instances of this object that this
@@ -462,23 +386,16 @@ Status PlasmaClient::Impl::GetBuffers(
 
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
-        physical_buf = std::make_shared<Buffer>(
+        physical_buf = std::make_shared<SharedMemoryBuffer>(
             data + object->data_offset, object->data_size + object->metadata_size);
       } else {
-#ifdef PLASMA_CUDA
-        std::lock_guard<std::mutex> lock(gpu_mutex);
-        auto iter = gpu_object_map.find(object_ids[i]);
-        RAY_CHECK(iter != gpu_object_map.end());
-        iter->second->client_count++;
-        physical_buf = MakeBufferFromGpuProcessHandle(iter->second);
-#else
-        RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
-#endif
+        RAY_LOG(FATAL) << "GPU library is not enabled.";
       }
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SliceBuffer(physical_buf, 0, object->data_size);
-      object_buffers[i].metadata =
-          SliceBuffer(physical_buf, object->data_size, object->metadata_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+      object_buffers[i].metadata = SharedMemoryBuffer::Slice(
+          physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
@@ -527,34 +444,17 @@ Status PlasmaClient::Impl::GetBuffers(
       std::shared_ptr<Buffer> physical_buf;
       if (object->device_num == 0) {
         uint8_t *data = LookupMmappedFile(object->store_fd);
-        physical_buf = std::make_shared<Buffer>(
+        physical_buf = std::make_shared<SharedMemoryBuffer>(
             data + object->data_offset, object->data_size + object->metadata_size);
       } else {
-#ifdef PLASMA_CUDA
-        std::lock_guard<std::mutex> lock(gpu_mutex);
-        auto iter = gpu_object_map.find(object_ids[i]);
-        if (iter == gpu_object_map.end()) {
-          std::shared_ptr<CudaContext> context;
-          ARROW_ASSIGN_OR_RAISE(context, manager_->GetContext(object->device_num - 1));
-          GpuProcessHandle *obj_handle = new GpuProcessHandle();
-          obj_handle->client_count = 1;
-          ARROW_ASSIGN_OR_RAISE(obj_handle->ptr,
-                                context->OpenIpcBuffer(*object->ipc_handle));
-          gpu_object_map[object_ids[i]] = obj_handle;
-          physical_buf = MakeBufferFromGpuProcessHandle(obj_handle);
-        } else {
-          iter->second->client_count++;
-          physical_buf = MakeBufferFromGpuProcessHandle(iter->second);
-        }
-#else
         RAY_LOG(FATAL) << "Arrow GPU library is not enabled.";
-#endif
       }
       // Finish filling out the return values.
       physical_buf = wrap_buffer(object_ids[i], physical_buf);
-      object_buffers[i].data = SliceBuffer(physical_buf, 0, object->data_size);
-      object_buffers[i].metadata =
-          SliceBuffer(physical_buf, object->data_size, object->metadata_size);
+      object_buffers[i].data =
+          SharedMemoryBuffer::Slice(physical_buf, 0, object->data_size);
+      object_buffers[i].metadata = SharedMemoryBuffer::Slice(
+          physical_buf, object->data_size, object->metadata_size);
       object_buffers[i].device_num = object->device_num;
       // Increment the count of the number of instances of this object that this
       // client is using. Cache the reference to the object.
@@ -610,18 +510,6 @@ Status PlasmaClient::Impl::Release(const ObjectID &object_id) {
   }
   auto object_entry = objects_in_use_.find(object_id);
   RAY_CHECK(object_entry != objects_in_use_.end());
-
-#ifdef PLASMA_CUDA
-  if (object_entry->second->object.device_num != 0) {
-    std::lock_guard<std::mutex> lock(gpu_mutex);
-    auto iter = gpu_object_map.find(object_id);
-    RAY_CHECK(iter != gpu_object_map.end());
-    if (--iter->second->client_count == 0) {
-      delete iter->second;
-      gpu_object_map.erase(iter);
-    }
-  }
-#endif
 
   object_entry->second->count -= 1;
   RAY_CHECK(object_entry->second->count >= 0);
@@ -705,17 +593,6 @@ Status PlasmaClient::Impl::Abort(const ObjectID &object_id) {
   if (object_entry->second->count > 1) {
     return Status::Invalid("Plasma client cannot have a reference to the buffer.");
   }
-
-#ifdef PLASMA_CUDA
-  if (object_entry->second->object.device_num != 0) {
-    std::lock_guard<std::mutex> lock(gpu_mutex);
-    auto iter = gpu_object_map.find(object_id);
-    RAY_CHECK(iter != gpu_object_map.end());
-    RAY_CHECK(iter->second->client_count == 1);
-    delete iter->second;
-    gpu_object_map.erase(iter);
-  }
-#endif
 
   // Send the abort request.
   RAY_RETURN_NOT_OK(SendAbortRequest(store_conn_, object_id));

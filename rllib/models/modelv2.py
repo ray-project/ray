@@ -9,6 +9,7 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
@@ -61,7 +62,7 @@ class ModelV2:
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
         # Basic view requirement for all models: Use the observation as input.
-        self.inference_view_requirements = {
+        self.view_requirements = {
             SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
@@ -280,7 +281,7 @@ class ModelV2:
 
         Args:
             as_dict(bool): Whether variables should be returned as dict-values
-                (using descriptive keys).
+                (using descriptive str keys).
 
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
@@ -340,21 +341,29 @@ class ModelV2:
         }
 
         input_dict = {}
-        for view_col, view_req in self.inference_view_requirements.items():
+        for view_col, view_req in self.view_requirements.items():
             # Create batches of size 1 (single-agent input-dict).
             data_col = view_req.data_col or view_col
             if index == "last":
                 data_col = last_mappings.get(data_col, data_col)
+                # Range needed.
                 if view_req.shift_from is not None:
                     data = sample_batch[view_col][-1]
                     traj_len = len(sample_batch[data_col])
                     missing_at_end = traj_len % view_req.batch_repeat_value
+                    obs_shift = -1 if data_col in [
+                        SampleBatch.OBS, SampleBatch.NEXT_OBS
+                    ] else 0
+                    from_ = view_req.shift_from + obs_shift
+                    to_ = view_req.shift_to + obs_shift + 1
+                    if to_ == 0:
+                        to_ = None
                     input_dict[view_col] = np.array([
                         np.concatenate([
                             data, sample_batch[data_col][-missing_at_end:]
-                        ])[view_req.shift_from:view_req.shift_to +
-                           1 if view_req.shift_to != -1 else None]
+                        ])[from_:to_]
                     ])
+                # Single index.
                 else:
                     data = sample_batch[data_col][-1]
                     input_dict[view_col] = np.array([data])
@@ -373,19 +382,6 @@ class ModelV2:
         input_dict["seq_lens"] = np.array([1], dtype=np.int32)
 
         return input_dict
-
-
-class NullContextManager:
-    """No-op context manager"""
-
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
 
 
 @DeveloperAPI
@@ -450,9 +446,7 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
-    if (isinstance(space, gym.spaces.Dict)
-            or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, Repeated)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:

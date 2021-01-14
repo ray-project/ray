@@ -1,6 +1,10 @@
 from contextlib import contextmanager
+import inspect
 import os
 import logging
+import traceback
+
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +20,17 @@ def is_session_enabled() -> bool:
 def get_session():
     global _session
     if not _session:
-        logger.warning(
-            "Session not detected. You should not be calling this function "
-            "outside `tune.run` or while using the class API. ")
+        function_name = inspect.stack()[1].function
+        # Log traceback so the user knows where the offending func is called.
+        # E.g. ... -> tune.report() -> get_session() -> logger.warning(...)
+        # So we shouldn't print the last 2 functions in the trace.
+        stack_trace_str = "".join(traceback.extract_stack().format()[:-2])
+        if log_once(stack_trace_str):
+            logger.warning(
+                "Session not detected. You should not be calling `{}` "
+                "outside `tune.run` or while using the class API. ".format(
+                    function_name))
+            logger.warning(stack_trace_str)
     return _session
 
 

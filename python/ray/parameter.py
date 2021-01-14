@@ -45,6 +45,9 @@ class RayParams:
         worker_port_list (str): An explicit list of ports to be used for
             workers (comma-separated). Overrides min_worker_port and
             max_worker_port.
+        ray_client_server_port (int): The port number the ray client server
+            will bind on. If not set, the ray client server will not
+            be started.
         object_ref_seed (int): Used to seed the deterministic generation of
             object refs. The same value can be used across multiple runs of the
             same job in order to generate the object refs in a consistent
@@ -120,6 +123,7 @@ class RayParams:
                  min_worker_port=None,
                  max_worker_port=None,
                  worker_port_list=None,
+                 ray_client_server_port=None,
                  object_ref_seed=None,
                  driver_mode=None,
                  redirect_worker_output=None,
@@ -165,6 +169,7 @@ class RayParams:
         self.min_worker_port = min_worker_port
         self.max_worker_port = max_worker_port
         self.worker_port_list = worker_port_list
+        self.ray_client_server_port = ray_client_server_port
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
         self.redirect_output = redirect_output

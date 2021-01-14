@@ -16,18 +16,12 @@ from ray.test_utils import wait_for_condition
 from ray.test_utils import wait_for_pid_to_exit
 from ray.tests.client_test_utils import create_remote_signal_actor
 
-if client_test_enabled():
-    from ray.experimental.client import ray
-else:
-    import ray
+import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
 import setproctitle  # noqa
 
 
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="defining early, no ray package injection yet")
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -656,7 +650,6 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="ray.method unimplemented")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -705,7 +698,6 @@ def test_options_num_returns(ray_start_regular_shared):
     assert ray.get([obj1, obj2]) == [1, 2]
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="remote args")
 def test_options_name(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -882,6 +874,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [

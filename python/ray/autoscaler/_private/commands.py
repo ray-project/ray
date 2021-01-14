@@ -20,7 +20,7 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray.experimental.internal_kv import _internal_kv_get
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler._private.constants import \
@@ -43,6 +43,10 @@ from ray.worker import global_worker  # type: ignore
 from ray.util.debug import log_once
 
 import ray.autoscaler._private.subprocess_output_util as cmd_output_util
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import format_info_string, \
+    format_info_string_no_node_types
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,14 @@ def debug_status() -> str:
         status = "No cluster status."
     else:
         status = status.decode("utf-8")
+        as_dict = json.loads(status)
+        lm_summary = LoadMetricsSummary(**as_dict["load_metrics_report"])
+        if "autoscaler_report" in as_dict:
+            autoscaler_summary = AutoscalerSummary(
+                **as_dict["autoscaler_report"])
+            status = format_info_string(lm_summary, autoscaler_summary)
+        else:
+            status = format_info_string_no_node_types(lm_summary)
     if error:
         status += "\n"
         status += error.decode("utf-8")
@@ -117,13 +129,13 @@ def request_resources(num_cpus: Optional[int] = None,
     """
     if not ray.is_initialized():
         raise RuntimeError("Ray is not initialized yet")
-    r = _redis()
     to_request = []
     if num_cpus:
         to_request += [{"CPU": 1}] * num_cpus
     if bundles:
         to_request += bundles
-    r.publish(AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request))
+    _internal_kv_put(AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+                     json.dumps(to_request))
 
 
 def create_or_update_cluster(config_file: str,

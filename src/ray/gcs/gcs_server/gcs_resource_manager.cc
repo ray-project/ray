@@ -13,14 +13,20 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/common/ray_config.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    boost::asio::io_service &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-    : gcs_pub_sub_(gcs_pub_sub), gcs_table_storage_(gcs_table_storage) {}
+    : resource_timer_(main_io_service),
+      gcs_pub_sub_(gcs_pub_sub),
+      gcs_table_storage_(gcs_table_storage) {
+  SendBatchedResourceUsage();
+}
 
 void GcsResourceManager::HandleGetResources(const rpc::GetResourcesRequest &request,
                                             rpc::GetResourcesReply *reply,
@@ -153,6 +159,106 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
+void GcsResourceManager::HandleReportResourceUsage(
+    const rpc::ReportResourceUsageRequest &request, rpc::ReportResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  NodeID node_id = NodeID::FromBinary(request.resources().node_id());
+  auto resources_data = std::make_shared<rpc::ResourcesData>();
+  resources_data->CopyFrom(request.resources());
+
+  // We use `node_resource_usages_` to filter out the nodes that report resource
+  // information for the first time. `UpdateNodeResourceUsage` will modify
+  // `node_resource_usages_`, so we need to do it before `UpdateNodeResourceUsage`.
+  if (node_resource_usages_.count(node_id) == 0 ||
+      resources_data->resources_available_changed()) {
+    const auto &resource_changed = MapFromProtobuf(resources_data->resources_available());
+    SetAvailableResources(node_id, ResourceSet(resource_changed));
+  }
+
+  UpdateNodeResourceUsage(node_id, request);
+
+  if (resources_data->should_global_gc() || resources_data->resources_total_size() > 0 ||
+      resources_data->resources_available_changed() ||
+      resources_data->resource_load_changed()) {
+    resources_buffer_[node_id] = *resources_data;
+  }
+
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
+}
+
+void GcsResourceManager::HandleGetAllResourceUsage(
+    const rpc::GetAllResourceUsageRequest &request, rpc::GetAllResourceUsageReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  if (!node_resource_usages_.empty()) {
+    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+    absl::flat_hash_map<ResourceSet, rpc::ResourceDemand> aggregate_load;
+    for (const auto &usage : node_resource_usages_) {
+      // Aggregate the load reported by each raylet.
+      auto load = usage.second.resource_load_by_shape();
+      for (const auto &demand : load.resource_demands()) {
+        auto scheduling_key = ResourceSet(MapFromProtobuf(demand.shape()));
+        auto &aggregate_demand = aggregate_load[scheduling_key];
+        aggregate_demand.set_num_ready_requests_queued(
+            aggregate_demand.num_ready_requests_queued() +
+            demand.num_ready_requests_queued());
+        aggregate_demand.set_num_infeasible_requests_queued(
+            aggregate_demand.num_infeasible_requests_queued() +
+            demand.num_infeasible_requests_queued());
+        if (RayConfig::instance().report_worker_backlog()) {
+          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                            demand.backlog_size());
+        }
+      }
+
+      batch->add_batch()->CopyFrom(usage.second);
+    }
+
+    for (const auto &demand : aggregate_load) {
+      auto demand_proto = batch->mutable_resource_load_by_shape()->add_resource_demands();
+      demand_proto->CopyFrom(demand.second);
+      for (const auto &resource_pair : demand.first.GetResourceMap()) {
+        (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
+      }
+    }
+
+    // Update placement group load to heartbeat batch.
+    // This is updated only one per second.
+    if (placement_group_load_.has_value()) {
+      auto placement_group_load = placement_group_load_.value();
+      auto placement_group_load_proto = batch->mutable_placement_group_load();
+      placement_group_load_proto->CopyFrom(*placement_group_load.get());
+    }
+    reply->mutable_resource_usage_data()->CopyFrom(*batch);
+  }
+
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
+}
+
+void GcsResourceManager::UpdateNodeResourceUsage(
+    const NodeID node_id, const rpc::ReportResourceUsageRequest &request) {
+  auto iter = node_resource_usages_.find(node_id);
+  if (iter == node_resource_usages_.end()) {
+    auto resources_data = std::make_shared<rpc::ResourcesData>();
+    resources_data->CopyFrom(request.resources());
+    node_resource_usages_[node_id] = *resources_data;
+  } else {
+    if (request.resources().resources_total_size() > 0) {
+      (*iter->second.mutable_resources_total()) = request.resources().resources_total();
+    }
+    if (request.resources().resources_available_changed()) {
+      (*iter->second.mutable_resources_available()) =
+          request.resources().resources_available();
+    }
+    if (request.resources().resource_load_changed()) {
+      (*iter->second.mutable_resource_load()) = request.resources().resource_load();
+    }
+    (*iter->second.mutable_resource_load_by_shape()) =
+        request.resources().resource_load_by_shape();
+  }
+}
+
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &nodes = gcs_init_data.Nodes();
   for (const auto &entry : nodes) {
@@ -216,6 +322,8 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
+  resources_buffer_.erase(node_id);
+  node_resource_usages_.erase(node_id);
   cluster_scheduling_resources_.erase(node_id);
 }
 
@@ -244,6 +352,39 @@ bool GcsResourceManager::ReleaseResources(const NodeID &node_id,
   return true;
 }
 
+void GcsResourceManager::SendBatchedResourceUsage() {
+  if (!resources_buffer_.empty()) {
+    auto batch = std::make_shared<rpc::ResourceUsageBatchData>();
+    for (auto &resources : resources_buffer_) {
+      batch->add_batch()->Swap(&resources.second);
+    }
+    stats::OutboundHeartbeatSizeKB.Record((double)(batch->ByteSizeLong() / 1024.0));
+
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
+                                       batch->SerializeAsString(), nullptr));
+    resources_buffer_.clear();
+  }
+
+  auto resources_period = boost::posix_time::milliseconds(
+      RayConfig::instance().raylet_report_resources_period_milliseconds());
+  resource_timer_.expires_from_now(resources_period);
+  resource_timer_.async_wait([this](const boost::system::error_code &error) {
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `resource_timer_` is canceled or destroyed.
+      // The Monitor lifetime may be short than the object who use it. (e.g. gcs_server)
+      return;
+    }
+    RAY_CHECK(!error) << "Sending batched resource usage failed with error: "
+                      << error.message();
+    SendBatchedResourceUsage();
+  });
+}
+
+void GcsResourceManager::UpdatePlacementGroupLoad(
+    const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  placement_group_load_ = absl::make_optional(placement_group_load);
+}
+
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: {GetResources request count: "
@@ -253,7 +394,11 @@ std::string GcsResourceManager::DebugString() const {
          << ", UpdateResources request count: "
          << counts_[CountType::UPDATE_RESOURCES_REQUEST]
          << ", DeleteResources request count: "
-         << counts_[CountType::DELETE_RESOURCES_REQUEST] << "}";
+         << counts_[CountType::DELETE_RESOURCES_REQUEST]
+         << ", ReportResourceUsage request count: "
+         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
+         << ", GetAllResourceUsage request count: "
+         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST] << "}";
   return stream.str();
 }
 
