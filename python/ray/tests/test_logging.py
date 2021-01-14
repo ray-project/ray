@@ -1,6 +1,10 @@
 import os
 import ray
 
+def set_logging_config(max_bytes, backup_count):
+    os.environ["RAY_RAOTATION_MAX_BYTES"] = str(max_bytes)
+    os.environ["RAY_ROTATION_BACKUP_COUNT"] = str(backup_count)
+
 
 def test_log_rotation_config(ray_start_cluster):
     cluster = ray_start_cluster
@@ -8,29 +12,26 @@ def test_log_rotation_config(ray_start_cluster):
     backup_count = 3
 
     # Create a cluster.
-    cluster.add_node(
-        num_cpus=0,
-        _system_config={
-            "log_rotation_max_bytes": max_bytes,
-            "log_rotation_backup_count": backup_count
-        })
-    cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=0)
+    set_logging_config(max_bytes, backup_count)
+    head_node = cluster.add_node(num_cpus=0)
+    # Set a different env var for a worker node.
+    set_logging_config(0, 0)
+    worker_node = cluster.add_node(num_cpus=0)
     cluster.wait_for_nodes()
-    for node in cluster.list_all_nodes():
-        assert node._config["log_rotation_max_bytes"] == max_bytes
-        assert node._config["log_rotation_backup_count"] == backup_count
+
+    config = head_node.logging_config
+    assert config["log_rotation_max_bytes"] == max_bytes
+    assert config["log_rotation_backup_count"] == backup_count
+    config = worker_node.logging_config
+    assert config["log_rotation_max_bytes"] == 0
+    assert config["log_rotation_backup_count"] == 0
 
 
 def test_log_rotation(shutdown_only):
-    max_bytes = 5
-    backup_count = 3
-    ray.init(
-        num_cpus=0,
-        _system_config={
-            "log_rotation_max_bytes": max_bytes,
-            "log_rotation_backup_count": backup_count
-        })
+    max_bytes = 0
+    backup_count = 0
+    set_logging_config(max_bytes, backup_count)
+    ray.init(num_cpus=0)
     import time
     time.sleep(100)
 

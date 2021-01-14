@@ -148,27 +148,15 @@ class Node:
             self._config["plasma_store_as_thread"] = True
 
         # Configure log rotation parameters.
-        max_bytes = ray_constants.LOGGING_ROTATE_BYTES
-        backup_count = ray_constants.LOGGING_ROTATE_BACKUP_COUNT
+        self.max_bytes = int(
+            os.getenv("RAY_RAOTATION_MAX_BYTES",
+                      ray_constants.LOGGING_ROTATE_BYTES))
+        self.backup_count = int(
+            os.getenv("RAY_ROTATION_BACKUP_COUNT",
+                      ray_constants.LOGGING_ROTATE_BACKUP_COUNT))
 
-        # If it is not a head node, get the config value from Redis.
-        if not head:
-            redis_client = self.create_redis_client()
-            max_bytes = int(
-                ray.utils.decode(
-                    _get_with_retry(redis_client, "log_rotation_max_bytes")))
-            backup_count = int(
-                ray.utils.decode(
-                    _get_with_retry(redis_client,
-                                    "log_rotation_backup_count")))
-
-        if "log_rotation_max_bytes" not in self._config:
-            self._config["log_rotation_max_bytes"] = max_bytes
-        if "log_rotation_backup_count" not in self._config:
-            self._config["log_rotation_backup_count"] = backup_count
-
-        assert self._config["log_rotation_max_bytes"] >= 0
-        assert self._config["log_rotation_backup_count"] >= 0
+        assert self.max_bytes >= 0
+        assert self.backup_count >= 0
 
         # Register the temp dir.
         if head:
@@ -242,10 +230,6 @@ class Node:
             redis_client.set("session_name", self.session_name)
             redis_client.set("session_dir", self._session_dir)
             redis_client.set("temp_dir", self._temp_dir)
-            redis_client.set("log_rotation_max_bytes",
-                             self._config["log_rotation_max_bytes"])
-            redis_client.set("log_rotation_backup_count",
-                             self._config["log_rotation_backup_count"])
 
         if not connect_only:
             self.start_ray_processes()
@@ -409,6 +393,14 @@ class Node:
             return self._socket
         except AttributeError:
             return None
+
+    @property
+    def logging_config(self):
+        """Get the logging config of the current node."""
+        return {
+            "log_rotation_max_bytes": self.max_bytes,
+            "log_rotation_backup_count": self.backup_count
+        }
 
     @property
     def address_info(self):
@@ -633,7 +625,8 @@ class Node:
             stderr_file=subprocess.DEVNULL,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            config=self._config)
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count)
         assert ray_constants.PROCESS_TYPE_LOG_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_LOG_MONITOR] = [
             process_info,
@@ -657,7 +650,8 @@ class Node:
             stderr_file=subprocess.DEVNULL,  # Avoid hang(fd inherit)
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            config=self._config,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count,
             port=self._ray_params.dashboard_port)
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -779,7 +773,8 @@ class Node:
             autoscaling_config=self._ray_params.autoscaling_config,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
-            config=self._config)
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count)
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
 
