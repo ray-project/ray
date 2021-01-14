@@ -1292,11 +1292,7 @@ def test_placement_group_wait_api(ray_start_cluster_head):
 def test_schedule_placement_groups_at_the_same_time():
     ray.init(num_cpus=4)
 
-    pgs = [
-        placement_group([{
-            "CPU": 2
-        }]) for _ in range(6)
-    ]
+    pgs = [placement_group([{"CPU": 2}]) for _ in range(6)]
 
     wait_pgs = {pg.ready(): pg for pg in pgs}
 
