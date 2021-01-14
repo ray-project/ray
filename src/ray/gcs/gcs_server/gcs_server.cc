@@ -69,6 +69,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
+  // Init gcs resource scheduler.
+  InitGcsResourceScheduler();
+
   // Init gcs node manager.
   InitGcsNodeManager(gcs_init_data);
 
@@ -171,6 +174,12 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*node_resource_info_service_);
 }
 
+void GcsServer::InitGcsResourceScheduler() {
+  RAY_CHECK(gcs_resource_manager_);
+  gcs_resource_scheduler_ =
+      std::make_shared<GcsResourceScheduler>(*gcs_resource_manager_);
+}
+
 void GcsServer::InitGcsJobManager() {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_);
   gcs_job_manager_.reset(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_));
@@ -223,7 +232,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   auto scheduler = std::make_shared<GcsPlacementGroupScheduler>(
       main_service_, gcs_table_storage_, *gcs_node_manager_, *gcs_resource_manager_,
-      raylet_client_pool_);
+      *gcs_resource_scheduler_, raylet_client_pool_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
       main_service_, scheduler, gcs_table_storage_, *gcs_resource_manager_);
