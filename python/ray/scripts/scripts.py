@@ -1410,8 +1410,9 @@ def memory(address, redis_password, group_by, sort_by):
         "IP Address", "PID", "Type", "Object Ref", "Object Size",
         "Reference Type", "Call Site"
     ]
+    print(header)
     print(
-        f"{header}\nGrouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
+        f"Grouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
     for key, group in memory_table["group"].items():
         # Group summary
         summary = group["summary"]
@@ -1456,7 +1457,6 @@ def memory(address, redis_password, group_by, sort_by):
                       format(*row))
         print("\n\n")
     print(store_summary)
-
 
 
 @cli.command()
