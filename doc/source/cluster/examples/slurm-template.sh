@@ -30,14 +30,16 @@ nodes_array=($nodes)
 node_1=${nodes_array[0]}
 ip=$(srun --nodes=1 --ntasks=1 -w "$node_1" hostname --ip-address) # making redis-address
 
-if [[ $ip == *" "* ]]; then
-  IFS=' ' read -ra ADDR <<<"$ip"
+# if we detect a space character in the head node IP, we'll
+# convert it to an ipv4 address. This step is optional.
+if [[ "$ip" == *" "* ]]; then
+  IFS=' ' read -ra ADDR <<< "$ip"
   if [[ ${#ADDR[0]} -gt 16 ]]; then
     ip=${ADDR[1]}
   else
     ip=${ADDR[0]}
   fi
-  echo "We detect space in ip! You are using IPV6 address. We split the IPV4 address as $ip"
+  echo "IPV6 address detected. We split the IPV4 address as $head_node_ip"
 fi
 
 port=6379
