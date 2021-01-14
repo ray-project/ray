@@ -19,6 +19,9 @@ from ray.autoscaler._private.commands import (
     attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
     rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips,
     debug_status, RUN_ENV_TYPES)
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
+    DEBUG_AUTOSCALING_STATUS
+from ray.state import GlobalState
 import ray.ray_constants as ray_constants
 import ray.utils
 import ray.new_dashboard.memory_utils as memory_utils
@@ -1378,20 +1381,25 @@ def memory(address, redis_password, group_by, sort_by):
     """Print object references held in a Ray cluster."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address, _redis_password=redis_password)
-    # Step 1: Fetch core memory worker stats and convert into a dictionary
-    stats = ray.internal.internal_api.node_stats()
+    time = datetime.now()
+    header = "=" * 8 + f" Object references status: {time} " + "=" * 8
+    state = GlobalState()
+    state._initialize_global_state(address, redis_password)
+    raylet = state.node_table()[0]
+
+    # Fetch core memory worker stats, store as a dictionary
+    stats = ray.internal.internal_api.node_stats(raylet["NodeManagerAddress"],
+                                                 raylet["NodeManagerPort"])
     store_summary = ray.internal.internal_api.store_stats_summary(stats)
     stats = stats_collector.node_stats_to_dict(stats)
 
-    # Step 2: Build memory table with "group_by" and "sort_by" parameters
+    # Build memory table with "group_by" and "sort_by" parameters
     group_by, sort_by = memory_utils.get_group_by_type(
         group_by), memory_utils.get_sorting_type(sort_by)
     memory_table = memory_utils.construct_memory_table(
         stats["coreWorkersStats"], group_by, sort_by).as_dict()
 
-    # Step 3: Display ObjectRef info for each group
+    # Display ObjectRef info for each group
     group_by_label, sort_by_label = group_by.name.lower().replace(
         "_", " "), sort_by.name.lower().replace("_", " ")
     summary_labels = [
@@ -1403,9 +1411,9 @@ def memory(address, redis_password, group_by, sort_by):
         "Reference Type", "Call Site"
     ]
     print(
-        f"Grouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
+        f"{header}\nGrouping by {group_by_label}... Sorting by {sort_by_label}...\n\n\n")
     for key, group in memory_table["group"].items():
-        # Part A: Group summary
+        # Group summary
         summary = group["summary"]
         summary["total_object_size"] = str(
             summary["total_object_size"]) + " MiB"
@@ -1415,7 +1423,7 @@ def memory(address, redis_password, group_by, sort_by):
         print("{:<25}  {:<25}  {:<25}  {:<25}  {:<25}  {:<25}\n".format(
             *summary.values()))
 
-        # Part B: Memory table
+        # Memory table per group
         print(f"--- Object references for {group_by_label}: {key} ---")
         print("{:<14}  {:<8}  {:<8}  {:<39}  {:<14}  {:<22} {:<39}".format(
             *object_ref_labels))
@@ -1447,9 +1455,8 @@ def memory(address, redis_password, group_by, sort_by):
                 print("{:<14}  {:<8}  {:<8}  {:39}  {:<14}  {:<22} {:<39}".
                       format(*row))
         print("\n\n")
-
-    # Step 4: Display overall summary
     print(store_summary)
+
 
 
 @cli.command()
@@ -1458,13 +1465,21 @@ def memory(address, redis_password, group_by, sort_by):
     required=False,
     type=str,
     help="Override the address to connect to.")
-def status(address):
+@click.option(
+    "--redis_password",
+    required=False,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
+    help="Connect to ray with redis_password.")
+def status(address, redis_password):
     """Print cluster status, including autoscaling info."""
     if not address:
         address = services.get_ray_address_to_use_or_die()
-    logger.info(f"Connecting to Ray instance at {address}.")
-    ray.init(address=address)
-    print(debug_status())
+    redis_client = ray._private.services.create_redis_client(
+        address, redis_password)
+    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    print(debug_status(status, error))
 
 
 @cli.command(hidden=True)

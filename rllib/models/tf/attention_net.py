@@ -117,7 +117,6 @@ class TrXLNet(RecurrentNetwork):
             name="logits")(E_out)
 
         self.base_model = tf.keras.models.Model([inputs], [logits])
-        self.register_variables(self.base_model.variables)
 
     @override(RecurrentNetwork)
     def forward_rnn(self, inputs: TensorType, state: List[TensorType],
@@ -287,7 +286,6 @@ class GTrXLNet(RecurrentNetwork):
         self.trxl_model = tf.keras.Model(
             inputs=[input_layer] + memory_ins, outputs=outs + memory_outs[:-1])
 
-        self.register_variables(self.trxl_model.variables)
         self.trxl_model.summary()
 
         # __sphinx_doc_begin__
@@ -386,7 +384,6 @@ class AttentionWrapper(TFModelV2):
             position_wise_mlp_dim=cfg["attention_position_wise_mlp_dim"],
             init_gru_gate_bias=cfg["attention_init_gru_gate_bias"],
         )
-        self.register_variables(self.gtrxl.variables())
 
         # `self.num_outputs` right now is the number of nodes coming from the
         # attention net.
@@ -399,11 +396,9 @@ class AttentionWrapper(TFModelV2):
         # values.
         out = tf.keras.layers.Dense(self.num_outputs, activation=None)(input_)
         self._logits_branch = tf.keras.models.Model([input_], [out])
-        self.register_variables(self._logits_branch.variables)
 
         out = tf.keras.layers.Dense(1, activation=None)(input_)
         self._value_branch = tf.keras.models.Model([input_], [out])
-        self.register_variables(self._value_branch.variables)
 
         self.view_requirements = self.gtrxl.view_requirements
 
