@@ -7,7 +7,6 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
 from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
