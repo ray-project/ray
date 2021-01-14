@@ -15,7 +15,7 @@ auth:
 available_node_types:
     head_node:
         node_config:
-            InstanceType: m4.4xlarge
+            InstanceType: m4.16xlarge
             ImageId: ami-091b192bc8632b830
         resources:
           node: 1
@@ -34,5 +34,6 @@ worker_default_node_type: worker_node
 
 setup_commands:
   - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - pip install numpy tqdm
 
 idle_timeout_minutes: 5

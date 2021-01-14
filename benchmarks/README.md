@@ -16,6 +16,10 @@ All distributed tests are run with the maximum number of nodes.
 | Dimension | Quantity |
 | --------- | -------- |
 | # of objects returned from a single task | 10000 |
+| # of plasma objects in a single `ray.get` call | 10000 |
+| # of tasks queued on a single node | 1,000,000 |
+| Maximum `ray.get` object size | 100GiB (TODO) |
+
 
 
     
