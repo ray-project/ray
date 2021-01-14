@@ -291,10 +291,11 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
-bool ClusterTaskManager::RemoveAssignedTask(std::shared_ptr<WorkerInterface> worker,
-                                            Task *task) {
+bool ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
+                                      Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
+  ReleaseWorkerResources(worker);
   return true;
 }
 

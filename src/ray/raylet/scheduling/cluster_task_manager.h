@@ -80,13 +80,14 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param readyIds: The tasks which are now ready to be dispatched.
   void TasksUnblocked(const std::vector<TaskID> &ready_ids) override;
 
-  /// Remove assigned task.
-  /// This method will be removed and can be replaced by `worker->GetAssignedTask()`
-  /// directly once we remove the legacy scheduler
+  /// Return the finished task and relase the worker resources.
+  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
+  /// once we remove the legacy scheduler.
   ///
   /// \param worker: The worker which was running the task.
   /// \param task: Output parameter.
-  bool RemoveAssignedTask(std::shared_ptr<WorkerInterface> worker, Task *task) override;
+  /// \return true If the finished task is returned successfully, else false.
+  bool TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) override;
 
   /// Return worker resources.
   /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly

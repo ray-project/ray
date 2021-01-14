@@ -126,11 +126,20 @@ void NodeManager::FillResourceUsage(std::shared_ptr<rpc::ResourcesData> resource
   resources_data->mutable_resource_load_by_shape()->Swap(&resource_load);
 }
 
-bool NodeManager::RemoveAssignedTask(std::shared_ptr<WorkerInterface> worker,
-                                     Task *task) {
+bool NodeManager::TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   const auto &task_id = worker->GetAssignedTaskId();
-  return local_queues_.RemoveTask(task_id, task);
+  if (!local_queues_.RemoveTask(task_id, task)) {
+    return false;
+  }
+
+  // Release task's resources. The worker's lifetime resources are still held.
+  auto const &task_resources = worker->GetTaskResourceIds();
+  local_available_resources_.ReleaseConstrained(
+      task_resources, cluster_resource_map_[self_node_id_].GetTotalResources());
+  cluster_resource_map_[self_node_id_].Release(task_resources.ToResourceSet());
+  worker->ResetTaskResourceIds();
+  return true;
 }
 
 void NodeManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {

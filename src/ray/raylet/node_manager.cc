@@ -1982,8 +1982,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   Task task;
-  RAY_CHECK(cluster_task_manager_->RemoveAssignedTask(worker_ptr, &task));
-  cluster_task_manager_->ReleaseWorkerResources(worker_ptr);
+  RAY_CHECK(cluster_task_manager_->TaskFinished(worker_ptr, &task));
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {
