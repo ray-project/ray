@@ -135,14 +135,11 @@ class TuneFailResumeTest(unittest.TestCase):
             local_dir=self.logdir,
             verbose=1)
 
-        try:
+        with self.assertRaises(RuntimeError):
             tune.run(
                 "trainable",
                 callbacks=[self.FailureInjectorCallback()],
                 **config)
-            raise Exception("Expected value error!")
-        except RuntimeError:
-            print("Failed as expected")
 
         analysis = tune.run(
             "trainable",

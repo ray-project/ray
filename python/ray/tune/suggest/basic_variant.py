@@ -1,4 +1,5 @@
 import copy
+import glob
 import itertools
 import os
 import uuid
@@ -9,16 +10,21 @@ from ray.tune.error import TuneError
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.variant_generator import (
-    count_variants, generate_variants, format_vars, flatten_resolved_vars,
-    get_preset_variants)
+    count_variants, count_spec_samples, generate_variants, format_vars,
+    flatten_resolved_vars, get_preset_variants)
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
 
-SERIALIZATION_THRESHOLD = 1e6
+SERIALIZATION_THRESHOLD = 1e7
 
 
 class _VariantIterator:
-    """Avoid OOM!"""
+    """Iterates over generated variants from the search space.
+
+    This object also toggles between lazy evaluation and
+    eager evaluation of samples. If lazy evaluation is enabled,
+    this object cannot be serialized.
+    """
 
     def __init__(self, iterable, lazy_eval=False):
         self.lazy_eval = lazy_eval
@@ -70,17 +76,6 @@ class _TrialIterator:
         self.lazy_eval = lazy_eval
         self.variants = None
 
-    def set_variants_from_preset(self, config):
-        # This can cause OOM if not careful... perhaps we can have a
-        # check here?
-        self.variants = _VariantIterator(
-            get_preset_variants(self.unresolved_spec, config),
-            lazy_eval=self.lazy_eval)
-
-    def set_generated_variants(self):
-        self.variants = _VariantIterator(
-            generate_variants(self.unresolved_spec), lazy_eval=self.lazy_eval)
-
     def create_trial(self, resolved_vars, spec):
         trial_id = self.uuid_prefix + ("%05d" % self.counter)
         experiment_tag = str(self.counter)
@@ -113,22 +108,28 @@ class _TrialIterator:
                 self.unresolved_spec))
 
         if self.variants and self.variants.has_next():
+            # This block will be skipped upon instantiation.
+            # `variants` will be set later after the first loop.
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
 
         if self.points_to_evaluate:
             config = self.points_to_evaluate.pop(0)
             self.num_samples_left -= 1
-            self.set_variants_from_preset(config)
+            self.variants = _VariantIterator(
+                get_preset_variants(self.unresolved_spec, config),
+                lazy_eval=self.lazy_eval)
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
-        elif self.num_samples_left <= 0:
-            raise StopIteration
-        else:
-            self.set_generated_variants()
+        elif self.num_samples_left > 0:
+            self.variants = _VariantIterator(
+                generate_variants(self.unresolved_spec),
+                lazy_eval=self.lazy_eval)
             self.num_samples_left -= 1
             resolved_vars, spec = next(self.variants)
             return self.create_trial(resolved_vars, spec)
+        else:
+            raise StopIteration
 
     def __iter__(self):
         return self
@@ -212,9 +213,6 @@ class BasicVariantGenerator(SearchAlgorithm):
     CKPT_FILE_TMPL = "basic-variant-state-{}.json"
 
     def __init__(self, points_to_evaluate: Optional[List[Dict]] = None):
-        """Initializes the Variant Generator.
-
-        """
         self._trial_generator = []
         self._iterators = []
         self._trial_iter = None
@@ -246,27 +244,27 @@ class BasicVariantGenerator(SearchAlgorithm):
         """
         experiment_list = convert_to_experiment_list(experiments)
         for experiment in experiment_list:
-            points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
-            variant_count = count_variants(experiment.spec, points_to_evaluate)
-            previous_samples = self._total_samples
-            self._total_samples += variant_count
-            num_samples = experiment.spec.get("num_samples", 1)
-            grid_vals = variant_count // num_samples
-            if grid_vals > SERIALIZATION_THRESHOLD:
+            grid_vals = count_spec_samples(experiment.spec, num_samples=1)
+            lazy_eval = grid_vals > SERIALIZATION_THRESHOLD
+            if lazy_eval:
                 warnings.warn(
                     "The number of pre-generated samples exceeds the "
                     f"serialization threshold ({SERIALIZATION_THRESHOLD}). "
-                    "Experiment serialization may not work properly. "
-                    "To fix this, reduce the size of your grid: ({grid_vals})."
+                    "Experiment serialization/resume ability is disabled. "
+                    f"To fix this, reduce the size of the grid: ({grid_vals})."
                 )
 
+            previous_samples = self._total_samples
+            points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
+            self._total_samples += count_variants(experiment.spec,
+                                                  points_to_evaluate)
             iterator = _TrialIterator(
                 uuid_prefix=self._uuid_prefix,
-                num_samples=num_samples,
+                num_samples=experiment.spec.get("num_samples", 1),
                 unresolved_spec=experiment.spec,
                 output_path=experiment.dir_name,
                 points_to_evaluate=points_to_evaluate,
-                lazy_eval=grid_vals > SERIALIZATION_THRESHOLD,
+                lazy_eval=lazy_eval,
                 start=previous_samples)
             self._iterators.append(iterator)
             self._trial_generator = itertools.chain(self._trial_generator,
@@ -312,8 +310,9 @@ class BasicVariantGenerator(SearchAlgorithm):
             tmp_file_name=".tmp_generator")
 
     def has_checkpoint(self, dirpath: str):
+        """Whether a checkpoint file exists within dirpath."""
         return bool(
-            load_newest_checkpoint(dirpath, self.CKPT_FILE_TMPL.format("*")))
+            glob.glob(os.path.join(dirpath, self.CKPT_FILE_TMPL.format("*"))))
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""
