@@ -425,9 +425,9 @@ class NCCLGroup(BaseGroup):
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Args:
-            comm_key (str):
-            my_gpu_idx (int):
-            peer_rank (int):
+            comm_key (str): communicator key.
+            my_gpu_idx (int): the source gpu index on the current process.
+            peer_rank (int): the rank of the destination process.
         Returns:
             communicator
         """
