@@ -1,5 +1,5 @@
+from typing import Callable, Dict, Sequence, Union
 import json
-from typing import Sequence
 
 import ray.cloudpickle as cloudpickle
 from collections import deque
@@ -18,7 +18,8 @@ from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.resources import PlacementGroupFactory, Resources, \
+    json_to_resources, resources_to_json
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
@@ -362,7 +363,8 @@ class Trial:
             os.makedirs(self.logdir, exist_ok=True)
         self.invalidate_json_state()
 
-    def update_resources(self, cpu, gpu, **kwargs):
+    def update_resources(
+            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -373,7 +375,12 @@ class Trial:
         # Todo: Add placement group support
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
-        self.resources = Resources(cpu, gpu, **kwargs)
+        if isinstance(resources, PlacementGroupFactory):
+            self.resources = resources
+        elif callable(resources):
+            self.resources = PlacementGroupFactory(resources)
+        else:
+            self.resources = Resources(**resources)
         self.invalidate_json_state()
 
     def set_runner(self, runner):
