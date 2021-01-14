@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.backend_state import BackendState
 from ray.serve.common import (
     BackendTag,
@@ -76,18 +77,20 @@ class ServeController:
         # optimize the logic to support subscription by key.
         self.long_poll_host = LongPollHost()
 
+        self.goal_manager = AsyncGoalManager()
         self.http_state = HTTPState(controller_name, detached, http_config)
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
         self.backend_state = BackendState(controller_name, detached,
-                                          self.kv_store, self.long_poll_host)
+                                          self.kv_store, self.long_poll_host,
+                                          self.goal_manager)
 
         asyncio.get_event_loop().create_task(self.run_control_loop())
 
     async def wait_for_goal(self, goal_id: GoalId) -> None:
-        await self.backend_state.wait_for_goal(goal_id)
+        await self.goal_manager.wait_for_goal(goal_id)
 
     async def _num_pending_goals(self) -> int:
-        return self.backend_state.num_pending_goals()
+        return self.goal_manager.num_pending_goals()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.

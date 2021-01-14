@@ -855,6 +855,11 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
     assert ray.get(actor.g.remote(5)) == 6
 
 
+def test_get_non_existing_named_actor(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        _ = ray.get_actor("non_existing_actor")
+
+
 @pytest.mark.skip(
     "This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):
