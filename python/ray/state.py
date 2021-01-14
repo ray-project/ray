@@ -9,6 +9,7 @@ import ray
 from ray import gcs_utils
 from google.protobuf.json_format import MessageToDict
 from ray._private import services
+from ray._private.client_mode_hook import client_mode_hook
 from ray.utils import (decode, binary_to_hex, hex_to_binary)
 
 from ray._raylet import GlobalStateAccessor
@@ -766,19 +767,19 @@ class GlobalState:
         self._check_connected()
 
         resources = defaultdict(int)
-        clients = self.node_table()
-        for client in clients:
-            # Only count resources from latest entries of live clients.
-            if client["Alive"]:
-                for key, value in client["Resources"].items():
+        nodes = self.node_table()
+        for node in nodes:
+            # Only count resources from latest entries of live nodes.
+            if node["Alive"]:
+                for key, value in node["Resources"].items():
                     resources[key] += value
         return dict(resources)
 
-    def _live_client_ids(self):
-        """Returns a set of client IDs corresponding to clients still alive."""
+    def _live_node_ids(self):
+        """Returns a set of node IDs corresponding to nodes still alive."""
         return {
-            client["NodeID"]
-            for client in self.node_table() if (client["Alive"])
+            node["NodeID"]
+            for node in self.node_table() if (node["Alive"])
         }
 
     def _available_resources_per_node(self):
@@ -800,7 +801,7 @@ class GlobalState:
             available_resources_by_id[node_id] = dynamic_resources
 
         # Update nodes in cluster.
-        node_ids = self._live_client_ids()
+        node_ids = self._live_node_ids()
         # Remove disconnected nodes.
         for node_id in available_resources_by_id.keys():
             if node_id not in node_ids:
@@ -832,37 +833,6 @@ class GlobalState:
 
         return dict(total_available_resources)
 
-    def actor_checkpoint_info(self, actor_id):
-        """Get checkpoint info for the given actor id.
-         Args:
-            actor_id: Actor's ID.
-         Returns:
-            A dictionary with information about the actor's checkpoint IDs and
-            their timestamps.
-        """
-        self._check_connected()
-        message = self._execute_command(
-            actor_id,
-            "RAY.TABLE_LOOKUP",
-            gcs_utils.TablePrefix.Value("ACTOR_CHECKPOINT_ID"),
-            "",
-            actor_id.binary(),
-        )
-        if message is None:
-            return None
-        gcs_entry = gcs_utils.GcsEntry.FromString(message)
-        entry = gcs_utils.ActorCheckpointIdData.FromString(
-            gcs_entry.entries[0])
-        checkpoint_ids = [
-            ray.ActorCheckpointID(checkpoint_id)
-            for checkpoint_id in entry.checkpoint_ids
-        ]
-        return {
-            "ActorID": ray.utils.binary_to_hex(entry.actor_id),
-            "CheckpointIds": checkpoint_ids,
-            "Timestamps": list(entry.timestamps),
-        }
-
 
 state = GlobalState()
 """A global object used to access the cluster's global state."""
@@ -882,6 +852,7 @@ def jobs():
     return state.job_table()
 
 
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -995,6 +966,7 @@ def object_transfer_timeline(filename=None):
     return state.chrome_tracing_object_transfer_dump(filename=filename)
 
 
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -1008,6 +980,7 @@ def cluster_resources():
     return state.cluster_resources()
 
 
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 

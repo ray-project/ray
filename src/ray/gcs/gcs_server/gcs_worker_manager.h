@@ -16,7 +16,6 @@
 
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -45,9 +44,14 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
                            rpc::AddWorkerInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void AddWorkerDeadListener(
+      std::function<void(std::shared_ptr<WorkerTableData>)> listener);
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
+      worker_dead_listeners_;
 };
 
 }  // namespace gcs

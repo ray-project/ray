@@ -2,7 +2,8 @@
 import numpy as np
 from typing import Union, Tuple, Any, List
 
-from ray.rllib.utils.framework import get_activation_fn, try_import_torch
+from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -136,7 +137,7 @@ class SlimFC(nn.Module):
         """
         super(SlimFC, self).__init__()
         layers = []
-        # Actual Conv2D layer (including correct initialization logic).
+        # Actual nn.Linear layer (including correct initialization logic).
         linear = nn.Linear(in_size, out_size, bias=use_bias)
         if initializer:
             initializer(linear.weight)

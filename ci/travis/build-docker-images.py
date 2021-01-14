@@ -41,7 +41,7 @@ def _release_build():
         print(os.environ)
         print("Environment is above ^^")
         return False
-    return branch != "master" and "releases" in branch
+    return branch != "master" and branch.startswith("releases")
 
 
 def _get_curr_dir():
@@ -78,13 +78,13 @@ def _docker_affected():
     return affected
 
 
-def _build_cpu_gpu_images(image_name) -> List[str]:
+def _build_cpu_gpu_images(image_name, no_cache=True) -> List[str]:
     built_images = []
     for gpu in ["-cpu", "-gpu"]:
         build_args = {}
         if image_name == "base-deps":
             build_args["BASE_IMAGE"] = (
-                "nvidia/cuda:10.1-cudnn8-runtime-ubuntu18.04"
+                "nvidia/cuda:10.1-cudnn7-runtime-ubuntu18.04"
                 if gpu == "-gpu" else "ubuntu:focal")
         else:
             build_args["GPU"] = gpu
@@ -97,7 +97,7 @@ def _build_cpu_gpu_images(image_name) -> List[str]:
             output = DOCKER_CLIENT.api.build(
                 path=os.path.join(_get_root_dir(), "docker", image_name),
                 tag=tagged_name,
-                nocache=True,
+                nocache=no_cache,
                 buildargs=build_args)
 
             full_output = ""
@@ -143,8 +143,7 @@ def copy_wheels():
 
 def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     """Returns images to tag and build"""
-    _ = DOCKER_CLIENT.api.pull(
-        repository="rayproject/base-deps", tag="nightly")
+    DOCKER_CLIENT.api.pull(repository="rayproject/base-deps", tag="nightly")
 
     age = DOCKER_CLIENT.api.inspect_image("rayproject/base-deps:nightly")[
         "Created"]
@@ -152,21 +151,23 @@ def build_or_pull_base_images(is_docker_affected: bool) -> List[str]:
     is_stale = (
         datetime.datetime.now() - short_date) > datetime.timedelta(days=14)
 
-    if is_stale or is_docker_affected or _release_build():
+    print("Pulling images for caching")
+
+    DOCKER_CLIENT.api.pull(
+        repository="rayproject/base-deps", tag="nightly-cpu")
+    DOCKER_CLIENT.api.pull(
+        repository="rayproject/base-deps", tag="nightly-gpu")
+
+    DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-gpu")
+    DOCKER_CLIENT.api.pull(repository="rayproject/ray-deps", tag="nightly-cpu")
+
+    # TODO(ilr) See if any caching happens
+    if True or (is_stale or is_docker_affected or _release_build()):
         for image in ["base-deps", "ray-deps"]:
-            _build_cpu_gpu_images(image)
+            _build_cpu_gpu_images(image, no_cache=False)
         return True
     else:
         print("Just pulling images!")
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/base-deps", tag="nightly-cpu")
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/base-deps", tag="nightly-gpu")
-
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/ray-deps", tag="nightly-gpu")
-        _ = DOCKER_CLIENT.api.pull(
-            repository="rayproject/ray-deps", tag="nightly-cpu")
         return False
 
 
@@ -178,6 +179,8 @@ def build_ray_ml():
     root_dir = _get_root_dir()
     requirement_files = glob.glob(
         f"{_get_root_dir()}/python/requirements*.txt")
+    requirement_files.extend(
+        glob.glob(f"{_get_root_dir()}/python/requirements/*.txt"))
     for fl in requirement_files:
         shutil.copy(fl, os.path.join(root_dir, "docker/ray-ml/"))
     ray_ml_images = _build_cpu_gpu_images("ray-ml")
@@ -226,7 +229,7 @@ def push_and_tag_images(push_base_images: bool):
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = os.environ.get("TRAVIS_COMMIT")[:6]
     if _release_build():
-        release_name = re.search("[0-9]\.[0-9]\.[0-9]",
+        release_name = re.search("[0-9]\.[0-9]\.[0-9].*",
                                  os.environ.get("TRAVIS_BRANCH")).group(0)
         date_tag = release_name
         sha_tag = release_name

@@ -14,8 +14,8 @@ public interface FilterFunction<T> extends Function {
   /**
    * The filter function that evaluates the predicate.
    *
-   * @param value The value to be filtered.
-   * @return True for values that should be retained, false for values to be filtered out.
+   * @param value The value to be filtered. Returns True for values that should be retained, false
+   *     for values to be filtered out.
    */
   boolean filter(T value) throws Exception;
 }

@@ -1,6 +1,7 @@
 package io.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
+import com.google.common.primitives.Bytes;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
@@ -15,9 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Helper methods to convert arguments from/to objects.
- */
+/** Helper methods to convert arguments from/to objects. */
 public class ArgumentsBuilder {
 
   /**
@@ -27,15 +26,11 @@ public class ArgumentsBuilder {
   // TODO(kfstorm): Read from internal config `max_direct_call_object_size`.
   public static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
 
-  /**
-   * This dummy type is also defined in signature.py. Please keep it synced.
-   */
-  private static final NativeRayObject PYTHON_DUMMY_TYPE = ObjectSerializer
-      .serialize("__RAY_DUMMY__".getBytes());
+  /** This dummy type is also defined in signature.py. Please keep it synced. */
+  private static final NativeRayObject PYTHON_DUMMY_TYPE =
+      ObjectSerializer.serialize("__RAY_DUMMY__".getBytes());
 
-  /**
-   * Convert real function arguments to task spec arguments.
-   */
+  /** Convert real function arguments to task spec arguments. */
   public static List<FunctionArg> wrap(Object[] args, Language language) {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
@@ -50,17 +45,21 @@ public class ArgumentsBuilder {
         value = ObjectSerializer.serialize(arg);
         if (language != Language.JAVA) {
           boolean isCrossData =
-              Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE) ||
-                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW) ||
-                  Arrays.equals(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE);
+              Bytes.indexOf(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_CROSS_LANGUAGE)
+                      == 0
+                  || Bytes.indexOf(value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_RAW) == 0
+                  || Bytes.indexOf(
+                          value.metadata, ObjectSerializer.OBJECT_METADATA_TYPE_ACTOR_HANDLE)
+                      == 0;
           if (!isCrossData) {
-            throw new IllegalArgumentException(String.format("Can't transfer %s data to %s",
-                Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
+            throw new IllegalArgumentException(
+                String.format(
+                    "Can't transfer %s data to %s",
+                    Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
           }
         }
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((RayRuntimeInternal) Ray.internal()).getObjectStore()
-              .putRaw(value);
+          id = ((RayRuntimeInternal) Ray.internal()).getObjectStore().putRaw(value);
           address = ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getRpcAddress();
           value = null;
         }
@@ -77,9 +76,7 @@ public class ArgumentsBuilder {
     return ret;
   }
 
-  /**
-   * Convert list of NativeRayObject/ByteBuffer to real function arguments.
-   */
+  /** Convert list of NativeRayObject/ByteBuffer to real function arguments. */
   public static Object[] unwrap(List<Object> args, Class<?>[] types) {
     Object[] realArgs = new Object[args.size()];
     for (int i = 0; i < args.size(); i++) {

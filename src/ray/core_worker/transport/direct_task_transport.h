@@ -22,6 +22,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
@@ -54,6 +55,7 @@ class CoreWorkerDirectTaskSubmitter {
       rpc::Address rpc_address, std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
       LeaseClientFactoryFn lease_client_factory,
+      std::shared_ptr<LeasePolicyInterface> lease_policy,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
@@ -63,6 +65,7 @@ class CoreWorkerDirectTaskSubmitter {
       : rpc_address_(rpc_address),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
+        lease_policy_(std::move(lease_policy)),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms),
@@ -81,11 +84,10 @@ class CoreWorkerDirectTaskSubmitter {
   ///
   /// \param[in] task_spec The task to kill.
   /// \param[in] force_kill Whether to kill the worker executing the task.
-  Status CancelTask(TaskSpecification task_spec, bool force_kill);
+  Status CancelTask(TaskSpecification task_spec, bool force_kill, bool recursive);
 
   Status CancelRemoteTask(const ObjectID &object_id, const rpc::Address &worker_addr,
-                          bool force_kill);
-
+                          bool force_kill, bool recursive);
   /// Check that the scheduling_key_entries_ hashmap is empty by calling the private
   /// CheckNoSchedulingKeyEntries function after acquiring the lock.
   bool CheckNoSchedulingKeyEntriesPublic() {
@@ -159,6 +161,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
+
+  /// Provider of worker leasing decisions for the first lease request (not on
+  /// spillback).
+  std::shared_ptr<LeasePolicyInterface> lease_policy_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;

@@ -13,22 +13,15 @@ namespace plasma {
 class PlasmaStoreRunner {
  public:
   PlasmaStoreRunner(std::string socket_name, int64_t system_memory,
-                    bool hugepages_enabled, std::string plasma_directory,
-                    const std::string external_store_endpoint);
-  void Start(ray::SpillObjectsCallback spill_objects_callback = nullptr);
+                    bool hugepages_enabled, std::string plasma_directory);
+  void Start(ray::SpillObjectsCallback spill_objects_callback = nullptr,
+             std::function<void()> object_store_full_callback = nullptr);
   void Stop();
   void SetNotificationListener(
       const std::shared_ptr<ray::ObjectStoreNotificationManager> &notification_listener) {
     store_->SetNotificationListener(notification_listener);
   }
-
-  ray::SpaceReleasedCallback OnSpaceReleased() {
-    return [this]() {
-      main_service_.post([this]() {
-          store_->ProcessCreateRequests();
-        });
-    };
-  }
+  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
 
  private:
   void Shutdown();
@@ -37,7 +30,6 @@ class PlasmaStoreRunner {
   int64_t system_memory_;
   bool hugepages_enabled_;
   std::string plasma_directory_;
-  std::string external_store_endpoint_;
   boost::asio::io_service main_service_;
   std::unique_ptr<PlasmaStore> store_;
   std::shared_ptr<ray::ObjectStoreNotificationManager> listener_;

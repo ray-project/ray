@@ -14,9 +14,9 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDistributionWrapper)
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
-from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
@@ -317,9 +317,9 @@ def setup_early_mixins(policy: Policy, obs_space, action_space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-def after_init(policy: Policy, obs_space: gym.spaces.Space,
-               action_space: gym.spaces.Space,
-               config: TrainerConfigDict) -> None:
+def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
+                     action_space: gym.spaces.Space,
+                     config: TrainerConfigDict) -> None:
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
     # Move target net to device (this is done automatically for the
@@ -384,8 +384,9 @@ def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
     return {"q_values": policy.q_values}
 
 
-DQNTorchPolicy = build_torch_policy(
+DQNTorchPolicy = build_policy_class(
     name="DQNTorchPolicy",
+    framework="torch",
     loss_fn=build_q_losses,
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model_and_action_dist=build_q_model_and_distribution,
@@ -397,7 +398,7 @@ DQNTorchPolicy = build_torch_policy(
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.q_loss.td_error},
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
-    after_init=after_init,
+    before_loss_init=before_loss_init,
     mixins=[
         TargetNetworkMixin,
         ComputeTDErrorMixin,

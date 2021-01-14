@@ -60,8 +60,6 @@ class WorkerInterface {
   virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
   virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
   virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  virtual void AssignJobId(const JobID &job_id) = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -83,8 +81,8 @@ class WorkerInterface {
 
   virtual void DirectActorCallArgWaitComplete(int64_t tag) = 0;
 
-  virtual const PlacementGroupID &GetPlacementGroupId() const = 0;
-  virtual void SetPlacementGroupId(const PlacementGroupID &placement_group_id) = 0;
+  virtual const BundleID &GetBundleId() const = 0;
+  virtual void SetBundleId(const BundleID &bundle_id) = 0;
 
   // Setter, geter, and clear methods  for allocated_instances_.
   virtual void SetAllocatedInstances(
@@ -99,12 +97,6 @@ class WorkerInterface {
   virtual std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() = 0;
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
-
-  virtual void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) = 0;
-
-  virtual std::vector<double> &GetBorrowedCPUInstances() = 0;
-
-  virtual void ClearBorrowedCPUInstances() = 0;
 
   virtual Task &GetAssignedTask() = 0;
 
@@ -151,8 +143,6 @@ class Worker : public WorkerInterface {
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  // TODO(kfstorm): Remove this once `enable_multi_tenancy` is deleted.
-  void AssignJobId(const JobID &job_id);
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
@@ -174,8 +164,8 @@ class Worker : public WorkerInterface {
 
   void DirectActorCallArgWaitComplete(int64_t tag);
 
-  const PlacementGroupID &GetPlacementGroupId() const;
-  void SetPlacementGroupId(const PlacementGroupID &placement_group_id);
+  const BundleID &GetBundleId() const;
+  void SetBundleId(const BundleID &bundle_id);
 
   // Setter, geter, and clear methods  for allocated_instances_.
   void SetAllocatedInstances(
@@ -199,14 +189,6 @@ class Worker : public WorkerInterface {
   };
 
   void ClearLifetimeAllocatedInstances() { lifetime_allocated_instances_ = nullptr; };
-
-  void SetBorrowedCPUInstances(std::vector<double> &cpu_instances) {
-    borrowed_cpu_instances_ = cpu_instances;
-  };
-
-  std::vector<double> &GetBorrowedCPUInstances() { return borrowed_cpu_instances_; };
-
-  void ClearBorrowedCPUInstances() { return borrowed_cpu_instances_.clear(); };
 
   Task &GetAssignedTask() { return assigned_task_; };
 
@@ -245,9 +227,9 @@ class Worker : public WorkerInterface {
   JobID assigned_job_id_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
-  /// The worker's placement group ID. It is used to detect if the worker is
-  /// associated with a placement group.
-  PlacementGroupID placement_group_id_;
+  /// The worker's placement group bundle. It is used to detect if the worker is
+  /// associated with a placement group bundle.
+  BundleID bundle_id_;
   /// Whether the worker is dead.
   bool dead_;
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
@@ -277,14 +259,6 @@ class Worker : public WorkerInterface {
   /// The capacity of each resource instance allocated to this worker
   /// when running as an actor.
   std::shared_ptr<TaskResourceInstances> lifetime_allocated_instances_;
-  /// CPUs borrowed by the worker. This happens in the following scenario:
-  /// 1) Worker A is blocked, so it donates its CPUs back to the node.
-  /// 2) Other workers are scheduled and are allocated some of the CPUs donated by A.
-  /// 3) Task A is unblocked, but it cannot get all CPUs back. At this point,
-  /// the node is oversubscribed. borrowed_cpu_instances_ represents the number
-  /// of CPUs this node is oversubscribed by.
-  /// TODO (Ion): Investigate a more intuitive alternative to track these Cpus.
-  std::vector<double> borrowed_cpu_instances_;
   /// Task being assigned to this worker.
   Task assigned_task_;
 };

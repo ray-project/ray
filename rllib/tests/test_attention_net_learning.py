@@ -42,39 +42,44 @@ class TestAttentionNetLearning(unittest.TestCase):
                     "max_seq_len": 10,
                     "custom_model_config": {
                         "num_transformer_units": 1,
-                        "attn_dim": 32,
+                        "attention_dim": 32,
                         "num_heads": 1,
-                        "memory_tau": 5,
+                        "memory_inference": 5,
+                        "memory_training": 5,
                         "head_dim": 32,
-                        "ff_hidden_dim": 32,
+                        "position_wise_mlp_dim": 32,
                     },
                 },
             })
         tune.run("PPO", config=config, stop=self.stop, verbose=1)
 
+    # TODO: (sven) causes memory failures/timeouts on Travis.
+    #  Re-enable this once we have fast attention in master branch.
     def test_impala_attention_net_learning(self):
-        ModelCatalog.register_custom_model("attention_net", GTrXLNet)
-        config = dict(
-            self.config, **{
-                "num_workers": 4,
-                "num_gpus": 0,
-                "entropy_coeff": 0.01,
-                "vf_loss_coeff": 0.001,
-                "lr": 0.0008,
-                "model": {
-                    "custom_model": "attention_net",
-                    "max_seq_len": 65,
-                    "custom_model_config": {
-                        "num_transformer_units": 1,
-                        "attn_dim": 64,
-                        "num_heads": 1,
-                        "memory_tau": 10,
-                        "head_dim": 32,
-                        "ff_hidden_dim": 32,
-                    },
-                },
-            })
-        tune.run("IMPALA", config=config, stop=self.stop, verbose=1)
+        return
+        # ModelCatalog.register_custom_model("attention_net", GTrXLNet)
+        # config = dict(
+        #    self.config, **{
+        #        "num_workers": 4,
+        #        "num_gpus": 0,
+        #        "entropy_coeff": 0.01,
+        #        "vf_loss_coeff": 0.001,
+        #        "lr": 0.0008,
+        #        "model": {
+        #            "custom_model": "attention_net",
+        #            "max_seq_len": 65,
+        #            "custom_model_config": {
+        #                "num_transformer_units": 1,
+        #                "attention_dim": 64,
+        #                "num_heads": 1,
+        #                "memory_inference": 10,
+        #                "memory_training": 10,
+        #                "head_dim": 32,
+        #                "position_wise_mlp_dim": 32,
+        #            },
+        #        },
+        #    })
+        # tune.run("IMPALA", config=config, stop=self.stop, verbose=1)
 
 
 if __name__ == "__main__":

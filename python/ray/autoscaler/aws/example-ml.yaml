@@ -24,7 +24,7 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "" # e.g., rayproject/ray:latest
+    image: "" # e.g., rayproject/ray-ml:latest
     container_name: "" # e.g. ray_docker
     # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
     # if no cached version is present.
@@ -32,9 +32,9 @@ docker:
     run_options: []  # Extra options to pass into "docker run"
 
     # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray:latest-gpu"
+    # head_image: "rayproject/ray-ml:latest-gpu"
 
-    # worker_image: "rayproject/ray:latest"
+    # worker_image: "rayproject/ray-ml:latest"
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5
@@ -120,7 +120,7 @@ setup_commands:
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - source activate pytorch_p36 && pip install -U ray
-    - source activate pytorch_p36 && pip install -U ray[rllib] ray[tune] ray[debug]
+    - source activate pytorch_p36 && pip install -U ray[rllib] ray[tune] ray
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true

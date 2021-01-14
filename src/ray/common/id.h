@@ -124,7 +124,7 @@ class JobID : public BaseID<JobID> {
 
 class ActorID : public BaseID<ActorID> {
  private:
-  static constexpr size_t kUniqueBytesLength = 4;
+  static constexpr size_t kUniqueBytesLength = 12;
 
  public:
   /// Length of `ActorID` in bytes.
@@ -324,6 +324,8 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
  private:
   uint8_t id_[kLength];
 };
+
+typedef std::pair<PlacementGroupID, int64_t> BundleID;
 
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");

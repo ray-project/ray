@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING, Union
+from typing import Any, Callable, Dict, List, TYPE_CHECKING, Type, Union
 
 import distutils
 import logging
@@ -10,6 +10,7 @@ from inspect import isclass
 from shlex import quote
 
 import ray
+import yaml
 from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -204,6 +205,9 @@ class Syncer:
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
         self.sync_client.reset()
+
+    def close(self):
+        self.sync_client.close()
 
     @property
     def _remote_path(self):
@@ -444,7 +448,57 @@ class SyncerCallback(Callback):
             trainable_ip = ray.get(trial.runner.get_current_ip.remote())
         trial_syncer.set_worker_ip(trainable_ip)
         trial_syncer.sync_down_if_needed()
+        trial_syncer.close()
 
     def on_checkpoint(self, iteration: int, trials: List["Trial"],
                       trial: "Trial", checkpoint: Checkpoint, **info):
         self._sync_trial_checkpoint(trial, checkpoint)
+
+
+def detect_sync_to_driver(
+        sync_to_driver: Union[None, bool, Type],
+        cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
+    from ray.tune.integration.docker import DockerSyncer
+
+    if isinstance(sync_to_driver, Type):
+        return sync_to_driver
+    elif isinstance(sync_to_driver, bool) and sync_to_driver is False:
+        return sync_to_driver
+
+    # Else: True or None. Auto-detect.
+    cluster_config_file = os.path.expanduser(cluster_config_file)
+    if not os.path.exists(cluster_config_file):
+        return sync_to_driver
+
+    with open(cluster_config_file, "rt") as fp:
+        config = yaml.safe_load(fp.read())
+
+    if config.get("docker"):
+        logger.debug(
+            "Detected docker autoscaling environment. Using `DockerSyncer` "
+            "as sync client. If this is not correct or leads to errors, "
+            "please pass a `sync_to_driver` parameter in the `SyncConfig` to "
+            "`tune.run().` to manually configure syncing behavior.")
+        return DockerSyncer
+
+    if config.get("provider", {}).get("type", "") == "kubernetes":
+        from ray.tune.integration.kubernetes import (
+            NamespacedKubernetesSyncer, try_import_kubernetes)
+        if not try_import_kubernetes():
+            logger.warning(
+                "Detected Ray autoscaling environment on Kubernetes, "
+                "but Kubernetes Python CLI is not installed. "
+                "Checkpoint syncing may not work properly across "
+                "multiple pods. Be sure to install 'kubernetes' on "
+                "each container.")
+
+        namespace = config["provider"].get("namespace", "ray")
+        logger.debug(
+            f"Detected Ray autoscaling environment on Kubernetes. Using "
+            f"`NamespacedKubernetesSyncer` with namespace `{namespace}` "
+            f"as sync client. If this is not correct or leads to errors, "
+            f"please pass a `sync_to_driver` parameter in the `SyncConfig` "
+            f"to `tune.run()` to manually configure syncing behavior..")
+        return NamespacedKubernetesSyncer(namespace)
+
+    return sync_to_driver

@@ -20,7 +20,7 @@
 #include <unordered_set>
 
 #include "ray/common/id.h"
-#include "ray/gcs/tables.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 
 namespace ray {
@@ -47,14 +47,14 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// \param initial_reconstruction_timeout_ms The initial timeout within which
   /// a task lease notification must be received. Otherwise, reconstruction
   /// will be triggered.
-  /// \param client_id The client ID to use when requesting notifications from
+  /// \param node_id The node ID to use when requesting notifications from
   /// the GCS.
   /// \param gcs_client The Client of GCS.
   /// lease notifications from.
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
       std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
-      int64_t initial_reconstruction_timeout_ms, const NodeID &client_id,
+      int64_t initial_reconstruction_timeout_ms, const NodeID &node_id,
       std::shared_ptr<gcs::GcsClient> gcs_client,
       std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
@@ -151,8 +151,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// The initial timeout within which a task lease notification must be
   /// received. Otherwise, reconstruction will be triggered.
   const int64_t initial_reconstruction_timeout_ms_;
-  /// The client ID to use when requesting notifications from the GCS.
-  const NodeID client_id_;
+  /// The node ID to use when requesting notifications from the GCS.
+  const NodeID node_id_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object directory used to lookup object locations.

@@ -192,7 +192,7 @@ install_nvm() {
   fi
 }
 
-install_pip() {
+install_upgrade_pip() {
   local python=python
   if command -v python3 > /dev/null; then
     python=python3
@@ -237,23 +237,28 @@ install_dependencies() {
   install_base
   install_toolchains
   install_nvm
-  install_pip
+  install_upgrade_pip
 
   if [ -n "${PYTHON-}" ] || [ "${LINT-}" = 1 ]; then
     install_miniconda
+    # Upgrade the miniconda pip.
+    install_upgrade_pip
   fi
 
   # Install modules needed in all jobs.
   pip install --no-clean dm-tree  # --no-clean is due to: https://github.com/deepmind/tree/issues/5
 
   if [ -n "${PYTHON-}" ]; then
-    # PyTorch is installed first since we are using a "-f" directive to find the wheels.
-    # We want to install the CPU version only.
-    local torch_url="https://download.pytorch.org/whl/torch_stable.html"
-    case "${OSTYPE}" in
-      darwin*) pip install torch torchvision;;
-      *) pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f "${torch_url}";;
-    esac
+    # Remove this entire section once RLlib and Serve dependencies are fixed.
+    if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
+      # PyTorch is installed first since we are using a "-f" directive to find the wheels.
+      # We want to install the CPU version only.
+      local torch_url="https://download.pytorch.org/whl/torch_stable.html"
+      case "${OSTYPE}" in
+        darwin*) pip install torch torchvision;;
+        *) pip install torch==1.7.0+cpu torchvision==0.8.1+cpu -f "${torch_url}";;
+      esac
+    fi
 
     # Try n times; we often encounter OpenSSL.SSL.WantReadError (or others)
     # that break the entire CI job: Simply retry installation in this case
@@ -278,46 +283,48 @@ install_dependencies() {
     if [ "${OSTYPE}" = msys ] && [ "${python_version}" = "3.8" ]; then
       { echo "WARNING: Pillow binaries not available on Windows; cannot build docs"; } 2> /dev/null
     else
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
-      pip install -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-rtd.txt
+      pip install --use-deprecated=legacy-resolver -r "${WORKSPACE_DIR}"/doc/requirements-doc.txt
     fi
   fi
 
-  # Additional RLlib dependencies.
+  # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements_rllib.txt
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
   fi
 
-  # Additional Tune test dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
+  # Additional Tune/SGD/Doc test dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    if [ -n "${PYTHON-}" ] && [ "${PYTHON-}" = "3.7" ]; then
+      # Install Python 3.7 dependencies if 3.7 is set.
+      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.7-requirements_tune.txt
+    else
+      # Else default to Python 3.6.
+      pip install -r "${WORKSPACE_DIR}"/python/requirements/linux-py3.6-requirements_tune.txt
+    fi
   fi
 
-  # Additional RaySGD test dependencies.
-  if [ "${SGD_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
-    # TODO: eventually have a separate requirements file for Ray SGD.
+  # For Tune, install upstream dependencies.
+  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/requirements_upstream.txt
   fi
 
-  # Additional Doc test dependencies.
-  if [ "${DOC_TESTING-}" = 1 ]; then
-    pip install -r "${WORKSPACE_DIR}"/python/requirements_tune.txt
-  fi
-
-
-  # If CI has deemed that a different version of Tensorflow or Torch
-  # should be installed, then upgrade/downgrade to that specific version.
-  if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
-    case "${TORCH_VERSION-1.6}" in
-      1.5) TORCHVISION_VERSION=0.6.0;;
-      *) TORCHVISION_VERSION=0.5.0;;
-    esac
-
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
-      torch=="${TORCH_VERSION-1.6}" torchvision=="${TORCHVISION_VERSION}" \
-      tensorflow=="${TF_VERSION-2.2.0}" gym
+  # Remove this entire section once RLlib and Serve dependencies are fixed.
+  if [ "${DOC_TESTING-}" != 1 ] && [ "${SGD_TESTING-}" != 1 ] && [ "${TUNE_TESTING-}" != 1 ]; then
+    # If CI has deemed that a different version of Tensorflow or Torch
+    # should be installed, then upgrade/downgrade to that specific version.
+    if [ -n "${TORCH_VERSION-}" ] || [ -n "${TFP_VERSION-}" ] || [ -n "${TF_VERSION-}" ]; then
+      case "${TORCH_VERSION-1.7}" in
+        1.7) TORCHVISION_VERSION=0.8.1;;
+        1.5) TORCHVISION_VERSION=0.6.0;;
+        *) TORCHVISION_VERSION=0.5.0;;
+      esac
+      pip install --use-deprecated=legacy-resolver --upgrade tensorflow-probability=="${TFP_VERSION-0.8}" \
+        torch=="${TORCH_VERSION-1.7}" torchvision=="${TORCHVISION_VERSION}" \
+        tensorflow=="${TF_VERSION-2.2.0}" gym
+    fi
   fi
 
   # Additional Tune dependency for Horovod.
@@ -331,7 +338,7 @@ install_dependencies() {
     install_node
   fi
 
-  CC=gcc pip install psutil setproctitle --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
+  CC=gcc pip install psutil setproctitle==1.1.10 --target="${WORKSPACE_DIR}/python/ray/thirdparty_files"
 }
 
 install_dependencies "$@"

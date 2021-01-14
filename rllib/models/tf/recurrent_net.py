@@ -1,5 +1,6 @@
 import numpy as np
 import gym
+from gym.spaces import Discrete, MultiDiscrete
 from typing import Dict, List
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -9,6 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.tf_ops import one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -48,7 +50,6 @@ class RecurrentNetwork(TFModelV2):
             self.rnn_model = tf.keras.Model(
                 inputs=[input_layer, seq_in, state_in_h, state_in_c],
                 outputs=[output_layer, state_h, state_c])
-            self.register_variables(self.rnn_model.variables)
             self.rnn_model.summary()
     """
 
@@ -117,22 +118,38 @@ class LSTMWrapper(RecurrentNetwork):
 
         super(LSTMWrapper, self).__init__(obs_space, action_space, None,
                                           model_config, name)
+        # At this point, self.num_outputs is the number of nodes coming
+        # from the wrapped (underlying) model. In other words, self.num_outputs
+        # is the input size for the LSTM layer.
+        # If None, set it to the observation space.
+        if self.num_outputs is None:
+            self.num_outputs = int(np.product(self.obs_space.shape))
 
         self.cell_size = model_config["lstm_cell_size"]
-        self.use_prev_action_reward = model_config[
-            "lstm_use_prev_action_reward"]
-        if action_space.shape is not None:
+        self.use_prev_action = model_config["lstm_use_prev_action"]
+        self.use_prev_reward = model_config["lstm_use_prev_reward"]
+
+        if isinstance(action_space, Discrete):
+            self.action_dim = action_space.n
+        elif isinstance(action_space, MultiDiscrete):
+            self.action_dim = np.sum(action_space.nvec)
+        elif action_space.shape is not None:
             self.action_dim = int(np.product(action_space.shape))
         else:
             self.action_dim = int(len(action_space))
+
         # Add prev-action/reward nodes to input to LSTM.
-        if self.use_prev_action_reward:
-            self.num_outputs += 1 + self.action_dim
+        if self.use_prev_action:
+            self.num_outputs += self.action_dim
+        if self.use_prev_reward:
+            self.num_outputs += 1
 
         # Define input layers.
         input_layer = tf.keras.layers.Input(
             shape=(None, self.num_outputs), name="inputs")
 
+        # Set self.num_outputs to the number of output nodes desired by the
+        # caller of this constructor.
         self.num_outputs = num_outputs
 
         state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
@@ -161,16 +178,16 @@ class LSTMWrapper(RecurrentNetwork):
         self._rnn_model = tf.keras.Model(
             inputs=[input_layer, seq_in, state_in_h, state_in_c],
             outputs=[logits, values, state_h, state_c])
-        self.register_variables(self._rnn_model.variables)
         self._rnn_model.summary()
 
         # Add prev-a/r to this model's view, if required.
-        if model_config["lstm_use_prev_action_reward"]:
-            self.inference_view_requirements[SampleBatch.PREV_REWARDS] = \
-                ViewRequirement(SampleBatch.REWARDS, shift=-1)
-            self.inference_view_requirements[SampleBatch.PREV_ACTIONS] = \
+        if model_config["lstm_use_prev_action"]:
+            self.view_requirements[SampleBatch.PREV_ACTIONS] = \
                 ViewRequirement(SampleBatch.ACTIONS, space=self.action_space,
                                 shift=-1)
+        if model_config["lstm_use_prev_reward"]:
+            self.view_requirements[SampleBatch.PREV_REWARDS] = \
+                ViewRequirement(SampleBatch.REWARDS, shift=-1)
 
     @override(RecurrentNetwork)
     def forward(self, input_dict: Dict[str, TensorType],
@@ -181,18 +198,21 @@ class LSTMWrapper(RecurrentNetwork):
         wrapped_out, _ = self._wrapped_forward(input_dict, [], None)
 
         # Concat. prev-action/reward if required.
-        if self.model_config["lstm_use_prev_action_reward"]:
-            wrapped_out = tf.concat(
-                [
-                    wrapped_out,
-                    tf.reshape(
-                        tf.cast(input_dict[SampleBatch.PREV_ACTIONS],
-                                tf.float32), [-1, self.action_dim]),
-                    tf.reshape(
-                        tf.cast(input_dict[SampleBatch.PREV_REWARDS],
-                                tf.float32), [-1, 1]),
-                ],
-                axis=1)
+        prev_a_r = []
+        if self.model_config["lstm_use_prev_action"]:
+            prev_a = input_dict[SampleBatch.PREV_ACTIONS]
+            if isinstance(self.action_space, (Discrete, MultiDiscrete)):
+                prev_a = one_hot(prev_a, self.action_space)
+            prev_a_r.append(
+                tf.reshape(tf.cast(prev_a, tf.float32), [-1, self.action_dim]))
+        if self.model_config["lstm_use_prev_reward"]:
+            prev_a_r.append(
+                tf.reshape(
+                    tf.cast(input_dict[SampleBatch.PREV_REWARDS], tf.float32),
+                    [-1, 1]))
+
+        if prev_a_r:
+            wrapped_out = tf.concat([wrapped_out] + prev_a_r, axis=1)
 
         # Then through our LSTM.
         input_dict["obs_flat"] = wrapped_out
