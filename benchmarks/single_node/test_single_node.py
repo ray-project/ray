@@ -10,7 +10,8 @@ from tqdm import trange, tqdm
 MAX_RETURNS = 1000
 MAX_RAY_GET_ARGS = 10000
 MAX_QUEUED_TASKS = 1_000_000
-MAX_RAY_GET_SIZE = 100 * 2**30
+MAX_RAY_GET_SIZE = 100 * 2 ** 30
+
 
 def test_many_returns():
     @ray.remote(num_returns=MAX_RETURNS)
@@ -29,6 +30,7 @@ def test_many_returns():
         expected = list(range(10000))
         obj = ray.get(ref)
         assert obj == expected
+
 
 def test_ray_get_args():
     def with_dese():
@@ -68,8 +70,10 @@ def test_ray_get_args():
     with_zero_copy()
     print("Done with zero copy")
 
+
 def test_many_queued_tasks():
     sema = Semaphore.remote(0)
+
     @ray.remote(num_cpus=1)
     def block():
         ray.get(sema.acquire.remote())
@@ -96,6 +100,7 @@ def test_many_queued_tasks():
     for ref in tqdm(pending_tasks):
         assert ray.get(ref) is None
 
+
 def test_large_object():
     print("Generating object")
     obj = np.zeros(MAX_RAY_GET_SIZE, dtype=np.int8)
@@ -107,7 +112,6 @@ def test_large_object():
 
     assert big_obj[0] == 0
     assert big_obj[-1] == 0
-
 
 
 ray.init(address="auto")
