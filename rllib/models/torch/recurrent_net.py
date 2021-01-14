@@ -82,8 +82,6 @@ class RecurrentNetwork(TorchModelV2):
         )
         output, new_state = self.forward_rnn(inputs, state, seq_lens)
         output = torch.reshape(output, [-1, self.num_outputs])
-        if self.return_value_estimates:
-            return output, new_state, self.value_function()
         return output, new_state
 
     def forward_rnn(self, inputs: TensorType, state: List[TensorType],

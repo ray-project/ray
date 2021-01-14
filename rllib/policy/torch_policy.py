@@ -234,9 +234,8 @@ class TorchPolicy(Policy):
                         is_training=False)
             else:
                 dist_class = self.dist_class
-                out = self.model(input_dict, state_batches, seq_lens)
-                # 3rd return item may be value estimates.
-                dist_inputs, state_out = out[0], out[1]
+                dist_inputs, state_out = self.model(input_dict, state_batches,
+                                                    seq_lens)
 
             if not (isinstance(dist_class, functools.partial)
                     or issubclass(dist_class, TorchDistributionWrapper)):
@@ -321,9 +320,8 @@ class TorchPolicy(Policy):
             # Default action-dist inputs calculation.
             else:
                 dist_class = self.dist_class
-                # 3rd return item may be value estimates.
-                out = self.model(input_dict, state_batches, seq_lens)
-                dist_inputs = out[0]
+                dist_inputs, _ = self.model(input_dict, state_batches,
+                                            seq_lens)
 
             action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])

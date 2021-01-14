@@ -194,11 +194,10 @@ class ModelV2:
             seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, state, values?): The model output tensor of size
+            (outputs, state): The model output tensor of size
                 [BATCH, output_spec.size] or a list of tensors corresponding to
                 output_spec.shape_list, and a list of state tensors of
-                [BATCH, state_size_i], and (optionally) the values tensor
-                [BATCH].
+                [BATCH, state_size_i].
         """
 
         restored = input_dict.copy()
@@ -210,13 +209,12 @@ class ModelV2:
             restored["obs_flat"] = input_dict["obs"]
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
-        if not isinstance(res, (list, tuple)) or \
-                (self.return_value_estimates is False and len(res) != 2) or \
-                (self.return_value_estimates is True and len(res) != 3):
+        if ((not isinstance(res, list) and not isinstance(res, tuple))
+                or len(res) != 2):
             raise ValueError(
-                "`ModelV2.forward()` must return a tuple of (output, state, "
-                "values?) tensors, got {}".format(res))
-        outputs, state_outs = res[0], res[1]
+                "forward() must return a tuple of (output, state) tensors, "
+                "got {}".format(res))
+        outputs, state = res
 
         try:
             shape = outputs.shape
@@ -227,14 +225,11 @@ class ModelV2:
                 raise ValueError(
                     "Expected output shape of [None, {}], got {}".format(
                         self.num_outputs, shape))
-        if not isinstance(state_outs, list):
-            raise ValueError(
-                "State output is not a list: {}".format(state_outs))
+        if not isinstance(state, list):
+            raise ValueError("State output is not a list: {}".format(state))
 
         self._last_output = outputs
-        if self.return_value_estimates:
-            return outputs, state_outs, res[2]
-        return outputs, state_outs
+        return outputs, state
 
     @PublicAPI
     def from_batch(self, train_batch: SampleBatch,

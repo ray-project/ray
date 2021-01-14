@@ -124,11 +124,7 @@ class FullyConnectedNetwork(TorchModelV2, nn.Module):
             self._features
         if self.free_log_std:
             logits = self._append_free_log_std(logits)
-
-        if self.return_value_estimates:
-            return logits, state, self.value_function()
-        else:
-            return logits, state
+        return logits, state
 
     @override(TorchModelV2)
     def value_function(self) -> TensorType:

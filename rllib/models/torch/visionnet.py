@@ -206,12 +206,8 @@ class VisionNetwork(TorchModelV2, nn.Module):
             logits = conv_out.squeeze(3)
             logits = logits.squeeze(2)
 
-            if self.return_value_estimates:
-                return logits, state, self.value_function()
             return logits, state
         else:
-            if self.return_value_estimates:
-                return conv_out, state, self.value_function()
             return conv_out, state
 
     @override(TorchModelV2)
