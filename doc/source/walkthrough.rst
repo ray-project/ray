@@ -292,15 +292,9 @@ Cancelling tasks
 
       from ray.exceptions import TaskCancelledError
 
-<<<<<<< HEAD
       try: 
           ray.get(obj_ref)
       except TaskCancelledError: 
-=======
-      try:
-          ray.get(obj_ref)
-      except TaskCancelledError:
->>>>>>> upstream/master
           print("Object reference was cancelled.")
 
   .. group-tab:: Java
