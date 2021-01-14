@@ -1,5 +1,3 @@
-import threading
-
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
