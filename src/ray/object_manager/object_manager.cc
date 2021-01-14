@@ -94,21 +94,14 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                                          const NodeID &client_id) {
     SendPullRequest(object_id, client_id);
   };
-  const auto &request_available_memory = [this]() {
-    plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
-      main_service_->post([this, available_memory]() {
-        pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
-      });
-    });
-  };
   const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   int64_t available_memory = config.object_store_memory;
   if (available_memory < 0) {
     available_memory = 0;
   }
-  pull_manager_.reset(new PullManager(
-      self_node_id_, object_is_local, send_pull_request, restore_spilled_object_,
-      get_time, config.pull_timeout_ms, available_memory, request_available_memory));
+  pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
+                                      restore_spilled_object_, get_time,
+                                      config.pull_timeout_ms, available_memory));
 
   store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
@@ -830,6 +823,14 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
   RAY_CHECK(!e) << "The raylet's object manager has failed unexpectedly with error: " << e
                 << ". Please file a bug report on here: "
                    "https://github.com/ray-project/ray/issues";
+
+  // Request the current available memory from the object
+  // store.
+  plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
+    main_service_->post([this, available_memory]() {
+      pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+    });
+  });
 
   pull_manager_->Tick();
 

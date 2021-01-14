@@ -41,7 +41,7 @@ class PullManager {
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
       const std::function<double()> get_time, int pull_timeout_ms,
-      size_t num_bytes_available, const std::function<void()> request_available_memory);
+      size_t num_bytes_available);
 
   /// Begin a new pull request for a bundle of objects.
   ///
@@ -168,6 +168,7 @@ class PullManager {
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
 
-  const std::function<void()> request_available_memory_;
+  friend class PullManagerTest;
+  friend class PullManagerWithAdmissionControlTest;
 };
 }  // namespace ray
