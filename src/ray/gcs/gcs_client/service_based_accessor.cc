@@ -82,7 +82,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeAll(
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       JobTableData job_data;
       job_data.ParseFromString(data);
-      subscribe(JobID::FromBinary(id), job_data);
+      subscribe(JobID::FromHex(id), job_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(JOB_CHANNEL, on_subscribe, done);
   };
@@ -130,11 +130,6 @@ Status ServiceBasedJobInfoAccessor::AsyncGetAll(
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl) {}
-
-Status ServiceBasedActorInfoAccessor::GetAll(
-    std::vector<ActorTableData> *actor_table_data_list) {
-  return Status::Invalid("Not implemented");
-}
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
@@ -731,32 +726,29 @@ void ServiceBasedNodeResourceInfoAccessor::AsyncReReportResourceUsage() {
 
 void ServiceBasedNodeResourceInfoAccessor::FillResourceUsageRequest(
     rpc::ReportResourceUsageRequest &resources) {
-  if (RayConfig::instance().light_report_resource_usage_enabled()) {
-    SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
+  SchedulingResources cached_resources = SchedulingResources(*GetLastResourceUsage());
 
-    auto resources_data = resources.mutable_resources();
-    resources_data->clear_resources_total();
-    for (const auto &resource_pair :
-         cached_resources.GetTotalResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_total())[resource_pair.first] =
-          resource_pair.second;
-    }
+  auto resources_data = resources.mutable_resources();
+  resources_data->clear_resources_total();
+  for (const auto &resource_pair :
+       cached_resources.GetTotalResources().GetResourceMap()) {
+    (*resources_data->mutable_resources_total())[resource_pair.first] =
+        resource_pair.second;
+  }
 
-    resources_data->clear_resources_available();
-    resources_data->set_resources_available_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetAvailableResources().GetResourceMap()) {
-      (*resources_data->mutable_resources_available())[resource_pair.first] =
-          resource_pair.second;
-    }
+  resources_data->clear_resources_available();
+  resources_data->set_resources_available_changed(true);
+  for (const auto &resource_pair :
+       cached_resources.GetAvailableResources().GetResourceMap()) {
+    (*resources_data->mutable_resources_available())[resource_pair.first] =
+        resource_pair.second;
+  }
 
-    resources_data->clear_resource_load();
-    resources_data->set_resource_load_changed(true);
-    for (const auto &resource_pair :
-         cached_resources.GetLoadResources().GetResourceMap()) {
-      (*resources_data->mutable_resource_load())[resource_pair.first] =
-          resource_pair.second;
-    }
+  resources_data->clear_resource_load();
+  resources_data->set_resource_load_changed(true);
+  for (const auto &resource_pair : cached_resources.GetLoadResources().GetResourceMap()) {
+    (*resources_data->mutable_resource_load())[resource_pair.first] =
+        resource_pair.second;
   }
 }
 
@@ -1377,14 +1369,13 @@ ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
     : client_impl_(client_impl) {}
 
 Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<rpc::WorkerTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
       rpc::WorkerTableData worker_failure_data;
       worker_failure_data.ParseFromString(data);
-      subscribe(WorkerID::FromBinary(id), worker_failure_data);
+      subscribe(worker_failure_data);
     };
     return client_impl_->GetGcsPubSub().SubscribeAll(WORKER_CHANNEL, on_subscribe, done);
   };

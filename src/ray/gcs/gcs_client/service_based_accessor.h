@@ -70,8 +70,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   virtual ~ServiceBasedActorInfoAccessor() = default;
 
-  Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override;
-
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
@@ -428,7 +426,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
   virtual ~ServiceBasedWorkerInfoAccessor() = default;
 
   Status AsyncSubscribeToWorkerFailures(
-      const SubscribeCallback<WorkerID, rpc::WorkerTableData> &subscribe,
+      const ItemCallback<rpc::WorkerTableData> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,

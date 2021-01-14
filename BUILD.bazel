@@ -274,7 +274,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
-        "@arrow",
         "@com_github_google_glog//:glog",
         "@msgpack",
     ],
@@ -360,7 +359,6 @@ cc_library(
         ":ray_util",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
-        "@arrow",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -767,6 +765,16 @@ cc_test(
 cc_test(
     name = "actor_manager_test",
     srcs = ["src/ray/core_worker/test/actor_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "lease_policy_test",
+    srcs = ["src/ray/core_worker/test/lease_policy_test.cc"],
     copts = COPTS,
     deps = [
         ":core_worker_lib",

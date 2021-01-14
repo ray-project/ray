@@ -25,14 +25,15 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 1. Have Python functions and classes automatically placed behind HTTP endpoints.
 
-2. Alternatively, call them from within your existing Python web server using the Python-native :ref:`servehandle-api` .
+2. Alternatively, call them from :ref:`within your existing Python web server <serve-web-server-integration-tutorial>` using the Python-native :ref:`servehandle-api`.
 
 
-.. note::
+
+.. tip::
   Chat with Ray Serve users and developers on our `community Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ in the #serve channel and on our `forum <https://discuss.ray.io/>`_!
 
 .. note::
-  Starting with Ray version 1.2.0, Ray Serve backends take in a Starlette Request object instead of a Flask Request object.  
+  Starting with Ray version 1.2.0, Ray Serve backends take in a Starlette Request object instead of a Flask Request object.
   See the `migration guide <https://docs.google.com/document/d/1CG4y5WTTc4G_MRQGyjnb_eZ7GK3G9dUX6TNLKLnKRAc/edit?usp=sharing>`_ for details.
 
 Ray Serve Quickstart
@@ -67,7 +68,7 @@ The first approach is easy to get started with, but it's hard to scale each comp
 requires vendor lock-in (SageMaker), framework-specific tooling (TFServing), and a general
 lack of flexibility.
 
-Ray Serve solves these problems by giving you a simple web server (and the ability to use your own) while still handling the complex routing, scaling, and testing logic
+Ray Serve solves these problems by giving you a simple web server (and the ability to :ref:`use your own <serve-web-server-integration-tutorial>`) while still handling the complex routing, scaling, and testing logic
 necessary for production deployments.
 
 Beyond scaling up your backends with multiple replicas, Ray Serve also enables:
@@ -97,7 +98,7 @@ or head over to the :doc:`tutorials/index` to get started building your Ray Serv
 For more, see the following blog posts about Ray Serve:
 
 - `How to Scale Up Your FastAPI Application Using Ray Serve <https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786>`_ by Archit Kulkarni
-- `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo 
-- `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers 
+- `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo
+- `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers
 
 

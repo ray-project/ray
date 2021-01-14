@@ -96,10 +96,10 @@ You can follow the same pattern for other Starlette middlewares.
     from starlette.middleware.cors import CORSMiddleware
 
     client = serve.start(
-        http_middlewares=[
+        http_options={"middlewares": [
             Middleware(
                 CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
-        ])
+        ]})
 
 
 .. _serve-handle-explainer:
