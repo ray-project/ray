@@ -11,9 +11,10 @@ torch, nn = try_import_torch()
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
-    with threading.RLock():
+    with policy._model_lock:
         logits, _ = model.from_batch(train_batch)
         values = model.value_function()
+
     dist = dist_class(logits, model)
     log_probs = dist.logp(train_batch[SampleBatch.ACTIONS])
     policy.entropy = dist.entropy().sum()
@@ -55,6 +56,10 @@ def add_advantages(policy,
         policy.config["use_gae"], policy.config["use_critic"])
 
 
+def before_init(policy, obs_space, action_space, config):
+    policy._model_lock = threading.Lock()
+
+
 def model_value_predictions(policy, input_dict, state_batches, model,
                             action_dist):
     return {SampleBatch.VF_PREDS: model.value_function()}
@@ -83,7 +88,7 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin:
     def _value(self, obs):
-        with threading.RLock():
+        with self._model_lock:
             self.model({
                 SampleBatch.OBS: torch.Tensor([obs]).to(self.device)
             }, [], [1])
@@ -98,6 +103,7 @@ A3CTorchPolicy = build_policy_class(
     loss_fn=actor_critic_loss,
     stats_fn=loss_and_entropy_stats,
     postprocess_fn=add_advantages,
+    before_init=before_init,
     extra_action_out_fn=model_value_predictions,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
