@@ -9,7 +9,6 @@ import kubernetes
 import pytest
 import yaml
 
-
 IMAGE_ENV = "KUBERNETES_OPERATOR_TEST_IMAGE"
 IMAGE = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
 NAMESPACE = "test-k8s-operator-examples"
@@ -22,6 +21,7 @@ def retry_until_true(f):
                 break
             else:
                 time.sleep(1)
+
     return f_with_retries
 
 
@@ -43,10 +43,10 @@ def wait_for_logs():
         "| grep ^example-cluster: | tail -n 100"
     log_tail = subprocess.check_output(cmd, shell=True).decode()
     # Normalize log to make this less sensitive to changes in logging output.
-    stripped_log_tail = "".join([ch.lower()
-                                 for ch in log_tail if ch.isalnum()])
-    return ("headnode1" in stripped_log_tail) and ("workernodes2"
-                                                   in stripped_log_tail)
+    stripped_log_tail = "".join(
+        [ch.lower() for ch in log_tail if ch.isalnum()])
+    return ("headnode1" in stripped_log_tail) and (
+        "workernodes2" in stripped_log_tail)
 
 
 def operator_configs_directory():
@@ -83,27 +83,26 @@ class KubernetesOperatorTest(unittest.TestCase):
                 open(example_cluster_config_path).read())
             example_cluster2_config = yaml.safe_load(
                 open(example_cluster2_config_path).read())
-            operator_config = list(yaml.safe_load_all(
-                open(operator_config_path).read()))
+            operator_config = list(
+                yaml.safe_load_all(open(operator_config_path).read()))
 
             # Fill image fields
             podTypes = example_cluster_config["spec"]["podTypes"]
             podTypes2 = example_cluster2_config["spec"]["podTypes"]
 
-            pod_configs = ([operator_config[-1]]
-                           + [podType["podConfig"] for podType in podTypes]
-                           + [podType["podConfig"] for podType in podTypes2])
+            pod_configs = ([operator_config[-1]] + [
+                podType["podConfig"] for podType in podTypes
+            ] + [podType["podConfig"] for podType in podTypes2])
             for pod_config in pod_configs:
                 fill_image_field(pod_config)
 
             # Dump to temporary files
-            yaml.dump(example_cluster_config,
-                      example_cluster_file)
-            yaml.dump(example_cluster2_config,
-                      example_cluster2_file)
+            yaml.dump(example_cluster_config, example_cluster_file)
+            yaml.dump(example_cluster2_config, example_cluster2_file)
             yaml.dump_all(operator_config, operator_file)
-            files = [example_cluster_file,
-                     example_cluster2_file, operator_file]
+            files = [
+                example_cluster_file, example_cluster2_file, operator_file
+            ]
             for file in files:
                 file.flush()
 
