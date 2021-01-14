@@ -26,14 +26,15 @@ def job_table_data_to_dict(message):
     decode_keys = {"jobId", "rayletId"}
     # Job info
     job_payload = message.job_payload
-    message.ClearField("job_payload")
     job_info = {}
-    try:
-        job_info = json.loads(job_payload)
-    except Exception:
-        logger.exception(
-            "Parse job payload failed, job id: %s, job payload: %s",
-            binary_to_hex(message.job_id), job_payload)
+    if message.job_payload:
+        message.ClearField("job_payload")
+        try:
+            job_info = json.loads(job_payload)
+        except Exception:
+            logger.exception(
+                "Parse job payload failed, job id: %s, job payload: %s",
+                binary_to_hex(message.job_id), job_payload)
     try:
         data = dashboard_utils.message_to_dict(
             message, decode_keys, including_default_value_fields=True)

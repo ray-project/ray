@@ -87,8 +87,8 @@ void AgentManager::InitializeJobEnv(std::shared_ptr<rpc::JobTableData> job_data,
         resource->set_resource_capacity(kMaxResourceCapacity);
         auto resource_name = JOB_RESOURCE_PREFIX + absl::AsciiStrToUpper(job_id.Hex());
         resources.emplace(std::move(resource_name), std::move(resource));
-        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(options_.node_id,
-                                                               resources, nullptr));
+        RAY_CHECK_OK(gcs_client_->NodeResources().AsyncUpdateResources(
+            options_.node_id, resources, nullptr));
         if (start_driver) {
           auto it = starting_drivers_.find(job_id);
           if (it != starting_drivers_.end()) {

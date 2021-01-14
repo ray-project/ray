@@ -429,7 +429,6 @@ from ray.utils import hex_to_binary
 ray.init(ignore_reinit_error=True,
          address={redis_address},
          _redis_password={redis_password},
-         _load_code_from_local=True,
          job_id=ray.JobID({job_id}),
          job_config=ray.job_config.JobConfig({job_config_args}),
 )

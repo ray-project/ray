@@ -1353,9 +1353,9 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   BuildCommonTaskSpec(builder, job_id, task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      task_resource, required_resources, return_ids,
-                      placement_options, placement_group_capture_child_tasks,
-                      debugger_breakpoint, override_environment_variables);
+                      task_resource, required_resources, return_ids, placement_options,
+                      placement_group_capture_child_tasks, debugger_breakpoint,
+                      override_environment_variables);
   TaskSpecification task_spec = builder.Build();
   if (options_.is_local_mode) {
     ExecuteTaskLocalMode(task_spec);

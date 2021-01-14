@@ -94,7 +94,7 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
     RAY_CHECK_OK(status);
     auto job_id = JobID::FromBinary(job_table_data->job_id());
     jobs_.emplace(job_id, job_table_data);
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                        job_table_data->SerializeAsString(), nullptr));
     RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                   << ", driver pid = " << driver_pid;
@@ -257,7 +257,7 @@ Status GcsJobManager::SubmitJob(const ray::rpc::SubmitJobRequest &request,
   auto on_done = [this, driver_client_id, job_id, job_table_data,
                   callback](Status status) {
     RAY_CHECK(jobs_.emplace(job_id, job_table_data).second);
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Binary(),
+    RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
                                        job_table_data->SerializeAsString(), nullptr));
     driver_node_to_jobs_[driver_client_id].emplace(job_id);
     if (callback) {

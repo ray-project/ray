@@ -173,7 +173,8 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitGcsJobManager() {
   RAY_CHECK(gcs_table_storage_ && gcs_pub_sub_ && gcs_node_manager_);
-  gcs_job_manager_.reset(new GcsJobManager(gcs_table_storage_, gcs_pub_sub_, gcs_node_manager_));
+  gcs_job_manager_.reset(
+      new GcsJobManager(gcs_table_storage_, gcs_pub_sub_, gcs_node_manager_));
   // Register service.
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *gcs_job_manager_));
   rpc_server_.RegisterService(*job_info_service_);

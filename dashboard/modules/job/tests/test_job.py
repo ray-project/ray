@@ -34,7 +34,7 @@ TEST_PYTHON_JOB = {
         "k1": "v1",
         "k2": "v2"
     },
-    "jvmOptions": "-Dabc=123 -Daaa=xxx",
+    "jvmOptions": [],
     "dependencies": {
         "python": [
             "py-spy >= 0.2.0",
@@ -125,7 +125,7 @@ def _get_python_job(web_url,
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
-        "_load_code_from_local": True,
+        "job_config": ray.job_config.JobConfig(code_search_path=[""]),
     }],
     indirect=True)
 def test_submit_job_with_invalid_url(disable_aiohttp_cache, enable_test_module,
@@ -160,7 +160,7 @@ def test_submit_job_with_invalid_url(disable_aiohttp_cache, enable_test_module,
     result = resp.json()
     assert result["result"] is True, resp.text
     summary = result["data"]["summary"]
-    assert len(summary) == 1
+    assert len(summary) == 2
 
     resp = requests.get(webui_url + f"/jobs/{job_id}")
     resp.raise_for_status()
@@ -189,7 +189,7 @@ def test_submit_job_with_invalid_url(disable_aiohttp_cache, enable_test_module,
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
-        "_load_code_from_local": True,
+        "job_config": ray.job_config.JobConfig(code_search_path=[""]),
     }],
     indirect=True)
 def test_submit_job_with_incorrect_md5(
@@ -228,7 +228,7 @@ def test_submit_job_with_incorrect_md5(
     result = resp.json()
     assert result["result"] is True, resp.text
     summary = result["data"]["summary"]
-    assert len(summary) == 1
+    assert len(summary) == 2
 
     resp = requests.get(webui_url + f"/jobs/{job_id}")
     resp.raise_for_status()
@@ -257,7 +257,7 @@ def test_submit_job_with_incorrect_md5(
 
 @pytest.mark.parametrize(
     "ray_start_with_dashboard", [{
-        "_load_code_from_local": True,
+        "job_config": ray.job_config.JobConfig(code_search_path=[""]),
     }],
     indirect=True)
 def test_submit_job(disable_aiohttp_cache, enable_test_module,
@@ -299,7 +299,7 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
     result = resp.json()
     assert result["result"] is True, resp.text
     summary = result["data"]["summary"]
-    assert len(summary) == 1
+    assert len(summary) == 2
 
     resp = requests.get(webui_url + f"/jobs/{job_id}")
     resp.raise_for_status()
