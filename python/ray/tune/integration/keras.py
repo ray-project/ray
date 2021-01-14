@@ -146,6 +146,12 @@ class TuneReportCallback(TuneCallback):
                  metrics: Union[None, str, List[str], Dict[str, str]] = None,
                  on: Union[str, List[str]] = "epoch_end"):
         super(TuneReportCallback, self).__init__(on)
+        if metrics is None:
+            metrics = [
+                "{}{}".format(sub, metric)
+                for metric in self.model.metrics_names
+                for sub in ("", "val_")
+            ]
         if isinstance(metrics, str):
             metrics = [metrics]
         self._metrics = metrics
