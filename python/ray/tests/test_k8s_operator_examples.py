@@ -1,3 +1,5 @@
+"""Tests launch and teardown of multiple Ray clusters using Kubernetes
+operator."""
 import sys
 import os
 import subprocess
