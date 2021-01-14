@@ -35,6 +35,34 @@ def memory_summary():
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(), timeout=30.0)
+    return reply.memory_summary + "\n" + store_stats_summary(reply)
+
+def node_stats():
+    """Returns NodeStats object describing memory usage in the cluster."""
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    # We can ask any Raylet for the global memory info.
+    raylet = ray.nodes()[0]
+    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                    ray.nodes()[0]["NodeManagerPort"])
+    channel = grpc.insecure_channel(
+        raylet_address,
+        options=[
+            ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
+            ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
+        ],
+    )
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+    node_stats = stub.GetNodeStats(
+        node_manager_pb2.GetNodeStatsRequest(include_memory_info=True),
+        timeout=30.0)
+    return node_stats
+
+def store_stats_summary(reply):
+    """Returns formatted string describing object store stats in all nodes."""
     store_summary = "--- Aggregate object store stats across all nodes ---\n"
     store_summary += (
         "Plasma memory usage {} MiB, {} objects, {}% full\n".format(
@@ -59,8 +87,7 @@ def memory_summary():
                 reply.store_stats.restored_objects_total,
                 int(reply.store_stats.restored_bytes_total / (1024 * 1024) /
                     reply.store_stats.restore_time_total_s)))
-    return reply.memory_summary + "\n" + store_summary
-
+    return store_summary
 
 def free(object_refs, local_only=False):
     """Free a list of IDs from the in-process and plasma object stores.
