@@ -39,7 +39,7 @@ if [[ "$ip" == *" "* ]]; then
   else
     ip=${ADDR[0]}
   fi
-  echo "IPV6 address detected. We split the IPV4 address as $head_node_ip"
+  echo "IPV6 address detected. We split the IPV4 address as $ip"
 fi
 
 port=6379
