@@ -961,7 +961,7 @@ def time_string():
         output += "{}h".format(hours)
     if minutes:
         output += "{}m".format(minutes)
-    output += "{}s".format(round(delta, 1))
+    output += "{}s".format(int(delta))
     return output
 
 
