@@ -11,6 +11,12 @@ from ray.serve.common import NodeId
 
 
 class HTTPState:
+    """Manages all state for HTTP proxies in the system.
+
+    This class is *not* thread safe, so any state-modifying methods should be
+    called with a lock held.
+    """
+
     def __init__(self, controller_name: str, detached: bool,
                  config: HTTPOptions):
         self._controller_name = controller_name

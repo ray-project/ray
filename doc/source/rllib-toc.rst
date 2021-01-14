@@ -109,6 +109,8 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
+   -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
+
 *  Derivative-free
 
    -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`

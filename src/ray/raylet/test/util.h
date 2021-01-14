@@ -66,10 +66,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  Process GetProcess() const {
-    RAY_CHECK(false) << "Method unused";
-    return Process::CreateNewDummy();
-  }
+  Process GetProcess() const { return Process::CreateNewDummy(); }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
   Language GetLanguage() const {
     RAY_CHECK(false) << "Method unused";

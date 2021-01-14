@@ -80,9 +80,11 @@ def get_filter_config(shape):
         [32, [4, 4], 2],
         [256, [11, 11], 1],
     ]
-    if len(shape) == 3 and shape[:2] == [84, 84]:
+    if len(shape) in [2, 3] and (shape[:2] == [84, 84]
+                                 or shape[1:] == [84, 84]):
         return filters_84x84
-    elif len(shape) == 3 and shape[:2] == [42, 42]:
+    elif len(shape) in [2, 3] and (shape[:2] == [42, 42]
+                                   or shape[1:] == [42, 42]):
         return filters_42x42
     else:
         raise ValueError(

@@ -123,7 +123,7 @@ enter. This will result in the following output:
     Enter breakpoint index or press enter to refresh: 0
     > /Users/pcmoritz/tmp/stepping.py(14)<module>()
     -> result_ref = fact.remote(5)
-    (Pdb) 
+    (Pdb)
 
 You can jump into the call with the ``remote`` command in Ray's debugger.
 Inside the function, print the value of `n` with ``p(n)``, resulting in
@@ -148,7 +148,7 @@ the following output:
      11  	        return n * ray.get(n_id)
     (Pdb) p(n)
     5
-    (Pdb) 
+    (Pdb)
 
 Now step into the next remote call again with
 ``remote`` and print `n`. You an now either continue recursing into
@@ -192,7 +192,7 @@ call site and use ``p(result)`` to print the result:
     -> result_ref = fact.remote(5)
     (Pdb) p(result)
     120
-    (Pdb) 
+    (Pdb)
 
 
 Post Mortem Debugging
