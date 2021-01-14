@@ -492,14 +492,10 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert simulator.node_costs()
 
         # Check event logs contain add/remove node events.
-        assert any([
-            "Adding" in x
-            for x in simulator.autoscaler.event_summarizer.summary()
-        ])
-        assert any([
-            "Removing" in x
-            for x in simulator.autoscaler.event_summarizer.summary()
-        ])
+        assert any("Adding" in x
+                   for x in simulator.autoscaler.event_summarizer.summary())
+        assert any("Removing" in x
+                   for x in simulator.autoscaler.event_summarizer.summary())
 
     def testManyActors(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -529,14 +525,10 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert time < 650
 
         # Check event logs contain add/remove node events.
-        assert any([
-            "Adding" in x
-            for x in simulator.autoscaler.event_summarizer.summary()
-        ])
-        assert any([
-            "Removing" in x
-            for x in simulator.autoscaler.event_summarizer.summary()
-        ])
+        assert any("Adding" in x
+                   for x in simulator.autoscaler.event_summarizer.summary())
+        assert any("Removing" in x
+                   for x in simulator.autoscaler.event_summarizer.summary())
 
     def testManyPlacementGroups(self):
         config = copy.deepcopy(SAMPLE_CLUSTER_CONFIG)
@@ -605,14 +597,10 @@ class AutoscalingPolicyTest(unittest.TestCase):
         assert time < 630
 
         # Check event logs contain add/remove node events.
-        assert any([
-            "Adding" in x
-            for x in simulator.autoscaler.event_summarizer.summary()
-        ])
-        assert any([
-            "Removing" in x
-            for x in simulator.autoscaler.event_summarizer.summary()
-        ])
+        assert any("Adding" in x
+                   for x in simulator.autoscaler.event_summarizer.summary())
+        assert any("Removing" in x
+                   for x in simulator.autoscaler.event_summarizer.summary())
 
 
 if __name__ == "__main__":

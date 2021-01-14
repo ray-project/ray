@@ -118,7 +118,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
                 resource_usage, expected_resource_usage))
 
     # Sanity check we emitted a resize event.
-    assert any(["Resized to" in x for x in monitor.event_summarizer.summary()])
+    assert any("Resized to" in x for x in monitor.event_summarizer.summary())
 
     return resource_usage
 
