@@ -23,7 +23,6 @@ class CentralizedCriticModel(TFModelV2):
         # Base of the model
         self.model = FullyConnectedNetwork(obs_space, action_space,
                                            num_outputs, model_config, name)
-        self.register_variables(self.model.variables())
 
         # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
         obs = tf.keras.layers.Input(shape=(6, ), name="obs")
@@ -37,7 +36,6 @@ class CentralizedCriticModel(TFModelV2):
             1, activation=None, name="c_vf_out")(central_vf_dense)
         self.central_vf = tf.keras.Model(
             inputs=[obs, opp_obs, opp_act], outputs=central_vf_out)
-        self.register_variables(self.central_vf.variables)
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -79,11 +77,9 @@ class YetAnotherCentralizedCriticModel(TFModelV2):
             num_outputs,
             model_config,
             name + "_action")
-        self.register_variables(self.action_model.variables())
 
         self.value_model = FullyConnectedNetwork(obs_space, action_space, 1,
                                                  model_config, name + "_vf")
-        self.register_variables(self.value_model.variables())
 
     def forward(self, input_dict, state, seq_lens):
         self._value_out, _ = self.value_model({
