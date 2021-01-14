@@ -220,19 +220,17 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
         # Receive actors from channel.
         async for sender, msg in receiver.iter():
             try:
-                _, actor_table_data = msg
+                actor_id, actor_table_data = msg
                 pubsub_message = ray.gcs_utils.PubSubMessage.FromString(
                     actor_table_data)
                 message = ray.gcs_utils.ActorTableData.FromString(
                     pubsub_message.data)
                 actor_table_data = actor_table_data_to_dict(message)
                 _process_actor_table_data(actor_table_data)
-                actor_id = actor_table_data["actorId"]
-                job_id = actor_table_data["jobId"]
-                node_id = actor_table_data["address"]["rayletId"]
-                # If actor is not registered but udpated, we only update states
-                # related fields.
+                # If actor is not new registered but udpated, we only update
+                # states related fields.
                 if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+                    actor_id = actor_id.decode("UTF-8")[len("ACTOR:"):]
                     old_actor_table_data = DataSource.actors[actor_id]
                     old_actor_table_data["state"] = actor_table_data["state"]
                     old_actor_table_data["address"] = actor_table_data[
@@ -243,6 +241,9 @@ class StatsCollector(dashboard_utils.DashboardHeadModule):
                         "timestamp"]
                     old_actor_table_data["pid"] = actor_table_data["pid"]
                     actor_table_data = old_actor_table_data
+                actor_id = actor_table_data["actorId"]
+                job_id = actor_table_data["jobId"]
+                node_id = actor_table_data["address"]["rayletId"]
                 # Update actors.
                 DataSource.actors[actor_id] = actor_table_data
                 # Update node actors.
