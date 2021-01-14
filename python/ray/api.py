@@ -390,7 +390,7 @@ def kill(actor, *, no_restart=True):
 
 
 @client_mode_hook
-def shutdown():
+def shutdown(_exiting_interpreter=False):
     """Disconnect the worker, and terminate processes started by ray.init().
 
     This will automatically run at the end when a Python process that uses Ray
@@ -403,7 +403,7 @@ def shutdown():
     need to redefine them. If they were defined in an imported module, then you
     will need to reload the module.
     """
-    ray.worker.shutdown()
+    ray.worker.shutdown(_exiting_interpreter=_exiting_interpreter)
 
 
 def show_in_dashboard(message, key="", dtype="text"):
