@@ -14,7 +14,8 @@ from ray.test_utils import (generate_system_config_map, get_other_nodes,
                             get_error_message)
 import ray.cluster_utils
 from ray._raylet import PlacementGroupID
-from ray.util.placement_group import (PlacementGroup, placement_group, remove_placement_group,
+from ray.util.placement_group import (PlacementGroup, placement_group,
+                                      remove_placement_group,
                                       get_current_placement_group)
 
 
@@ -1292,8 +1293,9 @@ def test_schedule_placement_groups_at_the_same_time():
     ray.init(num_cpus=4)
 
     pgs = [
-        placement_group([{"CPU": 2}])
-        for _ in range(6)  # Works for `range(4)`
+        placement_group([{
+            "CPU": 2
+        }]) for _ in range(6)
     ]
 
     wait_pgs = {pg.ready(): pg for pg in pgs}
