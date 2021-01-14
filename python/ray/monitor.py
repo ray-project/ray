@@ -11,7 +11,8 @@ import json
 import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
-from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_EVENT_LOG_ENABLED
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
@@ -256,27 +257,11 @@ class Monitor:
 
         # Handle messages from the subscription channels.
         while True:
-            self.event_summarizer.add(
-                "autoscaler message {}",
-                quantity=1,
-                aggregate=lambda a, b: a + b)
             self.update_raylet_map()
             self.update_load_metrics()
             status = {
                 "load_metrics_report": self.load_metrics.summary()._asdict()
             }
-
-            # Periodically emit event summaries.
-            avail_resources = self.load_metrics.resources_avail_summary()
-            if avail_resources != self.last_avail_resources:
-                self.event_summarizer.add(
-                    "{} currently allocated",
-                    quantity=avail_resources,
-                    aggregate=lambda a, b: b)
-                self.last_avail_resources = avail_resources
-            for msg in self.event_summarizer.summary():
-                logger.info(":event_summary:{}".format(msg))
-            self.event_summarizer.clear()
 
             # Process autoscaling actions
             if self.autoscaler:
@@ -284,6 +269,21 @@ class Monitor:
                 self.autoscaler.update()
                 status[
                     "autoscaler_report"] = self.autoscaler.summary()._asdict()
+
+                # Periodically emit event summaries.
+                avail_resources = self.load_metrics.resources_avail_summary()
+                if avail_resources != self.last_avail_resources:
+                    self.event_summarizer.add(
+                        "{} currently allocated",
+                        quantity=avail_resources,
+                        aggregate=lambda a, b: b)
+                    self.last_avail_resources = avail_resources
+
+                # TODO(ekl) make the logging frequency configurable
+                if AUTOSCALER_EVENT_LOG_ENABLED:
+                    for msg in self.event_summarizer.summary():
+                        logger.info(":event_summary:{}".format(msg))
+                    self.event_summarizer.clear()
 
             as_json = json.dumps(status)
             if _internal_kv_initialized():

@@ -927,11 +927,42 @@ def print_to_stdstream(data):
     print_worker_logs(data, print_file)
 
 
+# Start time of this process, used for relative time logs.
+t0 = time.time()
+autoscaler_log_fyi_printed = False
+
+
 def filter_autoscaler_events(lines):
+    global autoscaler_log_fyi_printed
+
     # Print out autoscaler events only, ignoring other messages.
     for line in lines:
+        if not autoscaler_log_fyi_printed:
+            yield ("Tip: use `ray status` to view the current cluster "
+                   "autoscaling status. Set AUTOSCALER_EVENTS=0 "
+                   "to disable these messages.")
+            autoscaler_log_fyi_printed = True
         if ":event_summary:" in line:
             yield line.split(":event_summary:")[1]
+
+
+def time_string():
+    delta = time.time() - t0
+    hours = 0
+    minutes = 0
+    while delta > 3600:
+        hours += 1
+        delta -= 3600
+    while delta > 60:
+        minutes += 1
+        delta -= 60
+    output = ""
+    if hours:
+        output += "{}h".format(hours)
+    if minutes:
+        output += "{}m".format(minutes)
+    output += "{}s".format(round(delta, 1))
+    return output
 
 
 def print_worker_logs(data, print_file):
@@ -950,23 +981,25 @@ def print_worker_logs(data, print_file):
             return colorama.Fore.CYAN
 
     if data["pid"] == "autoscaler":
+        pid = "{} +{}".format(data["pid"], time_string())
         lines = filter_autoscaler_events(data["lines"])
     else:
+        pid = data["pid"]
         lines = data["lines"]
 
     if data["ip"] == data["localhost"]:
         for line in lines:
             print(
                 "{}{}({}{}){} {}".format(colorama.Style.DIM, color_for(data),
-                                         prefix_for(data), data["pid"],
+                                         prefix_for(data), pid,
                                          colorama.Style.RESET_ALL, line),
                 file=print_file)
     else:
         for line in lines:
             print(
                 "{}{}({}{}, ip={}){} {}".format(
-                    colorama.Style.DIM, color_for(data), prefix_for(data),
-                    data["pid"], data["ip"], colorama.Style.RESET_ALL, line),
+                    colorama.Style.DIM, color_for(data), prefix_for(data), pid,
+                    data["ip"], colorama.Style.RESET_ALL, line),
                 file=print_file)
 
 
