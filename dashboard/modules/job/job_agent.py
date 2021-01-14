@@ -41,7 +41,8 @@ COMMON_JVM_OPTIONS = [
     "-XX:+UseParNewGC",
     "-XX:CMSFullGCsBeforeCompaction=5",
     "-XX:+UseCMSCompactAtFullCollection",
-    "-XX:+DisableExplicitGC",
+    # Reference counting requires System.gc()
+    # "-XX:+DisableExplicitGC",
     "-verbose:gc",
     "-XX:+PrintGCDetails",
     "-XX:+PrintGCDateStamps",
@@ -139,11 +140,6 @@ class JobInfo:
 
     def jvm_options(self):
         options = self._job_info.get("jvmOptions", [])
-        if isinstance(options, str):
-            if len(options) > 0:
-                options = [options]
-            else:
-                options = []
         assert isinstance(options, list)
         return options
 
@@ -180,11 +176,11 @@ class JobProcessor:
             assert proc.returncode is not None
 
     async def _download_package(self, http_session, url, filename):
+        job_id = self._job_info.job_id()
+        cmd_index = self._get_next_cmd_index()
+        logger.info("[%s] Start download[%s] %s to %s", job_id, cmd_index, url,
+                    filename)
         async with http_session.get(url) as response:
-            job_id = self._job_info.job_id()
-            cmd_index = self._get_next_cmd_index()
-            logger.info("[%s] Start download[%s] %s to %s", job_id, cmd_index,
-                        url, filename)
             with open(filename, "wb") as f:
                 while True:
                     chunk = await response.content.read(
@@ -330,7 +326,7 @@ class DownloadPackage(JobProcessor):
 
 
 class PreparePythonEnviron(JobProcessor):
-    async def _create_virtualenv(self, path):
+    async def _create_virtualenv(self, path, cache):
         shutil.rmtree(path, ignore_errors=True)
         python = self._get_current_python()
         if self._is_in_virtualenv():
@@ -345,8 +341,9 @@ class PreparePythonEnviron(JobProcessor):
             clonevirtualenv = clonevirtualenv.__file__
             create_venv_cmd = f"{python} {clonevirtualenv} {python_dir} {path}"
         else:
-            create_venv_cmd = f"{python} -m virtualenv " \
-                              f"--system-site-packages --no-download {path}"
+            create_venv_cmd = f"{python} -m virtualenv --app-data {cache} " \
+                              f"--reset-app-data --system-site-packages " \
+                              f"--no-download {path}"
         await self._check_call_cmd(create_venv_cmd)
 
     async def _install_python_requirements(self, path, requirements_file):
@@ -410,7 +407,10 @@ class PreparePythonEnviron(JobProcessor):
         requirements_file = self._job_info.python_requirements_file()
         virtualenv_path = job_consts.PYTHON_VIRTUAL_ENV_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
-        await self._create_virtualenv(virtualenv_path)
+        # Create the virtualenv cache dir per job to avoid cache data broken.
+        virtualenv_cache = job_consts.PYTHON_VIRTUAL_ENV_CACHE_DIR.format(
+            temp_dir=temp_dir, job_id=job_id)
+        await self._create_virtualenv(virtualenv_path, virtualenv_cache)
         if requirements_file:
             ray_version, ray_path = await self._ray_mark_internal(
                 virtualenv_path)
@@ -459,7 +459,7 @@ ray.shutdown()
             "num_java_workers_per_process": self._job_info.
             num_java_workers_per_process(),
             "jvm_options": COMMON_JVM_OPTIONS + self._job_info.jvm_options(),
-            "code_search_path": package_dir,
+            "code_search_path": [package_dir],
         }
 
         # User may set the config in ray.conf, in this case,
@@ -518,14 +518,12 @@ class PrepareJavaEnviron(JobProcessor):
         unzip_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
             temp_dir=temp_dir, job_id=job_id)
         os.makedirs(unzip_dir, exist_ok=True)
+        java_shared_library_dir = job_consts.JAVA_SHARED_LIBRARY_DIR.format(
+            temp_dir=temp_dir)
+        os.makedirs(java_shared_library_dir, exist_ok=True)
         dependencies = self._job_info.java_dependency_list()
         for d in dependencies:
             url_path = urlparse(d.url).path
-            temp_dir = self._job_info.temp_dir()
-            java_shared_library_dir = \
-                job_consts.JAVA_SHARED_LIBRARY_DIR.format(
-                    temp_dir=temp_dir)
-            os.makedirs(java_shared_library_dir, exist_ok=True)
             basename_from_url = os.path.basename(url_path)
             basename_with_md5 = basename_from_url + "." + d.md5.lower()
             # The full path of file in java shared library dir.
@@ -557,14 +555,12 @@ class PrepareJavaEnviron(JobProcessor):
 
 
 class StartJavaDriver(JobProcessor):
-    def __init__(self, job_info, redis_address, redis_password,
-                 node_manager_port, object_store_name, raylet_name, log_dir):
+    def __init__(self, job_info, redis_address, redis_password, node_ip,
+                 log_dir):
         super().__init__(job_info)
         self._redis_address = redis_address
         self._redis_password = redis_password
-        self._node_manager_port = node_manager_port
-        self._object_store_name = object_store_name
-        self._raylet_name = raylet_name
+        self._node_ip = node_ip
         self._log_dir = log_dir
 
     def _build_java_worker_command(self):
@@ -584,23 +580,12 @@ class StartJavaDriver(JobProcessor):
         else:
             pairs.append(("ray.redis.password", ""))
 
-        if self._object_store_name is not None:
-            pairs.append(("ray.object-store.socket-name",
-                          self._object_store_name))
+        if self._node_ip is not None:
+            pairs.append(("ray.node-ip", self._node_ip))
 
-        if self._raylet_name is not None:
-            pairs.append(("ray.raylet.socket-name", self._raylet_name))
-
-        temp_dir = self._job_info.temp_dir()
-        job_id = self._job_info.job_id()
-        job_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
-            temp_dir=temp_dir, job_id=job_id)
-
-        pairs.append(("ray.raylet.node-manager-port", self._node_manager_port))
         pairs.append(("ray.home", RAY_HOME))
         pairs.append(("ray.job.id", self._job_info.job_id()))
         pairs.append(("ray.run-mode", "CLUSTER"))
-        pairs.append(("ray.enable-job-manager", "true"))
         pairs.append(("ray.logging.dir", self._log_dir))
 
         # Per job config
@@ -612,17 +597,20 @@ class StartJavaDriver(JobProcessor):
         for i, jvm_option in enumerate(COMMON_JVM_OPTIONS +
                                        self._job_info.jvm_options()):
             pairs.append(("ray.job.jvm-options." + str(i), jvm_option))
-        pairs.append(("ray.job.code-search-path", os.path.join(job_dir, "*")))
 
+        temp_dir = self._job_info.temp_dir()
+        job_id = self._job_info.job_id()
+        job_dir = job_consts.DOWNLOAD_PACKAGE_UNZIP_DIR.format(
+            temp_dir=temp_dir, job_id=job_id)
+        code_search_path = os.path.join(job_dir, "*")
+        pairs.append(("ray.job.code-search-path", code_search_path))
         command = ["java"] + COMMON_JVM_OPTIONS + [
             "-D{}={}".format(*pair) for pair in pairs
         ]
 
         # Add ray jars path to java classpath
-        ray_jars = ":".join([
-            os.path.join(get_ray_jars_dir(), "*"),
-            os.path.join(job_dir, "*")
-        ])
+        ray_jars = ":".join(
+            [os.path.join(get_ray_jars_dir(), "*"), code_search_path])
         options = self._job_info.jvm_options()
         cp_index = -1
         for i in range(len(options)):
@@ -755,9 +743,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule,
                     driver = await StartJavaDriver(
                         job_info, self._dashboard_agent.redis_address,
                         self._dashboard_agent.redis_password,
-                        self._dashboard_agent.node_manager_port,
-                        self._dashboard_agent.object_store_name,
-                        self._dashboard_agent.raylet_name,
+                        self._dashboard_agent.ip,
                         self._dashboard_agent.log_dir).run()
                 else:
                     raise Exception(f"Unsupported language type: {language}")

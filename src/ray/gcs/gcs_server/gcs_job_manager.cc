@@ -319,8 +319,6 @@ NodeID GcsJobManager::SelectDriver(const rpc::JobTableData &job_data) const {
     return NodeID::Nil();
   }
 
-  // TODO(Shanly): Check if the resources is enough.
-
   static std::mt19937_64 gen_(
       std::chrono::high_resolution_clock::now().time_since_epoch().count());
   std::uniform_int_distribution<int> distribution(0, alive_nodes.size() - 1);

@@ -185,7 +185,8 @@ Process WorkerPool::StartWorkerProcess(
   if (job_config) {
     // Note that we push the item to the front of the vector to make
     // sure this is the freshest option than others.
-    if (!job_config->jvm_options().empty()) {
+    if (language == Language::JAVA && !job_config->jvm_options().empty()) {
+      // The jvm options are only for Java worker.
       dynamic_options.insert(dynamic_options.begin(), job_config->jvm_options().begin(),
                              job_config->jvm_options().end());
     }

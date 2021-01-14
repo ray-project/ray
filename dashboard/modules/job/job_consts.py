@@ -21,6 +21,7 @@ DOWNLOAD_PACKAGE_UNZIP_DIR = os.path.join(JOB_DIR, "package")
 PYTHON_PIP_CACHE = "{temp_dir}/pipcache"
 PYTHON_PACKAGE_INDEX = ""
 PYTHON_VIRTUAL_ENV_DIR = os.path.join(JOB_DIR, "pyenv")
+PYTHON_VIRTUAL_ENV_CACHE_DIR = os.path.join(JOB_DIR, "virtualenv_cache")
 PYTHON_REQUIREMENTS_FILE = os.path.join(JOB_DIR, "requirements.txt")
 # Java package constants
 JAVA_SHARED_LIBRARY_DIR = "{temp_dir}/shared_java_lib"

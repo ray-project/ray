@@ -326,7 +326,7 @@ def test_submit_job(disable_aiohttp_cache, enable_test_module,
             logger.info(ex)
             return False
 
-    wait_for_condition(_check_running, timeout=10)
+    wait_for_condition(_check_running, timeout=20)
 
 
 def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
