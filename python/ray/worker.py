@@ -16,6 +16,7 @@ import time
 import traceback
 
 # Ray modules
+from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -934,6 +935,9 @@ autoscaler_log_fyi_printed = False
 
 def filter_autoscaler_events(lines):
     global autoscaler_log_fyi_printed
+
+    if not AUTOSCALER_EVENTS:
+        return
 
     # Print out autoscaler events only, ignoring other messages.
     for line in lines:
