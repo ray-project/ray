@@ -18,17 +18,19 @@ class PullManagerTest : public ::testing::Test {
         num_send_pull_request_calls_(0),
         num_restore_spilled_object_calls_(0),
         fake_time_(0),
-        pull_manager_(self_node_id_,
-                      [this](const ObjectID &object_id) { return object_is_local_; },
-                      [this](const ObjectID &object_id, const NodeID &node_id) {
-                        num_send_pull_request_calls_++;
-                      },
-                      [this](const ObjectID &, const std::string &,
-                             std::function<void(const ray::Status &)> callback) {
-                        num_restore_spilled_object_calls_++;
-                        restore_object_callback_ = callback;
-                      },
-                      [this]() { return fake_time_; }, 10000) {}
+        pull_manager_(
+            self_node_id_, [this](const ObjectID &object_id) { return object_is_local_; },
+            [this](const ObjectID &object_id, const NodeID &node_id) {
+              num_send_pull_request_calls_++;
+            },
+            [this](const ObjectID &, const std::string &,
+                   std::function<void(const ray::Status &)> callback) {
+              num_restore_spilled_object_calls_++;
+              restore_object_callback_ = callback;
+            },
+            [this]() { return fake_time_; }, 10000, 1, [this]() {}) {}
+
+  // TODO: Check no memory leaks.
 
   NodeID self_node_id_;
   bool object_is_local_;
@@ -60,7 +62,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
 
   std::unordered_set<NodeID> client_ids;
-  pull_manager_.OnLocationChange(oid, client_ids, "");
+  pull_manager_.OnLocationChange(oid, client_ids, "", 0);
 
   // There are no client ids to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -74,7 +76,7 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 0);
 
   client_ids.insert(NodeID::FromRandom());
-  pull_manager_.OnLocationChange(oid, client_ids, "");
+  pull_manager_.OnLocationChange(oid, client_ids, "", 0);
 
   // Now we're getting a notification about an object that was already cancelled.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -91,9 +93,10 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(1);
 
   std::unordered_set<NodeID> client_ids;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
 
   // client_ids is empty here, so there's nowhere to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -101,7 +104,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
 
   client_ids.insert(NodeID::FromRandom());
   fake_time_ += 10.;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
 
   // The behavior is supposed to be to always restore the spilled object if possible (even
   // if it exists elsewhere in the cluster).
@@ -111,7 +114,7 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   // Don't restore an object if it's local.
   object_is_local_ = true;
   num_restore_spilled_object_calls_ = 0;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
@@ -128,9 +131,10 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(1);
 
   std::unordered_set<NodeID> client_ids;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
 
   // client_ids is empty here, so there's nowhere to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -143,14 +147,14 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   client_ids.insert(NodeID::FromRandom());
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
 
   // We always assume the restore succeeded so there's only 1 restore call still.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 1);
 
   fake_time_ += 10.0;
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
 
   ASSERT_EQ(num_send_pull_request_calls_, 0);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
@@ -161,7 +165,7 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 2);
 
-  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar");
+  pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
 
   // Now that we've successfully sent a pull request, we need to wait for the retry period
   // before sending another one.
@@ -178,12 +182,13 @@ TEST_F(PullManagerTest, TestManyUpdates) {
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
 
   for (int i = 0; i < 100; i++) {
-    pull_manager_.OnLocationChange(obj1, client_ids, "");
+    pull_manager_.OnLocationChange(obj1, client_ids, "", 0);
   }
 
   // Since no time has passed, only send a single pull request.
@@ -204,13 +209,14 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
   ASSERT_EQ(pull_manager_.NumActiveRequests(), 1);
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
 
   // We need to call OnLocationChange at least once, to population the list of nodes with
   // the object.
-  pull_manager_.OnLocationChange(obj1, client_ids, "");
+  pull_manager_.OnLocationChange(obj1, client_ids, "", 0);
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
@@ -220,7 +226,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
 
   // Location changes can trigger reset timer.
   for (; fake_time_ <= 120 * 10; fake_time_ += 1.) {
-    pull_manager_.OnLocationChange(obj1, client_ids, "");
+    pull_manager_.OnLocationChange(obj1, client_ids, "", 0);
   }
 
   // We should make a pull request every tick (even if it's a duplicate to a node we're
@@ -249,11 +255,12 @@ TEST_F(PullManagerTest, TestBasic) {
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
   ASSERT_EQ(pull_manager_.NumActiveRequests(), oids.size());
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "");
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
     ASSERT_EQ(num_send_pull_request_calls_, i + 1);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
@@ -262,7 +269,7 @@ TEST_F(PullManagerTest, TestBasic) {
   object_is_local_ = true;
   num_send_pull_request_calls_ = 0;
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "");
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 
@@ -274,7 +281,7 @@ TEST_F(PullManagerTest, TestBasic) {
   object_is_local_ = false;
   num_send_pull_request_calls_ = 0;
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "");
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 }
@@ -291,11 +298,12 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   objects_to_locate.clear();
   auto req_id2 = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_TRUE(objects_to_locate.empty());
+  pull_manager_.UpdatePullsBasedOnAvailableMemory(1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "");
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
     ASSERT_EQ(num_send_pull_request_calls_, i + 1);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
@@ -308,7 +316,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   fake_time_ += 10;
   num_send_pull_request_calls_ = 0;
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "");
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
     ASSERT_EQ(num_send_pull_request_calls_, i + 1);
     ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
@@ -322,7 +330,7 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   object_is_local_ = false;
   num_send_pull_request_calls_ = 0;
   for (size_t i = 0; i < oids.size(); i++) {
-    pull_manager_.OnLocationChange(oids[i], client_ids, "");
+    pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 }

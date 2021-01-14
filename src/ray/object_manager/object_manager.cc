@@ -73,18 +73,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
 
-  const auto &object_is_local = [this](const ObjectID &object_id) {
-    return local_objects_.count(object_id) != 0;
-  };
-  const auto &send_pull_request = [this](const ObjectID &object_id,
-                                         const NodeID &client_id) {
-    SendPullRequest(object_id, client_id);
-  };
-  const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
-  pull_manager_.reset(new PullManager(self_node_id_, object_is_local, send_pull_request,
-                                      restore_spilled_object_, get_time,
-                                      config.pull_timeout_ms));
-
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
       static_cast<int64_t>(config_.max_bytes_in_flight / config_.object_chunk_size))));
@@ -98,6 +86,29 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
     store_notification_ = std::make_shared<ObjectStoreNotificationManagerIPC>(
         main_service, config_.store_socket_name);
   }
+
+  const auto &object_is_local = [this](const ObjectID &object_id) {
+    return local_objects_.count(object_id) != 0;
+  };
+  const auto &send_pull_request = [this](const ObjectID &object_id,
+                                         const NodeID &client_id) {
+    SendPullRequest(object_id, client_id);
+  };
+  const auto &request_available_memory = [this]() {
+    plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
+      main_service_->post([this, available_memory]() {
+        pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+      });
+    });
+  };
+  const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
+  int64_t available_memory = config.object_store_memory;
+  if (available_memory < 0) {
+    available_memory = 0;
+  }
+  pull_manager_.reset(new PullManager(
+      self_node_id_, object_is_local, send_pull_request, restore_spilled_object_,
+      get_time, config.pull_timeout_ms, available_memory, request_available_memory));
 
   store_notification_->SubscribeObjAdded(
       [this](const object_manager::protocol::ObjectInfoT &object_info) {
@@ -204,7 +215,8 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
   const auto &callback = [this](const ObjectID &object_id,
                                 const std::unordered_set<NodeID> &client_ids,
                                 const std::string &spilled_url) {
-    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url);
+    // TODO
+    pull_manager_->OnLocationChange(object_id, client_ids, spilled_url, 0);
   };
 
   for (const auto &ref : objects_to_locate) {

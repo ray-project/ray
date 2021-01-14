@@ -1,6 +1,7 @@
 #include "ray/object_manager/pull_manager.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/object_manager/plasma/plasma_allocator.h"
 
 namespace ray {
 
@@ -8,17 +9,22 @@ PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time, int pull_timeout_ms)
+    const std::function<double()> get_time, int pull_timeout_ms,
+    size_t num_bytes_available, const std::function<void()> request_available_memory)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       restore_spilled_object_(restore_spilled_object),
       get_time_(get_time),
       pull_timeout_ms_(pull_timeout_ms),
-      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
+      num_bytes_available_(num_bytes_available),
+      gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+      request_available_memory_(request_available_memory) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
+  // TODO: On eviction, update pulls. Set callback on PlasmaStore.
+
   auto bundle_it = pull_request_bundles_.emplace(next_req_id_++, object_ref_bundle).first;
   RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first;
 
@@ -39,20 +45,113 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
     it->second.bundle_request_ids.insert(bundle_it->first);
   }
 
+  request_available_memory_();
+
   return bundle_it->first;
 }
 
+void PullManager::ActivateNextPullBundleRequest(
+    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it) {
+  for (const auto &ref : next_request_it->second) {
+    auto obj_id = ObjectRefToId(ref);
+    if (active_object_pull_requests_.count(obj_id) == 0) {
+      // This is the first bundle request in the queue to require this object.
+      // Add the size to the number of bytes being pulled.
+      // NOTE(swang): The size could be 0 if we haven't received size
+      // information yet. If we receive the size later on, we will update the
+      // total bytes being pulled then.
+      auto it = object_pull_requests_.find(obj_id);
+      RAY_CHECK(it != object_pull_requests_.end());
+      num_bytes_being_pulled_ += it->second.object_size;
+
+      // Begin pulling this object. Reset its timer and retries in case we
+      // tried this object before.
+      ResetRetryTimer(obj_id);
+      // Try to pull the object immediately, since we may already have
+      // locations for the object.
+      TryToMakeObjectLocal(obj_id);
+    }
+    active_object_pull_requests_[obj_id].insert(next_request_it->first);
+  }
+
+  // Update the pointer to the last pull request that we are actively pulling.
+  RAY_CHECK(next_request_it->first > highest_req_id_being_pulled_);
+  highest_req_id_being_pulled_ = next_request_it->first;
+}
+
+void PullManager::DeactivatePullBundleRequest(
+    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it) {
+  for (const auto &ref : request_it->second) {
+    auto obj_id = ObjectRefToId(ref);
+    RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
+    if (active_object_pull_requests_[obj_id].empty()) {
+      auto it = object_pull_requests_.find(obj_id);
+      RAY_CHECK(it != object_pull_requests_.end());
+      num_bytes_being_pulled_ -= it->second.object_size;
+      active_object_pull_requests_.erase(obj_id);
+    }
+  }
+
+  // If this was the last active request, update the pointer to its
+  // predecessor, if one exists.
+  if (highest_req_id_being_pulled_ == request_it->first) {
+    if (request_it == pull_request_bundles_.begin()) {
+      highest_req_id_being_pulled_ = 0;
+    } else {
+      highest_req_id_being_pulled_ = std::prev(request_it)->first;
+    }
+  }
+}
+
+void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
+  num_bytes_available_ = num_bytes_available;
+
+  // While there is available capacity, activate the next pull request.
+  while (num_bytes_being_pulled_ < num_bytes_available_) {
+    // Get the next pull request in the queue.
+    const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
+    auto next_request_it = last_request_it;
+    if (next_request_it == pull_request_bundles_.end()) {
+      // No requests are active. Get the first request in the queue.
+      next_request_it = pull_request_bundles_.begin();
+    } else {
+      next_request_it++;
+    }
+
+    if (next_request_it == pull_request_bundles_.end()) {
+      // No requests in the queue.
+      break;
+    }
+
+    // There is another pull bundle request that we could try, and there is
+    // enough space. Activate the next pull bundle request in the queue.
+    ActivateNextPullBundleRequest(next_request_it);
+  }
+
+  // While the total bytes requested is over the available capacity, deactivate
+  // the last pull request, ordered by request ID.
+  while (num_bytes_being_pulled_ >= num_bytes_available_) {
+    const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
+    RAY_CHECK(last_request_it != pull_request_bundles_.end());
+    DeactivatePullBundleRequest(last_request_it);
+  }
+}
+
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
-  std::vector<ObjectID> objects_to_cancel;
   RAY_LOG(DEBUG) << "Cancel pull request " << request_id;
   auto bundle_it = pull_request_bundles_.find(request_id);
   RAY_CHECK(bundle_it != pull_request_bundles_.end());
 
+  if (bundle_it->first <= highest_req_id_being_pulled_) {
+    DeactivatePullBundleRequest(bundle_it);
+  }
+
+  std::vector<ObjectID> objects_to_cancel;
   for (const auto &ref : bundle_it->second) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
     RAY_CHECK(it != object_pull_requests_.end());
-    RAY_CHECK(it->second.bundle_request_ids.erase(request_id));
+    RAY_CHECK(it->second.bundle_request_ids.erase(bundle_it->first));
     if (it->second.bundle_request_ids.empty()) {
       object_pull_requests_.erase(it);
       objects_to_cancel.push_back(obj_id);
@@ -65,7 +164,7 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
-                                   const std::string &spilled_url) {
+                                   const std::string &spilled_url, size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -77,6 +176,21 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   // before.
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
+
+  if (it->second.object_size != object_size) {
+    bool update_pull_bundles = false;
+    if (active_object_pull_requests_.count(object_id)) {
+      num_bytes_being_pulled_ -= it->second.object_size;
+      num_bytes_being_pulled_ += object_size;
+      update_pull_bundles = true;
+    }
+
+    it->second.object_size = object_size;
+
+    if (update_pull_bundles) {
+      UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
+    }
+  }
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
 
@@ -87,10 +201,11 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (object_is_local_(object_id)) {
     return;
   }
-  auto it = object_pull_requests_.find(object_id);
-  if (it == object_pull_requests_.end()) {
+  if (active_object_pull_requests_.count(object_id) == 0) {
     return;
   }
+  auto it = object_pull_requests_.find(object_id);
+  RAY_CHECK(it != object_pull_requests_.end());
   auto &request = it->second;
   if (request.next_pull_time > get_time_()) {
     return;
@@ -174,6 +289,13 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   return true;
 }
 
+void PullManager::ResetRetryTimer(const ObjectID &object_id) {
+  auto it = object_pull_requests_.find(object_id);
+  RAY_CHECK(it != object_pull_requests_.end());
+  it->second.next_pull_time = get_time_();
+  it->second.num_retries = 0;
+}
+
 void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
   const auto time = get_time_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
@@ -184,7 +306,7 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {
 }
 
 void PullManager::Tick() {
-  for (auto &pair : object_pull_requests_) {
+  for (auto &pair : active_object_pull_requests_) {
     const auto &object_id = pair.first;
     TryToMakeObjectLocal(object_id);
   }

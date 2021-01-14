@@ -40,7 +40,8 @@ class PullManager {
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time, int pull_timeout_ms);
+      const std::function<double()> get_time, int pull_timeout_ms,
+      size_t num_bytes_available, const std::function<void()> request_available_memory);
 
   /// Begin a new pull request for a bundle of objects.
   ///
@@ -51,6 +52,8 @@ class PullManager {
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 std::vector<rpc::ObjectReference> *objects_to_locate);
 
+  void UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available);
+
   /// Called when the available locations for a given object change.
   ///
   /// \param object_id The ID of the object which is now available in a new location.
@@ -60,7 +63,7 @@ class PullManager {
   /// non-empty, the object may no longer be on any node.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
-                        const std::string &spilled_url);
+                        const std::string &spilled_url, size_t object_size);
 
   /// Cancel an existing pull request.
   ///
@@ -84,11 +87,16 @@ class PullManager {
           spilled_url(),
           next_pull_time(first_retry_time),
           num_retries(0),
+          object_size(0),
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     double next_pull_time;
     uint8_t num_retries;
+    size_t object_size;
+    // All bundle requests that haven't been canceled yet that require this
+    // object. This includes bundle requests whose objects are not actively
+    // being pulled.
     absl::flat_hash_set<uint64_t> bundle_request_ids;
   };
 
@@ -106,11 +114,19 @@ class PullManager {
   /// \return True if a pull request was sent, otherwise false.
   bool PullFromRandomLocation(const ObjectID &object_id);
 
+  void ResetRetryTimer(const ObjectID &object_id);
+
   /// Update the request retry time for the given request.
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
   ///
   /// \param request The request to update the retry time of.
   void UpdateRetryTimer(ObjectPullRequest &request);
+
+  void ActivateNextPullBundleRequest(
+      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it);
+
+  void DeactivatePullBundleRequest(
+      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it);
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
@@ -124,13 +140,34 @@ class PullManager {
   /// cancel. Start at 1 because 0 means null.
   uint64_t next_req_id_ = 1;
 
-  std::unordered_map<uint64_t, std::vector<rpc::ObjectReference>> pull_request_bundles_;
+  /// The currently active pull requests. Each request is a bundle of objects
+  /// that must be made local.
+  std::map<uint64_t, std::vector<rpc::ObjectReference>> pull_request_bundles_;
+
+  /// The total number of bytes that we are currently pulling. This is the
+  /// total size of the objects requested that we are actively pulling. To
+  /// avoid starvation, this should be less than the available capacity in the
+  /// local object store.
+  size_t num_bytes_being_pulled_ = 0;
+
+  size_t num_bytes_available_;
+
+  /// A pointer to the highest request ID whose objects we are currently
+  /// pulling. We always pull a contiguous prefix of the active pull requests.
+  /// This means that all requests with a lower ID are either already canceled
+  /// or their objects are also being pulled.
+  uint64_t highest_req_id_being_pulled_ = 0;
 
   /// The objects that this object manager is currently trying to fetch from
   /// remote object managers.
   std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
+      active_object_pull_requests_;
+
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
+
+  const std::function<void()> request_available_memory_;
 };
 }  // namespace ray

@@ -296,6 +296,43 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+@pytest.mark.timeout(30)
+def test_pull_bundles_admission_control(shutdown_only):
+    # TODO: Test where a single task's args are larger than
+    # memory.
+
+    cluster = Cluster()
+    object_size = int(1e7)
+    num_objects = 10
+    num_tasks = 10
+    # Head node can fit all of the objects at once.
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=2 * num_tasks * num_objects * object_size)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Worker node can only fit 1 task at a time.
+    cluster.add_node(
+        num_cpus=1, object_store_memory=1.5 * num_objects * object_size)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def foo(*args):
+        return
+
+    args = []
+    for _ in range(num_tasks):
+        task_args = [
+            ray.put(np.zeros(object_size, dtype=np.uint8))
+            for _ in range(num_objects)
+        ]
+        args.append(task_args)
+
+    tasks = [foo.remote(*task_args) for task_args in args]
+    ray.get(tasks)
+
+
 if __name__ == "__main__":
     import pytest
     import sys
