@@ -260,6 +260,12 @@ message ConnectionInfoRequest {
 message ConnectionInfoResponse {
   // The number of data clients connected to the server, including the caller.
   int32 num_clients = 1;
+  // The Ray version (e.g., "1.2.0").
+  string ray_version = 2;
+  // The Ray commit (git sha1 hash).
+  string ray_commit = 3;
+  // The Python version (e.g., "3.7.2").
+  string python_version = 4;
 }
 
 message DataRequest {

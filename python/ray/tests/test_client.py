@@ -29,6 +29,11 @@ def test_num_clients(shutdown_only):
         api3 = RayAPIStub()
         info3 = api3.connect("localhost:50051")
         assert info3["num_clients"] == 1, info3
+
+        # Check info contains ray and python version.
+        assert isinstance(info3["ray_version"], str), info3
+        assert isinstance(info3["ray_commit"], str), info3
+        assert isinstance(info3["python_version"], str), info3
     finally:
         server.stop(0)
 
