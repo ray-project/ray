@@ -236,7 +236,7 @@ Then calling ``g`` and ``h`` produces the following behavior.
     >>> ray.get(g.remote())
     [ObjectRef(b1457ba0911ae84989aae86f89409e953dd9a80e),
      ObjectRef(7c14a1d13a56d8dc01e800761a66f09201104275),
-     ObjectRef(99763728ffc1a2c0766a2000ebabded52514e9a6),
+     ObjectRef(99763728ffc2.0.0766a2000ebabded52514e9a6),
      ObjectRef(9c2f372e1933b04b2936bb6f58161285829b9914)]
 
     >>> ray.get(h.remote())
