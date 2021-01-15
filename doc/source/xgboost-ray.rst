@@ -154,7 +154,7 @@ results.
 
 - Machine type: AWS m5.xlarge (4 vCPUs, 16 GiB RAM)
 - Usable RAM: ~15,350,000 KiB
-- Dataset: 2.0.0,000 rows with 1024 features, dtype float32.
+- Dataset: 1,250,000 rows with 1024 features, dtype float32.
   Total size: 5,000,000 KiB
 - XGBoost DMatrix size: ~10,000,000 KiB
 
