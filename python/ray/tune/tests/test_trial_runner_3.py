@@ -1005,7 +1005,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         self.assertLess(max_diff, 10)
 
     @patch("ray.tune.trial_runner.TUNE_MAX_PENDING_TRIALS_PG", 6)
-    @patch("ray.tune.ray_trial_executor.TUNE_MAX_PENDING_TRIALS_PG", 6)
+    @patch("ray.tune.utils.placement_groups.TUNE_MAX_PENDING_TRIALS_PG", 6)
     def testPlacementGroupLimitedRequests(self):
         """Assert that maximum number of placement groups is enforced."""
         self.testPlacementGroupRequests(scheduled=6)

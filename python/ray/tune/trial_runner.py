@@ -13,8 +13,7 @@ from ray.services import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList
 from ray.tune.stopper import NoopStopper
-from ray.tune.ray_trial_executor import RayTrialExecutor, \
-    TUNE_MAX_PENDING_TRIALS_PG
+from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
                              RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
@@ -23,6 +22,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.utils import warn_if_slow, flatten_dict, env_integer
 from ray.tune.utils.log import Verbosity, has_verbosity
+from ray.tune.utils.placement_groups import TUNE_MAX_PENDING_TRIALS_PG
 from ray.tune.utils.serialization import TuneFunctionDecoder, \
     TuneFunctionEncoder
 from ray.tune.web_server import TuneServer
@@ -359,19 +359,19 @@ class TrialRunner:
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
 
+        # This will contain the next trial to start
+        next_trial = self._get_next_trial()  # blocking
+
         # Create pending trials
         num_pending_trials = len(
             [t for t in self._trials if t.status == Trial.PENDING])
-        while self._update_trial_queue(
-                blocking=False
-        ) and num_pending_trials < self._max_pending_trials:
+        while num_pending_trials < self._max_pending_trials:
+            if not self._update_trial_queue(blocking=False):
+                break
             num_pending_trials += 1
 
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._trials)
-
-        # This will contain the next trial to start
-        next_trial = self._get_next_trial()  # blocking
 
         may_handle_events = True
         if next_trial is not None:
