@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
 
+
 def backoff(timeout: int) -> int:
     timeout = timeout + 5
     if timeout > MAX_TIMEOUT_SEC:
@@ -104,8 +105,7 @@ class Worker:
                         raise ConnectionError("ray client connection timeout")
                     logger.info(
                         "Ray server unavailable, retrying in f{timeout}s...")
-                    logger.debug(
-                        f"Received when checking init: {e.details()}")
+                    logger.debug(f"Received when checking init: {e.details()}")
                     time.sleep(timeout)
                     timeout = backoff(timeout)
                 else:
@@ -116,13 +116,12 @@ class Worker:
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         while not ray_ready and conn_attempts < (connection_retries + 1):
-            logger.info(
-                "Waiting for Ray to become ready on the server, retry in f{timeout}s...")
+            logger.info("Waiting for Ray to become ready on the server, "
+                        f", retry in {timeout}s...")
             time.sleep(timeout)
             timeout = backoff(timeout)
             conn_attempts += 1
             ray_ready = self.is_initialized()
-
 
         # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self.channel, self._client_id,
