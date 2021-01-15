@@ -1083,7 +1083,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by
       // maximum_startup_concurrency).
-      DispatchTasks(local_queues_.GetReadyTasksByClass());
+      cluster_task_manager_->ScheduleAndDispatchTasks();
     }
   } else {
     // Register the new driver.
@@ -1982,7 +1982,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   Task task;
-  RAY_CHECK(cluster_task_manager_->TaskFinished(worker_ptr, &task));
+  cluster_task_manager_->TaskFinished(worker_ptr, &task);
 
   const auto &spec = task.GetTaskSpecification();  //
   if ((spec.IsActorCreationTask())) {

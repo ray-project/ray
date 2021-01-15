@@ -291,12 +291,13 @@ void ClusterTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
   ScheduleAndDispatchTasks();
 }
 
-bool ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
+void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       Task *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  ReleaseWorkerResources(worker);
-  return true;
+  if (worker->GetAllocatedInstances() != nullptr) {
+    ReleaseWorkerResources(worker);
+  }
 }
 
 void ClusterTaskManager::ReturnWorkerResources(std::shared_ptr<WorkerInterface> worker) {
@@ -774,13 +775,12 @@ void ClusterTaskManager::RemoveFromBacklogTracker(const Task &task) {
 }
 
 void ClusterTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) {
-  if (worker->GetAllocatedInstances() != nullptr) {
-    cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
-    worker->ClearAllocatedInstances();
-    cluster_resource_scheduler_->ReleaseWorkerResources(
-        worker->GetLifetimeAllocatedInstances());
-    worker->ClearLifetimeAllocatedInstances();
-  }
+  RAY_CHECK(worker != nullptr);
+  cluster_resource_scheduler_->ReleaseWorkerResources(worker->GetAllocatedInstances());
+  worker->ClearAllocatedInstances();
+  cluster_resource_scheduler_->ReleaseWorkerResources(
+      worker->GetLifetimeAllocatedInstances());
+  worker->ClearLifetimeAllocatedInstances();
 }
 
 bool ClusterTaskManager::ReleaseCpuResourcesFromUnblockedWorker(

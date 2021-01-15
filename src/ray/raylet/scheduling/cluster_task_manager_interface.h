@@ -74,8 +74,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param worker: The worker which was running the task.
   /// \param task: Output parameter.
-  /// \return true If the finished task is returned successfully, else false.
-  virtual bool TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) = 0;
+  virtual void TaskFinished(std::shared_ptr<WorkerInterface> worker, Task *task) = 0;
 
   /// Return worker resources.
   /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
