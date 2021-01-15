@@ -16,6 +16,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
@@ -111,7 +112,14 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+
+        # Lock used for locking some methods on the object-level.
+        # This prevents possible race conditions when calling the model
+        # first, then its value function (e.g. in a loss function), in
+        # between of which another model call is made (e.g. to compute an
+        # action).
         self._lock = threading.Lock()
+
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
         # Auto-update model's inference view requirements, if recurrent.
@@ -199,6 +207,7 @@ class TorchPolicy(Policy):
             return self._compute_action_helper(input_dict, state_batches,
                                                seq_lens, explore, timestep)
 
+    @with_lock
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
         """Shared forward pass logic (w/ and w/o trajectory view API).
@@ -208,8 +217,6 @@ class TorchPolicy(Policy):
                 - actions, state_out, extra_fetches, logp.
         """
         self._is_recurrent = state_batches is not None and state_batches != []
-
-        self._lock.acquire()
 
         # Switch to eval mode.
         if self.model:
@@ -264,8 +271,6 @@ class TorchPolicy(Policy):
         extra_fetches = self.extra_action_out(input_dict, state_batches,
                                               self.model, action_dist)
 
-        self._lock.release()
-
         # Action-dist inputs.
         if dist_inputs is not None:
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = dist_inputs
@@ -281,6 +286,7 @@ class TorchPolicy(Policy):
 
         return convert_to_non_torch_type((actions, state_out, extra_fetches))
 
+    @with_lock
     @override(Policy)
     @DeveloperAPI
     def compute_log_likelihoods(
@@ -313,8 +319,6 @@ class TorchPolicy(Policy):
                 for s in (state_batches or [])
             ]
 
-            self._lock.acquire()
-
             # Exploration hook before each forward pass.
             self.exploration.before_compute_actions(explore=False)
 
@@ -335,16 +339,13 @@ class TorchPolicy(Policy):
             action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
 
-            self._lock.release()
-
             return log_likelihoods
 
+    @with_lock
     @override(Policy)
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
-
-        self._lock.acquire()
 
         # Set Model to train mode.
         if self.model:
@@ -364,10 +365,9 @@ class TorchPolicy(Policy):
         if self.model:
             fetches["model"] = self.model.metrics()
 
-        self._lock.release()
-
         return fetches
 
+    @with_lock
     @override(Policy)
     @DeveloperAPI
     def compute_gradients(self,
@@ -385,8 +385,6 @@ class TorchPolicy(Policy):
         # information.
         postprocessed_batch["is_training"] = True
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
-
-        self._lock.acquire()
 
         # Calculate the actual policy loss.
         loss_out = force_list(
@@ -446,8 +444,6 @@ class TorchPolicy(Policy):
                             p.grad /= self.distributed_world_size
 
                 grad_info["allreduce_latency"] += time.time() - start
-
-        self._lock.release()
 
         grad_info["allreduce_latency"] /= len(self._optimizers)
         grad_info.update(self.extra_grad_info(train_batch))
