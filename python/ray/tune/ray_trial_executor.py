@@ -7,10 +7,10 @@ import random
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Set
 
 import ray
-from ray.actor import ActorHandle
+from ray.actor import ActorClass, ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ObjectRef, ray_constants
 from ray.resource_spec import ResourceSpec
@@ -39,6 +39,10 @@ TUNE_RESULT_BUFFER_MIN_TIME_S = float(
 TUNE_RESULT_BUFFER_MAX_TIME_S = float(
     os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.))
 TUNE_MAX_PENDING_TRIALS_PG = int(os.getenv("TUNE_MAX_PENDING_TRIALS_PG", 1000))
+# Seconds we wait for a trial to come up before we make blocking calls
+# to process events
+TUNE_TRIAL_STARTUP_GRACE_PERIOD = float(
+    os.getenv("TUNE_TRIAL_STARTUP_GRACE_PERIOD", 10.))
 
 
 class _ActorClassCache:
@@ -141,6 +145,207 @@ class _TrialCleanup:
                 del self._cleanup_map[done]
 
 
+class _PlacementGroupManager:
+    def __init__(self):
+        self._staging: Dict[Trial, PlacementGroup] = {}
+        self._ready: Dict[Trial, PlacementGroup] = {}
+        self._staging_futures: Dict[ObjectRef, Trial] = {}
+        self._in_use: Set[PlacementGroup] = set()
+
+        self._latest_staging_start_time = time.time()
+
+    @property
+    def available_trials(self):
+        """Get trials with a ready placement group that have not been started.
+
+        Yields: Trial objects.
+
+        """
+        for ready, pg in self._ready.items():
+            if pg in self._in_use:
+                continue
+            yield ready
+
+    def stage_trial(self, trial: Trial):
+        """Stage a trial placement group.
+
+        Create the trial placement group if maximum number of pending
+        placement groups is not exhausted.
+
+        Args:
+            trial (Trial): Trial to stage.
+
+        Returns: False if trial has not been staged, True otherwise.
+
+        Creates its placement group and moves it to `self._staging`.
+        """
+        if trial in self._staging:
+            raise RuntimeError(f"Trial {trial} already staged.")
+
+        if not self.can_stage():
+            return False
+
+        pg = trial.placement_group_factory()
+
+        self._staging[trial] = pg
+        self._staging_futures[pg.ready()] = trial
+
+        self._latest_staging_start_time = time.time()
+
+        return True
+
+    def can_stage(self):
+        """Return True if we can stage another placement group."""
+        return len(self._staging) < TUNE_MAX_PENDING_TRIALS_PG
+
+    def update_status(self):
+        """Update placement group status.
+
+        Moves ready placement groups from `self._staging` to
+        `self._ready`.
+        """
+        ready = True
+        while ready:
+            # Use a loop as `ready` might return futures one by one
+            ready, _ = ray.wait(list(self._staging_futures.keys()), timeout=0)
+
+            for ready_fut in ready:
+                ready_trial = self._staging_futures.pop(ready_fut)
+                ready_pg = self._staging.pop(ready_trial)
+                self._ready[ready_trial] = ready_pg
+
+    def get_full_actor_cls(self, trial: Trial,
+                           actor_cls: ActorClass) -> Optional[ActorClass]:
+        """Get a fully configured actor class.
+
+        Returns the actor handle if the placement group is ready.
+
+        Args:
+            trial (Trial): trial object to start
+            actor_cls: Ray actor class.
+
+        Returns: Configured ActorClass or None
+
+        """
+        if trial not in self._ready:
+            return None
+
+        pg = self._ready[trial]
+        self._in_use.add(pg)
+
+        return actor_cls.options(
+            placement_group=pg, placement_group_bundle_index=0)
+
+    def get_trial_pg(self, trial: Trial) -> Optional[PlacementGroup]:
+        """Get placement group associated with trial.
+
+        Args:
+            trial (Trial): Trial object.
+
+        Returns: Placement group or None.
+
+        """
+        return self._ready.get(trial) or self._staging.get(trial)
+
+    def switch_trial_pgs(self, first: Trial, second: Trial):
+        """Switch placement groups associated with first and second trial.
+
+        Args:
+            first (Trial): Trial object.
+            second (Trial): Trial object.
+
+        """
+        # First, switch staging futures
+        # Note that zero, one, or both trials might be currently staging.
+        first_fut = second_fut = None
+        for future, trial in self._staging_futures.items():
+            if trial is first:
+                first_fut = future
+            if trial is second:
+                second_fut = future
+
+        if first_fut:
+            self._staging_futures[first_fut] = second
+
+        if second_fut:
+            self._staging_futures[second_fut] = first
+
+        # Then switch the references to the placement groups
+        if first in self._ready:
+            if second in self._ready:
+                first_pg = self._ready.pop(first)
+                second_pg = self._ready.pop(second)
+                self._ready[first] = second_pg
+                self._ready[second] = first_pg
+                return
+            elif second in self._staging:
+                first_pg = self._ready.pop(first)
+                second_pg = self._staging.pop(second)
+                self._staging[first] = second_pg
+                self._ready[second] = first_pg
+                return
+        elif first in self._staging:
+            if second in self._ready:
+                first_pg = self._staging.pop(first)
+                second_pg = self._ready.pop(second)
+                self._ready[first] = second_pg
+                self._staging[second] = first_pg
+                return
+            elif second in self._staging:
+                first_pg = self._staging.pop(first)
+                second_pg = self._staging.pop(second)
+                self._staging[first] = second_pg
+                self._staging[second] = first_pg
+                return
+        raise RuntimeError(
+            f"Could not switch placement groups of trial {first} and {second}")
+
+    def is_staging(self, trial: Trial) -> bool:
+        """Return True if trial placement group is staging.
+
+        Args:
+            trial (Trial): Trial object.
+
+        Returns: Boolean.
+
+        """
+        return trial in self._staging
+
+    def is_ready(self, trial: Trial) -> bool:
+        """Return True if trial placement group is ready.
+
+        Args:
+            trial (Trial): Trial object.
+
+        Returns: Boolean.
+
+        """
+        return trial in self._ready
+
+    def clean_trial_placement_group(self, trial: Trial):
+        """Remove reference to placement groups associated with a trial.
+
+        Args:
+            trial (Trial): Trial object.
+
+        Returns: None
+
+        """
+        pg = self._ready.pop(trial, None)
+        if pg and pg in self._in_use:
+            self._staging_futures.pop(pg, None)
+            self._in_use.remove(pg)
+
+        pg = self._staging.pop(trial, None)
+        if pg and pg in self._in_use:
+            self._staging_futures.pop(pg, None)
+            self._in_use.remove(pg)
+
+    def in_staging_grace_period(self):
+        return time.time(
+        ) <= self._latest_staging_start_time + TUNE_TRIAL_STARTUP_GRACE_PERIOD
+
+
 def noop_logger_creator(config, logdir):
     # Set the working dir in the remote process, for user file writes
     os.makedirs(logdir, exist_ok=True)
@@ -180,8 +385,8 @@ class RayTrialExecutor(TrialExecutor):
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
-        self._committed_placement_groups: Dict[Trial, Tuple[PlacementGroup,
-                                                            ObjectRef]] = {}
+        self._pg_manager = _PlacementGroupManager()
+
         self._resources_initialized = False
 
         if refresh_period is None:
@@ -201,6 +406,67 @@ class RayTrialExecutor(TrialExecutor):
 
         if ray.is_initialized():
             self._update_avail_resources()
+
+    def in_staging_grace_period(self) -> bool:
+        """Returns True if trials have recently been staged."""
+        return self._pg_manager.in_staging_grace_period()
+
+    def stage_and_update_status(self, trials: List[Trial]):
+        """Check and update statuses of scheduled placement groups.
+
+        Stages placement groups of all trials.
+        """
+        for trial in trials:
+            if trial.status != Trial.PENDING:
+                continue
+            if not trial.uses_placement_groups:
+                continue
+            if self._pg_manager.is_ready(trial):
+                continue
+            if self._pg_manager.is_staging(trial):
+                continue
+
+            if not self._pg_manager.stage_trial(trial):
+                # Break if we reached the limit of pending placement groups.
+                break
+
+        self._pg_manager.update_status()
+
+    def get_staged_trial(self, replace: Optional[Trial] = None):
+        """Get a trial whose placement group was successfully staged.
+
+        If ``replace`` is set, this will try to find a staged trial with
+        an identical placement group factory. If one is found, it will
+        switch placement groups of these trials, so that the trial in
+        ``replace`` is staged. This can be used to ensure trials are
+        executed in the desired order. If no such trial is found, the
+        first available trial (with a different placement group) is returned.
+
+        If ``replace`` is empty, the first available trial will be returned.
+
+        Can also return None if no trial is available.
+
+        Args:
+            replace (Optional[Trial]): Optional trial that should replace
+                the available trial.
+
+        Returns: Trial object or None.
+
+        """
+        first_available_trial = None
+
+        for available_trial in self._pg_manager.available_trials:
+            if not first_available_trial:
+                first_available_trial = available_trial
+
+            if not replace:
+                break
+            if available_trial.placement_group_factory == \
+               replace.placement_group_factory:
+                self._pg_manager.switch_trial_pgs(available_trial, replace)
+                return replace
+
+        return first_available_trial
 
     def _setup_remote_runner(self, trial, reuse_allowed):
         trial.init_logdir()
@@ -226,39 +492,23 @@ class RayTrialExecutor(TrialExecutor):
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
             with self._change_working_directory(trial):
+                pg = self._pg_manager.get_trial_pg(trial)
+
                 self._trial_cleanup.add(
-                    trial,
-                    actor=self._cached_actor,
-                    placement_group=self._committed_placement_groups.get(
-                        trial, [None])[0])
-                if trial in self._committed_placement_groups:
-                    del self._committed_placement_groups[trial]
+                    trial, actor=self._cached_actor, placement_group=pg)
+                self._pg_manager.clean_trial_placement_group(trial)
             self._cached_actor = None
 
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
-        if isinstance(trial.resources, PlacementGroupFactory):
-            if trial not in self._committed_placement_groups:
-                # This creates the placement group and will try to
-                # allocate resources
-                placement_group = trial.resources()
-                ready_fut = placement_group.ready()
-                self._committed_placement_groups[
-                    trial] = placement_group, ready_fut
-            else:
-                placement_group, ready_fut = self._committed_placement_groups[
-                    trial]
-            ready, _ = ray.wait([ready_fut], timeout=0)
-            if not ready:
+        if trial.uses_placement_groups:
+            if not self._pg_manager.is_ready(trial):
+                if not self._pg_manager.is_staging(trial):
+                    self._pg_manager.stage_trial(trial)
+
+            full_actor_class = self._pg_manager.get_full_actor_cls(
+                trial, _actor_cls)
+            if not full_actor_class:
                 return None
-            if not ray.get(ready):
-                # Schedule new future
-                self._committed_placement_groups[
-                    trial] = placement_group, placement_group.ready()
-                return None
-            # The trainable actor always lives on the first bundle
-            full_actor_class = _actor_cls.options(
-                placement_group=placement_group,
-                placement_group_bundle_index=0)
         else:
             full_actor_class = _actor_cls.options(
                 num_cpus=trial.resources.cpu,
@@ -343,6 +593,8 @@ class RayTrialExecutor(TrialExecutor):
                 cached actor. If None, a new runner is created.
             train (bool): Whether or not to start training.
 
+        Returns: True if trial was started successfully, False otherwise.
+
         See `RayTrialExecutor.restore` for possible errors raised.
         """
         prior_status = trial.status
@@ -393,14 +645,12 @@ class RayTrialExecutor(TrialExecutor):
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
+                    pg = self._pg_manager.get_trial_pg(trial)
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(
-                            trial,
-                            actor=trial.runner,
-                            placement_group=self._committed_placement_groups.
-                            get(trial, [None])[0])
-                    if trial in self._committed_placement_groups:
-                        del self._committed_placement_groups[trial]
+                            trial, actor=trial.runner, placement_group=pg)
+
+                    self._pg_manager.clean_trial_placement_group(trial)
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)
@@ -417,8 +667,11 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
             train (bool): Whether or not to start training.
+
+        Returns: True if trial was started successfully, False otherwise.
         """
-        self._commit_resources(trial.resources)
+        if not trial.uses_placement_groups:
+            self._commit_resources(trial.resources)
         try:
             return self._start_trial(trial, checkpoint, train=train)
         except AbortTrialExecution:
@@ -448,7 +701,8 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
-            self._return_resources(trial.resources)
+            if not trial.uses_placement_groups:
+                self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
                 self._running.pop(result_id)
@@ -584,9 +838,6 @@ class RayTrialExecutor(TrialExecutor):
         return result
 
     def _commit_resources(self, resources):
-        if isinstance(resources, PlacementGroupFactory):
-            return
-
         committed = self._committed_resources
         all_keys = set(resources.custom_resources).union(
             set(committed.custom_resources))
@@ -679,9 +930,8 @@ class RayTrialExecutor(TrialExecutor):
         has exceeded self._refresh_period. This also assumes that the
         cluster is not resizing very frequently.
         """
-        if isinstance(resources, PlacementGroupFactory):
-            return len(self._committed_placement_groups) <= \
-                   TUNE_MAX_PENDING_TRIALS_PG
+        if resources.has_placement_group:
+            return self._pg_manager.can_stage()
 
         self._update_avail_resources()
         currently_available = Resources.subtract(self._avail_resources,

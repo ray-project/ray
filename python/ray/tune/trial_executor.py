@@ -1,7 +1,6 @@
 # coding: utf-8
 import logging
 
-from ray.tune.resources import PlacementGroupFactory
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
@@ -87,6 +86,8 @@ class TrialExecutor:
             checkpoint (Checkpoint): A Python object or path storing the state
             of trial.
             train (bool): Whether or not to start training.
+
+        Returns: True if trial started successfully, False otherwise.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")
@@ -166,7 +167,7 @@ class TrialExecutor:
         if self._queue_trials:
             return
         for trial in trial_runner.get_trials():
-            if isinstance(trial.resources, PlacementGroupFactory):
+            if trial.uses_placement_groups:
                 return
             if trial.status == Trial.PENDING:
                 if not self.has_resources(trial.resources):
@@ -278,3 +279,7 @@ class TrialExecutor:
     def cleanup(self, trial):
         """Ensures that trials are cleaned up after stopping."""
         pass
+
+    def in_staging_grace_period(self) -> bool:
+        """Returns True if trials have recently been staged."""
+        return False

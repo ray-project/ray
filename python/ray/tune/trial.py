@@ -224,6 +224,11 @@ class Trial:
         self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.placement_group_factory = placement_group_factory
+        if self.placement_group_factory:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
+
         self.stopping_criterion = stopping_criterion or {}
 
         self.log_to_file = log_to_file

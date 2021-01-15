@@ -982,8 +982,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 if iteration == 1:
                     this.assertEqual(len(trials), scheduled)
                     this.assertEqual(
-                        len(trial_executor._committed_placement_groups),
-                        scheduled)
+                        len(trial_executor._pg_manager._staging) + len(
+                            trial_executor._pg_manager._ready), scheduled)
 
         start = time.time()
         out = tune.run(

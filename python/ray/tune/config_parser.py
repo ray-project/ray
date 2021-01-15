@@ -150,6 +150,9 @@ def to_argv(config):
     return argv
 
 
+_cached_pgf = {}
+
+
 def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     """Creates a Trial object from parsing the spec.
 
@@ -166,16 +169,30 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     Returns:
         A trial object with corresponding parameters to the specification.
     """
+    global _cached_pgf
+
+    spec = spec.copy()
+    resources = spec.pop("resources_per_trial", None)
+
     try:
         args, _ = parser.parse_known_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
-    if "resources_per_trial" in spec:
-        resources = json_to_resources(spec["resources_per_trial"])
+
+    if resources:
         if isinstance(resources, PlacementGroupFactory):
             trial_kwargs["placement_group_factory"] = resources
+        elif callable(resources):
+            if resources in _cached_pgf:
+                trial_kwargs["placement_group_factory"] = _cached_pgf[
+                    resources]
+            else:
+                pgf = PlacementGroupFactory(resources)
+                _cached_pgf[resources] = pgf
+                trial_kwargs["placement_group_factory"] = pgf
         else:
-            trial_kwargs["resources"] = resources
+            trial_kwargs["resources"] = json_to_resources(resources)
+
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
