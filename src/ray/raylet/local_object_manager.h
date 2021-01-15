@@ -193,6 +193,9 @@ class LocalObjectManager {
   // written to the object directory.
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> objects_pending_spill_;
 
+  /// Objects that were spilled on this node but that are being restored.
+  /// The field is used to dedup the same restore request while restoration is in
+  /// progress.
   absl::flat_hash_set<ObjectID> objects_pending_restore_;
 
   /// The time that we last sent a FreeObjects request to other nodes for
