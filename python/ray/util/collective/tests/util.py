@@ -79,8 +79,8 @@ class Worker:
         avail = col.nccl_available()
         return avail
 
-    def report_mpi_availability(self):
-        avail = col.mpi_available()
+    def report_gloo_availability(self):
+        avail = col.gloo_available()
         return avail
 
     def report_is_group_initialized(self, group_name="default"):

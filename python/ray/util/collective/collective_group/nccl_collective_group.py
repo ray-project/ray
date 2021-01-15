@@ -397,8 +397,8 @@ class NCCLGroup(BaseGroup):
 
         # Now create the communicators
         actual_world_size = len(device_list) * self.world_size
-        comms = [] * len(device_list)
-        streams = [] * len(device_list)
+        comms = [None] * len(device_list)
+        streams = [None] * len(device_list)
         nccl_util.groupStart()
         for i, device in enumerate(device_list):
             actual_rank = self.rank * len(device_list) + i
@@ -415,7 +415,7 @@ class NCCLGroup(BaseGroup):
         return comms
 
     @staticmethod
-    def _sync_streams(self):
+    def _sync_streams():
         """Let Nccl streams wait for current streams for every device."""
         # FIXME: This behavior is different from nccl document. It seems like
         # cupy allocate tensors on null streams.

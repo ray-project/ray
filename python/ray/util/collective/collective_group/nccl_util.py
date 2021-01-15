@@ -213,7 +213,7 @@ def get_tensor_device(tensor):
     elif torch_available():
         if isinstance(tensor, torch.Tensor):
             device = tensor.device.index
-            if not device:
+            if not isinstance(device, int):
                 raise RuntimeError("The tensor is not on a valid GPU.")
     else:
         raise ValueError("Unsupported tensor type. "

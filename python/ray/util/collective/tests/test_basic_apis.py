@@ -65,7 +65,7 @@ def test_availability(ray_start_single_node_2_gpus):
         actors[0].report_nccl_availability.remote())
     assert actor0_nccl_availability
     actor0_mpi_availability = ray.get(
-        actors[0].report_mpi_availability.remote())
+        actors[0].report_gloo_availability.remote())
     assert not actor0_mpi_availability
 
 
