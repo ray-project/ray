@@ -6,6 +6,8 @@ from itertools import groupby
 from typing import Union, List, Any, Callable, Type
 import time
 
+import starlette.responses
+
 import ray
 from ray.actor import ActorHandle
 from ray.async_compat import sync_to_async
@@ -251,6 +253,36 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
+    async def ensure_serializable_response(self, response: Any) -> Any:
+        if isinstance(response, starlette.responses.StreamingResponse):
+            # response contains a generator/iterator which is not serializable.
+            # Exhaust the generator/iterator and store the results in a buffer.
+            body_buffer = []
+
+            async def mock_send(message):
+                assert message["type"] in {
+                    "http.response.start", "http.response.body"
+                }
+                if (message["type"] == "http.response.body"):
+                    body_buffer.append(message["body"])
+
+            async def mock_receive():
+                # This is called in a tight loop in response() just to check
+                # for an http disconnect.  So rather than return immediately
+                # we should suspend execution to avoid wasting CPU cycles.
+                never_set_event = asyncio.Event()
+                await never_set_event.wait()
+
+            await response(scope=None, receive=mock_receive, send=mock_send)
+            content = b"".join(body_buffer)
+            return starlette.responses.Response(
+                content,
+                status_code=response.status_code,
+                headers=response.headers,
+                media_type=response.media_type)
+        else:
+            return response
+
     async def invoke_single(self, request_item: Query) -> Any:
         logger.debug("Replica {} started executing request {}".format(
             self.replica_tag, request_item.metadata.request_id))
@@ -260,6 +292,7 @@ class RayServeReplica:
         start = time.time()
         try:
             result = await method_to_call(arg)
+            result = await self.ensure_serializable_response(result)
             self.request_counter.record(1)
         except Exception as e:
             import os
@@ -317,6 +350,9 @@ class RayServeReplica:
                                  "results with length equal to the batch size"
                                  ".".format(batch_size, len(result_list)))
                 raise RayServeException(error_message)
+            for i, result in enumerate(result_list):
+                result_list[i] = (await
+                                  self.ensure_serializable_response(result))
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self.error_counter.record(1)

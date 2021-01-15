@@ -1090,6 +1090,13 @@ py_test(
 )
 
 py_test(
+    name = "test_models",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_models.py"]
+)
+
+py_test(
     name = "test_preprocessors",
     tags = ["models"],
     size = "small",
@@ -1541,7 +1548,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "large",  # DQN learns much slower with BatchNorm.
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
@@ -1559,7 +1566,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )
@@ -1809,6 +1816,23 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_model_api_tf",
+    main = "examples/custom_model_api.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_model_api.py"],
+)
+
+py_test(
+    name = "examples/custom_model_api_torch",
+    main = "examples/custom_model_api.py",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_model_api.py"],
+    args = ["--framework=torch"],
+)
+
+py_test(
     name = "examples/custom_observation_filters",
     main = "examples/custom_observation_filters.py",
     tags = ["examples", "examples_C"],
@@ -2045,6 +2069,24 @@ py_test(
     size = "medium",
     srcs = ["examples/rock_paper_scissors_multiagent.py"],
     args = ["--as-test", "--torch"],
+)
+
+py_test(
+    name = "examples/trajectory_view_api_tf",
+    main = "examples/trajectory_view_api.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=tf", "--stop-reward=80.0"]
+)
+
+py_test(
+    name = "examples/trajectory_view_api_torch",
+    main = "examples/trajectory_view_api.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=80.0"]
 )
 
 py_test(

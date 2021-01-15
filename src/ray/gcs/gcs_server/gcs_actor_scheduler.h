@@ -22,6 +22,7 @@
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_server/gcs_actor_schedule_strategy.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet_client/raylet_client.h"
@@ -90,6 +91,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param schedule_success_handler Invoked when actors are created on the worker
   /// successfully.
   /// \param raylet_client_pool Raylet client pool to construct connections to raylets.
+  /// \param actor_schedule_strategy Actor schedule strategy.
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsActorScheduler(
@@ -98,6 +100,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+      std::shared_ptr<GcsActorScheduleStrategyInterface> actor_schedule_strategy,
       rpc::ClientFactoryFn client_factory = nullptr);
   virtual ~GcsActorScheduler() = default;
 
@@ -286,6 +289,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// The actor schedule strategy.
+  std::shared_ptr<GcsActorScheduleStrategyInterface> actor_schedule_strategy_;
   /// The cached core worker clients which are used to communicate with leased worker.
   rpc::CoreWorkerClientPool core_worker_clients_;
 };

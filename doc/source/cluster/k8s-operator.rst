@@ -9,10 +9,10 @@ the :ref:`Ray Cluster Launcher<ref-autoscaling>`. However, working with the oper
 running Ray locally -- all interactions with your Ray cluster are mediated by Kubernetes.
 
 The operator makes use of a `Kubernetes Custom Resource`_ called a *RayCluster*.
-A RayCluster is specified by a configuration similar to the ``yaml`` files used by the Ray Cluster Launcher. 
+A RayCluster is specified by a configuration similar to the ``yaml`` files used by the Ray Cluster Launcher.
 Internally, the operator uses Ray's autoscaler to manage your Ray cluster. However, the autoscaler runs in a
-separate operator pod, rather than on the Ray head node. Applying multiple RayCluster custom resources in the operator's 
-namespace allows the operator to manage several Ray clusters. 
+separate operator pod, rather than on the Ray head node. Applying multiple RayCluster custom resources in the operator's
+namespace allows the operator to manage several Ray clusters.
 
 The rest of this document explains step-by-step how to use the Ray Kubernetes Operator to launch a Ray cluster on your existing Kubernetes cluster.
 
@@ -24,9 +24,9 @@ The rest of this document explains step-by-step how to use the Ray Kubernetes Op
    :bash:`kubectl version`.
 
 .. note::
-   The example commands in this document launch six Kubernetes pods, using a total of 6 CPU and 3.5Gi memory.   
+   The example commands in this document launch six Kubernetes pods, using a total of 6 CPU and 3.5Gi memory.
    If you are experimenting using a test Kubernetes environment such as `minikube`_, make sure to provision sufficient resources, e.g.
-   :bash:`minikube start --cpus=6 --memory=\"4G\"`. 
+   :bash:`minikube start --cpus=6 --memory=\"4G\"`.
    Alternatively, reduce resource usage by editing the ``yaml`` files referenced in this document; for example, reduce ``minWorkers``
    in ``example_cluster.yaml`` and ``example_cluster2.yaml``.
 
@@ -47,9 +47,9 @@ First, we need to apply the `Kubernetes Custom Resource Definition`_ (CRD) defin
 
 Picking a Kubernetes Namespace
 -------------------------------
-The rest of the Kubernetes resources we will use are `namespaced`_. 
-You can use an existing namespace for your Ray clusters or create a new one if you have permissions. 
-For this example, we will create a namespace called ``ray``. 
+The rest of the Kubernetes resources we will use are `namespaced`_.
+You can use an existing namespace for your Ray clusters or create a new one if you have permissions.
+For this example, we will create a namespace called ``ray``.
 
 .. code-block:: shell
 
@@ -57,7 +57,7 @@ For this example, we will create a namespace called ``ray``.
 
  namespace/ray created
 
-Starting the Operator 
+Starting the Operator
 ----------------------
 
 To launch the operator in our namespace, we execute the following command.
@@ -70,9 +70,9 @@ To launch the operator in our namespace, we execute the following command.
  role.rbac.authorization.k8s.io/ray-operator-role created
  rolebinding.rbac.authorization.k8s.io/ray-operator-rolebinding created
  pod/ray-operator-pod created
- 
+
 The output shows that we've launched a Pod named ``ray-operator-pod``. This is the pod that runs the operator process.
-The ServiceAccount, Role, and RoleBinding we have created grant the operator pod the `permissions`_ it needs to manage Ray clusters. 
+The ServiceAccount, Role, and RoleBinding we have created grant the operator pod the `permissions`_ it needs to manage Ray clusters.
 
 Launching Ray Clusters
 ----------------------
@@ -89,7 +89,7 @@ Our RayCluster configuration specifies ``minWorkers:2`` in the second entry of `
 
 .. note::
 
-  For more details about RayCluster resources, we recommend take a looking at the annotated example ``example_cluster.yaml``  applied in the last command. 
+  For more details about RayCluster resources, we recommend take a looking at the annotated example ``example_cluster.yaml``  applied in the last command.
 
 .. code-block:: shell
 
@@ -100,7 +100,7 @@ Our RayCluster configuration specifies ``minWorkers:2`` in the second entry of `
  example-cluster-ray-worker-78kp5   1/1     Running   0          64s
  ray-operator-pod                   1/1     Running   0          2m33s
 
-We see four pods: the operator, the Ray head node, and two Ray worker nodes. 
+We see four pods: the operator, the Ray head node, and two Ray worker nodes.
 
 Let's launch another cluster in the same namespace, this one specifiying ``minWorkers:1``.
 
@@ -132,7 +132,7 @@ Monitoring
 ----------
 Autoscaling logs are written to the operator pod's ``stdout`` and can be accessed with :code:`kubectl logs`.
 Each line of output is prefixed by the name of the cluster followed by a colon.
-The following command gets the last hundred lines of autoscaling logs for our second cluster.  
+The following command gets the last hundred lines of autoscaling logs for our second cluster.
 
 .. code-block:: shell
 
@@ -172,7 +172,7 @@ and apply it again:
 To force a restart with the same configuration, you can add an `annotation`_ to the RayCluster resource's ``metadata.labels`` field, e.g.
 
 .. code-block:: yaml
-    
+
     apiVersion: cluster.ray.io/v1
     kind: RayCluster
     metadata:
@@ -220,7 +220,7 @@ To finish clean-up, we delete the cluster ``example-cluster`` and then the opera
  $ kubectl -n ray delete raycluster example-cluster
  $ kubectl -n ray delete -f ray/python/ray/autoscaler/kubernetes/operator_configs/operator.yaml
 
-If you like, you can delete the RayCluster customer resource definition. 
+If you like, you can delete the RayCluster customer resource definition.
 (Using the operator again will then require reapplying the CRD.)
 
 .. code-block:: shell
