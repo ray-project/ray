@@ -180,6 +180,7 @@ class Trial:
                  evaluated_params=None,
                  experiment_tag="",
                  resources=None,
+                 placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
                  checkpoint_freq=0,
@@ -222,6 +223,7 @@ class Trial:
                 resources = default_resources
         self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
+        self.placement_group_factory = placement_group_factory
         self.stopping_criterion = stopping_criterion or {}
 
         self.log_to_file = log_to_file
@@ -331,6 +333,10 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
+    @property
+    def uses_placement_groups(self):
+        return bool(self.placement_group_factory)
+
     def reset(self):
         return Trial(
             self.trainable_name,
@@ -340,6 +346,7 @@ class Trial:
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
             resources=self.resources,
+            placement_group_factory=self.placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
             checkpoint_freq=self.checkpoint_freq,
@@ -376,9 +383,9 @@ class Trial:
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
         if isinstance(resources, PlacementGroupFactory):
-            self.resources = resources
+            self.placement_group_factory = resources
         elif callable(resources):
-            self.resources = PlacementGroupFactory(resources)
+            self.placement_group_factory = PlacementGroupFactory(resources)
         else:
             self.resources = Resources(**resources)
         self.invalidate_json_state()

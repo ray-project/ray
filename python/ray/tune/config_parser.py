@@ -8,7 +8,7 @@ from six import string_types
 
 from ray.tune import TuneError
 from ray.tune.trial import Trial
-from ray.tune.resources import json_to_resources
+from ray.tune.resources import PlacementGroupFactory, json_to_resources
 from ray.tune.utils.util import SafeFallbackEncoder
 
 
@@ -171,8 +171,11 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
     if "resources_per_trial" in spec:
-        trial_kwargs["resources"] = json_to_resources(
-            spec["resources_per_trial"])
+        resources = json_to_resources(spec["resources_per_trial"])
+        if isinstance(resources, PlacementGroupFactory):
+            trial_kwargs["placement_group_factory"] = resources
+        else:
+            trial_kwargs["resources"] = resources
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
