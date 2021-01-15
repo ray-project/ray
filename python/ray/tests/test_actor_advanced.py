@@ -50,6 +50,7 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3

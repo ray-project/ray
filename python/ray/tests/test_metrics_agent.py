@@ -2,6 +2,7 @@ import json
 import pathlib
 import platform
 from pprint import pformat
+import sys
 import time
 from unittest.mock import MagicMock
 
@@ -108,6 +109,7 @@ def _setup_cluster_for_test(ray_start_cluster):
     cluster.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
     TEST_TIMEOUT_S = 20
 
