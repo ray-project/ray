@@ -327,11 +327,11 @@ Status ConnectWithRetries(const std::string &address, int port,
       ConnectWithoutRetries(address, port, connect_function, context, errorMessage);
   while (!status.ok()) {
     if (connection_attempts >= RayConfig::instance().redis_db_connect_retries()) {
-      std::string fatalError = "";
-      std::ostringstream oss(fatalError);
+      std::string fatal_error = "";
+      std::ostringstream oss(fatal_error);
       oss << RayConfig::instance().redis_db_connect_retries() << " attempts "
           << "to connect have all failed. The last error message was: " << errorMessage;
-      return Status::RedisError(fatalError);
+      return Status::RedisError(fatal_error);
     }
     RAY_LOG(WARNING) << errorMessage << " Will retry in "
                      << RayConfig::instance().redis_db_connect_wait_milliseconds()
