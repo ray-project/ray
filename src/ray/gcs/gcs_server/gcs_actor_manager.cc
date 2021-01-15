@@ -428,8 +428,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   actor_to_register_callbacks_.erase(actor_id);
   actor_to_create_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
-  RAY_CHECK(it != registered_actors_.end())
-      << "Tried to destroy actor that does not exist " << actor_id;
+  if (it == registered_actors_.end()) {
+    RAY_LOG(INFO) << "Tried to destroy actor that does not exist " << actor_id;
+    return;
+  }
   const auto &task_id = it->second->GetCreationTaskSpecification().TaskId();
   it->second->GetMutableActorTableData()->mutable_task_spec()->Clear();
   it->second->GetMutableActorTableData()->set_timestamp(current_sys_time_ms());
