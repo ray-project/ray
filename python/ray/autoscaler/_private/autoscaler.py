@@ -76,7 +76,7 @@ class StandardAutoscaler:
                  process_runner=subprocess,
                  update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S,
                  prefix_cluster_info=False,
-                 event_summarizer=EventSummarizer()):
+                 event_summarizer=None):
         self.config_path = config_path
         # Prefix each line of info string with cluster name if True
         self.prefix_cluster_info = prefix_cluster_info
@@ -92,7 +92,7 @@ class StandardAutoscaler:
         self.max_launch_batch = max_launch_batch
         self.max_concurrent_launches = max_concurrent_launches
         self.process_runner = process_runner
-        self.event_summarizer = event_summarizer
+        self.event_summarizer = event_summarizer or EventSummarizer()
 
         # Map from node_id to NodeUpdater processes
         self.updaters = {}
@@ -569,8 +569,8 @@ class StandardAutoscaler:
                        "{}: No recent heartbeat, "
                        "restarting Ray to recover...".format(node_id))
         self.event_summarizer.add(
-            "Restarting raylet on {} nodes of type " +
-            self._get_node_type(node_id) + " (lost contact with Raylet).",
+            "Restarting {} nodes of type " + self._get_node_type(node_id) +
+            " (lost contact with raylet).",
             quantity=1,
             aggregate=operator.add)
         updater = NodeUpdaterThread(

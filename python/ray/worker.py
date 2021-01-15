@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any, Dict, List, Generator
+from typing import Any, Dict, List, Iterator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
@@ -934,7 +934,7 @@ t0 = time.time()
 autoscaler_log_fyi_printed = False
 
 
-def filter_autoscaler_events(lines: List[str]) -> Generator[str]:
+def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """Given raw log lines from the monitor, return only autoscaler events.
 
     Autoscaler events are denoted by the ":event_summary:" magic token.
