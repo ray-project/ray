@@ -5,15 +5,6 @@ Serialization
 
 Since Ray processes do not share memory space, data transferred between workers and nodes will need to **serialized** and **deserialized**. Ray uses the `Plasma object store <https://arrow.apache.org/docs/python/plasma.html>`_ to efficiently transfer objects across different processes and different nodes. Numpy arrays in the object store are shared between workers on the same node (zero-copy deserialization).
 
-.. _plasma-store:
-
-Plasma Object Store
--------------------
-
-Plasma is an in-memory object store that is being developed as part of Apache Arrow. Ray uses Plasma to efficiently transfer objects across different processes and different nodes. All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
-
-Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
-
 Overview
 --------
 
@@ -21,8 +12,17 @@ Ray has decided to use a customized `Pickle protocol version 5 <https://www.pyth
 
 Ray is currently compatible with Pickle protocol version 5, while Ray supports serialization of a wider range of objects (e.g. lambda & nested functions, dynamic classes) with the help of cloudpickle.
 
+.. _plasma-store:
+
+Plasma Object Store
+~~~~~~~~~~~~~~~~~~~
+
+Plasma is an in-memory object store that is being developed as part of Apache Arrow. Ray uses Plasma to efficiently transfer objects across different processes and different nodes. All objects in Plasma object store are **immutable** and held in shared memory. This is so that they can be accessed efficiently by many workers on the same node.
+
+Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
+
 Numpy Arrays
-------------
+~~~~~~~~~~~~
 
 Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data.
 The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
@@ -48,7 +48,7 @@ Serialization notes
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
 Customized Serialization
-________________________
+------------------------
 
 Sometimes you may want to customize your serialization process because
 the default serializer used by Ray (pickle5 + cloudpickle) does
@@ -121,7 +121,7 @@ There are at least 3 ways to define your custom serialization process:
 
    NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker,
    if you want to use the serializer, you need to register the serializer. Unregister
-   an serializer also only applies locally.
+   a serializer also only applies locally.
 
    If you register a new serializer for a class, the new serializer would replace
    the old serializer immediately in the worker. This API is also idempotent, there are
