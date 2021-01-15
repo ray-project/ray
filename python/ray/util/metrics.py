@@ -72,7 +72,7 @@ class Metric:
         """
         assert self._metric is not None
         final_tags = {}
-        tags_copy = tags.copy()
+        tags_copy = tags.copy() if tags else {}
         for tag_key in self._tag_keys:
             # Prefer passed tags over default tags.
             if tags is not None and tag_key in tags:
