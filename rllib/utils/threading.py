@@ -1,4 +1,7 @@
-def with_lock(func):
+from typing import Callable
+
+
+def with_lock(func: Callable):
     """Use as decorator (@withlock) around object methods that need locking.
 
     Note: The object must have a self._lock = threading.Lock() property.
