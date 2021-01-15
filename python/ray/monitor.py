@@ -217,13 +217,18 @@ class Monitor:
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
 
     def update_event_summary(self):
-        # Periodically emit event summaries.
+        """Report the current size of the cluster.
+
+        To avoid log spam, only cluster size changes (CPU or GPU count change)
+        are reported to the event summarizer. The event summarizer will report
+        only the latest cluster size per batch.
+        """
         avail_resources = self.load_metrics.resources_avail_summary()
         if avail_resources != self.last_avail_resources:
             self.event_summarizer.add(
-                "Resized to {}.",
+                "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
                 quantity=avail_resources,
-                aggregate=lambda a, b: b)
+                aggregate=lambda old, new: new)
             self.last_avail_resources = avail_resources
 
     def destroy_autoscaler_workers(self):

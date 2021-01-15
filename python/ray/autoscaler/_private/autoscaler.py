@@ -267,7 +267,7 @@ class StandardAutoscaler:
                                  "failed to setup/initialize node.")
                     self.event_summarizer.add(
                         "Removing {} nodes of type " +
-                        self._get_node_type(node_id) + " (setup failed).",
+                        self._get_node_type(node_id) + " (launch failed).",
                         quantity=1,
                         aggregate=operator.add)
                     nodes_to_terminate.append(node_id)
@@ -570,7 +570,7 @@ class StandardAutoscaler:
                        "restarting Ray to recover...".format(node_id))
         self.event_summarizer.add(
             "Restarting raylet on {} nodes of type " +
-            self._get_node_type(node_id) + " (heartbeat timeout).",
+            self._get_node_type(node_id) + " (lost contact with Raylet).",
             quantity=1,
             aggregate=operator.add)
         updater = NodeUpdaterThread(

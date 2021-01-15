@@ -2,7 +2,7 @@ from typing import Any, Callable, Dict, List
 
 
 class EventSummarizer:
-    """Utility that coalesces related log messages to reduce log spam."""
+    """Utility that aggregates related log messages to reduce log spam."""
 
     def __init__(self):
         self.events_by_key: Dict[str, int] = {}

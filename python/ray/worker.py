@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import traceback
+from typing import List, Generator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
@@ -933,7 +934,11 @@ t0 = time.time()
 autoscaler_log_fyi_printed = False
 
 
-def filter_autoscaler_events(lines):
+def filter_autoscaler_events(lines: List[str]) -> Generator[str]:
+    """Given raw log lines from the monitor, return only autoscaler events.
+
+    Autoscaler events are denoted by the ":event_summary:" magic token.
+    """
     global autoscaler_log_fyi_printed
 
     if not AUTOSCALER_EVENTS:
@@ -947,10 +952,16 @@ def filter_autoscaler_events(lines):
                        "autoscaling status. To disable autoscaler event "
                        "messages, you can set AUTOSCALER_EVENTS=0.")
                 autoscaler_log_fyi_printed = True
+            # The event text immediately follows the ":event_summary:"
+            # magic token.
             yield line.split(":event_summary:")[1]
 
 
-def time_string():
+def time_string() -> str:
+    """Return the relative time from the start of this driver.
+    
+    For example, 15m30s.
+    """
     delta = time.time() - t0
     hours = 0
     minutes = 0
@@ -969,14 +980,16 @@ def time_string():
     return output
 
 
-def print_worker_logs(data, print_file):
-    def prefix_for(data):
+def print_worker_logs(data: Dict[str, str], print_file: file):
+    def prefix_for(data: Dict[str, str]) -> str:
+        """The PID prefix for this log line."""
         if data["pid"] in ["autoscaler", "raylet"]:
             return ""
         else:
             return "pid="
 
-    def color_for(data):
+    def color_for(data: Dict[str, str]) -> str:
+        """The color for this log line."""
         if data["pid"] == "raylet":
             return colorama.Fore.YELLOW
         elif data["pid"] == "autoscaler":
