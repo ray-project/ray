@@ -299,7 +299,7 @@ class AWSNodeProvider(NodeProvider):
                 count -= len(reuse_node_ids)
 
         if count:
-            self._create_node(node_config, tags, count)
+            return self._create_node(node_config, tags, count)
 
     def _create_node(self, node_config, tags, count):
         tags = to_aws_format(tags)
@@ -390,6 +390,7 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.print(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
+        return conf
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
