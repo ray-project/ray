@@ -16,7 +16,6 @@ class Worker:
 
     def compute(self):
         collective.allreduce(self.send, "default")
-        print(self.send)
         return self.send
 
     def destroy(self):
@@ -24,11 +23,8 @@ class Worker:
 
 
 if __name__ == "__main__":
-
     send = cp.ones((4, ), dtype=cp.float32)
-
     ray.init(num_gpus=2)
-
     num_workers = 2
     workers = []
     init_rets = []
@@ -38,5 +34,4 @@ if __name__ == "__main__":
         init_rets.append(w.setup.remote(num_workers, i))
     _ = ray.get(init_rets)
     results = ray.get([w.compute.remote() for w in workers])
-    print(results)
     ray.shutdown()
