@@ -46,6 +46,8 @@ def ray_start_single_node_2_gpus():
 # my own on-premise cluster before run this fixture.
 @pytest.fixture
 def ray_start_distributed_2_nodes_4_gpus():
+    # The cluster has a setup of 2 nodes, each node with 2
+    # GPUs.
     ray.init("auto")
     yield
     clean_up()
