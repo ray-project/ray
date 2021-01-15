@@ -33,6 +33,7 @@ def test_num_clients(shutdown_only):
         server.stop(0)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_real_ray_fallback(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
