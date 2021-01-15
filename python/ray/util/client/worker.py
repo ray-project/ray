@@ -5,6 +5,7 @@ to the server.
 import base64
 import json
 import logging
+import time
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -31,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 INITIAL_TIMEOUT_SEC = 5
 MAX_TIMEOUT_SEC = 30
+
+def backoff(timeout: int) -> int:
+    timeout = timeout + 5
+    if timeout > MAX_TIMEOUT_SEC:
+        timeout = MAX_TIMEOUT_SEC
+    return timeout
 
 
 class Worker:
@@ -59,6 +66,8 @@ class Worker:
         else:
             self.channel = grpc.insecure_channel(conn_str)
 
+        # Retry the connection until the channel responds to something
+        # looking like a gRPC connection, though it may be a proxy.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
         while conn_attempts < connection_retries + 1:
@@ -70,12 +79,52 @@ class Worker:
                 if conn_attempts >= connection_retries:
                     raise ConnectionError("ray client connection timeout")
                 logger.info(f"Couldn't connect in {timeout} seconds, retrying")
-                timeout = timeout + 5
-                if timeout > MAX_TIMEOUT_SEC:
-                    timeout = MAX_TIMEOUT_SEC
+                timeout = backoff(timeout)
 
+        # Wrap the channel with the RayletDriverStub, allowing for unary
+        # requests.
         self.server = ray_client_pb2_grpc.RayletDriverStub(self.channel)
 
+        # Now, retry until both ray has been initialized and the server is
+        # responding (perhaps from the other end of the proxy).
+
+        # Retry on 500 errors, which may happen if the endpoint can't service
+        # our request yet, as per a proxy use-case.
+        conn_attempts = 0
+        timeout = INITIAL_TIMEOUT_SEC
+        ray_ready = False
+        while conn_attempts < connection_retries + 1:
+            conn_attempts += 1
+            try:
+                ray_ready = self.is_initialized()
+                break
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    if conn_attempts >= connection_retries:
+                        raise ConnectionError("ray client connection timeout")
+                    logger.info(
+                        "Ray server unavailable, retrying in f{timeout}s...")
+                    logger.debug(
+                        f"Received when checking init: {e.details()}")
+                    time.sleep(timeout)
+                    timeout = backoff(timeout)
+                else:
+                    raise e
+
+        # Retry until ray initialization on the server is also complete, which
+        # may take a second for lazily instantiated servers.
+        conn_attempts = 0
+        timeout = INITIAL_TIMEOUT_SEC
+        while not ray_ready and conn_attempts < (connection_retries + 1):
+            logger.info(
+                "Waiting for Ray to become ready on the server, retry in f{timeout}s...")
+            time.sleep(timeout)
+            timeout = backoff(timeout)
+            conn_attempts += 1
+            ray_ready = self.is_initialized()
+
+
+        # Initialize the streams to finish protocol negotiation.
         self.data_client = DataClient(self.channel, self._client_id,
                                       self.metadata)
         self.reference_count: Dict[bytes, int] = defaultdict(int)
