@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import traceback
-from typing import List, Generator
+from typing import Any, Dict, List, Generator
 
 # Ray modules
 from ray.autoscaler._private.constants import AUTOSCALER_EVENTS
@@ -958,8 +958,8 @@ def filter_autoscaler_events(lines: List[str]) -> Generator[str]:
 
 
 def time_string() -> str:
-    """Return the relative time from the start of this driver.
-    
+    """Return the relative time from the start of this job.
+
     For example, 15m30s.
     """
     delta = time.time() - t0
@@ -980,7 +980,7 @@ def time_string() -> str:
     return output
 
 
-def print_worker_logs(data: Dict[str, str], print_file: file):
+def print_worker_logs(data: Dict[str, str], print_file: Any):
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
         if data["pid"] in ["autoscaler", "raylet"]:
