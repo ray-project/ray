@@ -353,7 +353,11 @@ Status ConnectOrFail(const std::string &address, int port,
   std::string errorMessage = "";
   Status status = ConnectWithRetries(address, port, connect_function, context);
   if (!status.ok()) {
-    RAY_LOG(FATAL) << status.message();
+    if (status.IsRedisError()) {
+      RAY_LOG(FATAL) << status.message();
+    } else {
+      RAY_LOG(FATAL) << status.message();
+    }
   }
   return Status::OK();
 }
