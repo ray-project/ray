@@ -78,8 +78,9 @@ class Worker:
                 break
             except grpc.FutureTimeoutError:
                 if conn_attempts >= connection_retries:
-                    raise ConnectionError("ray client connection timeout")
-                logger.info(f"Couldn't connect in {timeout} seconds, retrying")
+                    raise ConnectionError(
+                        "ray client connection timeout: channel couldn't connect")
+                logger.debug(f"Couldn't connect in {timeout} seconds, retrying")
                 timeout = backoff(timeout)
 
         # Wrap the channel with the RayletDriverStub, allowing for unary
@@ -102,9 +103,10 @@ class Worker:
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     if conn_attempts >= connection_retries:
-                        raise ConnectionError("ray client connection timeout")
+                        raise ConnectionError(
+                            "ray client connection timeout: gRPC unavailable")
                     logger.info(
-                        "Ray server unavailable, retrying in f{timeout}s...")
+                        f"Ray server unavailable, retrying in {timeout}s...")
                     logger.debug(f"Received when checking init: {e.details()}")
                     time.sleep(timeout)
                     timeout = backoff(timeout)
@@ -115,7 +117,10 @@ class Worker:
         # may take a second for lazily instantiated servers.
         conn_attempts = 0
         timeout = INITIAL_TIMEOUT_SEC
-        while not ray_ready and conn_attempts < (connection_retries + 1):
+        while not ray_ready:
+            if conn_attempts >= (connection_retries + 1):
+                raise ConnectionError(
+                    "ray client connection timeout: ray not initialized")
             logger.info("Waiting for Ray to become ready on the server, "
                         f", retry in {timeout}s...")
             time.sleep(timeout)
