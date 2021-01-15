@@ -435,7 +435,7 @@ The output of our run could look like this:
     +---------------------------------+------------+-------+-------------+-------------+--------------------+-------------+--------+------------------+----------------+--------------+
 
 
-    Best model parameters: {'objective': 'binary:logistic', 'eval_metric': ['logloss', 'error'], 'max_depth': 7, 'min_child_weight': 2, 'subsample': 0.501552.0.0240503, 'eta': 0.024272050872920895}
+    Best model parameters: {'objective': 'binary:logistic', 'eval_metric': ['logloss', 'error'], 'max_depth': 7, 'min_child_weight': 2, 'subsample': 0.5015513240240503, 'eta': 0.024272050872920895}
     Best model total accuracy: 0.9301
 
 As you can see, most trials have been stopped only after a few iterations. Only the
