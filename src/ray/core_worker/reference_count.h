@@ -382,6 +382,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   std::unordered_set<NodeID> GetObjectLocations(const ObjectID &object_id)
       LOCKS_EXCLUDED(mutex_);
 
+  size_t GetObjectSize(const ObjectID &object_id) const;
+
   /// Handle an object has been spilled to external storage.
   ///
   /// This notifies the primary raylet that the object is safe to release and

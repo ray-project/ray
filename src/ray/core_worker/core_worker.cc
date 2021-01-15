@@ -2175,11 +2175,12 @@ void CoreWorker::HandleGetObjectLocationsOwner(
                            send_reply_callback)) {
     return;
   }
-  std::unordered_set<NodeID> node_ids =
-      reference_counter_->GetObjectLocations(ObjectID::FromBinary(request.object_id()));
+  auto object_id = ObjectID::FromBinary(request.object_id());
+  std::unordered_set<NodeID> node_ids = reference_counter_->GetObjectLocations(object_id);
   for (const auto &node_id : node_ids) {
     reply->add_node_ids(node_id.Binary());
   }
+  reply->set_object_size(reference_counter_->GetObjectSize(object_id));
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

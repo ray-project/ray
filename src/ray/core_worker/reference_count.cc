@@ -926,6 +926,15 @@ std::unordered_set<NodeID> ReferenceCounter::GetObjectLocations(
   return locations;
 }
 
+size_t ReferenceCounter::GetObjectSize(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return 0;
+  }
+  return it->second.object_size;
+}
+
 void ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);

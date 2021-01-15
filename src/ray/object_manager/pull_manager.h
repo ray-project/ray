@@ -87,13 +87,13 @@ class PullManager {
           spilled_url(),
           next_pull_time(first_retry_time),
           num_retries(0),
-          object_size(0),
           bundle_request_ids() {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     double next_pull_time;
     uint8_t num_retries;
-    size_t object_size;
+    bool object_size_set = false;
+    size_t object_size = 0;
     // All bundle requests that haven't been canceled yet that require this
     // object. This includes bundle requests whose objects are not actively
     // being pulled.
@@ -122,7 +122,7 @@ class PullManager {
   /// \param request The request to update the retry time of.
   void UpdateRetryTimer(ObjectPullRequest &request);
 
-  void ActivateNextPullBundleRequest(
+  bool ActivateNextPullBundleRequest(
       std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it);
 
   void DeactivatePullBundleRequest(

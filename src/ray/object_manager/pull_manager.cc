@@ -22,7 +22,8 @@ PullManager::PullManager(
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
-  // TODO: On eviction, update pulls. Set callback on PlasmaStore.
+  // TODO: Test requesting the same bundle again. Second bundle should also be
+  // activated on Pull.
 
   auto bundle_it = pull_request_bundles_.emplace(next_req_id_++, object_ref_bundle).first;
   RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first;
@@ -51,8 +52,23 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   return bundle_it->first;
 }
 
-void PullManager::ActivateNextPullBundleRequest(
+bool PullManager::ActivateNextPullBundleRequest(
     std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it) {
+  // Check that we have sizes for all of the objects in the bundle. If not, we
+  // should not activate the bundle, since it may put us over the available
+  // capacity.
+  for (const auto &ref : next_request_it->second) {
+    auto obj_id = ObjectRefToId(ref);
+    const auto it = object_pull_requests_.find(obj_id);
+    RAY_CHECK(it != object_pull_requests_.end());
+    if (!it->second.object_size_set) {
+      RAY_LOG(DEBUG) << "No size for " << obj_id << ", canceling activation for pull "
+                     << next_request_it->first;
+      return false;
+    }
+  }
+
+  // Activate the bundle.
   for (const auto &ref : next_request_it->second) {
     auto obj_id = ObjectRefToId(ref);
     bool start_pull = active_object_pull_requests_.count(obj_id) == 0;
@@ -78,6 +94,7 @@ void PullManager::ActivateNextPullBundleRequest(
   // Update the pointer to the last pull request that we are actively pulling.
   RAY_CHECK(next_request_it->first > highest_req_id_being_pulled_);
   highest_req_id_being_pulled_ = next_request_it->first;
+  return true;
 }
 
 void PullManager::DeactivatePullBundleRequest(
@@ -130,7 +147,12 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     // There is another pull bundle request that we could try, and there is
     // enough space. Activate the next pull bundle request in the queue.
-    ActivateNextPullBundleRequest(next_request_it);
+    if (!ActivateNextPullBundleRequest(next_request_it)) {
+      // This pull bundle request could not be activated, due to lack of object
+      // size information. Wait until we have object size information before
+      // activating this pull bundle.
+      break;
+    }
   }
 
   // While the total bytes requested is over the available capacity, deactivate
@@ -196,19 +218,12 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
 
-  if (it->second.object_size != object_size) {
-    bool update_pull_bundles = false;
-    if (active_object_pull_requests_.count(object_id)) {
-      num_bytes_being_pulled_ -= it->second.object_size;
-      num_bytes_being_pulled_ += object_size;
-      update_pull_bundles = true;
-    }
-
+  if (!it->second.object_size_set) {
+    RAY_LOG(DEBUG) << "Updated size of object " << object_id << " to " << object_size
+                   << ", num bytes being pulled is now " << num_bytes_being_pulled_;
     it->second.object_size = object_size;
-
-    if (update_pull_bundles) {
-      UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
-    }
+    it->second.object_size_set = true;
+    UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
   }
   RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
