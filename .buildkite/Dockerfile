@@ -1,4 +1,5 @@
 FROM ubuntu:focal
+ARG REMOTE_CACHE_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -12,7 +13,7 @@ RUN apt-get install -y -qq \
 RUN locale -a
 
 RUN mkdir /bazel-cache; \
-    (echo "build --remote_cache=https://ray-bazel-remote.g1jl7rtfvrm4o.us-west-2.cs.amazonlightsail.com" >> /root/.bazelrc)
+    (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc)
 
 RUN mkdir /ray
 WORKDIR /ray
