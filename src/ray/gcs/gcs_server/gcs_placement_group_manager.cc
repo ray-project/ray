@@ -305,7 +305,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     const PlacementGroupID &placement_group_id,
     StatusCallback on_placement_group_removed) {
   RAY_CHECK(on_placement_group_removed);
-  RAY_LOG(INFO) << "Removing placement group " << placement_group_id;
 
   // If the placement group has been already removed, don't do anything.
   auto placement_group_it = registered_placement_groups_.find(placement_group_id);
@@ -318,6 +317,7 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
   placement_group_to_create_callbacks_.erase(placement_group_id);
 
   // Destroy all bundles.
+  RAY_LOG(INFO) << "Removing placement group " << placement_group_id;
   gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
       placement_group_id);
   // Cancel the scheduling request if necessary.
@@ -499,8 +499,8 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     placement_group->MarkCreatorJobDead();
     if (placement_group->IsPlacementGroupRemovable()) {
       RAY_LOG(INFO) << "Actor " << placement_group->GetCreatorActorId()
-                    << " is dead and job " << job_id
-                    << " is finished, we will remove the placement group "
+                    << " is dead and because job " << job_id
+                    << " is finished, it will remove the placement group "
                     << placement_group->GetPlacementGroupID();
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }

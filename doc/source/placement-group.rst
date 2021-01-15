@@ -267,7 +267,7 @@ Lifecycle
 
 **Autoscaling**: Placement groups are pending creation if there are no nodes that can satisfy resource requirements for a given strategy. The Ray Autoscaler will be aware of placement groups, and auto-scale the cluster to ensure pending groups can be placed as needed.
 
-**Cleanup**: Placement groups are automatically removed when the job that created the placement group is finished. The only exception is that it is created by detached actors. In this case, placement groups fate-share with the detached actors.
+**Cleanup**: Placement groups are automatically removed when the job that created the placement group is finished. The only exception is that it is created by detached actors. In this case, placement groups fate-share with the detached actors. If the actor is restarted, the placement group created from it is not removed.
 
 
 Fault Tolerance

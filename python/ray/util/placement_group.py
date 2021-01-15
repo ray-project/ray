@@ -148,6 +148,8 @@ def placement_group(bundles: List[Dict[str, float]],
                     name: str = "unnamed_group") -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
+    NOTE: We should not create a placement group in a constructor, because the placement group will be created repeatedly during actor restarts.
+
     Args:
         bundles(List[Dict]): A list of bundles which
             represent the resources requirements.
