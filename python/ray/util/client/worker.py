@@ -79,8 +79,9 @@ class Worker:
             except grpc.FutureTimeoutError:
                 if conn_attempts >= connection_retries:
                     raise ConnectionError(
-                        "ray client connection timeout: channel couldn't connect")
-                logger.debug(f"Couldn't connect in {timeout} seconds, retrying")
+                        "ray client connection timeout: channel can't connect")
+                logger.debug(
+                    f"Couldn't connect in {timeout} seconds, retrying")
                 timeout = backoff(timeout)
 
         # Wrap the channel with the RayletDriverStub, allowing for unary
