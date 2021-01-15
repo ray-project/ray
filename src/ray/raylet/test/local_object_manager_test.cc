@@ -81,8 +81,15 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
   void RestoreSpilledObjects(
       const rpc::RestoreSpilledObjectsRequest &request,
       const rpc::ClientCallback<rpc::RestoreSpilledObjectsReply> &callback) override {
+    restore_callbacks.push_back(callback);
+  }
+
+  void ReplyRestoreObjects(int64_t bytes_restored, Status status = Status::OK()) {
     rpc::RestoreSpilledObjectsReply reply;
-    callback(Status(), reply);
+    reply.set_bytes_restored_total(bytes_restored);
+    auto callback = restore_callbacks.front();
+    callback(status, reply);
+    restore_callbacks.pop_front();
   }
 
   void DeleteSpilledObjects(
@@ -113,6 +120,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
   std::list<rpc::ClientCallback<rpc::SpillObjectsReply>> callbacks;
   std::list<rpc::ClientCallback<rpc::DeleteSpilledObjectsReply>> delete_callbacks;
+  std::list<rpc::ClientCallback<rpc::RestoreSpilledObjectsReply>> restore_callbacks;
   std::list<rpc::DeleteSpilledObjectsRequest> delete_requests;
 };
 
@@ -307,10 +315,14 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
   std::string object_url("url");
   int num_times_fired = 0;
   EXPECT_CALL(worker_pool, PushRestoreWorker(_));
-  manager.AsyncRestoreSpilledObject(object_id, object_url, [&](const Status &status) {
-    ASSERT_TRUE(status.ok());
-    num_times_fired++;
-  });
+  // Subsequent calls should be deduped, so that only one callback should be fired.
+  for (int i = 0; i < 10; i++) {
+    manager.AsyncRestoreSpilledObject(object_id, object_url, [&](const Status &status) {
+      ASSERT_TRUE(status.ok());
+      num_times_fired++;
+    });
+  }
+  worker_pool.io_worker_client->ReplyRestoreObjects(10);
   ASSERT_EQ(num_times_fired, 1);
 }
 
