@@ -13,7 +13,7 @@ RUN apt-get install -y -qq \
 RUN locale -a
 
 RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
-    (if [[ $BUILDKITE_PULL_REQUEST == "false" ]]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
+    (if [[ $BUILDKITE_PULL_REQUEST != "false" ]]; then (echo "build --remote_upload_local_results=false" >> /root/.bazelrc); fi); \
     cat /root/.bazelrc
 
 RUN mkdir /ray
