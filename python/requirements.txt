@@ -61,7 +61,8 @@ openpyxl
 pexpect
 Pillow; platform_system != "Windows"
 pygments
-pytest==5.4.3
+pytest==5.4.3; platform_system != "Windows"
+pytest==4.6.11; platform_system == "Windows"
 pytest-asyncio
 pytest-rerunfailures
 pytest-sugar
