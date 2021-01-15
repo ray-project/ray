@@ -498,9 +498,9 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     }
     placement_group->MarkCreatorJobDead();
     if (placement_group->IsPlacementGroupRemovable()) {
-      RAY_LOG(INFO) << "Actor " << placement_group->GetCreatorActorId()
-                    << " is dead and because job " << job_id
-                    << " is finished, it will remove the placement group "
+      RAY_LOG(INFO) << "Job " << job_id << " is finished and because actor "
+                    << placement_group->GetCreatorActorId()
+                    << " is dead, it will remove the placement group "
                     << placement_group->GetPlacementGroupID();
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
@@ -516,9 +516,9 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     }
     placement_group->MarkCreatorActorDead();
     if (placement_group->IsPlacementGroupRemovable()) {
-      RAY_LOG(INFO) << "Actor " << actor_id << " is dead and job "
+      RAY_LOG(INFO) << "Actor " << actor_id << " is dead and because job "
                     << placement_group->GetCreatorJobId()
-                    << " is finished, we will remove the placement group "
+                    << " is finished, it will remove the placement group "
                     << placement_group->GetPlacementGroupID();
       RemovePlacementGroup(placement_group->GetPlacementGroupID(), [](Status status) {});
     }
