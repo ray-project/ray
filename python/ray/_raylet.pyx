@@ -79,6 +79,7 @@ from ray.includes.unique_ids cimport (
     CPlacementGroupID,
 )
 from ray.includes.libcoreworker cimport (
+    ActorHandleSharedPtr,
     CActorCreationOptions,
     CPlacementGroupCreationOptions,
     CCoreWorkerOptions,
@@ -914,13 +915,13 @@ cdef class CoreWorker:
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         if object_ref is None:
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
+                check_status(CCoreWorkerProcess.GetCoreWorker().CreateOwned(
                              metadata, data_size, contained_ids,
                              c_object_id, data))
         else:
             c_object_id[0] = object_ref.native()
             with nogil:
-                check_status(CCoreWorkerProcess.GetCoreWorker().Create(
+                check_status(CCoreWorkerProcess.GetCoreWorker().CreateExisting(
                             metadata, data_size, c_object_id[0],
                             CCoreWorkerProcess.GetCoreWorker().GetRpcAddress(),
                             data))
@@ -932,7 +933,7 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_file_like_object(
-            self, metadata, data_size, file_like, ObjectRef object_ref=None):
+            self, metadata, data_size, file_like, ObjectRef object_ref):
         """Directly create a new Plasma Store object from a file like
         object. This avoids extra memory copy.
 
@@ -970,8 +971,9 @@ cdef class CoreWorker:
             # Using custom object refs is not supported because we
             # can't track their lifecycle, so we don't pin the object
             # in this case.
-            check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                         c_object_id, pin_object=False))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().SealExisting(
+                            c_object_id, pin_object=False))
 
     def put_serialized_object(self, serialized_object,
                               ObjectRef object_ref=None,
@@ -1006,12 +1008,18 @@ cdef class CoreWorker:
                         c_object_id_vector, c_object_id))
             else:
                 with nogil:
-                    # Using custom object refs is not supported because we
-                    # can't track their lifecycle, so we don't pin the object
-                    # in this case.
-                    check_status(CCoreWorkerProcess.GetCoreWorker().Seal(
-                                    c_object_id,
-                                    pin_object and object_ref is None))
+                    if object_ref is None:
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().SealOwned(
+                                        c_object_id,
+                                        pin_object))
+                    else:
+                        # Using custom object refs is not supported because we
+                        # can't track their lifecycle, so we don't pin the
+                        # object in this case.
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().SealExisting(
+                                        c_object_id, pin_object=False))
 
         return c_object_id.Binary()
 
@@ -1321,22 +1329,22 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, const CActorHandle *c_actor_handle):
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
         worker = ray.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
 
-        actor_id = ActorID(c_actor_handle.GetActorID().Binary())
-        job_id = JobID(c_actor_handle.CreationJobID().Binary())
-        language = Language.from_native(c_actor_handle.ActorLanguage())
-        actor_creation_function_descriptor = \
-            CFunctionDescriptorToPython(
-                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        actor_id = ActorID(dereference(c_actor_handle).GetActorID().Binary())
+        job_id = JobID(dereference(c_actor_handle).CreationJobID().Binary())
+        language = Language.from_native(
+            dereference(c_actor_handle).ActorLanguage())
+        actor_creation_function_descriptor = CFunctionDescriptorToPython(
+            dereference(c_actor_handle).ActorCreationTaskFunctionDescriptor())
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
             # Load actor_method_cpu from actor handle's extension data.
-            extension_data = <str>c_actor_handle.ExtensionData()
+            extension_data = <str>dereference(c_actor_handle).ExtensionData()
             if extension_data:
                 actor_method_cpu = int(extension_data)
             else:
@@ -1372,27 +1380,21 @@ cdef class CoreWorker:
                       .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
                           bytes, c_outer_object_id))
-        cdef:
-            # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle = (
-                CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
-        return self.make_actor_handle(c_actor_handle)
+        return self.make_actor_handle(
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
 
     def get_named_actor_handle(self, const c_string &name):
         cdef:
-            pair[const CActorHandle*, CRayStatus] named_actor_handle_pair
-            # NOTE: This handle should not be stored anywhere.
-            const CActorHandle* c_actor_handle
+            pair[ActorHandleSharedPtr, CRayStatus] named_actor_handle_pair
 
         # We need it because GetNamedActorHandle needs
         # to call a method that holds the gil.
         with nogil:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(name))
-        c_actor_handle = named_actor_handle_pair.first
         check_status(named_actor_handle_pair.second)
 
-        return self.make_actor_handle(c_actor_handle)
+        return self.make_actor_handle(named_actor_handle_pair.first)
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:

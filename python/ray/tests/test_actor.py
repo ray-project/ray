@@ -650,7 +650,6 @@ def test_actor_inheritance(ray_start_regular_shared):
                 pass
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="ray.method unimplemented")
 def test_multiple_return_values(ray_start_regular_shared):
     @ray.remote
     class Foo:
@@ -856,6 +855,11 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
     assert ray.get(actor.g.remote(5)) == 6
 
 
+def test_get_non_existing_named_actor(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        _ = ray.get_actor("non_existing_actor")
+
+
 @pytest.mark.skip(
     "This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):
@@ -875,6 +879,7 @@ def test_actor_creation_latency(ray_start_regular_shared):
         actor_create_time - start, end - start))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "exit_condition",
     [
