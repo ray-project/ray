@@ -2,6 +2,7 @@ import logging
 
 from typing import Dict, Any, List, Optional, Tuple
 
+import ray
 from ray._raylet import (
     Count as CythonCount,
     Histogram as CythonHistogram,
@@ -22,6 +23,8 @@ class Metric:
                  name: str,
                  description: str = "",
                  tag_keys: Optional[Tuple[str]] = None):
+        assert ray.is_initialized(), (
+            "Ray metric APIs cannot be used when ray is not initialized.")
         if len(name) == 0:
             raise ValueError("Empty name is not allowed. "
                              "Please provide a metric name.")
