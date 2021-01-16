@@ -190,9 +190,6 @@ class Node:
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port)
 
-        self._metrics_export_port = ray_params.metrics_export_port
-        if self._metrics_export_port is None:
-            self._metrics_export_port = self._get_unused_port()[0]
 
         ray_params.update_if_absent(
             metrics_agent_port=self.metrics_agent_port,
