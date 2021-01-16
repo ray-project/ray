@@ -45,9 +45,7 @@ int main(int argc, char **argv) {
     return 0;
   }
   /// initialization to cluster mode
-  ray::api::RayConfig::GetInstance()->run_mode = RunMode::CLUSTER;
   /// Dynamic library loading is not supported yet.
-  ray::api::RayConfig::GetInstance()->lib_name = "";
   Ray::Init();
 
   /// put and get object

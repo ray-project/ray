@@ -33,8 +33,9 @@ class RayConfig {
 
   std::string session_dir = "";
 
-  static std::shared_ptr<RayConfig> GetInstance(std::string address = "",
-                                                bool local_mode = false);
+  static std::shared_ptr<RayConfig> GetInstance();
+
+  static std::shared_ptr<RayConfig> GetInstance(std::string address, bool local_mode);
 
  private:
   static std::shared_ptr<RayConfig> config_;

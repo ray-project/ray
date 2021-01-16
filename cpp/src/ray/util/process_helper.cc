@@ -1,4 +1,5 @@
 #include "process_helper.h"
+
 #include "hiredis/hiredis.h"
 #include "ray/core.h"
 #include "ray/util/process.h"
@@ -34,6 +35,15 @@ static void StartRayNode(int redis_port, std::string redis_password,
   return;
 }
 
+static void ConnectRayNode(std::string redis_ip, std::string redis_password) {
+  std::vector<std::string> cmdargs(
+      {"ray", "start", "--address", redis_ip, "--redis-password", redis_password});
+  RAY_LOG(INFO) << CreateCommandLine(cmdargs);
+  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  sleep(5);
+  return;
+}
+
 static void StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
@@ -45,6 +55,9 @@ static void StopRayNode() {
 void ProcessHelper::RayStart(std::shared_ptr<RayConfig> config,
                              CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string redis_ip = config->redis_ip;
+  if (!redis_ip.empty()) {
+    ConnectRayNode(redis_ip, config->redis_password);
+  }
   if (config->worker_type == WorkerType::DRIVER && redis_ip.empty()) {
     redis_ip = "127.0.0.1";
     StartRayNode(config->redis_port, config->redis_password, config->node_manager_port);

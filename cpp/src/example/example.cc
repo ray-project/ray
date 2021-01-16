@@ -29,7 +29,7 @@ class Counter {
 
 int main() {
   /// initialization
-  Ray::Init("", false);
+  Ray::Init("", true);
 
   /// put and get object
   auto obj = Ray::Put(123);
