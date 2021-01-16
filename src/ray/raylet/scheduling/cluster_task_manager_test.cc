@@ -121,17 +121,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
-        task_manager_(
-            id_, scheduler_, dependency_manager_,
-            [this](const WorkerID &worker_id, const NodeID &node_id) {
-              return is_owner_alive_;
-            },
-            [this](const NodeID &node_id) {
-              node_info_calls_++;
-              return node_info_[node_id];
-            },
-            [this](const Task &task) { announce_infeasible_task_calls_++; }, pool_,
-            leased_workers_) {}
+        task_manager_(id_, scheduler_, dependency_manager_,
+                      [this](const WorkerID &worker_id, const NodeID &node_id) {
+                        return is_owner_alive_;
+                      },
+                      [this](const NodeID &node_id) {
+                        node_info_calls_++;
+                        return node_info_[node_id];
+                      },
+                      [this](const Task &task) { announce_infeasible_task_calls_++; },
+                      pool_, leased_workers_) {}
 
   void SetUp() {}
 
