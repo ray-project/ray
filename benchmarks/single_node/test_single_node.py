@@ -3,14 +3,25 @@ import ray
 import ray.autoscaler.sdk
 from ray.test_utils import Semaphore
 
-from time import sleep
+from time import sleep, perf_counter
 from tqdm import trange, tqdm
 
 
-MAX_RETURNS = 1000
+MAX_ARGS = 10000
+MAX_RETURNS = 3000
 MAX_RAY_GET_ARGS = 10000
 MAX_QUEUED_TASKS = 1_000_000
 MAX_RAY_GET_SIZE = 100 * 2 ** 30
+
+
+def test_many_args():
+    @ray.remote
+    def sum_args(*args):
+        return sum([sum(arg) for arg in args])
+
+    args = [[1 for _ in range(10000)] for _ in range(MAX_ARGS)]
+    result = ray.get(sum_args.remote(*args))
+    assert result == MAX_ARGS * 10000
 
 
 def test_many_returns():
@@ -116,11 +127,35 @@ def test_large_object():
 
 ray.init(address="auto")
 
+args_start = perf_counter()
+test_many_args()
+args_end = perf_counter()
+print("Finished many args")
+returns_start = perf_counter()
 test_many_returns()
+returns_end = perf_counter()
 print("Finished many returns")
+get_start = perf_counter()
 test_ray_get_args()
+get_end = perf_counter()
 print("Finished ray.get on many objects")
+queued_start = perf_counter()
 test_many_queued_tasks()
+queued_end = perf_counter()
 print("Finished queueing many tasks")
+large_object_start = perf_counter()
 test_large_object()
+large_object_end = perf_counter()
 print("Done")
+
+args_time = args_end - args_start
+returns_time = returns_end - returns_start
+get_time = get_end - get_start
+queued_time = queued_end - queued_start
+large_object_time = large_object_end - large_object_start
+
+print(f"Many args time: {args_time} ({MAX_ARGS} args)")
+print(f"Many returns time: {returns_time} ({MAX_RETURNS} returns)")
+print(f"Ray.get time: {get_time} ({MAX_RAY_GET_ARGS} args)")
+print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
+print(f"Ray.get large object time: {large_object_time} ({MAX_RAY_GET_SIZE} bytes)")

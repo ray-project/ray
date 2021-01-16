@@ -32,9 +32,10 @@ worker_default_node_type: worker_node
 setup_commands:
   - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.2.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip install numpy tqdm
+  - sudo bash -c 'rm -rf /etc/security/limits.d; echo "* soft nofile 1000000" >> /etc/security/limits.conf; echo "* hard nofile 1000000" >> /etc/security/limits.conf;'
 
 idle_timeout_minutes: 5
 
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --object-store-memory=128000000000 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 1000000; ray start --head --port=6379 --object-manager-port=8076 --object-store-memory=128000000000 --autoscaling-config=~/ray_bootstrap_config.yaml

@@ -1,26 +1,29 @@
 import ray
 import ray.autoscaler.sdk
 from ray.test_utils import Semaphore
-from ray.util.placement_group import placement_group
+from ray.util.placement_group import placement_group, remove_placement_group
 
-from time import sleep
+from time import sleep, perf_counter
 from tqdm import tqdm, trange
 
 MAX_NUM_NODES = 250
 MAX_ACTORS_IN_CLUSTER = 500
-MAX_RUNNING_TASKS_IN_CLUSTER = 10000
-MAX_PLACEMENT_GROUPS = 32
+MAX_RUNNING_TASKS_IN_CLUSTER = 5000
+MAX_PLACEMENT_GROUPS = 75
+
 
 def scale_to(target):
     ray.autoscaler.sdk.request_resources(bundles=[{"node": 1}] * target)
     while len(ray.nodes()) != target:
-        print("Current num_nodes: ", len(ray.nodes()))
+        print(f"Current # nodes: {len(ray.nodes())}, target: {target}")
         print("Waiting ...")
         sleep(5)
+
 
 def test_nodes():
     scale_to(MAX_NUM_NODES)
     assert len(ray.nodes()) == MAX_NUM_NODES
+
 
 def test_max_actors():
     @ray.remote
@@ -28,12 +31,13 @@ def test_max_actors():
         def foo(self):
             pass
 
-    print("Launching actors")
-    actors = [Actor.remote() for _ in trange(MAX_ACTORS_IN_CLUSTER)]
+    actors = [
+        Actor.remote() for _ in trange(MAX_ACTORS_IN_CLUSTER, desc="Launching actors")
+    ]
 
-    print("Ensuring actors have started")
-    for actor in tqdm(actors):
+    for actor in tqdm(actors, desc="Ensuring actors have started"):
         assert ray.get(actor.foo.remote()) is None
+
 
 def test_max_running_tasks():
     counter = Semaphore.remote(0)
@@ -45,86 +49,98 @@ def test_max_running_tasks():
 
     @ray.remote(num_cpus=0, resources={"node": resource_per_task})
     def task(counter, blocker):
-        sleep(30)
-        # TODO (Alex): We should guarantee that all these tasks are running concurrently. Unfortunately these semaphores currently don't work due to too many simultaneous connections.
-        # ray.get(counter.release.remote())
-        # ray.get(blocker.acquire.remote())
-        pass
+        sleep(10)
 
-    print("Launching tasks")
-    refs = [task.remote(counter, blocker) for _ in trange(MAX_RUNNING_TASKS_IN_CLUSTER)]
+    refs = [
+        task.remote(counter, blocker)
+        for _ in trange(MAX_RUNNING_TASKS_IN_CLUSTER, desc="Launching tasks")
+    ]
 
-    # print("Ensuring all tasks are running")
-    # for _ in trange(MAX_RUNNING_TASKS_IN_CLUSTER):
-    #     ray.get(counter.acquire.remote())
-
-    # print("Unblocking all tasks")
-    # for _ in trange(MAX_RUNNING_TASKS_IN_CLUSTER):
-    #     ray.get(blocker.release.remote())
-    print("Waiting ...")
-    for _ in trange(30):
+    for _ in trange(10, desc="Waiting"):
         sleep(1)
 
-    print("Ensuring all tasks have finished")
-    for _ in trange(MAX_RUNNING_TASKS_IN_CLUSTER):
+    for _ in trange(
+        MAX_RUNNING_TASKS_IN_CLUSTER, desc="Ensuring all tasks have finished"
+    ):
         done, refs = ray.wait(refs)
         assert ray.get(done[0]) is None
 
-def test_many_placement_groups():
-    print("Creating placement groups")
-    placement_groups = []
-    for _ in trange(MAX_PLACEMENT_GROUPS):
-        bundle1 = {"CPU": 0.5, "node": 0.125}
-        bundle2 = {"CPU": 0.5}
-        bundle3 = {"node": 0.125}
-        pg = placement_group([bundle1, bundle2, bundle3], strategy="STRICT_SPREAD")
-        placement_groups.append(pg)
 
-    print("Waiting for all placement groups to be ready")
-    for pg in tqdm(placement_groups):
+def test_many_placement_groups():
+    @ray.remote(num_cpus=1, resources={"node": 0.5})
+    def f1():
+        sleep(10)
+        pass
+
+    @ray.remote(num_cpus=1)
+    def f2():
+        sleep(10)
+        pass
+
+    @ray.remote(resources={"node": 0.5})
+    def f3():
+        sleep(10)
+        pass
+
+    bundle1 = {"node": 0.5, "CPU": 1}
+    bundle2 = {"CPU": 1}
+    bundle3 = {"node": 0.5}
+
+    pgs = []
+    for _ in trange(MAX_PLACEMENT_GROUPS, desc="Creating pgs"):
+        pg = placement_group(bundles=[bundle1, bundle2, bundle3])
+        pgs.append(pg)
+
+    for pg in tqdm(pgs, desc="Waiting for pgs to be ready"):
         ray.get(pg.ready())
 
-
-    @ray.remote(num_cpus=0.5, resources={"node": 0.125})
-    def f1():
-        sleep(30)
-
-    @ray.remote(num_cpus=0.5)
-    def f2():
-        sleep(30)
-
-    @ray.remote(resources={"node": 0.125})
-    def f3():
-        sleep(30)
-
-    print("Running tasks on placement groups")
     refs = []
-    for pg in tqdm(placement_groups):
+    for pg in tqdm(pgs, desc="Scheduling tasks"):
         ref1 = f1.options(placement_group=pg).remote()
         ref2 = f2.options(placement_group=pg).remote()
         ref3 = f3.options(placement_group=pg).remote()
         refs.extend([ref1, ref2, ref3])
 
-    print("Waiting...")
-    for _ in trange(30):
+    for _ in trange(10, desc="Waiting"):
         sleep(1)
 
-    print("Getting results")
-    for _ in trange(MAX_PLACEMENT_GROUPS):
-        results = ray.get(refs[-3:])
-        assert results == [None, None, None], results
-        refs = refs[:-3]
+    with tqdm() as p_bar:
+        while refs:
+            done, refs = ray.wait(refs)
+            p_bar.update()
 
+    for pg in tqdm(pgs, desc="Cleaning up pgs"):
+        remove_placement_group(pg)
 
 
 ray.init(address="auto")
 
+node_launch_start = perf_counter()
 test_nodes()
+node_launch_end = perf_counter()
+assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluseter " + len(
+    ray.nodes()
+)
 print("Done launching nodes")
-# test_max_actors()
-# print("Done testing actors")
-# test_max_running_tasks()
-# print("Done testing tasks")
+actor_start = perf_counter()
+test_max_actors()
+actor_end = perf_counter()
+print("Done testing actors")
+task_start = perf_counter()
+test_max_running_tasks()
+task_end = perf_counter()
+print("Done testing tasks")
+pg_start = perf_counter()
 test_many_placement_groups()
+pg_end = perf_counter()
 print("Done")
 
+launch_time = node_launch_end - node_launch_start
+actor_time = actor_end - actor_start
+task_time = task_end - task_start
+pg_time = pg_end - pg_start
+
+print(f"Node launch time: {launch_time} ({MAX_NUM_NODES} nodes)")
+print(f"Actor time: {actor_time} ({MAX_ACTORS_IN_CLUSTER} actors)")
+print(f"Task time: {task_time} ({MAX_RUNNING_TASKS_IN_CLUSTER} tasks)")
+print(f"Placement group time: {pg_time} ({MAX_PLACEMENT_GROUPS} placement groups)")
