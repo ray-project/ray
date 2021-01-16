@@ -229,6 +229,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5

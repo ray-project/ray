@@ -6,7 +6,7 @@ import os
 import ray
 from ray import tune
 from ray.rllib.examples.models.batch_norm_model import BatchNormModel, \
-    TorchBatchNormModel
+    KerasBatchNormModel, TorchBatchNormModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -26,13 +26,15 @@ if __name__ == "__main__":
     ray.init()
 
     ModelCatalog.register_custom_model(
-        "bn_model", TorchBatchNormModel if args.torch else BatchNormModel)
+        "bn_model", TorchBatchNormModel if args.torch else KerasBatchNormModel
+        if args.run != "PPO" else BatchNormModel)
 
     config = {
-        "env": "Pendulum-v0" if args.run == "DDPG" else "CartPole-v0",
+        "env": "Pendulum-v0" if args.run in ["DDPG", "SAC"] else "CartPole-v0",
         "model": {
             "custom_model": "bn_model",
         },
+        "lr": 0.0003,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "num_workers": 0,
@@ -45,7 +47,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, stop=stop, config=config, verbose=1)
+    results = tune.run(args.run, stop=stop, config=config, verbose=2)
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
