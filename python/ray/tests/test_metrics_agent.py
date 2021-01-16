@@ -304,7 +304,4 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
 if __name__ == "__main__":
     import sys
     # Test suite is timing out. Disable on windows for now.
-    if sys.platform == "win32":
-        sys.exit()
-    else:
-        sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))
