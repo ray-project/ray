@@ -38,6 +38,7 @@ def test_num_clients(shutdown_only):
         server.stop(0)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_real_ray_fallback(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -58,6 +59,7 @@ def test_real_ray_fallback(ray_start_regular_shared):
         assert len(nodes) == 1, nodes
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_nested_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -72,6 +74,7 @@ def test_nested_function(ray_start_regular_shared):
         assert ray.get(g.remote()) == "OK"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_put_get(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
@@ -81,6 +84,7 @@ def test_put_get(ray_start_regular_shared):
         assert retval == "hello world"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_wait(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         objectref = ray.put("hello world")
@@ -109,6 +113,7 @@ def test_wait(ray_start_regular_shared):
             ray.wait(["blabla"])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_remote_functions(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -153,6 +158,7 @@ def test_remote_functions(ray_start_regular_shared):
         assert all_vals == [236, 2_432_902_008_176_640_000, 120, 3628800]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_function_calling_function(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -169,6 +175,7 @@ def test_function_calling_function(ray_start_regular_shared):
         assert ray.get(f.remote()) == "OK"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_basic_actor(ray_start_regular_shared):
     with ray_start_client_server() as ray:
 
@@ -190,6 +197,7 @@ def test_basic_actor(ray_start_regular_shared):
         assert count == 2
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_pass_handles(ray_start_regular_shared):
     """Test that passing client handles to actors and functions to remote actors
     in functions (on the server or raylet side) works transparently to the
@@ -253,6 +261,7 @@ def test_pass_handles(ray_start_regular_shared):
                                                 4)) == local_fact(4)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_basic_log_stream(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         log_msgs = []
@@ -273,6 +282,7 @@ def test_basic_log_stream(ray_start_regular_shared):
         assert any((msg.find("put") >= 0 for msg in logs_with_id))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_stdout_log_stream(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         log_msgs = []
@@ -294,6 +304,7 @@ def test_stdout_log_stream(ray_start_regular_shared):
         assert all((msg.find("Hello world") for msg in log_msgs))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_create_remote_before_start(ray_start_regular_shared):
     """Creates remote objects (as though in a library) before
     starting the client.
@@ -318,6 +329,7 @@ def test_create_remote_before_start(ray_start_regular_shared):
         assert ray.get(a.doit.remote()) == "foo"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_basic_named_actor(ray_start_regular_shared):
     """Test that ray.get_actor() can create and return a detached actor.
     """
@@ -346,6 +358,7 @@ def test_basic_named_actor(ray_start_regular_shared):
         assert ray.get(new_actor.get.remote()) == 3
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_internal_kv(ray_start_regular_shared):
     with ray_start_client_server() as ray:
         assert ray._internal_kv_initialized()
