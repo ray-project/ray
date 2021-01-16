@@ -398,8 +398,8 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
 }
 
 const rpc::JobConfig *WorkerPool::GetJobConfig(const JobID &job_id) const {
-  auto iter = unfinished_jobs_.find(job_id);
-  return iter == unfinished_jobs_.end() ? nullptr : &iter->second;
+  auto iter = all_jobs_.find(job_id);
+  return iter == all_jobs_.end() ? nullptr : &iter->second;
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,
