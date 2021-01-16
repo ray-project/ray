@@ -42,6 +42,7 @@ DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
+DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
