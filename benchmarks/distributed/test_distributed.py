@@ -118,21 +118,41 @@ ray.init(address="auto")
 node_launch_start = perf_counter()
 test_nodes()
 node_launch_end = perf_counter()
-assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluseter " + len(
+
+assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
     ray.nodes()
 )
+assert ray.cluster_resources() == ray.available_resources()
 print("Done launching nodes")
+
 actor_start = perf_counter()
 test_max_actors()
 actor_end = perf_counter()
+
+assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
+    ray.nodes()
+)
+assert ray.cluster_resources() == ray.available_resources()
 print("Done testing actors")
+
 task_start = perf_counter()
 test_max_running_tasks()
 task_end = perf_counter()
+
+assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
+    ray.nodes()
+)
+assert ray.cluster_resources() == ray.available_resources()
 print("Done testing tasks")
+
 pg_start = perf_counter()
 test_many_placement_groups()
 pg_end = perf_counter()
+
+assert len(ray.nodes()) == MAX_NUM_NODES, "Wrong number of nodes in cluster " + len(
+    ray.nodes()
+)
+assert ray.cluster_resources() == ray.available_resources()
 print("Done")
 
 launch_time = node_launch_end - node_launch_start
