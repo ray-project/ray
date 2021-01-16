@@ -300,11 +300,8 @@ def test_metrics_override_shouldnt_warn(ray_start_regular, log_pubsub):
 
 
 def test_custom_metrics_without_ray_init():
-    with pytest.raises(AssertionError):                      
-        error_counter = Count( 
-                    "c", 
-                    description="", 
-                    tag_keys=("backend", ))
+    with pytest.raises(AssertionError):
+        Count("c", description="", tag_keys=("backend", ))
 
 
 if __name__ == "__main__":
