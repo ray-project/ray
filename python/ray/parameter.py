@@ -95,7 +95,7 @@ class RayParams:
         metrics_agent_port(int): The port to bind metrics agent.
         metrics_export_port(int): The port at which metrics are exposed
             through a Prometheus endpoint.
-        no_monitor(bool): If True, the ray monitor/autoscaler for this cluster
+        no_monitor(bool): If True, the ray autoscaler monitor for this cluster
             will not be started.
         _system_config (dict): Configuration for overriding RayConfig
             defaults. Used to set system configuration and for experimental Ray

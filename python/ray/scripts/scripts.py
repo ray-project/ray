@@ -427,7 +427,7 @@ def debug(address):
     is_flag=True,
     hidden=True,
     default=False,
-    help="If True, the ray monitor/autoscaler for this cluster will not be "
+    help="If True, the ray autoscaler monitor for this cluster will not be "
     "started.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
