@@ -174,6 +174,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
                                                          bool actor_creation,
                                                          int64_t *total_violations,
                                                          bool *is_infeasible) {
+  // NOTE: We need to set `is_infeasible` to false in advance to avoid `is_infeasible` not
+  // being set.
+  *is_infeasible = false;
+
   // Minimum number of soft violations across all nodes that can schedule the request.
   // We will pick the node with the smallest number of soft violations.
   int64_t min_violations = INT_MAX;
