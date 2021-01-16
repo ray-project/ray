@@ -75,6 +75,10 @@ def _setup_cluster_for_test(ray_start_cluster):
 
     worker_should_exit = SignalActor.remote()
 
+    # Generate a metric in the driver.
+    counter = Count("test_driver_counter", description="desc")
+    counter.record(1)
+
     # Generate some metrics from actor & tasks.
     @ray.remote
     def f():
@@ -130,19 +134,25 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                    for components in components_dict.values())
 
         # Make sure our user defined metrics exist
-        for metric_name in ["test_counter", "test_histogram"]:
+        for metric_name in [
+                "test_counter", "test_histogram", "test_driver_counter"
+        ]:
             assert any(metric_name in full_name for full_name in metric_names)
 
         # Make sure GCS server metrics are recorded.
         assert "ray_outbound_heartbeat_size_kb_sum" in metric_names
 
-        # Make sure the numeric value is correct
+        # Make sure the numeric values are correct
         test_counter_sample = [
             m for m in metric_samples if "test_counter" in m.name
         ][0]
         assert test_counter_sample.value == 1.0
 
-        # Make sure the numeric value is correct
+        test_driver_counter_sample = [
+            m for m in metric_samples if "test_driver_counter" in m.name
+        ][0]
+        assert test_driver_counter_sample.value == 1.0
+
         test_histogram_samples = [
             m for m in metric_samples if "test_histogram" in m.name
         ]
@@ -176,7 +186,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         )
     except RuntimeError:
         print(
-            f"The compoenents are {pformat(fetch_prometheus(prom_addresses))}")
+            f"The components are {pformat(fetch_prometheus(prom_addresses))}")
         test_cases()  # Should fail assert
 
 
