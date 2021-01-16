@@ -138,6 +138,7 @@ message ClusterInfoType {
     NODES = 1;
     CLUSTER_RESOURCES = 2;
     AVAILABLE_RESOURCES = 3;
+    RUNTIME_CONTEXT = 4;
   }
 }
 
@@ -149,10 +150,18 @@ message ClusterInfoResponse {
   message ResourceTable {
     map<string, double> table = 1;
   }
+
+  message RuntimeContext {
+    bytes job_id = 1;
+    bytes node_id = 2;
+    bool capture_client_tasks = 3;
+  }
+
   ClusterInfoType.TypeEnum type = 1;
   oneof response_type {
     string json = 2;
     ResourceTable resource_table = 3;
+    RuntimeContext runtime_context = 4;
   }
 }
 
@@ -178,6 +187,39 @@ message TerminateResponse {
   bool ok = 1;
 }
 
+message KVGetRequest {
+  bytes key = 1;
+}
+
+message KVGetResponse {
+  bytes value = 1;
+}
+
+message KVPutRequest {
+  bytes key = 1;
+  bytes value = 2;
+  bool overwrite = 3;
+}
+
+message KVPutResponse {
+  bool already_exists = 1;
+}
+
+message KVDelRequest {
+  bytes key = 1;
+}
+
+message KVDelResponse {
+}
+
+message KVListRequest {
+  bytes prefix = 1;
+}
+
+message KVListResponse {
+  repeated bytes keys = 1;
+}
+
 service RayletDriver {
   rpc GetObject(GetRequest) returns (GetResponse) {
   }
@@ -190,6 +232,14 @@ service RayletDriver {
   rpc Terminate(TerminateRequest) returns (TerminateResponse) {
   }
   rpc ClusterInfo(ClusterInfoRequest) returns (ClusterInfoResponse) {
+  }
+  rpc KVGet(KVGetRequest) returns (KVGetResponse) {
+  }
+  rpc KVPut(KVPutRequest) returns (KVPutResponse) {
+  }
+  rpc KVDel(KVDelRequest) returns (KVDelResponse) {
+  }
+  rpc KVList(KVListRequest) returns (KVListResponse) {
   }
 }
 
@@ -204,6 +254,20 @@ message ReleaseResponse {
   repeated bool ok = 2;
 }
 
+message ConnectionInfoRequest {
+}
+
+message ConnectionInfoResponse {
+  // The number of data clients connected to the server, including the caller.
+  int32 num_clients = 1;
+  // The Ray version (e.g., "1.2.0").
+  string ray_version = 2;
+  // The Ray commit (git sha1 hash).
+  string ray_commit = 3;
+  // The Python version (e.g., "3.7.2").
+  string python_version = 4;
+}
+
 message DataRequest {
   // An incrementing counter of request IDs on the Datapath,
   // to match requests with responses asynchronously.
@@ -212,6 +276,7 @@ message DataRequest {
     GetRequest get = 2;
     PutRequest put = 3;
     ReleaseRequest release = 4;
+    ConnectionInfoRequest connection_info = 5;
   }
 }
 
@@ -222,6 +287,7 @@ message DataResponse {
     GetResponse get = 2;
     PutResponse put = 3;
     ReleaseResponse release = 4;
+    ConnectionInfoResponse connection_info = 5;
   }
 }
 

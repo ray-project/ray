@@ -20,12 +20,14 @@ INT32_MAX = (2**31) - 1
 
 
 class DataClient:
-    def __init__(self, channel: "grpc._channel.Channel", client_id: str):
+    def __init__(self, channel: "grpc._channel.Channel", client_id: str,
+                 metadata: list):
         """Initializes a thread-safe datapath over a Ray Client gRPC channel.
 
         Args:
             channel: connected gRPC channel
             client_id: the generated ID representing this client
+            metadata: metadata to pass to gRPC requests
         """
         self.channel = channel
         self.request_queue = queue.Queue()
@@ -34,6 +36,7 @@ class DataClient:
         self.cv = threading.Condition()
         self._req_id = 0
         self._client_id = client_id
+        self._metadata = metadata
         self.data_thread.start()
 
     def _next_id(self) -> int:
@@ -52,7 +55,7 @@ class DataClient:
         stub = ray_client_pb2_grpc.RayletDataStreamerStub(self.channel)
         resp_stream = stub.Datapath(
             iter(self.request_queue.get, None),
-            metadata=(("client_id", self._client_id), ),
+            metadata=[("client_id", self._client_id)] + self._metadata,
             wait_for_ready=True)
         try:
             for response in resp_stream:
@@ -89,6 +92,13 @@ class DataClient:
             data = self.ready_data[req_id]
             del self.ready_data[req_id]
         return data
+
+    def ConnectionInfo(self,
+                       context=None) -> ray_client_pb2.ConnectionInfoResponse:
+        datareq = ray_client_pb2.DataRequest(
+            connection_info=ray_client_pb2.ConnectionInfoRequest())
+        resp = self._blocking_send(datareq)
+        return resp.connection_info
 
     def GetObject(self, request: ray_client_pb2.GetRequest,
                   context=None) -> ray_client_pb2.GetResponse:

@@ -1,6 +1,7 @@
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <google/protobuf/map.h>
+
 #include <boost/range/join.hpp>
 
 #include "ray/util/logging.h"
@@ -354,7 +355,6 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id) {
     }
     waiting_tasks_.erase(iter);
 
-    task_dependency_manager_.RemoveTaskDependencies(task_id);
     return true;
   }
 
@@ -395,7 +395,6 @@ void ClusterTaskManager::FillPendingActorInfo(rpc::GetNodeStatsReply *reply) con
 }
 
 void ClusterTaskManager::FillResourceUsage(
-    bool light_report_resource_usage_enabled,
     std::shared_ptr<rpc::ResourcesData> data) const {
   if (max_resource_shapes_per_load_report_ == 0) {
     return;
@@ -649,6 +648,7 @@ void ClusterTaskManager::Dispatch(
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Dispatching task " << task_spec.TaskId();
   // Pass the contact info of the worker to use.
+  reply->set_worker_pid(worker->GetProcess().GetId());
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());

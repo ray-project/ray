@@ -228,7 +228,7 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, pin_object=True):
+    def put_object(self, value, object_ref=None):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -242,7 +242,6 @@ class Worker:
             value: The value to put in the object store.
             object_ref (ObjectRef): The object ref of the value to be
                 put. If None, one will be generated.
-            pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -274,8 +273,7 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object(
-                serialized_value, object_ref=object_ref,
-                pin_object=pin_object))
+                serialized_value, object_ref=object_ref))
 
     def deserialize_objects(self, data_metadata_pairs, object_refs):
         context = self.get_serialization_context()
@@ -523,7 +521,7 @@ def init(
 
     You can also define an environment variable called `RAY_ADDRESS` in
     the same format as the `address` parameter to connect to an existing
-    cluster with ray.init().
+    cluster with ray.init() or ray.init(address="auto").
 
     Args:
         address (str): The address of the Ray cluster to connect to. If
@@ -532,7 +530,9 @@ def init(
             It will also kill these processes when Python exits. If the driver
             is running on a node in a Ray cluster, using `auto` as the value
             tells the driver to detect the the cluster, removing the need to
-            specify a specific node address.
+            specify a specific node address. If the environment variable
+            `RAY_ADDRESS` is defined and the address is None or "auto", Ray
+            will set `address` to `RAY_ADDRESS`.
         num_cpus (int): Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus (int): Number of GPUs the user wishes to assign to each
@@ -634,13 +634,6 @@ def init(
     if "RAY_ADDRESS" in os.environ:
         if address is None or address == "auto":
             address = os.environ["RAY_ADDRESS"]
-        else:
-            raise RuntimeError(
-                "Cannot use both the RAY_ADDRESS environment variable and "
-                "the address argument of ray.init simultaneously. If you "
-                "use RAY_ADDRESS to connect to a specific Ray cluster, "
-                "please call ray.init() or ray.init(address=\"auto\") on the "
-                "driver.")
 
     # Convert hostnames to numerical IP address.
     if _node_ip_address is not None:
@@ -1423,7 +1416,7 @@ def put(value):
     worker.check_connected()
     with profiling.profile("ray.put"):
         try:
-            object_ref = worker.put_object(value, pin_object=True)
+            object_ref = worker.put_object(value)
         except ObjectStoreFullError:
             logger.info(
                 "Put failed since the value was either too large or the "

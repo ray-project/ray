@@ -276,7 +276,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     if framework == "torch":
         if name in ["linear", None]:
             return None
-        if name == "swish":
+        if name in ["swish", "silu"]:
             from ray.rllib.utils.torch_ops import Swish
             return Swish
         _, nn = try_import_torch()
@@ -297,6 +297,8 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     else:
         if name in ["linear", None]:
             return None
+        if name == "swish":
+            name = "silu"
         tf1, tf, tfv = try_import_tf()
         fn = getattr(tf.nn, name, None)
         if fn is not None:
