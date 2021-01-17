@@ -19,6 +19,7 @@
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
