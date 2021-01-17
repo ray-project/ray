@@ -26,6 +26,8 @@ class VisionNetwork(TFModelV2):
 
         activation = get_activation_fn(
             self.model_config.get("conv_activation"), framework="tf")
+        post_fcnet_activation = get_activation_fn(
+            model_config.get("post_fcnet_activation"), framework="tf")
         filters = self.model_config["conv_filters"]
         assert len(filters) > 0,\
             "Must provide at least 1 entry in `conv_filters`!"
@@ -65,14 +67,22 @@ class VisionNetwork(TFModelV2):
         # No final linear: Last layer is a Conv2D and uses num_outputs.
         if no_final_linear and num_outputs:
             last_layer = tf.keras.layers.Conv2D(
-                num_outputs,
+                out_size if model_config["post_fcnet_hiddens"] else num_outputs,
                 kernel,
                 strides=(stride, stride),
                 activation=activation,
                 padding="valid",
                 data_format="channels_last",
                 name="conv_out")(last_layer)
-            conv_out = last_layer
+            # Add (optional) post-fc-stack after last Conv2D layer.
+            for i, out_size in enumerate(model_config["post_fcnet_hiddens"][:-1] + ([num_outputs] if model_config["post_fcnet_hiddens"] else [])):
+                last_layer = tf.keras.layers.Dense(
+                    out_size,
+                    name="post_fcnet_{}".format(i),
+                    activation=post_fcnet_activation,
+                    kernel_initializer=normc_initializer(1.0))(last_layer)
+            logits_out = last_layer
+
         # Finish network normally (w/o overriding last layer size with
         # `num_outputs`), then add another linear one of size `num_outputs`.
         else:
@@ -88,29 +98,46 @@ class VisionNetwork(TFModelV2):
             # num_outputs defined. Use that to create an exact
             # `num_output`-sized (1,1)-Conv2D.
             if num_outputs:
-                conv_out = tf.keras.layers.Conv2D(
+                logits_out = tf.keras.layers.Conv2D(
                     num_outputs, [1, 1],
                     activation=None,
                     padding="same",
                     data_format="channels_last",
                     name="conv_out")(last_layer)
 
-                if conv_out.shape[1] != 1 or conv_out.shape[2] != 1:
+                if logits_out.shape[1] != 1 or logits_out.shape[2] != 1:
                     raise ValueError(
                         "Given `conv_filters` ({}) do not result in a [B, 1, "
                         "1, {} (`num_outputs`)] shape (but in {})! Please "
                         "adjust your Conv2D stack such that the dims 1 and 2 "
                         "are both 1.".format(self.model_config["conv_filters"],
                                              self.num_outputs,
-                                             list(conv_out.shape)))
+                                             list(logits_out.shape)))
+                ## Add (optional) post-fc-stack after last Conv2D layer.
+                #for i, out_size in enumerate(model_config["post_fcnet_hiddens"][:-1] + ([num_outputs] if model_config["post_fcnet_hiddens"] else [])):
+                #    last_layer = tf.keras.layers.Dense(
+                #        out_size,
+                #        name="post_fcnet_{}".format(i),
+                #        activation=post_fcnet_activation,
+                #        kernel_initializer=normc_initializer(1.0))(last_layer)
 
             # num_outputs not known -> Flatten, then set self.num_outputs
             # to the resulting number of nodes.
             else:
                 self.last_layer_is_flattened = True
-                conv_out = tf.keras.layers.Flatten(
+                logits_out = tf.keras.layers.Flatten(
                     data_format="channels_last")(last_layer)
-                self.num_outputs = conv_out.shape[1]
+                self.num_outputs = logits_out.shape[1]
+
+
+        # Build (optional) post FC stack.
+        #post_fc_stack_input_space = Box(
+        #    float("-inf"), float("inf"), shape=(), dtype=np.float32)
+        #self.post_fc_stack = ModelCatalog.get_model_v2(
+        #    post_fc_stack_input_space, action_space, num_outputs,
+        #    post_fc_config, framework="tf", name="post_fc_stack")
+
+
 
         # Build the value layers
         if vf_share_layers:
@@ -151,7 +178,7 @@ class VisionNetwork(TFModelV2):
             value_out = tf.keras.layers.Lambda(
                 lambda x: tf.squeeze(x, axis=[1, 2]))(last_layer)
 
-        self.base_model = tf.keras.Model(inputs, [conv_out, value_out])
+        self.base_model = tf.keras.Model(inputs, [logits_out, value_out])
 
         # Optional: framestacking obs/new_obs for Atari.
         if self.traj_view_framestacking:
