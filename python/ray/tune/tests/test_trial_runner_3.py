@@ -980,10 +980,16 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         class _TestCallback(Callback):
             def on_step_end(self, iteration, trials, **info):
                 if iteration == 1:
-                    this.assertEqual(len(trials), scheduled)
+                    this.assertEqual(scheduled, len(trials))
                     this.assertEqual(
-                        len(trial_executor._pg_manager._staging) + len(
-                            trial_executor._pg_manager._ready), scheduled)
+                        scheduled,
+                        sum([
+                            len(s) for s in
+                            trial_executor._pg_manager._staging.values()
+                        ]) + sum([
+                            len(s) for s in
+                            trial_executor._pg_manager._ready.values()
+                        ]) + len(trial_executor._pg_manager._in_use_pgs))
 
         start = time.time()
         out = tune.run(
@@ -1041,6 +1047,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             end = time.time() - config["start_time"]
             tune.report(avg=np.mean(results), end=end)
 
+        trial_executor = RayTrialExecutor()
+
         start = time.time()
         out = tune.run(
             train,
@@ -1049,7 +1057,8 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                 "base": tune.grid_search(list(range(0, 100, 10)))
             },
             resources_per_trial=placement_group_factory,
-            num_samples=1)
+            num_samples=1,
+            trial_executor=trial_executor)
 
         avgs = sorted([t.last_result["avg"] for t in out.trials])
         self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
@@ -1064,6 +1073,17 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         # Some trials should have run in parallel
         # Todo: Re-enable when using buildkite
         # self.assertLess(max_diff, 10)
+
+        # Assert proper cleanup
+        pg_manager = trial_executor._pg_manager
+        self.assertFalse(pg_manager._in_use_trials)
+        self.assertFalse(pg_manager._in_use_pgs)
+        self.assertFalse(pg_manager._staging_futures)
+        for pgf in pg_manager._staging:
+            self.assertFalse(pg_manager._staging[pgf])
+        for pgf in pg_manager._ready:
+            self.assertFalse(pg_manager._ready[pgf])
+        self.assertTrue(pg_manager._latest_staging_start_time)
 
 
 if __name__ == "__main__":

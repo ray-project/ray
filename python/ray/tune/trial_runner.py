@@ -373,7 +373,7 @@ class TrialRunner:
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._trials)
 
-        def _start_trial(trial):
+        def _start_trial(trial: Trial) -> bool:
             """Helper function to start trial and call callbacks"""
             with warn_if_slow("start_trial"):
                 if self.trial_executor.start_trial(trial):
@@ -389,8 +389,7 @@ class TrialRunner:
             if _start_trial(next_trial):
                 may_handle_events = False
             else:
-                next_trial = self.trial_executor.get_staged_trial(
-                    replace=next_trial)
+                next_trial = self.trial_executor.get_staged_trial()
                 if next_trial is not None:
                     if _start_trial(next_trial):
                         may_handle_events = False

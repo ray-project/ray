@@ -181,6 +181,7 @@ class RayTrialExecutor(TrialExecutor):
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
         self._pg_manager = PlacementGroupManager()
+        self._staged_trials = set()
 
         self._resources_initialized = False
 
@@ -216,53 +217,34 @@ class RayTrialExecutor(TrialExecutor):
                 continue
             if not trial.uses_placement_groups:
                 continue
-            if self._pg_manager.is_ready(trial):
+            if trial in self._staged_trials:
                 continue
-            if self._pg_manager.is_staging(trial):
+            if self._pg_manager.trial_in_use(trial):
                 continue
 
-            if not self._pg_manager.stage_trial(trial):
+            if not self._pg_manager.stage_trial_pg(
+                    trial.placement_group_factory):
                 # Break if we reached the limit of pending placement groups.
                 break
 
+            self._staged_trials.add(trial)
+
         self._pg_manager.update_status()
 
-    def get_staged_trial(self, replace: Optional[Trial] = None):
+    def get_staged_trial(self):
         """Get a trial whose placement group was successfully staged.
 
-        If ``replace`` is set, this will try to find a staged trial with
-        an identical placement group factory. If one is found, it will
-        switch placement groups of these trials, so that the trial in
-        ``replace`` is staged. This can be used to ensure trials are
-        executed in the desired order. If no such trial is found, the
-        first available trial (with a different placement group) is returned.
-
-        If ``replace`` is empty, the first available trial will be returned.
-
         Can also return None if no trial is available.
-
-        Args:
-            replace (Optional[Trial]): Optional trial that should replace
-                the available trial.
 
         Returns:
             Trial object or None.
 
         """
-        first_available_trial = None
+        for trial in self._staged_trials:
+            if self._pg_manager.has_ready(trial.placement_group_factory):
+                return trial
 
-        for available_trial in self._pg_manager.available_trials:
-            if not first_available_trial:
-                first_available_trial = available_trial
-
-            if not replace:
-                break
-            if available_trial.placement_group_factory == \
-               replace.placement_group_factory:
-                self._pg_manager.switch_trial_pgs(available_trial, replace)
-                return replace
-
-        return first_available_trial
+        return None
 
     def _setup_remote_runner(self, trial, reuse_allowed):
         trial.init_logdir()
@@ -288,18 +270,19 @@ class RayTrialExecutor(TrialExecutor):
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
             with self._change_working_directory(trial):
-                pg = self._pg_manager.get_trial_pg(trial)
+                pg = self._pg_manager.clean_trial_placement_group(trial)
 
                 self._trial_cleanup.add(
                     trial, actor=self._cached_actor, placement_group=pg)
-                self._pg_manager.clean_trial_placement_group(trial)
             self._cached_actor = None
 
         _actor_cls = _class_cache.get(trial.get_trainable_cls())
         if trial.uses_placement_groups:
-            if not self._pg_manager.is_ready(trial):
-                if not self._pg_manager.is_staging(trial):
-                    self._pg_manager.stage_trial(trial)
+            if not self._pg_manager.has_ready(trial.placement_group_factory):
+                if trial not in self._staged_trials:
+                    if self._pg_manager.stage_trial_pg(
+                            trial.placement_group_factory):
+                        self._staged_trials.add(trial)
                 return None
             else:
                 full_actor_class = self._pg_manager.get_full_actor_cls(
@@ -441,12 +424,10 @@ class RayTrialExecutor(TrialExecutor):
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
-                    pg = self._pg_manager.get_trial_pg(trial)
+                    pg = self._pg_manager.clean_trial_placement_group(trial)
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(
                             trial, actor=trial.runner, placement_group=pg)
-
-                    self._pg_manager.clean_trial_placement_group(trial)
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)
