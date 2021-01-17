@@ -70,8 +70,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   virtual ~ServiceBasedActorInfoAccessor() = default;
 
-  Status GetAll(std::vector<rpc::ActorTableData> *actor_table_data_list) override;
-
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<rpc::ActorTableData> &callback) override;
 
@@ -122,8 +120,6 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       GUARDED_BY(mutex_);
 
   ServiceBasedGcsClient *client_impl_;
-
-  Sequencer<ActorID> sequencer_;
 };
 
 /// \class ServiceBasedNodeInfoAccessor
@@ -182,13 +178,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   /// Save the fetch data operation in this function, so we can call it again when GCS
   /// server restarts from a failure.
   FetchDataOperation fetch_node_data_operation_;
-
-  // Mutex to protect the cached_resource_usage_ field.
-  absl::Mutex mutex_;
-
-  /// Save the resource usage data, so we can resend it again when GCS server restarts
-  /// from a failure.
-  rpc::ReportResourceUsageRequest cached_resource_usage_ GUARDED_BY(mutex_);
 
   void HandleNotification(const rpc::GcsNodeInfo &node_info);
 

@@ -1,7 +1,7 @@
 import contextlib
 import gym
 import re
-from typing import List
+from typing import Dict, List, Union
 
 from ray.util import log_once
 from ray.rllib.models.modelv2 import ModelV2
@@ -74,28 +74,15 @@ class TFModelV2(ModelV2):
         self.var_list.extend(variables)
 
     @override(ModelV2)
-    def variables(self, as_dict: bool = False) -> List[TensorType]:
+    def variables(self, as_dict: bool = False) -> \
+            Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             # Old way using `register_variables`.
             if self.var_list:
                 return {v.name: v for v in self.var_list}
             # New way: Automatically determine the var tree.
             else:
-                ret = {}
-                for prop, value in self.__dict__.items():
-                    # Keras Model: key=k + "." + var-name (replace '/' by '.').
-                    if isinstance(value, tf.keras.models.Model):
-                        for var in value.variables:
-                            key = prop + "." + re.sub("/", ".", var.name)
-                            ret[key] = var
-                    # Other TFModelV2: Include its vars into ours.
-                    elif isinstance(value, TFModelV2):
-                        for key, var in value.variables(as_dict=True).items():
-                            ret[prop + "." + key] = var
-                    # tf.Variable
-                    elif isinstance(value, tf.Variable):
-                        ret[prop] = value
-                return ret
+                return self._find_sub_modules("", self.__dict__)
 
         # Old way using `register_variables`.
         if self.var_list:
@@ -105,10 +92,49 @@ class TFModelV2(ModelV2):
             return list(self.variables(as_dict=True).values())
 
     @override(ModelV2)
-    def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:
+    def trainable_variables(self, as_dict: bool = False) -> \
+            Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             return {
                 k: v
                 for k, v in self.variables(as_dict=True).items() if v.trainable
             }
         return [v for v in self.variables() if v.trainable]
+
+    @staticmethod
+    def _find_sub_modules(current_key, struct):
+        # Keras Model: key=k + "." + var-name (replace '/' by '.').
+        if isinstance(struct, tf.keras.models.Model):
+            ret = {}
+            for var in struct.variables:
+                key = current_key + "." + re.sub("/", ".", var.name)
+                ret[key] = var
+            return ret
+        # Other TFModelV2: Include its vars into ours.
+        elif isinstance(struct, TFModelV2):
+            return {
+                current_key + "." + key: var
+                for key, var in struct.variables(as_dict=True).items()
+            }
+        # tf.Variable
+        elif isinstance(struct, tf.Variable):
+            return {current_key + "." + struct.name: struct}
+        # List/Tuple.
+        elif isinstance(struct, (tuple, list)):
+            ret = {}
+            for i, value in enumerate(struct):
+                sub_vars = TFModelV2._find_sub_modules(
+                    current_key + "_{}".format(i), value)
+                ret.update(sub_vars)
+            return ret
+        # Dict.
+        elif isinstance(struct, dict):
+            if current_key:
+                current_key += "_"
+            ret = {}
+            for key, value in struct.items():
+                sub_vars = TFModelV2._find_sub_modules(current_key + key,
+                                                       value)
+                ret.update(sub_vars)
+            return ret
+        return {}

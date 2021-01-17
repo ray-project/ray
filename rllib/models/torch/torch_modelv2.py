@@ -1,5 +1,5 @@
 import gym
-from typing import List
+from typing import Dict, List, Union
 
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -11,7 +11,7 @@ _, nn = try_import_torch()
 
 @PublicAPI
 class TorchModelV2(ModelV2):
-    """Torch version of ModelV2, which is also always a torch.nn.Module.
+    """Torch version of ModelV2.
 
     Note that this class by itself is not a valid model unless you
     inherit from nn.Module and implement forward() in a subclass."""
@@ -47,14 +47,16 @@ class TorchModelV2(ModelV2):
             framework="torch")
 
     @override(ModelV2)
-    def variables(self, as_dict: bool = False) -> List[TensorType]:
+    def variables(self, as_dict: bool = False) -> \
+            Union[List[TensorType], Dict[str, TensorType]]:
         p = list(self.parameters())
         if as_dict:
             return {k: p[i] for i, k in enumerate(self.state_dict().keys())}
         return p
 
     @override(ModelV2)
-    def trainable_variables(self, as_dict: bool = False) -> List[TensorType]:
+    def trainable_variables(self, as_dict: bool = False) -> \
+            Union[List[TensorType], Dict[str, TensorType]]:
         if as_dict:
             return {
                 k: v
