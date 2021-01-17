@@ -19,7 +19,7 @@ from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.function_runner import FunctionRunner
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
-from ray.tune.resources import PlacementGroupFactory, Resources
+from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupManager
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
@@ -245,7 +245,8 @@ class RayTrialExecutor(TrialExecutor):
             replace (Optional[Trial]): Optional trial that should replace
                 the available trial.
 
-        Returns: Trial object or None.
+        Returns:
+            Trial object or None.
 
         """
         first_available_trial = None
@@ -299,11 +300,10 @@ class RayTrialExecutor(TrialExecutor):
             if not self._pg_manager.is_ready(trial):
                 if not self._pg_manager.is_staging(trial):
                     self._pg_manager.stage_trial(trial)
-
-            full_actor_class = self._pg_manager.get_full_actor_cls(
-                trial, _actor_cls)
-            if not full_actor_class:
                 return None
+            else:
+                full_actor_class = self._pg_manager.get_full_actor_cls(
+                    trial, _actor_cls)
         else:
             full_actor_class = _actor_cls.options(
                 num_cpus=trial.resources.cpu,
@@ -388,7 +388,8 @@ class RayTrialExecutor(TrialExecutor):
                 cached actor. If None, a new runner is created.
             train (bool): Whether or not to start training.
 
-        Returns: True if trial was started successfully, False otherwise.
+        Returns:
+            True if trial was started successfully, False otherwise.
 
         See `RayTrialExecutor.restore` for possible errors raised.
         """
@@ -463,7 +464,8 @@ class RayTrialExecutor(TrialExecutor):
                 of trial.
             train (bool): Whether or not to start training.
 
-        Returns: True if trial was started successfully, False otherwise.
+        Returns:
+            True if trial was started successfully, False otherwise.
         """
         if not trial.uses_placement_groups:
             self._commit_resources(trial.resources)
@@ -651,7 +653,7 @@ class RayTrialExecutor(TrialExecutor):
             custom_resources=custom_resources)
 
     def _return_resources(self, resources):
-        if isinstance(resources, PlacementGroupFactory):
+        if resources.has_placement_group:
             return
 
         committed = self._committed_resources

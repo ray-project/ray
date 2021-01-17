@@ -87,7 +87,8 @@ class TrialExecutor:
             of trial.
             train (bool): Whether or not to start training.
 
-        Returns: True if trial started successfully, False otherwise.
+        Returns:
+            True if trial started successfully, False otherwise.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "start_trial() method")

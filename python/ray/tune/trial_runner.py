@@ -373,25 +373,28 @@ class TrialRunner:
         # Update status of staged placement groups
         self.trial_executor.stage_and_update_status(self._trials)
 
-        may_handle_events = True
-        if next_trial is not None:
+        def _start_trial(trial):
+            """Helper function to start trial and call callbacks"""
             with warn_if_slow("start_trial"):
-                if self.trial_executor.start_trial(next_trial):
+                if self.trial_executor.start_trial(trial):
                     self._callbacks.on_trial_start(
                         iteration=self._iteration,
                         trials=self._trials,
-                        trial=next_trial)
-                    may_handle_events = False
-                else:
-                    next_trial = self.trial_executor.get_staged_trial(
-                        replace=next_trial)
-                    if next_trial is not None:
-                        if self.trial_executor.start_trial(next_trial):
-                            self._callbacks.on_trial_start(
-                                iteration=self._iteration,
-                                trials=self._trials,
-                                trial=next_trial)
-                            may_handle_events = False
+                        trial=trial)
+                    return True
+                return False
+
+        may_handle_events = True
+        if next_trial is not None:
+            if _start_trial(next_trial):
+                may_handle_events = False
+            else:
+                next_trial = self.trial_executor.get_staged_trial(
+                    replace=next_trial)
+                if next_trial is not None:
+                    if _start_trial(next_trial):
+                        may_handle_events = False
+
         if may_handle_events:
             if self.trial_executor.get_running_trials():
                 timeout = None
@@ -937,7 +940,8 @@ class TrialRunner:
                 or is_finished (timeout or search algorithm finishes).
             timeout (int): Seconds before blocking times out.
 
-        Returns: Boolean indicating if a new trial was created or not.
+        Returns:
+            Boolean indicating if a new trial was created or not.
         """
         trial = self._search_alg.next_trial()
         if blocking and not trial:

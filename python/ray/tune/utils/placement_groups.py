@@ -56,7 +56,8 @@ class PlacementGroupManager:
         Args:
             trial (Trial): Trial to stage.
 
-        Returns: False if trial has not been staged, True otherwise.
+        Returns:
+            False if trial has not been staged, True otherwise.
 
         Creates its placement group and moves it to `self._staging`.
         """
@@ -105,7 +106,8 @@ class PlacementGroupManager:
             trial (Trial): trial object to start
             actor_cls: Ray actor class.
 
-        Returns: Configured ActorClass or None
+        Returns:
+            Configured ActorClass or None
 
         """
         if trial not in self._ready:
@@ -123,7 +125,8 @@ class PlacementGroupManager:
         Args:
             trial (Trial): Trial object.
 
-        Returns: Placement group or None.
+        Returns:
+            Placement group or None.
 
         """
         return self._ready.get(trial) or self._staging.get(trial)
@@ -187,7 +190,8 @@ class PlacementGroupManager:
         Args:
             trial (Trial): Trial object.
 
-        Returns: Boolean.
+        Returns:
+            Boolean.
 
         """
         return trial in self._staging
@@ -198,7 +202,8 @@ class PlacementGroupManager:
         Args:
             trial (Trial): Trial object.
 
-        Returns: Boolean.
+        Returns:
+            Boolean.
 
         """
         return trial in self._ready
@@ -209,7 +214,8 @@ class PlacementGroupManager:
         Args:
             trial (Trial): Trial object.
 
-        Returns: None
+        Returns:
+            None
 
         """
         pg = self._ready.pop(trial, None)

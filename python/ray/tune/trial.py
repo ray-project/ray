@@ -384,15 +384,24 @@ class Trial:
         Raises:
             ValueError if trial status is running.
         """
-        # Todo: Add placement group support
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
         if isinstance(resources, PlacementGroupFactory):
+            self.resources = Resources(cpu=1, gpu=0)
             self.placement_group_factory = resources
         elif callable(resources):
+            self.resources = Resources(cpu=1, gpu=0)
             self.placement_group_factory = PlacementGroupFactory(resources)
         else:
             self.resources = Resources(**resources)
+            self.placement_group_factory = None
+
+        if self.placement_group_factory and \
+           not self.resources.has_placement_group:
+            resource_kwargs = self.resources._asdict()
+            resource_kwargs["has_placement_group"] = True
+            self.resources = Resources(**resource_kwargs)
+
         self.invalidate_json_state()
 
     def set_runner(self, runner):
