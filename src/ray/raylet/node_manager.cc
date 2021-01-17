@@ -1207,7 +1207,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       system_config_keys.push_back(kv.first);
       system_config_values.push_back(kv.second);
     }
-    
+
     std::string serialized_job_config;
     if (const auto *job_config = worker_pool_.GetJobConfig(job_id)) {
       serialized_job_config = job_config->SerializeAsString();
