@@ -75,15 +75,11 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
   NodeID node_id = NodeID::FromBinary(request.task_lease_data().node_manager_id());
   RAY_LOG(DEBUG) << "Adding task lease, job id = " << task_id.JobId()
                  << ", task id = " << task_id << ", node id = " << node_id;
-  auto on_done = [this, task_id, node_id, request, reply,
-                  send_reply_callback](const Status &status) {
+  auto on_done = [task_id, node_id, reply, send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                         request.task_lease_data().SerializeAsString(),
-                                         nullptr));
       RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     }
