@@ -340,11 +340,14 @@ def _configure_key_pair(config):
             "account with ids from 0..{}. ".format(key_name) +
             "Consider deleting some unused keys pairs from your account.")
 
-    cli_logger.doassert(
-        os.path.exists(key_path), "Private key file " + cf.bold("{}") +
-        " not found for " + cf.bold("{}"), key_path, key_name)  # todo: err msg
+    err_msg = ("Private key file " + cf.bold("{}") + " not found for " +
+               cf.bold("{}") + ".\nCouldn't auto-configure an EC2 SSH key pair"
+               ".\nTry setting 'ssh_private_key' in your cluster launching "
+               "config's 'auth' field and setting 'KeyName' in the 'head_node'"
+               " and 'worker_nodes' fields.")
+    cli_logger.doassert(os.path.exists(key_path), err_msg, key_path, key_name)
     assert os.path.exists(key_path), \
-        "Private key file {} not found for {}".format(key_path, key_name)
+        err_msg.format(key_path, key_name)
 
     config["auth"]["ssh_private_key"] = key_path
     config["head_node"]["KeyName"] = key_name
