@@ -18,7 +18,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.config import BackendConfig
 from ray.serve.long_poll import LongPollAsyncClient
-from ray.serve.router import Query
+from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
     BACKEND_RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
@@ -130,13 +130,12 @@ def create_backend_replica(func_or_class: Union[Callable, Type[Callable]]):
         @ray.method(num_returns=2)
         async def handle_request(
                 self,
-                request_metadata,
+                request_metadata: RequestMetadata,
                 *request_args,
                 **request_kwargs,
         ):
             # Directly receive input because it might contain an ObjectRef.
-            query = Query(request_args, request_kwargs,
-                          request_metadata.request_context, request_metadata)
+            query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
         def ready(self):

@@ -107,7 +107,6 @@ class ReplicaSet:
             # Directly passing args because it might contain an ObjectRef.
             tracker_ref, user_ref = replica.handle_request.remote(
                 query.metadata, *query.args, **query.kwargs)
-
             self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
         return None
@@ -149,7 +148,7 @@ class ReplicaSet:
                 if self.config_updated_event.is_set():
                     self.config_updated_event.clear()
             # We are pretty sure a free replica is ready now.
-            assigned_ref = await self._try_assign_replica(query)
+            assigned_ref = self._try_assign_replica(query)
         return assigned_ref
 
 
