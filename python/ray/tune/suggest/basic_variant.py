@@ -15,7 +15,7 @@ from ray.tune.suggest.variant_generator import (
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.utils.util import atomic_save, load_newest_checkpoint
 
-SERIALIZATION_THRESHOLD = 1e7
+SERIALIZATION_THRESHOLD = 1e6
 
 
 class _VariantIterator:
@@ -56,14 +56,26 @@ class _VariantIterator:
 
 
 class _TrialIterator:
+    """Generates trials from the spec.
+
+    Args:
+        uuid_prefix,
+        num_samples,
+        unresolved_spec,
+        output_path="",
+        points_to_evaluate=None,
+        lazy_eval=False,
+        start (int)
+    """
+
     def __init__(self,
-                 uuid_prefix,
-                 num_samples,
-                 unresolved_spec,
-                 output_path="",
-                 points_to_evaluate=None,
-                 lazy_eval=False,
-                 start=0):
+                 uuid_prefix: str,
+                 num_samples: int,
+                 unresolved_spec: dict,
+                 output_path: str = "",
+                 points_to_evaluate: Optional[List] = None,
+                 lazy_eval: bool = False,
+                 start: int = 0):
         self.parser = make_parser()
         self.num_samples = num_samples
         self.uuid_prefix = uuid_prefix
@@ -91,7 +103,7 @@ class _TrialIterator:
             trial_id=trial_id,
             experiment_tag=experiment_tag)
 
-    def __next__(self):
+    def __next__(self) -> "Trial":
         """Generates Trial objects with the variant generation process.
 
         Uses a fixed point iteration to resolve variants. All trials
