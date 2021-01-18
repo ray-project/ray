@@ -140,17 +140,20 @@ test_python() {
       python/ray/serve/...
       python/ray/tests/...
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_advanced_2
       -python/ray/tests:test_advanced_3  # test_invalid_unicode_in_worker_log() fails on Windows
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_basic_2  # hangs on shared cluster tests
+      -python/ray/tests:test_basic_2_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_failure
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
+      -python/ray/tests:test_metrics_agent # timeout
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
@@ -212,9 +215,12 @@ build_dashboard_front_end() {
   else
     (
       cd ray/new_dashboard/client
-      set +x  # suppress set -x since it'll get very noisy here
-      . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+
+      if [ -z "${BUILDKITE-}" ]; then
+        set +x  # suppress set -x since it'll get very noisy here
+        . "${HOME}/.nvm/nvm.sh"
+        nvm use --silent node
+      fi
       install_npm_project
       npm run -s build
     )

@@ -12,6 +12,7 @@ import ray
 from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.commands import teardown_cluster
 from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
+from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
@@ -101,15 +102,20 @@ class Monitor:
         self.raylet_id_to_ip_map = {}
         head_node_ip = redis_address.split(":")[0]
         self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        self.last_avail_resources = None
+        self.event_summarizer = EventSummarizer()
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(
                 autoscaling_config,
                 self.load_metrics,
-                prefix_cluster_info=prefix_cluster_info)
+                prefix_cluster_info=prefix_cluster_info,
+                event_summarizer=self.event_summarizer)
             self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
             self.autoscaling_config = None
+
+        logger.info("Monitor: Started")
 
     def __del__(self):
         """Destruct the monitor object."""
@@ -160,20 +166,6 @@ class Monitor:
             except Exception:
                 logger.exception("Error parsing resource requests")
 
-    def autoscaler_resource_request_handler(self, _, data):
-        """Handle a notification of a resource request for the autoscaler.
-
-        This channel and method are only used by the manual
-        `ray.autoscaler.sdk.request_resources` api.
-
-        Args:
-            channel: unused
-            data: a resource request as JSON, e.g. {"CPU": 1}
-        """
-
-        resource_request = json.loads(data)
-        self.load_metrics.set_resource_requests(resource_request)
-
     def update_raylet_map(self, _append_port=False):
         """Updates internal raylet map.
 
@@ -199,6 +191,7 @@ class Monitor:
             self.update_raylet_map()
             self.update_load_metrics()
             self.update_resource_requests()
+            self.update_event_summary()
             status = {
                 "load_metrics_report": self.load_metrics.summary()._asdict()
             }
@@ -210,6 +203,10 @@ class Monitor:
                 status[
                     "autoscaler_report"] = self.autoscaler.summary()._asdict()
 
+                for msg in self.event_summarizer.summary():
+                    logger.info(":event_summary:{}".format(msg))
+                self.event_summarizer.clear()
+
             as_json = json.dumps(status)
             if _internal_kv_initialized():
                 _internal_kv_put(
@@ -218,6 +215,21 @@ class Monitor:
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
             time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
+
+    def update_event_summary(self):
+        """Report the current size of the cluster.
+
+        To avoid log spam, only cluster size changes (CPU or GPU count change)
+        are reported to the event summarizer. The event summarizer will report
+        only the latest cluster size per batch.
+        """
+        avail_resources = self.load_metrics.resources_avail_summary()
+        if avail_resources != self.last_avail_resources:
+            self.event_summarizer.add(
+                "Resized to {}.",  # e.g., Resized to 100 CPUs, 4 GPUs.
+                quantity=avail_resources,
+                aggregate=lambda old, new: new)
+            self.last_avail_resources = avail_resources
 
     def destroy_autoscaler_workers(self):
         """Cleanup the autoscaler, in case of an exception in the run() method.
