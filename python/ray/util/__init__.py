@@ -6,6 +6,7 @@ from ray.util.debug import log_once, disable_log_once_globally, \
 from ray.util.placement_group import (placement_group, placement_group_table,
                                       remove_placement_group)
 from ray.util import rpdb as pdb
+from ray.util.serialization import register_serializer
 
 from ray.util.client_connect import connect, disconnect
 
@@ -23,4 +24,5 @@ __all__ = [
     "collective",
     "connect",
     "disconnect",
+    "register_serializer",
 ]
