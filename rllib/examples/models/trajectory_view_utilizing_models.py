@@ -36,7 +36,6 @@ class FrameStackingCartPoleModel(TFModelV2):
         out = tf.keras.layers.Dense(self.num_outputs)(layer1)
         values = tf.keras.layers.Dense(1)(layer1)
         self.base_model = tf.keras.models.Model([input_], [out, values])
-        self.register_variables(self.base_model.variables)
 
         self._last_value = None
 
