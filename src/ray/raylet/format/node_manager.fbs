@@ -38,9 +38,6 @@ enum MessageType:int {
   // Notify the raylet that this client is disconnecting unexpectedly.
   // This is sent from a worker to a raylet.
   DisconnectClient,
-  // Notify the raylet that this client is disconnecting gracefully.
-  // This is sent from a worker to a raylet.
-  IntentionalDisconnectClient,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -111,6 +108,7 @@ table ResourceIdSetInfo {
 
 // This message is sent from a worker to the node manager.
 table DisconnectClient {
+  disconnect_type: int;
 }
 
 table ResourceIdSetInfos {
