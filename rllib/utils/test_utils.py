@@ -301,13 +301,10 @@ def check_compute_single_action(trainer,
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy().observation_space
-                try:
-                    obs_space = obs_space.original_space
-                except AttributeError:
-                    pass
             else:
                 obs_space = worker_set.local_worker().for_policy(
                     lambda p: p.observation_space)
+            obs_space = getattr(obs_space, "original_space", obs_space)
         else:
             method_to_test = pol.compute_single_action
             obs_space = pol.observation_space
