@@ -22,9 +22,6 @@ PullManager::PullManager(
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                            std::vector<rpc::ObjectReference> *objects_to_locate) {
-  // TODO: Test requesting the same bundle again. Second bundle should also be
-  // activated on Pull.
-
   auto bundle_it = pull_request_bundles_.emplace(next_req_id_++, object_ref_bundle).first;
   RAY_LOG(DEBUG) << "Start pull request " << bundle_it->first;
 
@@ -53,7 +50,8 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
 }
 
 bool PullManager::ActivateNextPullBundleRequest(
-    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it) {
+    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it,
+    std::unordered_set<ObjectID> *object_ids_to_pull) {
   // Check that we have sizes for all of the objects in the bundle. If not, we
   // should not activate the bundle, since it may put us over the available
   // capacity.
@@ -84,10 +82,7 @@ bool PullManager::ActivateNextPullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ += it->second.object_size;
 
-      // We should begin pulling this object. Reset its timer and retries in
-      // case we tried this object before. We will try to make the object local
-      // at the next tick.
-      ResetRetryTimer(obj_id);
+      object_ids_to_pull->insert(obj_id);
     }
   }
 
@@ -98,7 +93,8 @@ bool PullManager::ActivateNextPullBundleRequest(
 }
 
 void PullManager::DeactivatePullBundleRequest(
-    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it) {
+    std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it,
+    std::unordered_set<ObjectID> *object_ids_to_cancel) {
   for (const auto &ref : request_it->second) {
     auto obj_id = ObjectRefToId(ref);
     RAY_CHECK(active_object_pull_requests_[obj_id].erase(request_it->first));
@@ -108,6 +104,9 @@ void PullManager::DeactivatePullBundleRequest(
       RAY_CHECK(it != object_pull_requests_.end());
       num_bytes_being_pulled_ -= it->second.object_size;
       active_object_pull_requests_.erase(obj_id);
+      if (object_ids_to_cancel) {
+        object_ids_to_cancel->insert(obj_id);
+      }
     }
   }
 
@@ -123,8 +122,15 @@ void PullManager::DeactivatePullBundleRequest(
 }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) {
+  // TODO(swang): We could return an error for requests whose total size is
+  // larger than the capacity of the memory store. This would hang right now.
+
+  if (num_bytes_available_ != num_bytes_available) {
+    RAY_LOG(DEBUG) << "Updating pulls based on available memory: " << num_bytes_available;
+  }
   num_bytes_available_ = num_bytes_available;
 
+  std::unordered_set<ObjectID> object_ids_to_pull;
   // While there is available capacity, activate the next pull request.
   while (num_bytes_being_pulled_ < num_bytes_available_) {
     // Get the next pull request in the queue.
@@ -147,7 +153,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     // There is another pull bundle request that we could try, and there is
     // enough space. Activate the next pull bundle request in the queue.
-    if (!ActivateNextPullBundleRequest(next_request_it)) {
+    if (!ActivateNextPullBundleRequest(next_request_it, &object_ids_to_pull)) {
       // This pull bundle request could not be activated, due to lack of object
       // size information. Wait until we have object size information before
       // activating this pull bundle.
@@ -155,6 +161,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
     }
   }
 
+  std::unordered_set<ObjectID> object_ids_to_cancel;
   // While the total bytes requested is over the available capacity, deactivate
   // the last pull request, ordered by request ID.
   while (num_bytes_being_pulled_ > num_bytes_available_) {
@@ -163,7 +170,17 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available) 
                    << " num bytes available: " << num_bytes_available_;
     const auto last_request_it = pull_request_bundles_.find(highest_req_id_being_pulled_);
     RAY_CHECK(last_request_it != pull_request_bundles_.end());
-    DeactivatePullBundleRequest(last_request_it);
+    DeactivatePullBundleRequest(last_request_it, &object_ids_to_cancel);
+  }
+
+  for (auto &obj_id : object_ids_to_pull) {
+    if (object_ids_to_cancel.count(obj_id) == 0) {
+      // We should begin pulling this object.
+      // NOTE(swang): We could also just wait for the next tick to pull the
+      // objects, but this would add a delay of up to one tick for any bundles
+      // of multiple objects, even when we are not under memory pressure.
+      TryToMakeObjectLocal(obj_id);
+    }
   }
 }
 
@@ -173,14 +190,12 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   RAY_CHECK(bundle_it != pull_request_bundles_.end());
 
   // If the pull request was being actively pulled, deactivate it now.
-  bool deactivated = false;
   if (bundle_it->first <= highest_req_id_being_pulled_) {
     DeactivatePullBundleRequest(bundle_it);
-    deactivated = true;
   }
 
   // Erase this pull request.
-  std::vector<ObjectID> objects_to_cancel;
+  std::vector<ObjectID> object_ids_to_cancel;
   for (const auto &ref : bundle_it->second) {
     auto obj_id = ObjectRefToId(ref);
     auto it = object_pull_requests_.find(obj_id);
@@ -188,19 +203,17 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
     RAY_CHECK(it->second.bundle_request_ids.erase(bundle_it->first));
     if (it->second.bundle_request_ids.empty()) {
       object_pull_requests_.erase(it);
-      objects_to_cancel.push_back(obj_id);
+      object_ids_to_cancel.push_back(obj_id);
     }
   }
   pull_request_bundles_.erase(bundle_it);
 
-  if (deactivated) {
-    // Since we cancelled an active request, try to activate the next request
-    // in the queue. We do this after erasing the cancelled request to avoid
-    // reactivating it again.
-    UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
-  }
+  // We need to update the pulls in case there is another request(s) after this
+  // request that can now be activated. We do this after erasing the cancelled
+  // request to avoid reactivating it again.
+  UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
 
-  return objects_to_cancel;
+  return object_ids_to_cancel;
 }
 
 void PullManager::OnLocationChange(const ObjectID &object_id,
@@ -325,9 +338,10 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 
 void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
-  RAY_CHECK(it != object_pull_requests_.end());
-  it->second.next_pull_time = get_time_();
-  it->second.num_retries = 0;
+  if (it != object_pull_requests_.end()) {
+    it->second.next_pull_time = get_time_();
+    it->second.num_retries = 0;
+  }
 }
 
 void PullManager::UpdateRetryTimer(ObjectPullRequest &request) {

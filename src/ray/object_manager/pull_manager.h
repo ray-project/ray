@@ -79,6 +79,8 @@ class PullManager {
   /// The number of ongoing object pulls.
   int NumActiveRequests() const;
 
+  void ResetRetryTimer(const ObjectID &object_id);
+
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
@@ -114,8 +116,6 @@ class PullManager {
   /// \return True if a pull request was sent, otherwise false.
   bool PullFromRandomLocation(const ObjectID &object_id);
 
-  void ResetRetryTimer(const ObjectID &object_id);
-
   /// Update the request retry time for the given request.
   /// The retry timer is incremented exponentially, capped at 1024 * 10 seconds.
   ///
@@ -123,10 +123,12 @@ class PullManager {
   void UpdateRetryTimer(ObjectPullRequest &request);
 
   bool ActivateNextPullBundleRequest(
-      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it);
+      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it,
+      std::unordered_set<ObjectID> *object_ids_to_pull);
 
   void DeactivatePullBundleRequest(
-      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it);
+      std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it,
+      std::unordered_set<ObjectID> *object_ids_to_cancel = nullptr);
 
   /// See the constructor's arguments.
   NodeID self_node_id_;

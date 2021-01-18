@@ -40,7 +40,6 @@ bool UpdateObjectLocations(const std::vector<rpc::ObjectLocationChange> &locatio
   for (const auto &update : location_updates) {
     if (update.size() > 0) {
       *object_size = update.size();
-      RAY_LOG(INFO) << "OBJECT SIZE IS " << *object_size;
     }
 
     if (!update.node_id().empty()) {

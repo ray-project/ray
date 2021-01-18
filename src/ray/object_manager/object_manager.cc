@@ -108,9 +108,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service, const NodeID &self_
         HandleObjectAdded(object_info);
       });
   store_notification_->SubscribeObjDeleted([this](const ObjectID &oid) {
-    // TODO(swang): We may want to force the pull manager to fetch this object
-    // again, in case it was needed by an active pull request.
     NotifyDirectoryObjectDeleted(oid);
+    // Ask the pull manager to fetch this object again as soon as possible, if
+    // it was needed by an active pull request.
+    pull_manager_->ResetRetryTimer(oid);
   });
 
   // Start object manager rpc server and send & receive request threads

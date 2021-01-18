@@ -83,10 +83,10 @@ TEST_F(PullManagerTest, TestStaleSubscription) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(1);
 
   std::unordered_set<NodeID> client_ids;
   pull_manager_.OnLocationChange(oid, client_ids, "", 0);
+  AssertNumActiveRequestsEquals(1);
 
   // There are no client ids to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -116,10 +116,10 @@ TEST_F(PullManagerTest, TestRestoreSpilledObject) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(1);
 
   std::unordered_set<NodeID> client_ids;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
+  AssertNumActiveRequestsEquals(1);
 
   // client_ids is empty here, so there's nowhere to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -153,10 +153,10 @@ TEST_F(PullManagerTest, TestRestoreObjectFailed) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(1);
 
   std::unordered_set<NodeID> client_ids;
   pull_manager_.OnLocationChange(obj1, client_ids, "remote_url/foo/bar", 0);
+  AssertNumActiveRequestsEquals(1);
 
   // client_ids is empty here, so there's nowhere to pull from.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
@@ -203,13 +203,13 @@ TEST_F(PullManagerTest, TestManyUpdates) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
 
   for (int i = 0; i < 100; i++) {
     pull_manager_.OnLocationChange(obj1, client_ids, "", 0);
+    AssertNumActiveRequestsEquals(1);
   }
 
   // Since no time has passed, only send a single pull request.
@@ -229,7 +229,6 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), ObjectRefsToIds(refs));
-  AssertNumActiveRequestsEquals(1);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -237,6 +236,7 @@ TEST_F(PullManagerTest, TestRetryTimer) {
   // We need to call OnLocationChange at least once, to population the list of nodes with
   // the object.
   pull_manager_.OnLocationChange(obj1, client_ids, "", 0);
+  AssertNumActiveRequestsEquals(1);
   ASSERT_EQ(num_send_pull_request_calls_, 1);
   ASSERT_EQ(num_restore_spilled_object_calls_, 0);
 
@@ -274,19 +274,20 @@ TEST_F(PullManagerTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
-  AssertNumActiveRequestsEquals(oids.size());
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
-    ASSERT_EQ(num_send_pull_request_calls_, i + 1);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
+  ASSERT_EQ(num_send_pull_request_calls_, oids.size());
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  AssertNumActiveRequestsEquals(oids.size());
 
   // Don't pull an object if it's local.
   object_is_local_ = true;
   num_send_pull_request_calls_ = 0;
+  fake_time_ += 10;
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
@@ -299,6 +300,7 @@ TEST_F(PullManagerTest, TestBasic) {
   // Don't pull a remote object if we've canceled.
   object_is_local_ = false;
   num_send_pull_request_calls_ = 0;
+  fake_time_ += 10;
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
   }
@@ -312,7 +314,6 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id1 = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
-  AssertNumActiveRequestsEquals(oids.size());
 
   objects_to_locate.clear();
   auto req_id2 = pull_manager_.Pull(refs, &objects_to_locate);
@@ -322,9 +323,10 @@ TEST_F(PullManagerTest, TestDeduplicateBundles) {
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", 0);
-    ASSERT_EQ(num_send_pull_request_calls_, i + 1);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
+  ASSERT_EQ(num_send_pull_request_calls_, oids.size());
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
+  AssertNumActiveRequestsEquals(oids.size());
 
   // Cancel one request.
   auto objects_to_cancel = pull_manager_.CancelPull(req_id1);
@@ -364,16 +366,14 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
-  AssertNumActiveRequestsEquals(oids.size());
-  ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
   for (size_t i = 0; i < oids.size(); i++) {
     pull_manager_.OnLocationChange(oids[i], client_ids, "", object_size);
-    ASSERT_EQ(num_send_pull_request_calls_, i + 1);
-    ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   }
+  ASSERT_EQ(num_send_pull_request_calls_, oids.size());
+  ASSERT_EQ(num_restore_spilled_object_calls_, 0);
   AssertNumActiveRequestsEquals(oids.size());
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
 
@@ -393,9 +393,6 @@ TEST_F(PullManagerWithAdmissionControlTest, TestBasic) {
   pull_manager_.UpdatePullsBasedOnAvailableMemory(oids.size() * object_size);
   AssertNumActiveRequestsEquals(oids.size());
   ASSERT_TRUE(IsUnderCapacity(oids.size() * object_size));
-  // Pull requests should get triggered at the next tick.
-  ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests);
-  pull_manager_.Tick();
   ASSERT_EQ(num_send_pull_request_calls_, prev_pull_requests + oids.size());
 
   pull_manager_.CancelPull(req_id);
@@ -421,7 +418,6 @@ TEST_F(PullManagerWithAdmissionControlTest, TestQueue) {
     bundles.push_back(oids);
     req_ids.push_back(req_id);
   }
-  AssertNumActiveRequestsEquals(num_oids_per_request * num_requests);
 
   std::unordered_set<NodeID> client_ids;
   client_ids.insert(NodeID::FromRandom());
@@ -453,58 +449,64 @@ TEST_F(PullManagerWithAdmissionControlTest, TestCancel) {
   /// Test admission control while requests are cancelled out-of-order. When an
   /// active request is cancelled, we should activate another request in the
   /// queue, if there is one that satisfies the reported capacity.
-  int object_size = 2;
-  int num_oids_per_request = 2;
-  int num_requests = 6;
-
-  std::vector<std::vector<ObjectID>> bundles;
-  std::vector<int64_t> req_ids;
-  for (int i = 0; i < num_requests; i++) {
-    auto refs = CreateObjectRefs(num_oids_per_request);
+  auto test_cancel = [&](std::vector<int> object_sizes, int capacity, size_t cancel_idx,
+                         int num_active_requests_expected_before,
+                         int num_active_requests_expected_after) {
+    pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
+    auto refs = CreateObjectRefs(object_sizes.size());
     auto oids = ObjectRefsToIds(refs);
-    std::vector<rpc::ObjectReference> objects_to_locate;
-    auto req_id = pull_manager_.Pull(refs, &objects_to_locate);
-    ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
-
-    bundles.push_back(oids);
-    req_ids.push_back(req_id);
-  }
-  AssertNumActiveRequestsEquals(num_oids_per_request * num_requests);
-
-  std::unordered_set<NodeID> client_ids;
-  client_ids.insert(NodeID::FromRandom());
-  for (auto &oids : bundles) {
-    for (size_t i = 0; i < oids.size(); i++) {
-      pull_manager_.OnLocationChange(oids[i], client_ids, "", object_size);
+    std::vector<int64_t> req_ids;
+    for (auto &ref : refs) {
+      std::vector<rpc::ObjectReference> objects_to_locate;
+      auto req_id = pull_manager_.Pull({ref}, &objects_to_locate);
+      req_ids.push_back(req_id);
     }
-  }
+    for (size_t i = 0; i < object_sizes.size(); i++) {
+      pull_manager_.OnLocationChange(oids[i], {}, "", object_sizes[i]);
+    }
+    AssertNumActiveRequestsEquals(num_active_requests_expected_before);
+    pull_manager_.CancelPull(req_ids[cancel_idx]);
+    AssertNumActiveRequestsEquals(num_active_requests_expected_after);
 
-  // We have enough capacity for half of the requests at a time.
-  int capacity = object_size * num_oids_per_request * num_requests / 2;
-  int num_requests_expected = num_requests / 2;
-  pull_manager_.UpdatePullsBasedOnAvailableMemory(capacity);
-  AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
+    // Request is really canceled.
+    pull_manager_.OnLocationChange(oids[cancel_idx], {NodeID::FromRandom()}, "",
+                                   object_sizes[cancel_idx]);
+    ASSERT_EQ(num_send_pull_request_calls_, 0);
 
-  // Cancel the last request that is being served.
-  pull_manager_.CancelPull(req_ids[2]);
-  req_ids.erase(req_ids.begin() + 2);
-  AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
+    // The expected number of requests at the head of the queue are pulled.
+    int num_active = 0;
+    for (size_t i = 0; i < refs.size() && num_active < num_active_requests_expected_after;
+         i++) {
+      pull_manager_.OnLocationChange(oids[i], {NodeID::FromRandom()}, "",
+                                     object_sizes[i]);
+      if (i != cancel_idx) {
+        num_active++;
+      }
+    }
+    ASSERT_EQ(num_send_pull_request_calls_, num_active_requests_expected_after);
 
-  // Cancel the middle request that is being served.
-  pull_manager_.CancelPull(req_ids[1]);
-  req_ids.erase(req_ids.begin() + 1);
-  AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
+    // Reset state.
+    for (size_t i = 0; i < req_ids.size(); i++) {
+      if (i != cancel_idx) {
+        pull_manager_.CancelPull(req_ids[i]);
+      }
+    }
+    num_send_pull_request_calls_ = 0;
+  };
 
-  // Cancel the head request that is being served.
-  pull_manager_.CancelPull(req_ids[0]);
-  req_ids.erase(req_ids.begin());
-  AssertNumActiveRequestsEquals(num_requests_expected * num_oids_per_request);
+  // The next request in the queue is infeasible. If it is canceled, the
+  // request after that is activated.
+  test_cancel({1, 1, 2, 1}, 3, 2, 2, 3);
 
-  while (!req_ids.empty()) {
-    pull_manager_.CancelPull(req_ids[0]);
-    req_ids.erase(req_ids.begin());
-    AssertNumActiveRequestsEquals(req_ids.size() * num_oids_per_request);
-  }
+  // If an activated request is canceled, the next request is activated.
+  test_cancel({1, 1, 2, 1}, 3, 0, 2, 2);
+  test_cancel({1, 1, 2, 1}, 3, 1, 2, 2);
+
+  // Cancellation of requests at the end of the queue has no effect.
+  test_cancel({1, 1, 2, 1, 1}, 3, 3, 2, 2);
+
+  // As many new requests as possible are activated when one is canceled.
+  test_cancel({1, 2, 1, 1, 1}, 3, 1, 2, 3);
 }
 
 }  // namespace ray
