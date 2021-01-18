@@ -81,10 +81,16 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
 }
 
 bool CreateRequestQueue::ProcessRequest(std::unique_ptr<CreateRequest> &request) {
-  // Return an OOM error to the client if we have hit the maximum number of
-  // retries.
+  // TODO(sang): Delete this logic when lru evict is removed.
+  bool evict_if_full = evict_if_full_;
+  if (oom_start_time_ns_ != -1) {
+    // If the first attempt fails, we set the evict_if_full true.
+    // We need this logic because if lru_evict flag is on, this is false because we
+    // shouldn't evict objects in the first attempt.
+    evict_if_full = true;
+  }
   request->error =
-      request->create_callback(/*evict_if_full=*/evict_if_full_, &request->result);
+      request->create_callback(/*evict_if_full=*/evict_if_full, &request->result);
   return request->error != PlasmaError::OutOfMemory;
 }
 
@@ -95,16 +101,19 @@ Status CreateRequestQueue::ProcessRequests() {
     auto now = get_time_();
     if (create_ok) {
       FinishRequest(request_it);
-      last_success_ns_ = now;
+      // Reset the oom start time since the creation succeeds.
+      oom_start_time_ns_ = -1;
     } else {
       if (trigger_global_gc_) {
         trigger_global_gc_();
       }
 
+      if (oom_start_time_ns_ == -1) {
+        oom_start_time_ns_ = now;
+      }
       if (spill_objects_callback_()) {
-        last_success_ns_ = now;
         return Status::TransientObjectStoreFull("Waiting for spilling.");
-      } else if (now - last_success_ns_ < oom_grace_period_ns_) {
+      } else if (now - oom_start_time_ns_ < oom_grace_period_ns_) {
         // We need a grace period since (1) global GC takes a bit of time to
         // kick in, and (2) there is a race between spilling finishing and space
         // actually freeing up in the object store.

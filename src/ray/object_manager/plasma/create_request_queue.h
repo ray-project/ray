@@ -193,8 +193,8 @@ class CreateRequestQueue {
   /// Last time global gc was invoked in ms.
   uint64_t last_global_gc_ms_;
 
-  /// Last successful object creation or spill invocation.
-  int64_t last_success_ns_ = 0;
+  /// The time OOM timer first starts. It becomes -1 upon every creation success.
+  int64_t oom_start_time_ns_ = -1;
 
   friend class CreateRequestQueueTest;
 };
