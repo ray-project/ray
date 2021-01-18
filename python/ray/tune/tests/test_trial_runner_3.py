@@ -983,13 +983,13 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     this.assertEqual(scheduled, len(trials))
                     this.assertEqual(
                         scheduled,
-                        sum([
+                        sum(
                             len(s) for s in
-                            trial_executor._pg_manager._staging.values()
-                        ]) + sum([
-                            len(s) for s in
-                            trial_executor._pg_manager._ready.values()
-                        ]) + len(trial_executor._pg_manager._in_use_pgs))
+                            trial_executor._pg_manager._staging.values()) +
+                        sum(
+                            len(s)
+                            for s in trial_executor._pg_manager._ready.values(
+                            )) + len(trial_executor._pg_manager._in_use_pgs))
 
         start = time.time()
         out = tune.run(
@@ -1000,7 +1000,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             trial_executor=trial_executor,
             callbacks=[_TestCallback()])
 
-        trial_end_times = sorted([t.last_result["end"] for t in out.trials])
+        trial_end_times = sorted(t.last_result["end"] for t in out.trials)
         print("Trial end times:", trial_end_times)
         max_diff = trial_end_times[-1] - trial_end_times[0]
 
@@ -1060,10 +1060,10 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             num_samples=1,
             trial_executor=trial_executor)
 
-        avgs = sorted([t.last_result["avg"] for t in out.trials])
+        avgs = sorted(t.last_result["avg"] for t in out.trials)
         self.assertSequenceEqual(avgs, list(range(3, 103, 10)))
 
-        trial_end_times = sorted([t.last_result["end"] for t in out.trials])
+        trial_end_times = sorted(t.last_result["end"] for t in out.trials)
         print("Trial end times:", trial_end_times)
         max_diff = trial_end_times[-1] - trial_end_times[0]
 
