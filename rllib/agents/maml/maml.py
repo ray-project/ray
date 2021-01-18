@@ -33,6 +33,10 @@ DEFAULT_CONFIG = with_common_config({
     "create_env_on_driver": True,
     # Stepsize of SGD
     "lr": 1e-3,
+    "model": {
+        # Share layers for value function.
+        "vf_share_layers": False,
+    },
     # Coefficient of the value function loss
     "vf_loss_coeff": 0.5,
     # Coefficient of the entropy regularizer
