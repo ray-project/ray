@@ -159,6 +159,7 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
+                RAY_CI_DASHBOARD_AFFECTED = 1
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_SGD_AFFECTED = 1
@@ -173,6 +174,7 @@ if __name__ == "__main__":
         RAY_CI_STREAMING_CPP_AFFECTED = 1
         RAY_CI_STREAMING_PYTHON_AFFECTED = 1
         RAY_CI_STREAMING_JAVA_AFFECTED = 1
+        RAY_CI_DASHBOARD_AFFECTED = 1
 
     if not RAY_CI_TUNE_AFFECTED and not RAY_CI_SERVE_AFFECTED and \
             not RAY_CI_JAVA_AFFECTED and not RAY_CI_PYTHON_AFFECTED and not \

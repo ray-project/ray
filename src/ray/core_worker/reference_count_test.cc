@@ -2108,6 +2108,16 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
 }
 
+TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
+  ObjectID id = ObjectID::FromRandom();
+
+  // Test remove owned object.
+  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, false);
+  ASSERT_TRUE(rc->HasReference(id));
+  rc->RemoveOwnedObject(id);
+  ASSERT_FALSE(rc->HasReference(id));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

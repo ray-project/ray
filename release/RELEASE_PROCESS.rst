@@ -40,32 +40,7 @@ After Branch Cut
    ``python/ray/__init__.py``, ``src/ray/raylet/main.cc``, and any other files that use ``ray::stats::VersionKey``. See this
    `sample commit for bumping the release branch version`_.
 
-3. **Create PR to update the master branch version:**
-   For a new minor release (e.g., ``0.6.3 -> 0.7.0``): Create a pull request to
-   increment the dev version in of the master branch. See this
-   `sample PR for bumping a minor release version`_. **NOTE:** Not all of
-   the version numbers should be replaced. For example, ``0.7.0`` appears in
-   this file but should not be updated.
-   You will want to replace all instances of nightly wheel links (wheels with
-   dev in their name), instances of ``ray::stats::VersionKey``,
-   and instances of ``__version__``.
-
-   TIP: search the code base for instances of ``https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-1.1.0.dev0`` (but replace ray-1.1.0 with the current version) to find links to the nightly wheel to update.
-
-   You should also cherry pick parts of this pull request referencing the
-   latest wheels onto the release branch prior
-   to making the release. This will ensure that the ``install-nightly`` of
-   the new release correctly points at the latest version on master.
-
-   Note: Doing this will cause the ``install-nightly`` CLI command of the
-   current Ray release to fail, so you should only merge this PR when
-   the release is about to occur. (For instance, the 1.0.0 ``install-nightly``
-   command points to 1.1.0.dev0, so when you bump master to 1.2.0.dev0, it no
-   longer finds the latest commit.)
-
-   For a new micro release (e.g., ``0.7.0 -> 0.7.1``): No action is required.
-
-4. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
+3. **Create a document to collect release-notes:** You can clone `this document <https://docs.google.com/document/d/1vzcNHulHCrq1PrXWkGBwwtOK53vY2-Ol8SXbnvKPw1s/edit?usp=sharing>`_.
 
    You will also need to create a spreadsheet with information about the PRs 
    included in the release to jog people's memories. You can collect this
