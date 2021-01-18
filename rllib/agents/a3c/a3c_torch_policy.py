@@ -1,8 +1,7 @@
 import gym
 
 import ray
-from ray.rllib.agents.ppo.ppo_torch_policy import apply_grad_clipping, \
-    ValueNetworkMixin
+from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.policy.policy import Policy
@@ -10,6 +9,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import apply_grad_clipping
 from ray.rllib.utils.typing import TrainerConfigDict
 
 torch, nn = try_import_torch()

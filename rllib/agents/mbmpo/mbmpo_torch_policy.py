@@ -6,8 +6,7 @@ import ray
 from ray.rllib.agents.maml.maml_torch_policy import setup_mixins, \
     maml_loss, maml_stats, maml_optimizer_fn, KLCoeffMixin
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
-from ray.rllib.agents.ppo.ppo_torch_policy import apply_grad_clipping, \
-    vf_preds_fetches
+from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -15,6 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_ops import apply_grad_clipping
 from ray.rllib.utils.typing import TrainerConfigDict
 
 torch, nn = try_import_torch()
