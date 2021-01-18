@@ -47,13 +47,6 @@ def test_error_isolation(call_ray_start):
     with pytest.raises(Exception):
         ray.get(f.remote())
 
-    # Wait for the error to appear in Redis.
-    errors = get_error_message(p, 1)
-
-    # Make sure we got the error.
-    assert len(errors) == 1
-    assert error_string1 in errors[0].error_message
-
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
     # receives that error.
@@ -77,22 +70,12 @@ try:
 except Exception as e:
     pass
 
-errors = get_error_message(p, 1)
-assert len(errors) == 1
-
-assert "{}" in errors[0].error_message
-
 print("success")
 """.format(address, error_string2, error_string2)
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
     assert "success" in out
-
-    # Make sure that the other error message doesn't show up for this
-    # driver.
-    errors = get_error_message(p, 1)
-    assert len(errors) == 1
     p.close()
 
 
