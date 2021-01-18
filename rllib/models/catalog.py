@@ -1,5 +1,6 @@
 from functools import partial
 import gym
+from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import logging
 import numpy as np
 import tree
@@ -18,7 +19,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical, \
     TorchDeterministic, TorchDiagGaussian, \
     TorchMultiActionDistribution, TorchMultiCategorical
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
@@ -108,8 +109,17 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # "attention_use_n_prev_rewards": 0,
 
     # == Atari ==
-    # Whether to enable framestack for Atari envs
-    "framestack": True,
+    # Which framestacking size to use for Atari envs.
+    # "auto": Use a value of 4, but only if the env is an Atari env.
+    # > 1: Use the trajectory view API in the default VisionNets to request the
+    #      last n observations (single, grayscaled 84x84 image frames) as
+    #      inputs. The time axis in the so provided observation tensors
+    #      will come right after the batch axis (channels first format),
+    #      e.g. BxTx84x84, where T=num_framestacks.
+    # 0 or 1: No framestacking used.
+    # Use the deprecated `framestack=True`, to disable the above behavor and to
+    # enable legacy stacking behavior (w/o trajectory view API) instead.
+    "num_framestacks": "auto",
     # Final resized frame dimension
     "dim": 84,
     # (deprecated) Converts ATARI frame to 1 Channel Grayscale image
@@ -134,6 +144,8 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.
     "lstm_use_prev_action_reward": DEPRECATED_VALUE,
+    # Use `num_framestacks` (int) instead.
+    "framestack": True,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -202,7 +214,7 @@ class ModelCatalog:
                 MultiActionDistribution, TorchMultiActionDistribution):
             dist_cls = dist_type
         # Box space -> DiagGaussian OR Deterministic.
-        elif isinstance(action_space, gym.spaces.Box):
+        elif isinstance(action_space, Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
                     "Action space has multiple dimensions "
@@ -218,13 +230,13 @@ class ModelCatalog:
                 dist_cls = TorchDeterministic if framework == "torch" \
                     else Deterministic
         # Discrete Space -> Categorical.
-        elif isinstance(action_space, gym.spaces.Discrete):
+        elif isinstance(action_space, Discrete):
             dist_cls = TorchCategorical if framework == "torch" else \
                 JAXCategorical if framework == "jax" else Categorical
         # Tuple/Dict Spaces -> MultiAction.
         elif dist_type in (MultiActionDistribution,
                            TorchMultiActionDistribution) or \
-                isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+                isinstance(action_space, (Tuple, Dict)):
             return ModelCatalog._get_multi_action_distribution(
                 (MultiActionDistribution
                  if framework == "tf" else TorchMultiActionDistribution),
@@ -237,7 +249,7 @@ class ModelCatalog:
                     "Simplex action spaces not supported for torch.")
             dist_cls = Dirichlet
         # MultiDiscrete -> MultiCategorical.
-        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+        elif isinstance(action_space, MultiDiscrete):
             dist_cls = TorchMultiCategorical if framework == "torch" else \
                 MultiCategorical
             return partial(dist_cls, input_lens=action_space.nvec), \
@@ -265,18 +277,18 @@ class ModelCatalog:
         """
         dl_lib = torch if framework == "torch" else tf
 
-        if isinstance(action_space, gym.spaces.Discrete):
+        if isinstance(action_space, Discrete):
             return action_space.dtype, (None, )
-        elif isinstance(action_space, (gym.spaces.Box, Simplex)):
+        elif isinstance(action_space, (Box, Simplex)):
             return dl_lib.float32, (None, ) + action_space.shape
-        elif isinstance(action_space, gym.spaces.MultiDiscrete):
+        elif isinstance(action_space, MultiDiscrete):
             return action_space.dtype, (None, ) + action_space.shape
-        elif isinstance(action_space, (gym.spaces.Tuple, gym.spaces.Dict)):
+        elif isinstance(action_space, (Tuple, Dict)):
             flat_action_space = flatten_space(action_space)
             size = 0
             all_discrete = True
             for i in range(len(flat_action_space)):
-                if isinstance(flat_action_space[i], gym.spaces.Discrete):
+                if isinstance(flat_action_space[i], Discrete):
                     size += 1
                 else:
                     all_discrete = False
@@ -378,7 +390,9 @@ class ModelCatalog:
                         if model_config.get("use_lstm") else AttentionWrapper)
                     model_cls._wrapped_forward = forward
 
-                # Track and warn if vars were created but not registered.
+                # Obsolete: Track and warn if vars were created but not
+                # registered. Only still do this, if users do register their
+                # variables. If not (which they shouldn't), don't check here.
                 created = set()
 
                 def track_var_creation(next_creator, **kw):
@@ -407,19 +421,27 @@ class ModelCatalog:
                         # Other error -> re-raise.
                         else:
                             raise e
-                registered = set(instance.variables())
-                not_registered = set()
-                for var in created:
-                    if var not in registered:
-                        not_registered.add(var)
-                if not_registered:
-                    raise ValueError(
-                        "It looks like variables {} were created as part "
-                        "of {} but does not appear in model.variables() "
-                        "({}). Did you forget to call "
-                        "model.register_variables() on the variables in "
-                        "question?".format(not_registered, instance,
-                                           registered))
+
+                # User still registered TFModelV2's variables: Check, whether
+                # ok.
+                registered = set(instance.var_list)
+                if len(registered) > 0:
+                    not_registered = set()
+                    for var in created:
+                        if var not in registered:
+                            not_registered.add(var)
+                    if not_registered:
+                        raise ValueError(
+                            "It looks like you are still using "
+                            "`{}.register_variables()` to register your "
+                            "model's weights. This is no longer required, but "
+                            "if you are still calling this method at least "
+                            "once, you must make sure to register all created "
+                            "variables properly. The missing variables are {},"
+                            " and you only registered {}. "
+                            "Did you forget to call `register_variables()` on "
+                            "some of the variables in question?".format(
+                                instance, not_registered, registered))
             elif framework == "torch":
                 # Try wrapping custom model with LSTM/attention, if required.
                 if model_config.get("use_lstm") or \
@@ -471,7 +493,7 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, framework=framework)
+                    obs_space, model_config, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
@@ -504,7 +526,7 @@ class ModelCatalog:
             # Try to get a default v2 model.
             if not model_config.get("custom_model"):
                 v2_class = default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, framework=framework)
+                    obs_space, model_config, framework=framework)
 
             if not v2_class:
                 raise ValueError("ModelV2 class could not be determined!")
@@ -536,7 +558,7 @@ class ModelCatalog:
         elif framework == "jax":
             v2_class = \
                 default_model or ModelCatalog._get_v2_model_class(
-                    obs_space, framework=framework)
+                    obs_space, model_config, framework=framework)
             # Wrap in the requested interface.
             wrapper = ModelCatalog._wrap_if_needed(v2_class, model_interface)
             return wrapper(obs_space, action_space, num_outputs, model_config,
@@ -661,7 +683,8 @@ class ModelCatalog:
 
     @staticmethod
     def _get_v2_model_class(input_space: gym.Space,
-                            framework: str = "tf") -> ModelV2:
+                            model_config: ModelConfigDict,
+                            framework: str = "tf") -> Type[ModelV2]:
 
         VisionNet = None
 
@@ -683,9 +706,13 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Discrete/1D obs-spaces.
-        if isinstance(input_space, gym.spaces.Discrete) or \
-                len(input_space.shape) <= 2:
+        # Discrete/1D obs-spaces or 2D obs space but traj. view framestacking
+        # disabled.
+        num_framestacks = model_config.get("num_framestacks", "auto")
+        if isinstance(input_space, (Discrete, MultiDiscrete)) or \
+                len(input_space.shape) == 1 or (
+                len(input_space.shape) == 2 and (
+                num_framestacks == "auto" or num_framestacks <= 1)):
             return FCNet
         # Default Conv2D net.
         else:
@@ -737,3 +764,10 @@ class ModelCatalog:
             elif config.get("use_lstm"):
                 raise ValueError("`use_lstm` not available for "
                                  "framework=jax so far!")
+
+        if config.get("framestack") != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="framestack", new="num_framestacks (int)", error=False)
+            # If old behavior is desired, disable traj. view-style
+            # framestacking.
+            config["num_framestacks"] = 0
