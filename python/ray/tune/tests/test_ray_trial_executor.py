@@ -335,7 +335,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             tune.report(metric=0, resources=ray.available_resources())
 
         def placement_group_factory():
-            head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
+            head_bundle = {"CPU": 1, "GPU": 0, "custom": 4}
             child_bundle = {"CPU": 2, "GPU": 1, "custom": 3}
 
             return placement_group([head_bundle, child_bundle, child_bundle])
@@ -349,7 +349,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         }, {
             "CPU": self.head_cpus - 5.0,
             "GPU": self.head_gpus - 2.0,
-            "custom": self.head_custom - 6.0
+            "custom": self.head_custom - 10.0
         })
 
 

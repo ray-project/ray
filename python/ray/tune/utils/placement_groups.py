@@ -121,14 +121,19 @@ class PlacementGroupManager:
 
         # We still have to pass resource specs
         # Pass the full resource specs of the first bundle per default
-        num_cpus = pg.bundle_specs[0].get("CPU", None)
-        num_gpus = pg.bundle_specs[0].get("GPU", None)
+        first_bundle = pg.bundle_specs[0].copy()
+        num_cpus = first_bundle.pop("CPU", None)
+        num_gpus = first_bundle.get("GPU", None)
+
+        # Only custom resources remain in `first_bundle`
+        resources = first_bundle or None
 
         return actor_cls.options(
             placement_group=pg,
             placement_group_bundle_index=0,
             num_cpus=num_cpus,
-            num_gpus=num_gpus)
+            num_gpus=num_gpus,
+            resources=resources)
 
     def has_ready(self, pgf: PlacementGroupFactory) -> bool:
         """Return True if placement group is ready.
