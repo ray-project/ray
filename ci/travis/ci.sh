@@ -281,6 +281,11 @@ install_ray() {
   (
     cd "${WORKSPACE_DIR}"/python
     build_dashboard_front_end
+    which python
+    which pip
+    conda activate base
+    which python
+    which pip
     keep_alive pip install -v -e .
   )
 }
