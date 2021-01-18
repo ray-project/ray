@@ -77,7 +77,7 @@ class TestSAC(unittest.TestCase):
         for _ in framework_iterator(config, frameworks="tf"):#TODO
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                "MsPacmanNoFrameskip-v4", "CartPole-v0", RandomEnv,
+                RandomEnv, "MsPacmanNoFrameskip-v4", "CartPole-v0",
             ]:
                 print("Env={}".format(env))
                 if env == RandomEnv:
@@ -88,8 +88,6 @@ class TestSAC(unittest.TestCase):
                     }
                 else:
                     config["env_config"] = {}
-                #config["use_state_preprocessor"] = \
-                #    env == "MsPacmanNoFrameskip-v4"
                 trainer = sac.SACTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()

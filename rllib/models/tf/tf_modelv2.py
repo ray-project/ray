@@ -133,7 +133,7 @@ class TFModelV2(ModelV2):
                 current_key += "_"
             ret = {}
             for key, value in struct.items():
-                sub_vars = TFModelV2._find_sub_modules(current_key + key,
+                sub_vars = TFModelV2._find_sub_modules(current_key + str(key),
                                                        value)
                 ret.update(sub_vars)
             return ret
