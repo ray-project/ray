@@ -3,6 +3,7 @@ import gym
 import logging
 import numpy as np
 import time
+import threading
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -15,6 +16,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_ops import convert_to_non_torch_type, \
     convert_to_torch_tensor
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
@@ -110,6 +112,14 @@ class TorchPolicy(Policy):
             logger.info("TorchPolicy running on CPU.")
             self.device = torch.device("cpu")
         self.model = model.to(self.device)
+
+        # Lock used for locking some methods on the object-level.
+        # This prevents possible race conditions when calling the model
+        # first, then its value function (e.g. in a loss function), in
+        # between of which another model call is made (e.g. to compute an
+        # action).
+        self._lock = threading.RLock()
+
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
         # Auto-update model's inference view requirements, if recurrent.
@@ -197,6 +207,7 @@ class TorchPolicy(Policy):
             return self._compute_action_helper(input_dict, state_batches,
                                                seq_lens, explore, timestep)
 
+    @with_lock
     def _compute_action_helper(self, input_dict, state_batches, seq_lens,
                                explore, timestep):
         """Shared forward pass logic (w/ and w/o trajectory view API).
@@ -206,6 +217,7 @@ class TorchPolicy(Policy):
                 - actions, state_out, extra_fetches, logp.
         """
         self._is_recurrent = state_batches is not None and state_batches != []
+
         # Switch to eval mode.
         if self.model:
             self.model.eval()
@@ -274,6 +286,7 @@ class TorchPolicy(Policy):
 
         return convert_to_non_torch_type((actions, state_out, extra_fetches))
 
+    @with_lock
     @override(Policy)
     @DeveloperAPI
     def compute_log_likelihoods(
@@ -325,12 +338,15 @@ class TorchPolicy(Policy):
 
             action_dist = dist_class(dist_inputs, self.model)
             log_likelihoods = action_dist.logp(input_dict[SampleBatch.ACTIONS])
+
             return log_likelihoods
 
+    @with_lock
     @override(Policy)
     @DeveloperAPI
     def learn_on_batch(
             self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
+
         # Set Model to train mode.
         if self.model:
             self.model.train()
@@ -348,8 +364,10 @@ class TorchPolicy(Policy):
 
         if self.model:
             fetches["model"] = self.model.metrics()
+
         return fetches
 
+    @with_lock
     @override(Policy)
     @DeveloperAPI
     def compute_gradients(self,
