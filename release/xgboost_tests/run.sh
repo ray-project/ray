@@ -50,7 +50,7 @@ echo "workload: ignored"
 # wheel="https://s3-us-west-2.amazonaws.com/ray-wheels/$ray_branch/$commit/ray-$ray_version-cp37-cp37m-manylinux2014_x86_64.whl"
 # pip install -U "$wheel"
 
-if ! python "wait_cluster.py" "$nodes" 450; then
+if ! python "wait_cluster.py" "$nodes" 600; then
   echo "Cluster did not come up in time. Aborting test."
   exit 1
 fi
