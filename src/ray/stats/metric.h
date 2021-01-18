@@ -130,7 +130,7 @@ class Metric {
   std::unique_ptr<opencensus::stats::Measure<double>> measure_;
 
   // For making sure thread-safe to all of metric registrations.
-  static absl::Mutex mutex_;
+  static absl::Mutex registration_mutex_;
 
 };  // class Metric
 
