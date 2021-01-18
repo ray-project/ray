@@ -2146,6 +2146,15 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task, const NodeID &node_man
 void NodeManager::ForwardTask(
     const Task &task, const NodeID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
+  const auto &spec = task.GetTaskSpecification();
+  auto task_id = spec.TaskId();
+  if (worker_pool_.HasPendingWorkerForTask(spec.GetLanguage(), task_id)) {
+    // There is a worker being starting for this task,
+    // so we shouldn't forward this task to another node.
+    on_error(ray::Status::Invalid("Already has pending worker for this task."), task);
+    return;
+  }
+
   // This method spillbacks lease requests to other nodes.
   // TODO(sang): Modify method names.
   RAY_CHECK(task.OnSpillback() != nullptr);
