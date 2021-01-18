@@ -71,7 +71,7 @@ except Exception as e:
     pass
 
 print("success")
-""".format(address, error_string2, error_string2)
+""".format(address, error_string2)
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.

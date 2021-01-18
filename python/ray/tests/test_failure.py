@@ -246,7 +246,6 @@ def temporary_helper_function():
 
 
 def test_failed_actor_init(ray_start_regular, error_pubsub):
-    p = error_pubsub
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
@@ -264,7 +263,6 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 
 
 def test_failed_actor_method(ray_start_regular, error_pubsub):
-    p = error_pubsub
     error_message2 = "actor method failed"
 
     @ray.remote
