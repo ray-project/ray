@@ -1100,11 +1100,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 continue
 
             error_message = error_data.error_message
-            if (error_data.type == ray_constants.TASK_PUSH_ERROR):
-                # Delay it a bit to see if we can suppress it
-                task_error_queue.put((error_message, time.time()))
-            else:
-                logger.warning(error_message)
+            logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
         logger.error(f"listen_error_messages_raylet: {e}")
     finally:

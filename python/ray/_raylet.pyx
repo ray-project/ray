@@ -531,11 +531,6 @@ cdef execute_task(
                 errors.append(failure_object)
             core_worker.store_task_outputs(
                 worker, errors, c_return_ids, returns)
-            ray.utils.push_error_to_driver(
-                worker,
-                ray_constants.TASK_PUSH_ERROR,
-                str(failure_object),
-                job_id=worker.current_job_id)
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.

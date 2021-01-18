@@ -111,7 +111,6 @@ def to_memory_units(memory_bytes, round_up):
 WAIT_FOR_CLASS_PUSH_ERROR = "wait_for_class"
 PICKLING_LARGE_OBJECT_PUSH_ERROR = "pickling_large_object"
 WAIT_FOR_FUNCTION_PUSH_ERROR = "wait_for_function"
-TASK_PUSH_ERROR = "task"
 REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
 FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
