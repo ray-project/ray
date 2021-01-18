@@ -59,13 +59,17 @@ class _TrialIterator:
     """Generates trials from the spec.
 
     Args:
-        uuid_prefix,
-        num_samples,
-        unresolved_spec,
-        output_path="",
-        points_to_evaluate=None,
-        lazy_eval=False,
-        start (int)
+        uuid_prefix (str): Used in creating the trial name.
+        num_samples (int): Number of samples from distribution
+             (same as tune.run).
+        unresolved_spec (dict): Experiment specification
+            that might have unresolved distributions.
+        output_path (str): A specific output path within the local_dir.
+        points_to_evaluate (list): Same as tune.run.
+        lazy_eval (bool): Whether variants should be generated
+            lazily or eagerly. This is toggled depending
+            on the size of the grid search.
+        start (int): index at which to start counting trials.
     """
 
     def __init__(self,
