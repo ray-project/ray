@@ -262,7 +262,7 @@ def build_eager_tf_policy(name,
             # first, then its value function (e.g. in a loss function), in
             # between of which another model call is made (e.g. to compute an
             # action).
-            self._lock = threading.Lock()
+            self._lock = threading.RLock()
 
             # Auto-update model's inference view requirements, if recurrent.
             self._update_model_view_requirements_from_init_state()

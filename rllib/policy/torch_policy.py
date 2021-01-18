@@ -118,7 +118,7 @@ class TorchPolicy(Policy):
         # first, then its value function (e.g. in a loss function), in
         # between of which another model call is made (e.g. to compute an
         # action).
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(self._state_inputs) > 0
