@@ -229,7 +229,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
 
   // Return original resources to resource allocator `ClusterResourceScheduler`.
   auto original_resources = it->second->resources_;
-  cluster_resource_scheduler_->FreeLocalTaskResources(original_resources);
+  cluster_resource_scheduler_->ReleaseWorkerResources(original_resources);
 
   // Substract placement group resources from resource allocator
   // `ClusterResourceScheduler`.
