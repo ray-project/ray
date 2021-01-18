@@ -7,6 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
 ENV BUILDKITE=true
 ENV CI=true
+ENV PYTHON=3.6
 
 RUN apt-get update -qq
 RUN apt-get install -y -qq \
