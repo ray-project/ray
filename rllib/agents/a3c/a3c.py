@@ -54,7 +54,7 @@ def get_policy_class(config):
 def validate_config(config):
     if config["entropy_coeff"] < 0:
         raise ValueError("`entropy_coeff` must be >= 0.0!")
-    if config["num_workers"] <= 0:
+    if config["num_workers"] <= 0 and config["sample_async"]:
         raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
