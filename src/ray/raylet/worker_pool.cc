@@ -397,9 +397,11 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // unfinished_jobs_.erase(job_id);
 }
 
-const rpc::JobConfig *WorkerPool::GetJobConfig(const JobID &job_id) const {
+boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
+    const JobID &job_id) const {
   auto iter = all_jobs_.find(job_id);
-  return iter == all_jobs_.end() ? nullptr : &iter->second;
+  return iter == all_jobs_.end() ? boost::none
+                                 : boost::optional<const rpc::JobConfig &>(iter->second);
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker,

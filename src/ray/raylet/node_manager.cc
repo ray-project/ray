@@ -1209,8 +1209,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     }
 
     std::string serialized_job_config;
-    if (const auto *job_config = worker_pool_.GetJobConfig(job_id)) {
-      serialized_job_config = job_config->SerializeAsString();
+    auto job_config = worker_pool_.GetJobConfig(job_id);
+    if (job_config != boost::none) {
+      serialized_job_config = (*job_config).SerializeAsString();
     }
     auto reply = ray::protocol::CreateRegisterClientReply(
         fbb, status.ok(), fbb.CreateString(status.ToString()),

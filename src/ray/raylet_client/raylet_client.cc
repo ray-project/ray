@@ -97,7 +97,7 @@ raylet::RayletClient::RayletClient(
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message = protocol::CreateRegisterClientRequest(
       fbb, static_cast<int>(worker_type), to_flatbuf(fbb, worker_id), getpid(),
-      to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), 0,
+      to_flatbuf(fbb, job_id), language, fbb.CreateString(ip_address), /*port=*/0,
       fbb.CreateString(*serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
