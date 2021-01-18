@@ -747,6 +747,8 @@ class Node:
             fate_share=self.kernel_fate_share,
             socket_to_use=self.socket,
             head_node=self.head,
+            max_bytes=self.max_bytes,
+            backup_count=self.backup_count,
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
