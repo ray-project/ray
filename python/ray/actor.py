@@ -693,7 +693,11 @@ class ActorClass:
         return actor_handle
 
 
-class ActorHandle:
+from typing import TypeVar, Generic
+C = TypeVar("C")
+
+
+class ActorHandle(Generic[C]):
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user
