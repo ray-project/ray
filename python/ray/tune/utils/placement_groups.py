@@ -119,8 +119,16 @@ class PlacementGroupManager:
         self._in_use_pgs[pg] = trial
         self._in_use_trials[trial] = pg
 
+        # We still have to pass resource specs
+        # Pass the full resource specs of the first bundle per default
+        num_cpus = pg.bundle_specs[0].get("CPU", None)
+        num_gpus = pg.bundle_specs[0].get("GPU", None)
+
         return actor_cls.options(
-            placement_group=pg, placement_group_bundle_index=0)
+            placement_group=pg,
+            placement_group_bundle_index=0,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus)
 
     def has_ready(self, pgf: PlacementGroupFactory) -> bool:
         """Return True if placement group is ready.
