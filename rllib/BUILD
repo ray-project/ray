@@ -1090,6 +1090,13 @@ py_test(
 )
 
 py_test(
+    name = "test_models",
+    tags = ["models"],
+    size = "small",
+    srcs = ["models/tests/test_models.py"]
+)
+
+py_test(
     name = "test_preprocessors",
     tags = ["models"],
     size = "small",
@@ -1541,7 +1548,7 @@ py_test(
     name = "examples/batch_norm_model_dqn_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "large",  # DQN learns much slower with BatchNorm.
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--as-test", "--run=DQN", "--stop-reward=70"]
 )
@@ -1559,7 +1566,7 @@ py_test(
     name = "examples/batch_norm_model_ddpg_tf",
     main = "examples/batch_norm_model.py",
     tags = ["examples", "examples_B"],
-    size = "medium",
+    size = "small",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--stop-iters=1"]
 )

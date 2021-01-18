@@ -91,8 +91,6 @@ class SACTFModel(TFModelV2):
         ])
         self.shift_and_log_scale_diag = self.action_model(self.model_out)
 
-        self.register_variables(self.action_model.variables)
-
         self.actions_input = None
         if not self.discrete:
             self.actions_input = tf.keras.layers.Input(
@@ -123,12 +121,10 @@ class SACTFModel(TFModelV2):
             return q_net
 
         self.q_net = build_q_net("q", self.model_out, self.actions_input)
-        self.register_variables(self.q_net.variables)
 
         if twin_q:
             self.twin_q_net = build_q_net("twin_q", self.model_out,
                                           self.actions_input)
-            self.register_variables(self.twin_q_net.variables)
         else:
             self.twin_q_net = None
 
@@ -146,8 +142,6 @@ class SACTFModel(TFModelV2):
             else:
                 target_entropy = -np.prod(action_space.shape)
         self.target_entropy = target_entropy
-
-        self.register_variables([self.log_alpha])
 
     def get_q_values(self,
                      model_out: TensorType,

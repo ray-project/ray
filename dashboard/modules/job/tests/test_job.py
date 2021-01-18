@@ -42,7 +42,7 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
         result = resp.json()
         assert result["result"] is True, resp.text
         job_summary = result["data"]["summary"]
-        assert len(job_summary) == 1
+        assert len(job_summary) == 1, resp.text
         one_job = job_summary[0]
         assert "jobId" in one_job
         job_id = one_job["jobId"]
@@ -67,7 +67,7 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
         assert len(one_job_summary_keys - job_detail["jobInfo"].keys()) == 0
         assert "jobActors" in job_detail
         job_actors = job_detail["jobActors"]
-        assert len(job_actors) == 1
+        assert len(job_actors) == 1, resp.text
         one_job_actor = job_actors[actor_id]
         assert "taskSpec" in one_job_actor
         assert type(one_job_actor["taskSpec"]) is dict
@@ -82,7 +82,7 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert k in one_job_actor
         assert "jobWorkers" in job_detail
         job_workers = job_detail["jobWorkers"]
-        assert len(job_workers) == 1
+        assert len(job_workers) == 1, resp.text
         one_job_worker = job_workers[0]
         check_worker_keys = [
             "cmdline", "pid", "cpuTimes", "memoryInfo", "cpuPercent",
@@ -91,11 +91,11 @@ def test_get_job_info(disable_aiohttp_cache, ray_start_with_dashboard):
         for k in check_worker_keys:
             assert k in one_job_worker
 
-    timeout_seconds = 5
+    timeout_seconds = 30
     start_time = time.time()
     last_ex = None
     while True:
-        time.sleep(1)
+        time.sleep(5)
         try:
             _check()
             break
