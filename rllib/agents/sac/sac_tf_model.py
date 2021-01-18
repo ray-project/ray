@@ -3,6 +3,7 @@ from gym.spaces import Box, Discrete
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -15,6 +16,7 @@ tf1, tf, tfv = try_import_tf()
 class SACTFModel(TFModelV2):
     """Extension of the standard TFModelV2 for SAC.
 
+    #TODO: fix comment, no more wrapping.
     Instances of this Model get created via wrapping this class around another
     default- or custom model (inside
     rllib/agents/sac/sac_tf_policy.py::build_sac_model). Doing so simply adds
@@ -22,7 +24,7 @@ class SACTFModel(TFModelV2):
     the wrapped model can be used by the SAC algorithm.
 
     Data flow:
-        `obs` -> forward() -> `model_out`
+        `obs` -> forward() (should stay a noop method!) -> `model_out`
         `model_out` -> get_policy_output() -> pi(actions|obs)
         `model_out`, `actions` -> get_q_values() -> Q(s, a)
         `model_out`, `actions` -> get_twin_q_values() -> Q_twin(s, a)
@@ -34,20 +36,23 @@ class SACTFModel(TFModelV2):
                  num_outputs: Optional[int],
                  model_config: ModelConfigDict,
                  name: str,
-                 actor_hidden_activation: str = "relu",
-                 actor_hiddens: Tuple[int] = (256, 256),
-                 critic_hidden_activation: str = "relu",
-                 critic_hiddens: Tuple[int] = (256, 256),
+                 policy_model_config: ModelConfigDict = None,
+                 q_model_config: ModelConfigDict = None,
+                 #actor_hidden_activation: str = "relu",
+                 #actor_hiddens: Tuple[int] = (256, 256),
+                 #critic_hidden_activation: str = "relu",
+                 #critic_hiddens: Tuple[int] = (256, 256),
                  twin_q: bool = False,
                  initial_alpha: float = 1.0,
                  target_entropy: Optional[float] = None):
         """Initialize a SACTFModel instance.
 
         Args:
-            actor_hidden_activation (str): Activation for the actor network.
-            actor_hiddens (list): Hidden layers sizes for the actor network.
-            critic_hidden_activation (str): Activation for the critic network.
-            critic_hiddens (list): Hidden layers sizes for the critic network.
+            #actor_hidden_activation (str): Activation for the actor network.
+            #actor_hiddens (list): Hidden layers sizes for the actor network.
+            #critic_hidden_activation (str): Activation for the critic network.
+            #critic_hiddens (list): Hidden layers sizes for the critic network.
+            TODO
             twin_q (bool): Build twin Q networks (Q-net and target) for more
                 stable Q-learning.
             initial_alpha (float): The initial value for the to-be-optimized
@@ -78,54 +83,15 @@ class SACTFModel(TFModelV2):
             action_outs = self.action_dim
             q_outs = 1
 
-        self.model_out = tf.keras.layers.Input(
-            shape=(self.num_outputs, ), name="model_out")
-        self.action_model = tf.keras.Sequential([
-            tf.keras.layers.Dense(
-                units=hidden,
-                activation=getattr(tf.nn, actor_hidden_activation, None),
-                name="action_{}".format(i + 1))
-            for i, hidden in enumerate(actor_hiddens)
-        ] + [
-            tf.keras.layers.Dense(
-                units=action_outs, activation=None, name="action_out")
-        ])
-        self.shift_and_log_scale_diag = self.action_model(self.model_out)
+        self.action_model = self.build_policy_model(
+            self.obs_space, action_outs, policy_model_config, "policy_model")
 
-        self.actions_input = None
-        if not self.discrete:
-            self.actions_input = tf.keras.layers.Input(
-                shape=(self.action_dim, ), name="actions")
-
-        def build_q_net(name, observations, actions):
-            # For continuous actions: Feed obs and actions (concatenated)
-            # through the NN. For discrete actions, only obs.
-            q_net = tf.keras.Sequential(([
-                tf.keras.layers.Concatenate(axis=1),
-            ] if not self.discrete else []) + [
-                tf.keras.layers.Dense(
-                    units=units,
-                    activation=getattr(tf.nn, critic_hidden_activation, None),
-                    name="{}_hidden_{}".format(name, i))
-                for i, units in enumerate(critic_hiddens)
-            ] + [
-                tf.keras.layers.Dense(
-                    units=q_outs, activation=None, name="{}_out".format(name))
-            ])
-
-            # TODO(hartikainen): Remove the unnecessary Model calls here
-            if self.discrete:
-                q_net = tf.keras.Model(observations, q_net(observations))
-            else:
-                q_net = tf.keras.Model([observations, actions],
-                                       q_net([observations, actions]))
-            return q_net
-
-        self.q_net = build_q_net("q", self.model_out, self.actions_input)
-
+        self.q_net = self.build_q_net(
+            self.obs_space, self.action_space, q_outs, q_model_config, "q")
         if twin_q:
-            self.twin_q_net = build_q_net("twin_q", self.model_out,
-                                          self.actions_input)
+            self.twin_q_net = self.build_q_net(
+                self.obs_space, self.action_space, q_outs, q_model_config,
+                "twin_q")
         else:
             self.twin_q_net = None
 
@@ -148,7 +114,54 @@ class SACTFModel(TFModelV2):
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
-        return input_dict["obs_flat"], state
+        """The common (Q-net and policy-net) forward pass.
+
+        NOTE: It is not(!) recommended to override this method as it would
+        introduce a shared pre-network, which would be updated by both
+        actor- and critic optimizers.
+        """
+        return input_dict["obs"], state
+
+    def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
+        """Builds the policy model used by this SAC.
+
+        Override this method in a sub-class of SACTFModel to implement your
+        own policy net. Alternatively, simply set `custom_model` within the
+        top level SAC `policy_model` config key to make this default
+        implementation use your custom policy network.
+
+        Args:
+            TODO
+
+        Returns:
+            TFModelV2: The TFModelV2 policy sub-model.
+        """
+        model = ModelCatalog.get_model_v2(obs_space, self.action_space, num_outputs, policy_model_config, framework="tf", name=name)
+        return model
+
+    def build_q_net(self, obs_space, action_space, num_outputs, q_model_config, name):
+        """Builds one of the (twin) Q-nets used by this SAC.
+
+        Override this method in a sub-class of SACTFModel to implement your
+        own Q-nets. Alternatively, simply set `custom_model` within the
+        top level SAC `Q_model` config key to make this default implementation
+        use your custom Q-nets.
+
+        Args:
+            observations (tf.keras.layer.Layer): The observation inputs layer.
+            actions  (tf.keras.layer.Layer): The actions inputs layer.
+
+        Returns:
+            tf.keras.model.Model: The keras Q-net model.
+        """
+        if self.discrete:
+            input_space = obs_space
+        else:
+            input_space = gym.spaces.Tuple(
+                (obs_space.spaces if isinstance(obs_space, gym.spaces.Tuple)
+                 else [obs_space]) + [action_space])
+        model = ModelCatalog.get_model_v2(input_space, action_space, num_outputs, q_model_config, framework="tf", name=name)
+        return model
 
     def get_q_values(self,
                      model_out: TensorType,
@@ -170,10 +183,13 @@ class SACTFModel(TFModelV2):
         """
         # Continuous case -> concat actions to model_out.
         if actions is not None:
-            return self.q_net([model_out, actions])
+            input_dict = {"obs": tf.concat([model_out, actions], 1)}
         # Discrete case -> return q-vals for all actions.
         else:
-            return self.q_net(model_out)
+            input_dict = {"obs": model_out}
+
+        out, _ = self.q_net(input_dict, [], None)
+        return out
 
     def get_twin_q_values(self,
                           model_out: TensorType,
@@ -194,10 +210,13 @@ class SACTFModel(TFModelV2):
         """
         # Continuous case -> concat actions to model_out.
         if actions is not None:
-            return self.twin_q_net([model_out, actions])
+            input_dict = {"obs": tf.concat([model_out, actions], 1)}
         # Discrete case -> return q-vals for all actions.
         else:
-            return self.twin_q_net(model_out)
+            input_dict = {"obs": model_out}
+
+        out, _ = self.twin_q_net(input_dict, [], None)
+        return out
 
     def get_policy_output(self, model_out: TensorType) -> TensorType:
         """Returns policy outputs, given the output of self.__call__().
@@ -214,15 +233,16 @@ class SACTFModel(TFModelV2):
         Returns:
             TensorType: Distribution inputs for sampling actions.
         """
-        return self.action_model(model_out)
+        out, _ = self.action_model({"obs": model_out}, [], None)
+        return out
 
     def policy_variables(self):
         """Return the list of variables for the policy net."""
 
-        return list(self.action_model.variables)
+        return list(self.action_model.variables())
 
     def q_variables(self):
         """Return the list of variables for Q / twin Q nets."""
 
-        return self.q_net.variables + (self.twin_q_net.variables
-                                       if self.twin_q_net else [])
+        return self.q_net.variables() + (self.twin_q_net.variables()
+                                         if self.twin_q_net else [])

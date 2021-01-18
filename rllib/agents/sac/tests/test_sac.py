@@ -1,5 +1,5 @@
 from gym import Env
-from gym.spaces import Box
+from gym.spaces import Box, Discrete, Tuple
 import numpy as np
 import re
 import unittest
@@ -9,6 +9,7 @@ import ray.rllib.agents.sac as sac
 from ray.rllib.agents.sac.sac_tf_policy import sac_actor_critic_loss as tf_loss
 from ray.rllib.agents.sac.sac_torch_policy import actor_critic_loss as \
     loss_torch
+from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.tf.tf_action_dist import Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
 from ray.rllib.execution.replay_buffer import LocalReplayBuffer
@@ -52,7 +53,7 @@ class SimpleEnv(Env):
 class TestSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -69,12 +70,24 @@ class TestSAC(unittest.TestCase):
         config["learning_starts"] = 0
         config["prioritized_replay"] = True
         num_iterations = 1
-        for _ in framework_iterator(config):
+
+        image_space = Box(-1.0, 1.0, shape=(84, 84, 3))
+        simple_space = Box(-1.0, 1.0, shape=(3, ))
+
+        for _ in framework_iterator(config, frameworks="tf"):#TODO
             # Test for different env types (discrete w/ and w/o image, + cont).
             for env in [
-                    "Pendulum-v0", "MsPacmanNoFrameskip-v4", "CartPole-v0"
+                "MsPacmanNoFrameskip-v4", "CartPole-v0", RandomEnv,
             ]:
                 print("Env={}".format(env))
+                if env == RandomEnv:
+                    config["env_config"] = {
+                        "observation_space": Tuple([
+                            simple_space, Discrete(2), image_space]),
+                        "action_space": Box(-1.0, 1.0, shape=(1, )),
+                    }
+                else:
+                    config["env_config"] = {}
                 #config["use_state_preprocessor"] = \
                 #    env == "MsPacmanNoFrameskip-v4"
                 trainer = sac.SACTrainer(config=config, env=env)

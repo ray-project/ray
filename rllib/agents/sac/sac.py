@@ -16,6 +16,7 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
@@ -39,16 +40,23 @@ DEFAULT_CONFIG = with_common_config({
     # Use a e.g. conv2D state preprocessing network before concatenating the
     # resulting (feature) vector with the action input for the input to
     # the Q-networks.
-    #"use_state_preprocessor": False,
-    # Model options for the Q network(s).
+    "use_state_preprocessor": DEPRECATED_VALUE,
+    # Model options for the Q network(s). These will override
+    # MODEL_DEFAULTS.
+    #TODO explain different strategies here.
+    #- Box(1D) -> Tuple(Box(1D) + Action) -> |1D concat Action| -> PostFCStack
+    #- Box(3D) -> Tuple(Box(3D) + Action) -> |VisionNet| -> |concat Noop|->|PostFCStack|
+    #- Tuple/Dict(e.g. Box(1D), Box(3D)) -> Tuple(Box(1D), Box(3D), Action) -> |VisionNet| -> |Noop concat VisionNet-out concat action| -> PostFCStack
     "Q_model": {
-        "fcnet_activation": "relu",
-        "fcnet_hiddens": [256, 256],
+        "fcnet_hiddens": [],
+        "post_fcnet_activation": "relu",
+        "post_fcnet_hiddens": [256, 256],
     },
     # Model options for the policy function.
     "policy_model": {
-        "fcnet_activation": "relu",
-        "fcnet_hiddens": [256, 256],
+        "fcnet_hiddens": [],
+        "post_fcnet_activation": "relu",
+        "post_fcnet_hiddens": [256, 256],
     },
     # Unsquash actions to the upper and lower bounds of env's action space.
     # Ignored for discrete action spaces.
@@ -148,6 +156,8 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
+    if config["use_state_preprocessor"] != DEPRECATED_VALUE:
+        deprecation_warning(old="config['use_state_preprocessor']", error=True)
     #if config["model"].get("custom_model"):
     #    logger.warning(
     #        "Setting use_state_preprocessor=True since a custom model "
