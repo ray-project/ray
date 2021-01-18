@@ -103,7 +103,7 @@ class _TrialIterator:
             trial_id=trial_id,
             experiment_tag=experiment_tag)
 
-    def __next__(self) -> "Trial":
+    def __next__(self):
         """Generates Trial objects with the variant generation process.
 
         Uses a fixed point iteration to resolve variants. All trials
@@ -260,11 +260,11 @@ class BasicVariantGenerator(SearchAlgorithm):
             lazy_eval = grid_vals > SERIALIZATION_THRESHOLD
             if lazy_eval:
                 warnings.warn(
-                    "The number of pre-generated samples exceeds the "
-                    f"serialization threshold ({SERIALIZATION_THRESHOLD}). "
-                    "Experiment serialization/resume ability is disabled. "
-                    f"To fix this, reduce the size of the grid: ({grid_vals})."
-                )
+                    f"The number of pre-generated samples ({grid_vals}) "
+                    "exceeds the serialization threshold "
+                    f"({int(SERIALIZATION_THRESHOLD)}). Resume ability is "
+                    "disabled. To fix this, reduce the number of "
+                    "dimensions/size of the provided grid search.")
 
             previous_samples = self._total_samples
             points_to_evaluate = copy.deepcopy(self._points_to_evaluate)

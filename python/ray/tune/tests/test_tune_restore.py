@@ -283,10 +283,11 @@ class TuneFailResumeGridTest(unittest.TestCase):
             stop={"training_iteration": 2},
             local_dir=self.logdir,
             verbose=1)
-        with self.assertWarnsRegex(UserWarning, "*samples exceeds*"):
+        with self.assertWarnsRegex(UserWarning,
+                                   "exceeds the serialization threshold"):
             with self.assertRaises(RuntimeError):
                 tune.run(
-                    experiments,
+                    "trainable",
                     callbacks=[self.FailureInjectorCallback(10)],
                     **config)
 
