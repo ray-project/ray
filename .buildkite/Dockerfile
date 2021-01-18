@@ -25,4 +25,5 @@ WORKDIR /ray
 
 # Below should be re-run each time
 COPY . .
-RUN ./ci/travis/ci.sh init && ./ci/travis/ci.sh build
+RUN ./ci/travis/ci.sh init
+RUN bash --login ./ci/travis/ci.sh build
