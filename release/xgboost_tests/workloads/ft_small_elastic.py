@@ -2,10 +2,12 @@ import ray
 from xgboost_ray import RayParams
 
 from _train import train_ray
-from ft_small_non_elastic import FailureInjection
+from ft_small_non_elastic import FailureState, FailureInjection
 
 if __name__ == "__main__":
     ray.init(address="auto")
+
+    failure_state = FailureState.remote()
 
     ray_params = RayParams(
         elastic_training=True,
@@ -25,6 +27,6 @@ if __name__ == "__main__":
         ray_params=ray_params,
         xgboost_params=None,
         callbacks=[
-            FailureInjection(ranks=[3], iteration=14),
-            FailureInjection(ranks=[0], iteration=34),
+            FailureInjection(state=failure_state, ranks=[3], iteration=14),
+            FailureInjection(state=failure_state, ranks=[0], iteration=34),
         ])
