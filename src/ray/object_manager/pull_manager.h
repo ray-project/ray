@@ -43,7 +43,11 @@ class PullManager {
       const std::function<double()> get_time, int pull_timeout_ms,
       size_t num_bytes_available);
 
-  /// Begin a new pull request for a bundle of objects.
+  /// Add a new pull request for a bundle of objects. The objects in the
+  /// request will get pulled once:
+  /// 1. Their sizes are known.
+  /// 2. Their total size, together with the total size of all requests
+  /// preceding this one, is within the capacity of the local object store.
   ///
   /// \param object_refs The bundle of objects that must be made local.
   /// \param objects_to_locate The objects whose new locations the caller
@@ -52,6 +56,13 @@ class PullManager {
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
                 std::vector<rpc::ObjectReference> *objects_to_locate);
 
+  /// Update the pull requests that are currently being pulled, according to
+  /// the current capacity. The PullManager will choose the objects to pull by
+  /// taking the longest contiguous prefix of the request queue whose total
+  /// size is less than the given capacity.
+  ///
+  /// \param num_bytes_available The number of bytes that are currently
+  /// available to store objects pulled from another node.
   void UpdatePullsBasedOnAvailableMemory(size_t num_bytes_available);
 
   /// Called when the available locations for a given object change.
@@ -76,10 +87,15 @@ class PullManager {
   /// existing objects from other nodes if necessary.
   void Tick();
 
+  /// Call to reset the retry timer for an object that is actively being
+  /// pulled. This should be called for objects that were evicted but that may
+  /// still be needed on this node.
+  ///
+  /// \param object_id The object ID to reset.
+  void ResetRetryTimer(const ObjectID &object_id);
+
   /// The number of ongoing object pulls.
   int NumActiveRequests() const;
-
-  void ResetRetryTimer(const ObjectID &object_id);
 
  private:
   /// A helper structure for tracking information about each ongoing object pull.
@@ -122,10 +138,14 @@ class PullManager {
   /// \param request The request to update the retry time of.
   void UpdateRetryTimer(ObjectPullRequest &request);
 
+  /// Activate the next pull request in the queue. This will start pulls for
+  /// any objects in the request that are not already being pulled.
   bool ActivateNextPullBundleRequest(
       std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator next_request_it,
       std::unordered_set<ObjectID> *object_ids_to_pull);
 
+  /// Deactivate a pull request in the queue. This cancels any pull or restore
+  /// operations for the object.
   void DeactivatePullBundleRequest(
       std::map<uint64_t, std::vector<rpc::ObjectReference>>::iterator request_it,
       std::unordered_set<ObjectID> *object_ids_to_cancel = nullptr);
@@ -148,10 +168,12 @@ class PullManager {
 
   /// The total number of bytes that we are currently pulling. This is the
   /// total size of the objects requested that we are actively pulling. To
-  /// avoid starvation, this should be less than the available capacity in the
+  /// avoid starvation, this is always less than the available capacity in the
   /// local object store.
   size_t num_bytes_being_pulled_ = 0;
 
+  /// The total number of bytes that is available to store objects that we are
+  /// pulling.
   size_t num_bytes_available_;
 
   /// A pointer to the highest request ID whose objects we are currently
@@ -160,10 +182,14 @@ class PullManager {
   /// or their objects are also being pulled.
   uint64_t highest_req_id_being_pulled_ = 0;
 
-  /// The objects that this object manager is currently trying to fetch from
-  /// remote object managers.
+  /// The objects that this object manager has been asked to fetch from remote
+  /// object managers.
   std::unordered_map<ObjectID, ObjectPullRequest> object_pull_requests_;
 
+  /// The objects that we are currently fetching. This is a subset of the
+  /// objects that we have been asked to fetch. The total size of these objects
+  /// is the number of bytes that we are currently pulling, and it must be less
+  /// than the bytes available.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
       active_object_pull_requests_;
 
