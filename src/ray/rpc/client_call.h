@@ -21,6 +21,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {

@@ -138,7 +138,7 @@ class InitShutdownRAII {
   /// \param shutdown_func The shutdown function.
   /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&...args)
       : shutdown_(shutdown_func) {
     init_func(args...);
   }
@@ -193,4 +193,12 @@ void FillRandom(T *data) {
   for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
+}
+
+inline void SetThreadName(const std::string &thread_name) {
+#if defined(__APPLE__)
+  pthread_setname_np(thread_name.c_str());
+#elif defined(__linux__)
+  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+#endif
 }
