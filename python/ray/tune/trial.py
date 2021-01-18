@@ -387,10 +387,8 @@ class Trial:
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
         if isinstance(resources, PlacementGroupFactory):
-            self.resources = Resources(cpu=1, gpu=0)
             self.placement_group_factory = resources
         elif callable(resources):
-            self.resources = Resources(cpu=1, gpu=0)
             self.placement_group_factory = PlacementGroupFactory(resources)
         else:
             self.resources = Resources(**resources)
