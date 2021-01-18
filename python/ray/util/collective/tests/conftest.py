@@ -12,12 +12,12 @@ def clean_up():
     group_names = ["default", "test", "123?34!", "default2", "random"]
     group_names.extend([str(i) for i in range(10)])
     max_world_size = 4
-
     all_keys = []
     for name in group_names:
-        devices = [0]
-        collective_communicator_key = _get_comm_key_from_devices(devices)
-        all_keys.append(collective_communicator_key + "@" + name)
+        devices = [[0], [0, 1], [1, 0]]
+        for d in devices:
+            collective_communicator_key = _get_comm_key_from_devices(d)
+            all_keys.append(collective_communicator_key + "@" + name)
         for i in range(max_world_size):
             for j in range(max_world_size):
                 if i < j:

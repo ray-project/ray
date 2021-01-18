@@ -3,6 +3,7 @@ import cupy as cp
 import ray
 import ray.util.collective as col
 from ray.util.collective.types import Backend, ReduceOp
+from ray.util.collective.collective_group.nccl_util import get_num_gpus
 
 import torch
 
@@ -103,12 +104,27 @@ def create_collective_workers(num_workers=2,
 @ray.remote(num_gpus=2)
 class MultiGPUWorker:
     def __init__(self):
+        self.init = False
+        self.buffer0 = None
+        self.buffer1 = None
+        self.list_buffer0 = None
+        self.list_buffer1 = None
+
+    def __del__(self):
+        self.buffer0 = None
+        self.buffer1 = None
+        self.list_buffer0 = None
+        self.list_buffer1 = None
+
+    def init_tensors(self):
         with cp.cuda.Device(0):
             self.buffer0 = cp.ones((10, ), dtype=cp.float32)
             self.list_buffer0 = [cp.ones((10,), dtype=cp.float32) for _ in range(4)]
         with cp.cuda.Device(1):
             self.buffer1 = cp.ones((10, ), dtype=cp.float32)
             self.list_buffer1 = [cp.ones((10,), dtype=cp.float32) for _ in range(4)]
+        self.init = True
+        return self.init
 
     def init_group(self,
                    world_size,
@@ -118,9 +134,15 @@ class MultiGPUWorker:
         col.init_collective_group(world_size, rank, backend, group_name)
         return True
 
-    def set_buffer(self, buffer0, buffer1):
-        self.buffer0 = buffer0
-        self.buffer1 = buffer1
+    def set_buffer(self, size, value0=1.0, value1=1.0,
+                   dtype=cp.float32, tensor_type0='cupy', tensor_type1='torch'):
+        with cp.cuda.Device(0):
+            if tensor_type0 == 'cupy':
+                self.buffer0 = cp.ones(size, dtype=dtype) * value0
+            elif tensor_type0 == 'torch':
+                self.buffer0 = torch.ones(*size).cuda())
+        with cp.cuda.Device(1):
+            self.buffer1 = cp.ones(size, dtype=dtype) * value1
         return self.buffer0
 
     @ray.remote(num_returns=2)
@@ -199,11 +221,16 @@ class MultiGPUWorker:
         is_init = col.is_group_initialized(group_name)
         return is_init
 
+    def report_num_gpus(self):
+        n_gpus = get_num_gpus()
+        return n_gpus
+
 
 def create_collective_multigpu_workers(num_workers=2,
                                        group_name="default",
                                        backend="nccl"):
     actors = [MultiGPUWorker.remote() for _ in range(num_workers)]
+    ray.get([actor.init_tensors.remote() for actor in actors])
     world_size = num_workers
     init_results = ray.get([
         actor.init_group.remote(world_size, i, backend, group_name)
