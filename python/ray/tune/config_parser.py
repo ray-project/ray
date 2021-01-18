@@ -191,7 +191,11 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
                 _cached_pgf[resources] = pgf
                 trial_kwargs["placement_group_factory"] = pgf
         else:
-            trial_kwargs["resources"] = json_to_resources(resources)
+            try:
+                trial_kwargs["resources"] = json_to_resources(resources)
+            except (TuneError, ValueError) as exc:
+                raise TuneError("Error parsing resources_per_trial",
+                                resources) from exc
 
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
