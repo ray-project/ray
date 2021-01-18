@@ -19,7 +19,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.models import ModelCatalog
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
     DiagGaussian, Dirichlet, SquashedGaussian, TFActionDistribution
@@ -56,16 +56,26 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
             target model will be created in this function and assigned to
             `policy.target_model`.
     """
+
     # With separate state-preprocessor (before obs+action concat).
-    if config["use_state_preprocessor"]:
-        #num_outputs = 256  # Flatten last Conv2D to this many nodes.
-        default_model = None  # Custom model or catalog picks default one.
-        num_outputs = None
-    # No separate state-preprocessor: concat obs+actions right away.
-    else:
-        default_model = TorchNoopModel if config["framework"] == "torch" \
-            else NoopModel
-        num_outputs = int(np.product(obs_space.shape))
+    #if config["use_state_preprocessor"]:
+    #    #num_outputs = 256  # Flatten last Conv2D to this many nodes.
+    #    #default_model = None  # Custom model or catalog picks default one.
+    #    pre_networks = [ModelCatalog.get_model_v2(
+    #        obs_space=obs_space,
+    #        action_space=action_space,
+    #        num_outputs=None,  # Let model decide on the size of the last layer
+    #        model_config=config["model"],
+    #        framework=config["framework"],
+    #        name="sac_pre_network",
+    #    ) for _ in range(2 if config["share_pre_networks"] else 1)]
+    #    #num_outputs = None
+    ## No separate state-preprocessor: concat obs+actions right away.
+    #else:
+        #default_model = TorchNoopModel if config["framework"] == "torch" \
+        #    else NoopModel
+        #num_outputs = int(np.product(obs_space.shape))
+    #    pre_networks = [None, None]
         #num_outputs = 0
         # No state preprocessor: fcnet_hiddens should be empty.
         #if config["model"]["fcnet_hiddens"]:
@@ -85,20 +95,25 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,  #num_outputs,
         model_config=config["model"],
         framework=config["framework"],
-        model_interface=SACTorchModel
-        if config["framework"] == "torch" else SACTFModel,
-        default_model=default_model,
+        #model_interface=SACTorchModel
+        #if config["framework"] == "torch" else SACTFModel,
+        #default_model=default_model,
         name="sac_model",
-        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
-        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
-        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
-        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
+        #actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        #actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        #critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        #critic_hiddens=config["Q_model"]["fcnet_hiddens"],
+        actor_config=config["policy_model"],
+        critic_config=config["Q_model"],
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"],
-        target_entropy=config["target_entropy"])
+        target_entropy=config["target_entropy"],
+        #pre_policy_network=pre_networks[0],
+        #pre_q_network=pre_networks[1 if len(pre_networks) == 2 else 0],
+    )
 
     # Create an exact copy of the model and store it in `policy.target_model`.
     # This will be used for tau-synched Q-target models that run behind the
@@ -107,20 +122,25 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
-        model_config=config["model"],
+        num_outputs=None,#num_outputs,
+        model_config={},#config["model"],
         framework=config["framework"],
-        model_interface=SACTorchModel
-        if config["framework"] == "torch" else SACTFModel,
-        default_model=default_model,
+        #model_interface=SACTorchModel
+        #if config["framework"] == "torch" else SACTFModel,
+        #default_model=default_model,
         name="target_sac_model",
-        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
-        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
-        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
-        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
+        actor_config=config["policy_model"],
+        critic_config=config["policy_model"],
+        #actor_hidden_activation=config["policy_model"]["fcnet_activation"],
+        #actor_hiddens=config["policy_model"]["fcnet_hiddens"],
+        #critic_hidden_activation=config["Q_model"]["fcnet_activation"],
+        #critic_hiddens=config["Q_model"]["fcnet_hiddens"],
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"],
-        target_entropy=config["target_entropy"])
+        target_entropy=config["target_entropy"],
+        #pre_policy_network=pre_networks[0],
+        #pre_q_network=pre_networks[1 if len(pre_networks) == 2 else 0],
+    )
 
     return model
 

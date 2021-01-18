@@ -55,6 +55,9 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Supported values are: "tanh", "relu", "swish" (or "silu"),
     # "linear" (or None).
     "conv_activation": "relu",
+    # Possible additional layers to be added on top of the Conv2D stack.
+    #"conv_add_fcnet_hiddens": [],
+    #"conv_add_fcnet_activation": "relu",
 
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
